@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use control_plane::auth::settings::{
-    AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
-    CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorConfigCommand,
-    UpdateAuthCenterAuthenticatorEnabledCommand, UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
+    AuthCenterSettingsService, CopyAuthCenterLoginEntryCommand, CreateAuthCenterLoginEntryCommand,
+    UpdateAuthCenterLoginEntryConfigCommand, UpdateAuthCenterLoginEntryEnabledCommand,
+    UpdateAuthCenterLoginEntryPublicUiBlockCommand,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
@@ -24,34 +24,34 @@ pub(crate) enum AuthCenterInput {
     },
     Create {
         locale: ConsoleLocaleHints,
-        body: auth_center::CreateAuthCenterAuthenticatorBody,
+        body: auth_center::CreateAuthCenterLoginEntryBody,
     },
     Copy {
         locale: ConsoleLocaleHints,
         id: Uuid,
-        body: auth_center::CopyAuthCenterAuthenticatorBody,
+        body: auth_center::CopyAuthCenterLoginEntryBody,
     },
     Delete {
         id: Uuid,
     },
     Reorder {
         locale: ConsoleLocaleHints,
-        body: auth_center::ReorderAuthCenterAuthenticatorsBody,
+        body: auth_center::ReorderAuthCenterLoginEntriesBody,
     },
     UpdateEnabled {
         locale: ConsoleLocaleHints,
         id: Uuid,
-        body: auth_center::UpdateAuthCenterAuthenticatorEnabledBody,
+        body: auth_center::UpdateAuthCenterLoginEntryEnabledBody,
     },
     UpdateConfig {
         locale: ConsoleLocaleHints,
         id: Uuid,
-        body: auth_center::UpdateAuthCenterAuthenticatorConfigBody,
+        body: auth_center::UpdateAuthCenterLoginEntryConfigBody,
     },
     UpdatePublicUiBlock {
         locale: ConsoleLocaleHints,
         id: Uuid,
-        body: auth_center::UpdateAuthCenterAuthenticatorPublicUiBlockBody,
+        body: auth_center::UpdateAuthCenterLoginEntryPublicUiBlockBody,
     },
 }
 
@@ -66,7 +66,7 @@ impl InterfaceContract for AuthCenterInput {
 )]
 pub(crate) enum AuthCenterOutput {
     Overview(auth_center::AuthCenterOverviewResponse),
-    Authenticator(auth_center::AuthCenterAuthenticatorResponse),
+    Authenticator(auth_center::AuthCenterLoginEntryResponse),
     NoContent,
 }
 
@@ -108,18 +108,16 @@ impl AuthCenterAdapter {
         Ok(hints.resolve(preferred))
     }
 
-    async fn authenticator_response(
+    async fn login_entry_response(
         &self,
         principal: &UserPrincipal,
         hints: ConsoleLocaleHints,
-        authenticator: domain::AuthenticatorRecord,
-    ) -> Result<auth_center::AuthCenterAuthenticatorResponse, ApiError> {
+        authenticator: domain::LoginEntryRecord,
+    ) -> Result<auth_center::AuthCenterLoginEntryResponse, ApiError> {
         let locale = self.locale(principal, &hints).await?;
-        let mut response = auth_center::to_auth_center_authenticator_response(
-            authenticator,
-            self.registry.as_ref(),
-        );
-        auth_center::localize_authenticator_response_with(
+        let mut response =
+            auth_center::to_auth_center_login_entry_response(authenticator, self.registry.as_ref());
+        auth_center::localize_login_entry_response_with(
             &self.store,
             self.bootstrap_workspace_id,
             &locale,
@@ -167,9 +165,9 @@ impl AuthCenterAdapter {
             }
             AuthCenterInput::Create { locale, body } => {
                 let record = service
-                    .create_authenticator(
+                    .create_login_entry(
                         actor,
-                        CreateAuthCenterAuthenticatorCommand {
+                        CreateAuthCenterLoginEntryCommand {
                             auth_type: body.auth_type,
                             title: body.title,
                             description: body.description,
@@ -179,15 +177,14 @@ impl AuthCenterAdapter {
                     )
                     .await?;
                 Ok(AuthCenterOutput::Authenticator(
-                    self.authenticator_response(principal, locale, record)
-                        .await?,
+                    self.login_entry_response(principal, locale, record).await?,
                 ))
             }
             AuthCenterInput::Copy { locale, id, body } => {
                 let record = service
-                    .copy_authenticator(
+                    .copy_login_entry(
                         actor,
-                        CopyAuthCenterAuthenticatorCommand {
+                        CopyAuthCenterLoginEntryCommand {
                             source_id: id,
                             title: body.title,
                             sort_order: body.sort_order,
@@ -195,41 +192,39 @@ impl AuthCenterAdapter {
                     )
                     .await?;
                 Ok(AuthCenterOutput::Authenticator(
-                    self.authenticator_response(principal, locale, record)
-                        .await?,
+                    self.login_entry_response(principal, locale, record).await?,
                 ))
             }
             AuthCenterInput::Delete { id } => {
-                service.delete_authenticator(actor, id).await?;
+                service.delete_login_entry(actor, id).await?;
                 Ok(AuthCenterOutput::NoContent)
             }
             AuthCenterInput::Reorder { locale, body } => {
-                let overview = service.reorder_authenticators(actor, &body.ids).await?;
+                let overview = service.reorder_login_entries(actor, &body.ids).await?;
                 Ok(AuthCenterOutput::Overview(
                     self.overview_response(principal, locale, overview).await?,
                 ))
             }
             AuthCenterInput::UpdateEnabled { locale, id, body } => {
                 let record = service
-                    .update_authenticator_enabled(
+                    .update_login_entry_enabled(
                         actor,
-                        UpdateAuthCenterAuthenticatorEnabledCommand {
-                            authenticator_id: id,
+                        UpdateAuthCenterLoginEntryEnabledCommand {
+                            login_entry_id: id,
                             enabled: body.enabled,
                         },
                     )
                     .await?;
                 Ok(AuthCenterOutput::Authenticator(
-                    self.authenticator_response(principal, locale, record)
-                        .await?,
+                    self.login_entry_response(principal, locale, record).await?,
                 ))
             }
             AuthCenterInput::UpdateConfig { locale, id, body } => {
                 let record = service
-                    .update_authenticator_config(
+                    .update_login_entry(
                         actor,
-                        UpdateAuthCenterAuthenticatorConfigCommand {
-                            authenticator_id: id,
+                        UpdateAuthCenterLoginEntryConfigCommand {
+                            login_entry_id: id,
                             title: body.title,
                             enabled: body.enabled,
                             description: body.description,
@@ -239,23 +234,21 @@ impl AuthCenterAdapter {
                     )
                     .await?;
                 Ok(AuthCenterOutput::Authenticator(
-                    self.authenticator_response(principal, locale, record)
-                        .await?,
+                    self.login_entry_response(principal, locale, record).await?,
                 ))
             }
             AuthCenterInput::UpdatePublicUiBlock { locale, id, body } => {
                 let record = service
-                    .update_authenticator_public_ui_block(
+                    .update_login_entry_public_ui_block(
                         actor,
-                        UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
-                            authenticator_id: id,
+                        UpdateAuthCenterLoginEntryPublicUiBlockCommand {
+                            login_entry_id: id,
                             public_ui_block: body.public_ui_block,
                         },
                     )
                     .await?;
                 Ok(AuthCenterOutput::Authenticator(
-                    self.authenticator_response(principal, locale, record)
-                        .await?,
+                    self.login_entry_response(principal, locale, record).await?,
                 ))
             }
         }
@@ -285,52 +278,52 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.create",
-        binding_id: "http.console.auth-center.authenticators.create.v1",
+        interface_id: "auth_center.login_entries.create",
+        binding_id: "http.console.auth-center.login_entries.create.v1",
         method: "POST",
-        path: "/api/console/settings/auth-center/authenticators",
+        path: "/api/console/settings/auth-center/login-entries",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.order",
-        binding_id: "http.console.auth-center.authenticators.order.v1",
+        interface_id: "auth_center.login_entries.order",
+        binding_id: "http.console.auth-center.login_entries.order.v1",
         method: "PUT",
-        path: "/api/console/settings/auth-center/authenticators/order",
+        path: "/api/console/settings/auth-center/login-entries/order",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.enabled.update",
-        binding_id: "http.console.auth-center.authenticators.enabled.update.v1",
+        interface_id: "auth_center.login_entries.enabled.update",
+        binding_id: "http.console.auth-center.login_entries.enabled.update.v1",
         method: "PUT",
-        path: "/api/console/settings/auth-center/authenticators/:id/enabled",
+        path: "/api/console/settings/auth-center/login-entries/:id/enabled",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.copy",
-        binding_id: "http.console.auth-center.authenticators.copy.v1",
+        interface_id: "auth_center.login_entries.copy",
+        binding_id: "http.console.auth-center.login_entries.copy.v1",
         method: "POST",
-        path: "/api/console/settings/auth-center/authenticators/:id/copy",
+        path: "/api/console/settings/auth-center/login-entries/:id/copy",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.update.config",
-        binding_id: "http.console.auth-center.authenticators.update.config.v1",
+        interface_id: "auth_center.login_entries.update.config",
+        binding_id: "http.console.auth-center.login_entries.update.config.v1",
         method: "PUT",
-        path: "/api/console/settings/auth-center/authenticators/:id/config",
+        path: "/api/console/settings/auth-center/login-entries/:id/config",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.update.public-ui-block",
-        binding_id: "http.console.auth-center.authenticators.update.public-ui-block.v1",
+        interface_id: "auth_center.login_entries.update.public-ui-block",
+        binding_id: "http.console.auth-center.login_entries.update.public-ui-block.v1",
         method: "PUT",
-        path: "/api/console/settings/auth-center/authenticators/:id/public-ui-block",
+        path: "/api/console/settings/auth-center/login-entries/:id/public-ui-block",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.delete",
-        binding_id: "http.console.auth-center.authenticators.delete.v1",
+        interface_id: "auth_center.login_entries.delete",
+        binding_id: "http.console.auth-center.login_entries.delete.v1",
         method: "DELETE",
-        path: "/api/console/settings/auth-center/authenticators/:id",
+        path: "/api/console/settings/auth-center/login-entries/:id",
         mutating: true,
     },
 ];

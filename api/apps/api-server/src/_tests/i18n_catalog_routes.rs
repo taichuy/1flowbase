@@ -54,7 +54,7 @@ async fn delivery_1545_d6_installed_i18n_catalog_previews_and_activates_local_ar
     .unwrap();
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await

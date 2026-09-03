@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::ports::{BootstrapRepository, WorkspaceBootstrapResult};
 use domain::{
-    AuthenticatorRecord, BoundRole, PermissionDefinition, RoleScopeKind, RoleTemplate,
-    TenantRecord, UserRecord, UserStatus, WorkspaceRecord,
+    BoundRole, LoginEntryRecord, PermissionDefinition, RoleScopeKind, RoleTemplate, TenantRecord,
+    UserRecord, UserStatus, WorkspaceRecord,
 };
 
 #[derive(Default, Clone)]
@@ -28,7 +28,7 @@ struct MemoryBootstrapRepositoryInner {
     official_catalog_bootstraps: AtomicUsize,
     root_user_creates: AtomicUsize,
     workspace_role_template_seeds: AtomicUsize,
-    authenticators: RwLock<Vec<AuthenticatorRecord>>,
+    login_entries: RwLock<Vec<LoginEntryRecord>>,
     root_tenant: RwLock<Option<TenantRecord>>,
     workspace: RwLock<Option<WorkspaceRecord>>,
     root_user: RwLock<Option<UserRecord>>,
@@ -71,18 +71,18 @@ impl MemoryBootstrapRepository {
             .load(Ordering::SeqCst)
     }
 
-    pub async fn authenticator(&self, id: Uuid) -> Option<AuthenticatorRecord> {
+    pub async fn authenticator(&self, id: Uuid) -> Option<LoginEntryRecord> {
         self.inner
-            .authenticators
+            .login_entries
             .read()
             .await
             .iter()
-            .find(|authenticator| authenticator.id == id)
+            .find(|entry| entry.id == id)
             .cloned()
     }
 
-    pub async fn seed_authenticator(&self, authenticator: AuthenticatorRecord) {
-        self.inner.authenticators.write().await.push(authenticator);
+    pub async fn seed_authenticator(&self, authenticator: LoginEntryRecord) {
+        self.inner.login_entries.write().await.push(authenticator);
     }
 
     pub async fn root_role_template_inputs(&self) -> Vec<Vec<RoleTemplate>> {
@@ -100,16 +100,16 @@ impl MemoryBootstrapRepository {
 
 #[async_trait]
 impl BootstrapRepository for MemoryBootstrapRepository {
-    async fn replace_authenticator_public_ui_block_if_matches(
+    async fn replace_login_entry_public_ui_block_if_matches(
         &self,
-        authenticator_id: Uuid,
+        login_entry_id: Uuid,
         expected: &str,
         replacement: &str,
     ) -> Result<bool> {
-        let mut authenticators = self.inner.authenticators.write().await;
-        let Some(authenticator) = authenticators
+        let mut login_entries = self.inner.login_entries.write().await;
+        let Some(authenticator) = login_entries
             .iter_mut()
-            .find(|authenticator| authenticator.id == authenticator_id)
+            .find(|entry| entry.id == login_entry_id)
         else {
             return Ok(false);
         };
@@ -120,12 +120,12 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         Ok(true)
     }
 
-    async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+    async fn upsert_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
         self.inner
             .authenticator_upserts
             .fetch_add(1, Ordering::SeqCst);
-        let mut authenticators = self.inner.authenticators.write().await;
-        match authenticators
+        let mut login_entries = self.inner.login_entries.write().await;
+        match login_entries
             .iter_mut()
             .find(|stored| stored.id == authenticator.id)
         {
@@ -136,7 +136,7 @@ impl BootstrapRepository for MemoryBootstrapRepository {
                     stored.public_ui_block = saved_public_ui_block;
                 }
             }
-            None => authenticators.push(authenticator.clone()),
+            None => login_entries.push(authenticator.clone()),
         }
         Ok(())
     }

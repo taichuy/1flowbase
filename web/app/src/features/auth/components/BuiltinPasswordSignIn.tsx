@@ -7,12 +7,14 @@ import {
 } from '../api/session';
 
 interface BuiltinPasswordSignInProps {
-  authenticatorSelector?: { request: () => void } | null;
+  loginEntryId?: string;
+  loginEntrySelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
 }
 
 export function BuiltinPasswordSignIn({
-  authenticatorSelector = null,
+  loginEntryId,
+  loginEntrySelector = null,
   onAuthenticated
 }: BuiltinPasswordSignInProps) {
   const { t } = useTranslation('auth');
@@ -27,6 +29,7 @@ export function BuiltinPasswordSignIn({
     setFailed(false);
     try {
       const session = await signInWithPassword({
+        login_entry_id: loginEntryId,
         identifier,
         password
       });
@@ -43,11 +46,11 @@ export function BuiltinPasswordSignIn({
       className="builtin-password-sign-in"
       data-testid="builtin-password-sign-in"
     >
-      {authenticatorSelector ? (
+      {loginEntrySelector ? (
         <button
           aria-label={t('sign_in.back_to_login_options')}
           className="builtin-password-sign-in__back"
-          onClick={authenticatorSelector.request}
+          onClick={loginEntrySelector.request}
           type="button"
         >
           <span aria-hidden="true">←</span>

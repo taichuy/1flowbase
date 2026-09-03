@@ -14,10 +14,10 @@ export {
 } from '../console/session';
 export { fetchConsoleMe, type ConsoleMe } from '../console-me';
 export {
-  fetchPublicLoginInstances,
+  fetchPublicLoginEntries,
   signInWithPassword,
   type PasswordSignInInput,
   type PasswordSignInResponse,
-  type PublicLoginInstance,
-  type PublicLoginInstancesResponse
+  type PublicLoginEntry,
+  type PublicLoginEntriesResponse
 } from '../public-auth';

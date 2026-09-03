@@ -5,18 +5,18 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorEnabled: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
-  createSettingsAuthCenterAuthenticator: vi.fn(),
-  copySettingsAuthCenterAuthenticator: vi.fn(),
-  deleteSettingsAuthCenterAuthenticator: vi.fn(),
-  reorderSettingsAuthCenterAuthenticators: vi.fn()
+  updateSettingsAuthCenterLoginEntryEnabled: vi.fn(),
+  updateSettingsAuthCenterLoginEntryConfig: vi.fn(),
+  updateSettingsAuthCenterLoginEntryPublicUiBlock: vi.fn(),
+  createSettingsAuthCenterLoginEntry: vi.fn(),
+  copySettingsAuthCenterLoginEntry: vi.fn(),
+  deleteSettingsAuthCenterLoginEntry: vi.fn(),
+  reorderSettingsAuthCenterLoginEntries: vi.fn()
 }));
 const frontstageInterfaceCapabilities = vi.hoisted(() => ({
   useFrontstageInterfaceCapabilities: vi.fn(() => ({
@@ -33,6 +33,9 @@ vi.mock('../../frontstage/hooks/use-frontstage-interface-capabilities', () => ({
 }));
 vi.mock('../../frontstage/api/interface-capabilities', () => ({
   fetchFrontstageInterfaceCapability: vi.fn()
+}));
+vi.mock('../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
 
 vi.mock('@monaco-editor/react', () => ({
@@ -76,6 +79,7 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 import { AppProviders } from '../../../app/AppProviders';
+import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../state/auth-store';
 import { SettingsAuthCenterSection } from '../pages/settings-page/SettingsAuthCenterSection';
 
@@ -104,9 +108,9 @@ function authenticate() {
 }
 
 const baseOverview = {
-  default_authenticator_id: 'auth-password-local',
+  default_login_entry_id: 'auth-password-local',
   supported_auth_types: ['password-local'],
-  authenticators: [
+  login_entries: [
     {
       id: 'auth-password-local',
       auth_type: 'password-local',
@@ -150,7 +154,7 @@ const baseOverview = {
         {
           group: 'runtime',
           label: 'Authenticator ID',
-          member_path: 'inputs.authenticator_id',
+          member_path: 'inputs.login_entry_id',
           schema: { type: 'string', format: 'uuid' }
         },
         {
@@ -248,6 +252,10 @@ const baseOverview = {
 };
 
 describe('SettingsAuthCenterSection lifecycle', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useAuthStore.getState().setAnonymous();
@@ -258,10 +266,10 @@ describe('SettingsAuthCenterSection lifecycle', () => {
   });
 
   test('updates enabled state in both directions from the table switches', async () => {
-    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockImplementation(
-      async (authenticatorId: string, input: { enabled: boolean }) => ({
-        ...baseOverview.authenticators.find(
-          (authenticator) => authenticator.id === authenticatorId
+    authCenterApi.updateSettingsAuthCenterLoginEntryEnabled.mockImplementation(
+      async (loginEntryId: string, input: { enabled: boolean }) => ({
+        ...baseOverview.login_entries.find(
+          (authenticator) => authenticator.id === loginEntryId
         ),
         enabled: input.enabled
       })
@@ -281,7 +289,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.click(within(passwordRow!).getByRole('switch'));
     await waitFor(() => {
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+        authCenterApi.updateSettingsAuthCenterLoginEntryEnabled
       ).toHaveBeenCalledWith(
         'auth-password-local',
         { enabled: false },
@@ -292,7 +300,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.click(within(staffPasswordRow!).getByRole('switch'));
     await waitFor(() => {
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+        authCenterApi.updateSettingsAuthCenterLoginEntryEnabled
       ).toHaveBeenCalledWith(
         'auth-staff-password',
         { enabled: true },
@@ -301,9 +309,9 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     });
   });
 
-  test('creates an authenticator with backend-supported auth types', async () => {
-    authCenterApi.createSettingsAuthCenterAuthenticator.mockResolvedValue({
-      ...baseOverview.authenticators[1],
+  test('creates a login entry with backend-supported auth types', async () => {
+    authCenterApi.createSettingsAuthCenterLoginEntry.mockResolvedValue({
+      ...baseOverview.login_entries[1],
       title: 'Customer Password',
       sort_order: 20
     });
@@ -315,7 +323,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: '新增' }));
-    const dialog = await screen.findByRole('dialog', { name: '新建认证器' });
+    const dialog = await screen.findByRole('dialog', { name: '新建登录入口' });
     expect(within(dialog).getByText('password-local')).toBeInTheDocument();
     expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('排序值')).not.toBeInTheDocument();
@@ -329,7 +337,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     await waitFor(() => {
       expect(
-        authCenterApi.createSettingsAuthCenterAuthenticator
+        authCenterApi.createSettingsAuthCenterLoginEntry
       ).toHaveBeenCalledWith(
         {
           auth_type: 'password-local',
@@ -343,15 +351,15 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     });
   });
 
-  test('hides copy, drag-sorts, and deletes authenticators from table actions', async () => {
-    authCenterApi.deleteSettingsAuthCenterAuthenticator.mockResolvedValue(
+  test('hides copy, drag-sorts, and deletes login_entries from table actions', async () => {
+    authCenterApi.deleteSettingsAuthCenterLoginEntry.mockResolvedValue(
       undefined
     );
-    authCenterApi.reorderSettingsAuthCenterAuthenticators.mockResolvedValue({
+    authCenterApi.reorderSettingsAuthCenterLoginEntries.mockResolvedValue({
       ...baseOverview,
-      authenticators: [
-        baseOverview.authenticators[1],
-        baseOverview.authenticators[0]
+      login_entries: [
+        baseOverview.login_entries[1],
+        baseOverview.login_entries[0]
       ]
     });
 
@@ -392,7 +400,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       name: /Local password authentication/
     });
     const dragHandle = within(staffRow).getByRole('button', {
-      name: '拖拽排序认证器 Staff Password'
+      name: '拖拽排序登录入口 Staff Password'
     });
     const dataTransfer = {
       data: new Map<string, string>(),
@@ -411,7 +419,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.drop(passwordRow, { dataTransfer });
     await waitFor(() => {
       expect(
-        authCenterApi.reorderSettingsAuthCenterAuthenticators
+        authCenterApi.reorderSettingsAuthCenterLoginEntries
       ).toHaveBeenCalledWith(
         ['auth-staff-password', 'auth-password-local'],
         'csrf-123'
@@ -429,17 +437,17 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.click(confirmDeleteButton as HTMLElement);
     await waitFor(() => {
       expect(
-        authCenterApi.deleteSettingsAuthCenterAuthenticator
+        authCenterApi.deleteSettingsAuthCenterLoginEntry
       ).toHaveBeenCalledWith('auth-staff-password', 'csrf-123');
     });
   });
 
   test('edits regular configuration separately from the public UI Block', async () => {
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
-      baseOverview.authenticators[0]
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockResolvedValue(
+      baseOverview.login_entries[0]
     );
-    authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock.mockResolvedValue(
-      baseOverview.authenticators[0]
+    authCenterApi.updateSettingsAuthCenterLoginEntryPublicUiBlock.mockResolvedValue(
+      baseOverview.login_entries[0]
     );
     render(
       <AppProviders>
@@ -460,7 +468,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     await waitFor(() =>
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+        authCenterApi.updateSettingsAuthCenterLoginEntryConfig
       ).toHaveBeenCalledWith(
         'auth-password-local',
         {
@@ -524,9 +532,11 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       within(uiDialog).getByText('Allow self registration')
     ).toBeInTheDocument();
     fireEvent.click(within(uiDialog).getByRole('button', { name: '代码' }));
-    const blockEditor = within(uiDialog).getByRole('textbox', {
-      name: '区块源码'
-    });
+    const blockEditor = await within(uiDialog).findByRole(
+      'textbox',
+      { name: '区块源码' },
+      { timeout: 5000 }
+    );
     expect(blockEditor).toHaveValue('original password block');
     fireEvent.change(blockEditor, { target: { value: 'custom saved block' } });
     expect(
@@ -536,7 +546,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
 
     await waitFor(() =>
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock
+        authCenterApi.updateSettingsAuthCenterLoginEntryPublicUiBlock
       ).toHaveBeenCalledWith(
         'auth-password-local',
         { public_ui_block: 'custom saved block' },
@@ -546,7 +556,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
   });
 
   test('AC-014 shows the backend reason when public UI saving fails', async () => {
-    authCenterApi.updateSettingsAuthCenterAuthenticatorPublicUiBlock.mockRejectedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryPublicUiBlock.mockRejectedValue(
       new Error('invalid input: public_ui_block')
     );
     render(
@@ -560,9 +570,11 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     });
     fireEvent.click(within(passwordRow).getByRole('button', { name: 'UI' }));
     const uiDialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    const blockEditor = within(uiDialog).getByRole('textbox', {
-      name: '区块源码'
-    });
+    const blockEditor = await within(uiDialog).findByRole(
+      'textbox',
+      { name: '区块源码' },
+      { timeout: 5000 }
+    );
     fireEvent.change(blockEditor, { target: { value: 'invalid draft' } });
     fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
 
@@ -572,7 +584,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
   });
 
   test('AC-020 shows one backend error when configuration saving fails', async () => {
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockRejectedValue(
       new Error('invalid input: extension_config')
     );
     render(

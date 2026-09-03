@@ -10,8 +10,9 @@ use control_plane_contracts::{
     ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{
-    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, BoundRole,
-    PermissionDefinition, RoleScopeKind, ScopeContext, TenantRecord, UserRecord,
+    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticationConnectionRecord, BoundRole,
+    LoginEntryRecord, PermissionDefinition, RoleScopeKind, ScopeContext, TenantRecord,
+    UserAuthIdentity, UserRecord, VerifiedExternalIdentity,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -23,7 +24,7 @@ use self::identity_binding::{
 use crate::{
     i18n_catalog_repository::insert_verified_release,
     mappers::{
-        auth_mapper::{PgAuthMapper, StoredAuthenticatorRow},
+        auth_mapper::{PgAuthMapper, StoredLoginEntryRow},
         member_mapper::{PgMemberMapper, StoredMemberRow},
         workspace_mapper::{PgWorkspaceMapper, StoredWorkspaceRow},
     },
@@ -268,22 +269,22 @@ async fn upsert_role_templates(
 
 #[async_trait]
 impl BootstrapRepository for PgControlPlaneStore {
-    async fn replace_authenticator_public_ui_block_if_matches(
+    async fn replace_login_entry_public_ui_block_if_matches(
         &self,
-        authenticator_id: Uuid,
+        login_entry_id: Uuid,
         expected: &str,
         replacement: &str,
     ) -> Result<bool> {
         let result = sqlx::query(
             r#"
-            update authenticators
+            update login_entries
             set public_ui_block = $3,
                 updated_at = now()
             where id = $1
               and public_ui_block = $2
             "#,
         )
-        .bind(authenticator_id)
+        .bind(login_entry_id)
         .bind(expected)
         .bind(replacement)
         .execute(self.pool())
@@ -291,47 +292,65 @@ impl BootstrapRepository for PgControlPlaneStore {
         Ok(result.rows_affected() == 1)
     }
 
-    async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+    async fn upsert_login_entry(&self, login_entry: &LoginEntryRecord) -> Result<()> {
+        let mut tx = self.pool().begin().await?;
+        let connection_auth_type: String = sqlx::query_scalar(
+            r#"
+            insert into authentication_connections (id, auth_type, is_builtin, config)
+            values ($1, $2, $3, '{}'::jsonb)
+            on conflict (id) do update set id = authentication_connections.id
+            returning auth_type
+            "#,
+        )
+        .bind(login_entry.connection_id)
+        .bind(&login_entry.auth_type)
+        .bind(login_entry.connection_id == domain::PASSWORD_LOCAL_CONNECTION_ID)
+        .fetch_one(&mut *tx)
+        .await?;
+        if connection_auth_type != login_entry.auth_type {
+            return Err(ControlPlaneError::Conflict("authentication_connection_type").into());
+        }
+
         sqlx::query(
             r#"
-            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options)
+            insert into login_entries (id, connection_id, title, enabled, is_builtin, sort_order, public_ui_block, options)
             values ($1, $2, $3, $4, $5, $6, $7, $8)
             on conflict (id) do update
-              set auth_type = excluded.auth_type,
+              set connection_id = excluded.connection_id,
                   title = case
-                    when authenticators.id = '00000000-0000-0000-0000-000000000001' then authenticators.title
+                    when login_entries.id = '00000000-0000-0000-0000-000000000001' then login_entries.title
                     else excluded.title
                   end,
                   enabled = case
-                    when authenticators.id = '00000000-0000-0000-0000-000000000001' then authenticators.enabled
+                    when login_entries.id = '00000000-0000-0000-0000-000000000001' then login_entries.enabled
                     else excluded.enabled
                   end,
                   is_builtin = excluded.is_builtin,
                   public_ui_block = case
-                    when authenticators.public_ui_block = '' then excluded.public_ui_block
-                    else authenticators.public_ui_block
+                    when login_entries.public_ui_block = '' then excluded.public_ui_block
+                    else login_entries.public_ui_block
                   end,
                   options = case
-                    when authenticators.id <> '00000000-0000-0000-0000-000000000001' then excluded.options
+                    when login_entries.id <> '00000000-0000-0000-0000-000000000001' then excluded.options
                     else
                     case
-                      when jsonb_typeof(authenticators.options) = 'object' then authenticators.options
+                      when jsonb_typeof(login_entries.options) = 'object' then login_entries.options
                       else '{}'::jsonb
                     end
                     || jsonb_strip_nulls(jsonb_build_object(
                       'description',
                         case
-                          when authenticators.options ? 'description' then null
+                          when login_entries.options ? 'description' then null
                           else excluded.options -> 'description'
                         end,
                       'config_form_schema',
                         case
-                          when authenticators.options ? 'config_form_schema' then null
+                          when login_entries.options ? 'config_form_schema' then null
                           else excluded.options -> 'config_form_schema'
                         end,
                       'extension_config',
                         case
-                          when authenticators.options ? 'extension_config' then null
+                          when login_entries.options ? 'extension_config' then null
                           else excluded.options -> 'extension_config'
                         end
                     ))
@@ -339,16 +358,17 @@ impl BootstrapRepository for PgControlPlaneStore {
                   updated_at = now()
             "#,
         )
-        .bind(authenticator.id)
-        .bind(&authenticator.auth_type)
-        .bind(&authenticator.title)
-        .bind(authenticator.enabled)
-        .bind(authenticator.is_builtin)
-        .bind(authenticator.sort_order)
-        .bind(&authenticator.public_ui_block)
-        .bind(&authenticator.options)
-        .execute(self.pool())
+        .bind(login_entry.id)
+        .bind(login_entry.connection_id)
+        .bind(&login_entry.title)
+        .bind(login_entry.enabled)
+        .bind(login_entry.is_builtin)
+        .bind(login_entry.sort_order)
+        .bind(&login_entry.public_ui_block)
+        .bind(&login_entry.options)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
@@ -743,17 +763,47 @@ impl BootstrapRepository for PgControlPlaneStore {
 
 #[async_trait]
 impl AuthRepository for PgControlPlaneStore {
-    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+    async fn find_authentication_connection(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<AuthenticationConnectionRecord>> {
         let row = sqlx::query(
-            "select id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options from authenticators where id = $1",
+            r#"
+            select id, auth_type, is_builtin, config
+            from authentication_connections
+            where id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|row| AuthenticationConnectionRecord {
+            id: row.get("id"),
+            auth_type: row.get("auth_type"),
+            is_builtin: row.get("is_builtin"),
+            config: row.get("config"),
+        }))
+    }
+
+    async fn find_login_entry(&self, id: Uuid) -> Result<Option<LoginEntryRecord>> {
+        let row = sqlx::query(
+            r#"
+            select entry.id, entry.connection_id, connection.auth_type, entry.title,
+                   entry.enabled, entry.is_builtin, entry.sort_order,
+                   entry.public_ui_block, entry.options
+            from login_entries entry
+            join authentication_connections connection on connection.id = entry.connection_id
+            where entry.id = $1
+            "#,
         )
         .bind(id)
         .fetch_optional(self.pool())
         .await?;
 
         Ok(row.map(|row| {
-            PgAuthMapper::to_authenticator_record(StoredAuthenticatorRow {
+            PgAuthMapper::to_login_entry_record(StoredLoginEntryRow {
                 id: row.get("id"),
+                connection_id: row.get("connection_id"),
                 auth_type: row.get("auth_type"),
                 title: row.get("title"),
                 enabled: row.get("enabled"),
@@ -765,12 +815,15 @@ impl AuthRepository for PgControlPlaneStore {
         }))
     }
 
-    async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
+    async fn list_login_entries(&self) -> Result<Vec<LoginEntryRecord>> {
         let rows = sqlx::query(
             r#"
-            select id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options
-            from authenticators
-            order by sort_order asc, id asc
+            select entry.id, entry.connection_id, connection.auth_type, entry.title,
+                   entry.enabled, entry.is_builtin, entry.sort_order,
+                   entry.public_ui_block, entry.options
+            from login_entries entry
+            join authentication_connections connection on connection.id = entry.connection_id
+            order by entry.sort_order asc, entry.id asc
             "#,
         )
         .fetch_all(self.pool())
@@ -779,8 +832,9 @@ impl AuthRepository for PgControlPlaneStore {
         Ok(rows
             .into_iter()
             .map(|row| {
-                PgAuthMapper::to_authenticator_record(StoredAuthenticatorRow {
+                PgAuthMapper::to_login_entry_record(StoredLoginEntryRow {
                     id: row.get("id"),
+                    connection_id: row.get("connection_id"),
                     auth_type: row.get("auth_type"),
                     title: row.get("title"),
                     enabled: row.get("enabled"),
@@ -795,7 +849,7 @@ impl AuthRepository for PgControlPlaneStore {
 
     async fn find_user_for_password_login(
         &self,
-        authenticator_id: Uuid,
+        connection_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
         let lowered = identifier.trim().to_lowercase();
@@ -807,7 +861,7 @@ impl AuthRepository for PgControlPlaneStore {
               u.status, u.session_version
             from user_auth_identities i
             join users u on u.id = i.user_id
-            where i.authenticator_id = $1
+            where i.connection_id = $1
               and lower(i.subject_value) = $2
               and (
                 i.subject_type = $3
@@ -816,7 +870,7 @@ impl AuthRepository for PgControlPlaneStore {
               )
             "#,
         )
-        .bind(authenticator_id)
+        .bind(connection_id)
         .bind(lowered)
         .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
         .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)
@@ -857,6 +911,138 @@ impl AuthRepository for PgControlPlaneStore {
             Some(row) => Ok(Some(map_user_row(self.pool(), row).await?)),
             None => Ok(None),
         }
+    }
+
+    async fn find_user_for_verified_external_identity(
+        &self,
+        identity: &VerifiedExternalIdentity,
+    ) -> Result<Option<UserRecord>> {
+        let row = sqlx::query(
+            r#"
+            select u.id, u.account, u.email, u.phone, u.password_hash, u.name, u.nickname,
+                   u.avatar_url, u.introduction, u.preferred_locale, u.meta,
+                   u.default_display_role, u.email_login_enabled, u.phone_login_enabled,
+                   u.status, u.session_version
+            from user_auth_identities identity
+            join users u on u.id = identity.user_id
+            where identity.connection_id = $1
+              and identity.issuer is not distinct from $2
+              and identity.realm is not distinct from $3
+              and identity.subject_type = $4
+              and identity.subject_value = $5
+              and identity.verified = true
+            "#,
+        )
+        .bind(identity.connection_id())
+        .bind(identity.issuer())
+        .bind(identity.realm())
+        .bind(identity.subject_type())
+        .bind(identity.subject_value())
+        .fetch_optional(self.pool())
+        .await?;
+
+        match row {
+            Some(row) => Ok(Some(map_user_row(self.pool(), row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn bind_verified_external_identity(
+        &self,
+        user_id: Uuid,
+        identity: &VerifiedExternalIdentity,
+        audit: &AuditLogRecord,
+    ) -> Result<UserAuthIdentity> {
+        let mut tx = self.pool().begin().await?;
+        let existing_user_id: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            select user_id
+            from user_auth_identities
+            where connection_id = $1
+              and issuer is not distinct from $2
+              and realm is not distinct from $3
+              and subject_type = $4
+              and subject_value = $5
+            for update
+            "#,
+        )
+        .bind(identity.connection_id())
+        .bind(identity.issuer())
+        .bind(identity.realm())
+        .bind(identity.subject_type())
+        .bind(identity.subject_value())
+        .fetch_optional(&mut *tx)
+        .await?;
+        if existing_user_id.is_some_and(|existing| existing != user_id) {
+            return Err(ControlPlaneError::Conflict("external_identity_already_bound").into());
+        }
+
+        if existing_user_id.is_none() {
+            sqlx::query(
+                r#"
+                insert into user_auth_identities (
+                    id, user_id, connection_id, subject_type, subject_value,
+                    issuer, realm, profile, verified, metadata, created_by, updated_by
+                )
+                values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $10)
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(user_id)
+            .bind(identity.connection_id())
+            .bind(identity.subject_type())
+            .bind(identity.subject_value())
+            .bind(identity.issuer())
+            .bind(identity.realm())
+            .bind(identity.profile())
+            .bind(identity.metadata())
+            .bind(audit.actor_user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| -> anyhow::Error {
+                if error
+                    .as_database_error()
+                    .and_then(|database_error| database_error.code())
+                    .as_deref()
+                    == Some("23505")
+                {
+                    ControlPlaneError::Conflict("external_identity_already_bound").into()
+                } else {
+                    error.into()
+                }
+            })?;
+
+            sqlx::query(
+                r#"
+                insert into audit_logs (
+                    id, workspace_id, actor_user_id, target_type, target_id,
+                    event_code, payload, created_at
+                )
+                values ($1, $2, $3, $4, $5, $6, $7, $8)
+                "#,
+            )
+            .bind(audit.id)
+            .bind(audit.workspace_id)
+            .bind(audit.actor_user_id)
+            .bind(&audit.target_type)
+            .bind(audit.target_id)
+            .bind(&audit.event_code)
+            .bind(&audit.payload)
+            .bind(audit.created_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+
+        Ok(UserAuthIdentity {
+            user_id,
+            connection_id: identity.connection_id(),
+            subject_type: identity.subject_type().to_string(),
+            subject_value: identity.subject_value().to_string(),
+            issuer: identity.issuer().map(str::to_string),
+            realm: identity.realm().map(str::to_string),
+            profile: identity.profile().clone(),
+        })
     }
 
     async fn default_scope_for_user(&self, user_id: Uuid) -> Result<ScopeContext> {

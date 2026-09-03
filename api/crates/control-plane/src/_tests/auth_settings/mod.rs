@@ -1,6 +1,6 @@
 use crate::{
     _tests::support::MemoryAuthRepository,
-    auth::settings::{AuthCenterSettingsService, CreateAuthCenterAuthenticatorCommand},
+    auth::settings::{AuthCenterSettingsService, CreateAuthCenterLoginEntryCommand},
     ports::AuthRepository,
 };
 use plugin_framework::{
@@ -83,9 +83,9 @@ async fn backend_only_provider_seeds_new_authenticator_with_its_schema_and_defau
     );
 
     let authenticator = service
-        .create_authenticator(
+        .create_login_entry(
             &actor,
-            CreateAuthCenterAuthenticatorCommand {
+            CreateAuthCenterLoginEntryCommand {
                 auth_type: "fixture-auth.qr".to_string(),
                 title: "Fixture QR".to_string(),
                 description: Some("Scan to sign in".to_string()),
@@ -116,7 +116,7 @@ async fn ac_011_auth_center_policy_only_allows_overview_and_create_without_legac
     repository
         .set_console_policies(vec![auth_center_policy(vec![
             simple_operation("auth_center.overview.view"),
-            simple_operation("auth_center.authenticators.create"),
+            simple_operation("auth_center.login_entries.create"),
         ])])
         .await;
     let actor = AuthRepository::load_actor_context_for_user(&repository, repository.user().id)
@@ -126,9 +126,9 @@ async fn ac_011_auth_center_policy_only_allows_overview_and_create_without_legac
 
     service.overview(&actor).await.unwrap();
     service
-        .create_authenticator(
+        .create_login_entry(
             &actor,
-            CreateAuthCenterAuthenticatorCommand {
+            CreateAuthCenterLoginEntryCommand {
                 auth_type: "password-local".to_string(),
                 title: "Policy-only password".to_string(),
                 description: None,
@@ -152,9 +152,9 @@ async fn ac_011_auth_center_legacy_feature_grant_does_not_authorize_overview_or_
 
     assert!(service.overview(&actor).await.is_err());
     assert!(service
-        .create_authenticator(
+        .create_login_entry(
             &actor,
-            CreateAuthCenterAuthenticatorCommand {
+            CreateAuthCenterLoginEntryCommand {
                 auth_type: "password-local".to_string(),
                 title: "Legacy-only password".to_string(),
                 description: None,

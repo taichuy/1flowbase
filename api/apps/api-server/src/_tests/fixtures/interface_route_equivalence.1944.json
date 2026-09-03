@@ -15,12 +15,12 @@
   ],
   "routes": [
     {
-      "id": "public.auth.login-instances",
-      "route": "GET /api/public/auth/login-instances",
+      "id": "public.auth.login-entries",
+      "route": "GET /api/public/auth/login-entries",
       "source": "routes/identity/auth.rs",
       "kernel_probe": "PublicPrincipal::new()",
       "behavior_test": "_tests/auth_routes.rs",
-      "behavior_probe": "public_auth_login_instances_lists_enabled_supported_instances_without_sensitive_options",
+      "behavior_probe": "public_auth_login_entries_lists_enabled_supported_instances_without_sensitive_options",
       "status": "equivalent"
     },
     {

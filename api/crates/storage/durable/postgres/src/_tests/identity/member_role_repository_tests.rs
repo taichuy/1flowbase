@@ -39,8 +39,9 @@ async fn bootstrapped_store() -> (PgControlPlaneStore, Uuid, Uuid) {
         .await
         .unwrap();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -290,7 +291,7 @@ async fn password_login_resolves_member_from_auth_identity_subjects() {
     ] {
         let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
             &store,
-            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier,
         )
         .await
@@ -313,7 +314,7 @@ async fn password_login_does_not_fallback_to_user_fields_without_identity() {
 
     let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "missing-identity",
     )
     .await
@@ -354,7 +355,7 @@ async fn password_login_rejects_ambiguous_identity_subjects() {
 
     let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "shared-login-subject",
     )
     .await
@@ -363,7 +364,7 @@ async fn password_login_rejects_ambiguous_identity_subjects() {
 }
 
 #[tokio::test]
-async fn password_login_filters_identity_subjects_by_authenticator_instance() {
+async fn password_login_entries_share_one_local_identity_namespace() {
     let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
     let default_member = create_member_with_login_options(
         &store,
@@ -378,24 +379,11 @@ async fn password_login_filters_identity_subjects_by_authenticator_instance() {
         },
     )
     .await;
-    let staff_member = create_member_with_login_options(
-        &store,
-        workspace_id,
-        actor_user_id,
-        TestMemberLoginOptions {
-            account: "staff-shared-instance",
-            email: "staff-shared-instance@example.com",
-            phone: None,
-            email_login_enabled: true,
-            phone_login_enabled: false,
-        },
-    )
-    .await;
-
-    let staff_authenticator_id = Uuid::now_v7();
+    let staff_login_entry_id = Uuid::now_v7();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: staff_authenticator_id,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: staff_login_entry_id,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Staff Password".into(),
             enabled: true,
@@ -412,28 +400,12 @@ async fn password_login_filters_identity_subjects_by_authenticator_instance() {
         update user_auth_identities
         set subject_value = 'shared-instance-subject'
         where user_id = $1
-          and authenticator_id = $2
+          and connection_id = $2
           and subject_type = $3
         "#,
     )
     .bind(default_member.id)
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
-    .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
-    .execute(store.pool())
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        insert into user_auth_identities (
-            id, user_id, authenticator_id, subject_type, subject_value, metadata
-        )
-        values ($1, $2, $3, $4, 'shared-instance-subject', '{}')
-        "#,
-    )
-    .bind(Uuid::now_v7())
-    .bind(staff_member.id)
-    .bind(staff_authenticator_id)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .bind(domain::AUTH_SUBJECT_TYPE_ACCOUNT)
     .execute(store.pool())
     .await
@@ -441,23 +413,28 @@ async fn password_login_filters_identity_subjects_by_authenticator_instance() {
 
     let default_resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::PASSWORD_LOCAL_CONNECTION_ID,
         "shared-instance-subject",
     )
     .await
     .unwrap()
-    .expect("default instance identity should resolve its own member");
+    .expect("local identity should resolve through the shared connection");
     assert_eq!(default_resolved.id, default_member.id);
 
-    let staff_resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
+    let copied_entry =
+        <PgControlPlaneStore as AuthRepository>::find_login_entry(&store, staff_login_entry_id)
+            .await
+            .unwrap()
+            .expect("copied login entry should exist");
+    let copied_resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        staff_authenticator_id,
+        copied_entry.connection_id,
         "shared-instance-subject",
     )
     .await
     .unwrap()
-    .expect("staff instance identity should resolve its own member");
-    assert_eq!(staff_resolved.id, staff_member.id);
+    .expect("copied entry should resolve the same local identity");
+    assert_eq!(copied_resolved.id, default_member.id);
 }
 
 #[tokio::test]
@@ -479,7 +456,7 @@ async fn password_login_applies_email_and_phone_flags_at_identity_resolution() {
 
     let account = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "flagged-identity",
     )
     .await
@@ -489,14 +466,14 @@ async fn password_login_applies_email_and_phone_flags_at_identity_resolution() {
 
     let email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "flagged-identity@example.com",
     )
     .await
     .unwrap();
     let phone = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "18800004444",
     )
     .await
@@ -540,7 +517,7 @@ async fn member_profile_update_replaces_password_local_contact_identities() {
     for identifier in ["profile-identity@example.com", "18800005555"] {
         let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
             &store,
-            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier,
         )
         .await
@@ -551,7 +528,7 @@ async fn member_profile_update_replaces_password_local_contact_identities() {
     for identifier in ["profile-identity-next@example.com", "18800006666"] {
         let resolved = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
             &store,
-            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier,
         )
         .await
@@ -584,7 +561,7 @@ async fn self_profile_update_replaces_password_local_email_identity() {
 
     let old_email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root@example.com",
     )
     .await
@@ -593,7 +570,7 @@ async fn self_profile_update_replaces_password_local_email_identity() {
 
     let new_email = <PgControlPlaneStore as AuthRepository>::find_user_for_password_login(
         &store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root-next@example.com",
     )
     .await

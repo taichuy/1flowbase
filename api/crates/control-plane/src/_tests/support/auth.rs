@@ -13,12 +13,12 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::ports::{
-    AuthRepository, AuthenticatorSettingsRepository, RoleConsolePolicyReader, SessionStore,
+    AuthRepository, LoginEntrySettingsRepository, RoleConsolePolicyReader, SessionStore,
     UpdateProfileInput, UpdateUserMetaInput, WorkspaceRepository,
 };
 use domain::{
-    ActorContext, AuditLogRecord, AuthenticatorRecord, BoundRole, PermissionDefinition,
-    RoleScopeKind, ScopeContext, SessionRecord, UserRecord, UserStatus, WorkspaceRecord,
+    ActorContext, AuditLogRecord, BoundRole, LoginEntryRecord, PermissionDefinition, RoleScopeKind,
+    ScopeContext, SessionRecord, UserRecord, UserStatus, WorkspaceRecord,
 };
 
 pub fn password_hash(password: &str) -> String {
@@ -164,7 +164,7 @@ impl RoleConsolePolicyReader for MemoryWorkspaceRepository {
 pub struct MemoryAuthRepository {
     user: Arc<RwLock<UserRecord>>,
     permissions: Arc<RwLock<HashSet<String>>>,
-    authenticators: Arc<RwLock<Vec<AuthenticatorRecord>>>,
+    login_entries: Arc<RwLock<Vec<LoginEntryRecord>>>,
     console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     audit_logs: Arc<RwLock<Vec<AuditLogRecord>>>,
@@ -176,7 +176,7 @@ impl MemoryAuthRepository {
         Self {
             user: Arc::new(RwLock::new(user)),
             permissions: Arc::new(RwLock::new(HashSet::new())),
-            authenticators: Arc::new(RwLock::new(Vec::new())),
+            login_entries: Arc::new(RwLock::new(Vec::new())),
             console_policies: Arc::new(RwLock::new(Vec::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             audit_logs: Arc::new(RwLock::new(Vec::new())),
@@ -279,9 +279,43 @@ impl MemoryAuthRepository {
 
 #[async_trait]
 impl AuthRepository for MemoryAuthRepository {
-    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+    async fn find_authentication_connection(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<domain::AuthenticationConnectionRecord>> {
         Ok(self
-            .authenticators
+            .login_entries
+            .read()
+            .await
+            .iter()
+            .find(|entry| entry.connection_id == id)
+            .map(|entry| domain::AuthenticationConnectionRecord {
+                id,
+                auth_type: entry.auth_type.clone(),
+                is_builtin: entry.auth_type == "password-local",
+                config: serde_json::json!({}),
+            }))
+    }
+
+    async fn find_user_for_verified_external_identity(
+        &self,
+        _identity: &domain::VerifiedExternalIdentity,
+    ) -> Result<Option<UserRecord>> {
+        Ok(None)
+    }
+
+    async fn bind_verified_external_identity(
+        &self,
+        _user_id: Uuid,
+        _identity: &domain::VerifiedExternalIdentity,
+        _audit: &AuditLogRecord,
+    ) -> Result<domain::UserAuthIdentity> {
+        anyhow::bail!("external identity binding is not configured for this test repository")
+    }
+
+    async fn find_login_entry(&self, id: Uuid) -> Result<Option<LoginEntryRecord>> {
+        Ok(self
+            .login_entries
             .read()
             .await
             .iter()
@@ -289,13 +323,13 @@ impl AuthRepository for MemoryAuthRepository {
             .cloned())
     }
 
-    async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
-        Ok(self.authenticators.read().await.clone())
+    async fn list_login_entries(&self) -> Result<Vec<LoginEntryRecord>> {
+        Ok(self.login_entries.read().await.clone())
     }
 
     async fn find_user_for_password_login(
         &self,
-        _authenticator_id: Uuid,
+        _connection_id: Uuid,
         _identifier: &str,
     ) -> Result<Option<UserRecord>> {
         Ok(None)
@@ -411,18 +445,15 @@ impl AuthRepository for MemoryAuthRepository {
 }
 
 #[async_trait]
-impl AuthenticatorSettingsRepository for MemoryAuthRepository {
-    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
-        self.authenticators
-            .write()
-            .await
-            .push(authenticator.clone());
+impl LoginEntrySettingsRepository for MemoryAuthRepository {
+    async fn create_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
+        self.login_entries.write().await.push(authenticator.clone());
         Ok(())
     }
 
-    async fn update_authenticator_config(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
-        let mut authenticators = self.authenticators.write().await;
-        let existing = authenticators
+    async fn update_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
+        let mut login_entries = self.login_entries.write().await;
+        let existing = login_entries
             .iter_mut()
             .find(|stored| stored.id == authenticator.id)
             .ok_or_else(|| anyhow::anyhow!("authenticator not found"))?;
@@ -430,24 +461,24 @@ impl AuthenticatorSettingsRepository for MemoryAuthRepository {
         Ok(())
     }
 
-    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
-        self.authenticators
+    async fn delete_login_entry(&self, id: Uuid) -> Result<()> {
+        self.login_entries
             .write()
             .await
             .retain(|authenticator| authenticator.id != id);
         Ok(())
     }
 
-    async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
-        let mut authenticators = self.authenticators.write().await;
+    async fn update_login_entry_order(&self, ids: &[Uuid]) -> Result<()> {
+        let mut login_entries = self.login_entries.write().await;
         for (sort_order, id) in ids.iter().enumerate() {
-            let authenticator = authenticators
+            let authenticator = login_entries
                 .iter_mut()
                 .find(|authenticator| authenticator.id == *id)
                 .ok_or_else(|| anyhow::anyhow!("authenticator not found"))?;
             authenticator.sort_order = (sort_order as i32 + 1) * 10;
         }
-        authenticators.sort_by_key(|authenticator| authenticator.sort_order);
+        login_entries.sort_by_key(|authenticator| authenticator.sort_order);
         Ok(())
     }
 }

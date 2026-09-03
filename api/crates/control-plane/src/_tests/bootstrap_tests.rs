@@ -12,9 +12,10 @@ fn bootstrap_config() -> BootstrapConfig {
     }
 }
 
-fn saved_password_authenticator(public_ui_block: &str) -> domain::AuthenticatorRecord {
-    domain::AuthenticatorRecord {
-        id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+fn saved_password_authenticator(public_ui_block: &str) -> domain::LoginEntryRecord {
+    domain::LoginEntryRecord {
+        id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
         auth_type: "password-local".into(),
         title: "Password".into(),
         enabled: true,
@@ -39,7 +40,7 @@ async fn ac_005_bootstrap_upgrades_only_the_previous_official_password_block() {
         .unwrap();
     assert_eq!(
         previous_repository
-            .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .authenticator(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
             .await
             .unwrap()
             .public_ui_block,
@@ -56,7 +57,7 @@ async fn ac_005_bootstrap_upgrades_only_the_previous_official_password_block() {
         .unwrap();
     assert_eq!(
         custom_repository
-            .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .authenticator(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
             .await
             .unwrap()
             .public_ui_block,
@@ -130,7 +131,7 @@ async fn bootstrap_service_seeds_password_local_authenticator_options() {
     service.run(&config).await.unwrap();
 
     let password_local = repository
-        .authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+        .authenticator(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
         .await
         .expect("password-local should be seeded");
     assert_eq!(

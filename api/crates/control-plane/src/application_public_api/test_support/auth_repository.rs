@@ -2,13 +2,36 @@ use super::*;
 
 #[async_trait]
 impl AuthRepository for ApplicationPublicApiTestRepository {
-    async fn find_authenticator(&self, _id: Uuid) -> Result<Option<domain::AuthenticatorRecord>> {
-        anyhow::bail!("find_authenticator not implemented")
+    async fn find_authentication_connection(
+        &self,
+        _id: Uuid,
+    ) -> Result<Option<domain::AuthenticationConnectionRecord>> {
+        anyhow::bail!("find_authentication_connection not implemented")
+    }
+
+    async fn find_user_for_verified_external_identity(
+        &self,
+        _identity: &domain::VerifiedExternalIdentity,
+    ) -> Result<Option<domain::UserRecord>> {
+        anyhow::bail!("find_user_for_verified_external_identity not implemented")
+    }
+
+    async fn bind_verified_external_identity(
+        &self,
+        _user_id: Uuid,
+        _identity: &domain::VerifiedExternalIdentity,
+        _audit: &domain::AuditLogRecord,
+    ) -> Result<domain::UserAuthIdentity> {
+        anyhow::bail!("bind_verified_external_identity not implemented")
+    }
+
+    async fn find_login_entry(&self, _id: Uuid) -> Result<Option<domain::LoginEntryRecord>> {
+        anyhow::bail!("find_login_entry not implemented")
     }
 
     async fn find_user_for_password_login(
         &self,
-        _authenticator_id: Uuid,
+        _connection_id: Uuid,
         _identifier: &str,
     ) -> Result<Option<domain::UserRecord>> {
         anyhow::bail!("find_user_for_password_login not implemented")

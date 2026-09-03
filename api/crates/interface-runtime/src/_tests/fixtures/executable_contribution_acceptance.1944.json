@@ -46,7 +46,7 @@
     }
   ],
   "production_verticals": [
-    "public_login_instances",
+    "public_login_entries",
     "console_host_infrastructure_providers",
     "application_native_async_blocking_server_stream",
     "mcp_user_api_key_invocation"

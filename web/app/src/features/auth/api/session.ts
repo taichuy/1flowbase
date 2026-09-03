@@ -2,7 +2,7 @@ import {
   deleteConsoleSession as requestDeleteConsoleSession,
   fetchConsoleMe as requestFetchConsoleMe,
   fetchConsoleSession as requestFetchConsoleSession,
-  fetchPublicLoginInstances as requestFetchPublicLoginInstances,
+  fetchPublicLoginEntries as requestFetchPublicLoginEntries,
   getDefaultApiBaseUrl,
   signInWithPassword as requestSignInWithPassword,
   switchConsoleSessionRole as requestSwitchConsoleSessionRole,
@@ -11,15 +11,15 @@ import {
   type ConsoleSessionSnapshot,
   type PasswordSignInInput,
   type PasswordSignInResponse,
-  type PublicLoginInstance,
-  type PublicLoginInstancesResponse
+  type PublicLoginEntry,
+  type PublicLoginEntriesResponse
 } from '@1flowbase/api-client/auth';
 
-export type { PasswordSignInResponse, PublicLoginInstance };
+export type { PasswordSignInResponse, PublicLoginEntry };
 
-const loginInstanceFlights = new Map<
+const loginEntryFlights = new Map<
   string,
-  Promise<PublicLoginInstancesResponse>
+  Promise<PublicLoginEntriesResponse>
 >();
 
 export function getAuthApiBaseUrl(
@@ -59,18 +59,18 @@ export function signInWithPassword(
   return requestSignInWithPassword(input, baseUrl);
 }
 
-export function fetchLoginInstances(
+export function fetchLoginEntries(
   baseUrl = getAuthApiBaseUrl()
-): Promise<PublicLoginInstancesResponse> {
-  const existingFlight = loginInstanceFlights.get(baseUrl);
+): Promise<PublicLoginEntriesResponse> {
+  const existingFlight = loginEntryFlights.get(baseUrl);
   if (existingFlight) return existingFlight;
 
-  const flight = requestFetchPublicLoginInstances(baseUrl).finally(() => {
-    if (loginInstanceFlights.get(baseUrl) === flight) {
-      loginInstanceFlights.delete(baseUrl);
+  const flight = requestFetchPublicLoginEntries(baseUrl).finally(() => {
+    if (loginEntryFlights.get(baseUrl) === flight) {
+      loginEntryFlights.delete(baseUrl);
     }
   });
-  loginInstanceFlights.set(baseUrl, flight);
+  loginEntryFlights.set(baseUrl, flight);
   return flight;
 }
 

@@ -1,21 +1,21 @@
 use async_trait::async_trait;
 use domain::{
-    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, DataModelScopeKind,
-    PermissionDefinition, RoleTemplate, ScopeContext, TenantRecord, UserRecord, WorkspaceRecord,
+    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticationConnectionRecord, DataModelScopeKind,
+    LoginEntryRecord, PermissionDefinition, RoleTemplate, ScopeContext, TenantRecord,
+    UserAuthIdentity, UserRecord, VerifiedExternalIdentity, WorkspaceRecord,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[async_trait]
 pub trait BootstrapRepository: Send + Sync {
-    async fn replace_authenticator_public_ui_block_if_matches(
+    async fn replace_login_entry_public_ui_block_if_matches(
         &self,
-        authenticator_id: Uuid,
+        login_entry_id: Uuid,
         expected: &str,
         replacement: &str,
     ) -> anyhow::Result<bool>;
-    async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord)
-        -> anyhow::Result<()>;
+    async fn upsert_login_entry(&self, authenticator: &LoginEntryRecord) -> anyhow::Result<()>;
     async fn upsert_permission_catalog(
         &self,
         permissions: &[PermissionDefinition],
@@ -109,20 +109,34 @@ pub struct WorkspaceBootstrapResult {
 
 #[async_trait]
 pub trait AuthRepository: Send + Sync {
-    async fn find_authenticator(&self, id: Uuid) -> anyhow::Result<Option<AuthenticatorRecord>>;
-    async fn list_authenticators(&self) -> anyhow::Result<Vec<AuthenticatorRecord>> {
+    async fn find_authentication_connection(
+        &self,
+        id: Uuid,
+    ) -> anyhow::Result<Option<AuthenticationConnectionRecord>>;
+    async fn find_login_entry(&self, id: Uuid) -> anyhow::Result<Option<LoginEntryRecord>>;
+    async fn list_login_entries(&self) -> anyhow::Result<Vec<LoginEntryRecord>> {
         Ok(self
-            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .find_login_entry(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
             .await?
             .into_iter()
             .collect())
     }
     async fn find_user_for_password_login(
         &self,
-        authenticator_id: Uuid,
+        connection_id: Uuid,
         identifier: &str,
     ) -> anyhow::Result<Option<UserRecord>>;
     async fn find_user_by_id(&self, user_id: Uuid) -> anyhow::Result<Option<UserRecord>>;
+    async fn find_user_for_verified_external_identity(
+        &self,
+        identity: &VerifiedExternalIdentity,
+    ) -> anyhow::Result<Option<UserRecord>>;
+    async fn bind_verified_external_identity(
+        &self,
+        user_id: Uuid,
+        identity: &VerifiedExternalIdentity,
+        audit: &AuditLogRecord,
+    ) -> anyhow::Result<UserAuthIdentity>;
     async fn default_scope_for_user(&self, user_id: Uuid) -> anyhow::Result<ScopeContext>;
     async fn load_actor_context_for_user(
         &self,
@@ -159,15 +173,11 @@ pub trait AuthRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait AuthenticatorSettingsRepository: Send + Sync {
-    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord)
-        -> anyhow::Result<()>;
-    async fn update_authenticator_config(
-        &self,
-        authenticator: &AuthenticatorRecord,
-    ) -> anyhow::Result<()>;
-    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> anyhow::Result<()>;
-    async fn update_authenticator_order(&self, ids: &[Uuid]) -> anyhow::Result<()>;
+pub trait LoginEntrySettingsRepository: Send + Sync {
+    async fn create_login_entry(&self, login_entry: &LoginEntryRecord) -> anyhow::Result<()>;
+    async fn update_login_entry(&self, login_entry: &LoginEntryRecord) -> anyhow::Result<()>;
+    async fn delete_login_entry(&self, id: Uuid) -> anyhow::Result<()>;
+    async fn update_login_entry_order(&self, ids: &[Uuid]) -> anyhow::Result<()>;
 }
 
 #[derive(Debug, Clone)]
@@ -259,7 +269,7 @@ pub struct CreateMemberInput {
 
 #[derive(Debug, Clone)]
 pub struct CreateSelfRegisteredMemberInput {
-    pub authenticator_id: Uuid,
+    pub connection_id: Uuid,
     pub account: String,
     pub email: String,
     pub password_hash: String,

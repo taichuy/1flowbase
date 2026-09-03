@@ -915,10 +915,11 @@ async fn management_store() -> ManagementFixture {
     control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
-    BootstrapRepository::upsert_authenticator(
+    BootstrapRepository::upsert_login_entry(
         &store,
-        &domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        &domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

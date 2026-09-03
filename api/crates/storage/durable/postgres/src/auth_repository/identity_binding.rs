@@ -10,9 +10,9 @@ pub(crate) async fn insert_password_local_identities(
     phone: Option<&str>,
     actor_user_id: Option<Uuid>,
 ) -> Result<()> {
-    insert_password_identities_for_authenticator(
+    insert_password_identities_for_connection(
         tx,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::PASSWORD_LOCAL_CONNECTION_ID,
         user_id,
         account,
         email,
@@ -22,9 +22,9 @@ pub(crate) async fn insert_password_local_identities(
     .await
 }
 
-pub(crate) async fn insert_password_identities_for_authenticator(
+pub(crate) async fn insert_password_identities_for_connection(
     tx: &mut Transaction<'_, Postgres>,
-    authenticator_id: Uuid,
+    connection_id: Uuid,
     user_id: Uuid,
     account: &str,
     email: &str,
@@ -32,11 +32,11 @@ pub(crate) async fn insert_password_identities_for_authenticator(
     actor_user_id: Option<Uuid>,
 ) -> Result<()> {
     for mut claim in domain::password_local_identity_claims(account, email, phone) {
-        claim.authenticator_id = authenticator_id;
+        claim.connection_id = connection_id;
         sqlx::query(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_id, subject_type, subject_value, metadata,
+                id, user_id, connection_id, subject_type, subject_value, metadata,
                 created_by, updated_by
             )
             values ($1, $2, $3, $4, $5, $6, $7, $7)
@@ -44,7 +44,7 @@ pub(crate) async fn insert_password_identities_for_authenticator(
         )
         .bind(Uuid::now_v7())
         .bind(user_id)
-        .bind(claim.authenticator_id)
+        .bind(claim.connection_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)
@@ -66,17 +66,18 @@ pub(crate) async fn upsert_password_local_identities(
         let bound_user_id: Uuid = sqlx::query_scalar(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_id, subject_type, subject_value, metadata
+                id, user_id, connection_id, subject_type, subject_value, metadata
             )
             values ($1, $2, $3, $4, $5, $6)
-            on conflict (authenticator_id, subject_type, lower(subject_value))
+            on conflict (subject_type, lower(subject_value))
+            where connection_id = '00000000-0000-0000-0000-000000000001'::uuid
             do update set subject_value = user_auth_identities.subject_value
             returning user_id
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(user.id)
-        .bind(claim.authenticator_id)
+        .bind(claim.connection_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)
@@ -106,12 +107,12 @@ pub(crate) async fn replace_password_local_contact_identities(
         r#"
         delete from user_auth_identities
         where user_id = $1
-          and authenticator_id = $2
+          and connection_id = $2
           and subject_type in ($3, $4)
         "#,
     )
     .bind(user_id)
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
     .bind(domain::AUTH_SUBJECT_TYPE_EMAIL)
     .bind(domain::AUTH_SUBJECT_TYPE_PHONE)
     .execute(&mut **tx)
@@ -121,7 +122,7 @@ pub(crate) async fn replace_password_local_contact_identities(
         sqlx::query(
             r#"
             insert into user_auth_identities (
-                id, user_id, authenticator_id, subject_type, subject_value, metadata,
+                id, user_id, connection_id, subject_type, subject_value, metadata,
                 created_by, updated_by
             )
             values ($1, $2, $3, $4, $5, $6, $7, $7)
@@ -129,7 +130,7 @@ pub(crate) async fn replace_password_local_contact_identities(
         )
         .bind(Uuid::now_v7())
         .bind(user_id)
-        .bind(claim.authenticator_id)
+        .bind(claim.connection_id)
         .bind(&claim.subject_type)
         .bind(&claim.subject_value)
         .bind(&claim.metadata)

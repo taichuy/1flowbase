@@ -237,7 +237,7 @@ export function MemberManagementPanel({
       setAnonymous();
       await navigate({
         to: '/sign-in',
-        search: { authenticator_id: undefined }
+        search: { login_entry_id: undefined }
       });
     }
   });

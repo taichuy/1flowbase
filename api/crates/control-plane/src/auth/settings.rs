@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
-    ports::{AuthRepository, AuthenticatorSettingsRepository, RoleConsolePolicyReader},
+    ports::{AuthRepository, LoginEntrySettingsRepository, RoleConsolePolicyReader},
 };
 
 use super::AuthenticatorRegistry;
@@ -21,12 +21,12 @@ pub const AUTH_CENTER_HOST_CONFIG_KEYS: &[&str] = &[
 ];
 
 pub struct AuthCenterSettingsOverview {
-    pub default_authenticator_id: Uuid,
+    pub default_login_entry_id: Uuid,
     pub supported_auth_types: Vec<String>,
-    pub authenticators: Vec<domain::AuthenticatorRecord>,
+    pub login_entries: Vec<domain::LoginEntryRecord>,
 }
 
-pub struct CreateAuthCenterAuthenticatorCommand {
+pub struct CreateAuthCenterLoginEntryCommand {
     pub auth_type: String,
     pub title: String,
     pub description: Option<String>,
@@ -34,14 +34,14 @@ pub struct CreateAuthCenterAuthenticatorCommand {
     pub sort_order: Option<i32>,
 }
 
-pub struct CopyAuthCenterAuthenticatorCommand {
+pub struct CopyAuthCenterLoginEntryCommand {
     pub source_id: Uuid,
     pub title: String,
     pub sort_order: Option<i32>,
 }
 
-pub struct UpdateAuthCenterAuthenticatorConfigCommand {
-    pub authenticator_id: Uuid,
+pub struct UpdateAuthCenterLoginEntryConfigCommand {
+    pub login_entry_id: Uuid,
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
@@ -49,13 +49,13 @@ pub struct UpdateAuthCenterAuthenticatorConfigCommand {
     pub extension_config: Option<Map<String, Value>>,
 }
 
-pub struct UpdateAuthCenterAuthenticatorEnabledCommand {
-    pub authenticator_id: Uuid,
+pub struct UpdateAuthCenterLoginEntryEnabledCommand {
+    pub login_entry_id: Uuid,
     pub enabled: bool,
 }
 
-pub struct UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
-    pub authenticator_id: Uuid,
+pub struct UpdateAuthCenterLoginEntryPublicUiBlockCommand {
+    pub login_entry_id: Uuid,
     pub public_ui_block: String,
 }
 
@@ -65,17 +65,17 @@ pub struct AuthCenterSettingsService<R> {
 }
 
 const AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID: &str = "auth_center.overview.view";
-const AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID: &str = "auth_center.authenticators.create";
-const AUTH_CENTER_AUTHENTICATOR_COPY_OPERATION_ID: &str = "auth_center.authenticators.copy";
-const AUTH_CENTER_AUTHENTICATOR_DELETE_OPERATION_ID: &str = "auth_center.authenticators.delete";
-const AUTH_CENTER_AUTHENTICATOR_ENABLED_UPDATE_OPERATION_ID: &str =
-    "auth_center.authenticators.enabled.update";
-const AUTH_CENTER_AUTHENTICATOR_ORDER_OPERATION_ID: &str = "auth_center.authenticators.order";
-const AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID: &str = "auth_center.authenticators.update";
+const AUTH_CENTER_LOGIN_ENTRY_CREATE_OPERATION_ID: &str = "auth_center.login_entries.create";
+const AUTH_CENTER_LOGIN_ENTRY_COPY_OPERATION_ID: &str = "auth_center.login_entries.copy";
+const AUTH_CENTER_LOGIN_ENTRY_DELETE_OPERATION_ID: &str = "auth_center.login_entries.delete";
+const AUTH_CENTER_LOGIN_ENTRY_ENABLED_UPDATE_OPERATION_ID: &str =
+    "auth_center.login_entries.enabled.update";
+const AUTH_CENTER_LOGIN_ENTRY_ORDER_OPERATION_ID: &str = "auth_center.login_entries.order";
+const AUTH_CENTER_LOGIN_ENTRY_UPDATE_OPERATION_ID: &str = "auth_center.login_entries.update";
 
 impl<R> AuthCenterSettingsService<R>
 where
-    R: AuthRepository + AuthenticatorSettingsRepository + RoleConsolePolicyReader,
+    R: AuthRepository + LoginEntrySettingsRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
         Self {
@@ -98,30 +98,37 @@ where
         self.ensure_console_operation(actor, AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID)
             .await?;
         Ok(AuthCenterSettingsOverview {
-            default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            default_login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             supported_auth_types: self.registry.supported_auth_types(),
-            authenticators: self.repository.list_authenticators().await?,
+            login_entries: self.repository.list_login_entries().await?,
         })
     }
 
-    pub async fn create_authenticator(
+    pub async fn create_login_entry(
         &self,
         actor: &domain::ActorContext,
-        command: CreateAuthCenterAuthenticatorCommand,
-    ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID)
+        command: CreateAuthCenterLoginEntryCommand,
+    ) -> Result<domain::LoginEntryRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_CREATE_OPERATION_ID)
             .await?;
         let definition = self
             .registry
             .definition(&command.auth_type)
             .ok_or(ControlPlaneError::InvalidInput("auth_type"))?;
-        validate_authenticator_title(&command.title)?;
+        validate_login_entry_title(&command.title)?;
         let sort_order = match command.sort_order {
             Some(sort_order) => sort_order,
             None => self.next_sort_order().await?,
         };
-        let authenticator = domain::AuthenticatorRecord {
-            id: Uuid::now_v7(),
+        let id = Uuid::now_v7();
+        let connection_id = if command.auth_type == "password-local" {
+            domain::PASSWORD_LOCAL_CONNECTION_ID
+        } else {
+            id
+        };
+        let authenticator = domain::LoginEntryRecord {
+            id,
+            connection_id,
             auth_type: command.auth_type,
             title: command.title,
             enabled: command.enabled,
@@ -134,23 +141,23 @@ where
                 &definition.auth_type,
             ),
         };
-        self.repository.create_authenticator(&authenticator).await?;
+        self.repository.create_login_entry(&authenticator).await?;
         Ok(authenticator)
     }
 
-    pub async fn copy_authenticator(
+    pub async fn copy_login_entry(
         &self,
         actor: &domain::ActorContext,
-        command: CopyAuthCenterAuthenticatorCommand,
-    ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_COPY_OPERATION_ID)
+        command: CopyAuthCenterLoginEntryCommand,
+    ) -> Result<domain::LoginEntryRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_COPY_OPERATION_ID)
             .await?;
-        validate_authenticator_title(&command.title)?;
+        validate_login_entry_title(&command.title)?;
         let source = self
             .repository
-            .find_authenticator(command.source_id)
+            .find_login_entry(command.source_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+            .ok_or(ControlPlaneError::NotFound("login_entry"))?;
         if self.registry.definition(&source.auth_type).is_none() {
             return Err(ControlPlaneError::InvalidInput("auth_type").into());
         }
@@ -158,8 +165,9 @@ where
             Some(sort_order) => sort_order,
             None => self.next_sort_order().await?,
         };
-        let authenticator = domain::AuthenticatorRecord {
+        let authenticator = domain::LoginEntryRecord {
             id: Uuid::now_v7(),
+            connection_id: source.connection_id,
             auth_type: source.auth_type,
             title: command.title,
             enabled: false,
@@ -168,71 +176,67 @@ where
             public_ui_block: source.public_ui_block,
             options: source.options,
         };
-        self.repository.create_authenticator(&authenticator).await?;
+        self.repository.create_login_entry(&authenticator).await?;
         Ok(authenticator)
     }
 
-    pub async fn delete_authenticator(
+    pub async fn delete_login_entry(
         &self,
         actor: &domain::ActorContext,
-        authenticator_id: Uuid,
+        login_entry_id: Uuid,
     ) -> Result<()> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_DELETE_OPERATION_ID)
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_DELETE_OPERATION_ID)
             .await?;
-        self.repository
-            .delete_authenticator_if_unbound(authenticator_id)
-            .await
+        self.repository.delete_login_entry(login_entry_id).await
     }
 
-    pub async fn reorder_authenticators(
+    pub async fn reorder_login_entries(
         &self,
         actor: &domain::ActorContext,
         ids: &[Uuid],
     ) -> Result<AuthCenterSettingsOverview> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ORDER_OPERATION_ID)
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_ORDER_OPERATION_ID)
             .await?;
-        let existing = self.repository.list_authenticators().await?;
+        let existing = self.repository.list_login_entries().await?;
         validate_reorder_ids(ids, &existing)?;
-        self.repository.update_authenticator_order(ids).await?;
+        self.repository.update_login_entry_order(ids).await?;
         Ok(AuthCenterSettingsOverview {
-            default_authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            default_login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             supported_auth_types: self.registry.supported_auth_types(),
-            authenticators: self.repository.list_authenticators().await?,
+            login_entries: self.repository.list_login_entries().await?,
         })
     }
 
-    pub async fn update_authenticator_enabled(
+    pub async fn update_login_entry_enabled(
         &self,
         actor: &domain::ActorContext,
-        command: UpdateAuthCenterAuthenticatorEnabledCommand,
-    ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ENABLED_UPDATE_OPERATION_ID)
+        command: UpdateAuthCenterLoginEntryEnabledCommand,
+    ) -> Result<domain::LoginEntryRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_ENABLED_UPDATE_OPERATION_ID)
             .await?;
         let mut authenticator = self
             .repository
-            .find_authenticator(command.authenticator_id)
+            .find_login_entry(command.login_entry_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+            .ok_or(ControlPlaneError::NotFound("login_entry"))?;
         authenticator.enabled = command.enabled;
-        self.repository
-            .update_authenticator_config(&authenticator)
-            .await?;
+        self.repository.update_login_entry(&authenticator).await?;
         Ok(authenticator)
     }
 
-    pub async fn update_authenticator_config(
+    pub async fn update_login_entry(
         &self,
         actor: &domain::ActorContext,
-        command: UpdateAuthCenterAuthenticatorConfigCommand,
-    ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
+        command: UpdateAuthCenterLoginEntryConfigCommand,
+    ) -> Result<domain::LoginEntryRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_UPDATE_OPERATION_ID)
             .await?;
-        validate_authenticator_title(&command.title)?;
+        validate_login_entry_title(&command.title)?;
         let mut authenticator = self
             .repository
-            .find_authenticator(command.authenticator_id)
+            .find_login_entry(command.login_entry_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+            .ok_or(ControlPlaneError::NotFound("login_entry"))?;
         authenticator.title = command.title;
         authenticator.enabled = command.enabled;
         if let Some(description) = command.description {
@@ -247,36 +251,32 @@ where
                 command.self_registration_enabled,
             );
         }
-        self.repository
-            .update_authenticator_config(&authenticator)
-            .await?;
+        self.repository.update_login_entry(&authenticator).await?;
         Ok(authenticator)
     }
 
-    pub async fn update_authenticator_public_ui_block(
+    pub async fn update_login_entry_public_ui_block(
         &self,
         actor: &domain::ActorContext,
-        command: UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
-    ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID)
+        command: UpdateAuthCenterLoginEntryPublicUiBlockCommand,
+    ) -> Result<domain::LoginEntryRecord> {
+        self.ensure_console_operation(actor, AUTH_CENTER_LOGIN_ENTRY_UPDATE_OPERATION_ID)
             .await?;
         validate_public_ui_block(&command.public_ui_block)?;
         let mut authenticator = self
             .repository
-            .find_authenticator(command.authenticator_id)
+            .find_login_entry(command.login_entry_id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("authenticator"))?;
+            .ok_or(ControlPlaneError::NotFound("login_entry"))?;
         authenticator.public_ui_block = command.public_ui_block;
-        self.repository
-            .update_authenticator_config(&authenticator)
-            .await?;
+        self.repository.update_login_entry(&authenticator).await?;
         Ok(authenticator)
     }
 
     async fn next_sort_order(&self) -> Result<i32> {
         Ok(self
             .repository
-            .list_authenticators()
+            .list_login_entries()
             .await?
             .into_iter()
             .map(|authenticator| authenticator.sort_order)
@@ -316,7 +316,7 @@ fn auth_center_console_group() -> domain::ConsolePolicyGroup {
         .expect("compiled auth-center settings feature id must be valid")
 }
 
-fn validate_authenticator_title(title: &str) -> Result<()> {
+fn validate_login_entry_title(title: &str) -> Result<()> {
     if title.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("title").into());
     }
@@ -332,12 +332,12 @@ fn validate_public_ui_block(public_ui_block: &str) -> Result<()> {
 
 fn validate_reorder_ids(
     requested_ids: &[Uuid],
-    existing_authenticators: &[domain::AuthenticatorRecord],
+    existing_authenticators: &[domain::LoginEntryRecord],
 ) -> Result<()> {
     let mut seen = HashSet::new();
     for id in requested_ids {
         if !seen.insert(*id) {
-            return Err(ControlPlaneError::InvalidInput("authenticator_order_duplicate").into());
+            return Err(ControlPlaneError::InvalidInput("login_entry_order_duplicate").into());
         }
     }
     let existing_ids = existing_authenticators
@@ -345,10 +345,10 @@ fn validate_reorder_ids(
         .map(|authenticator| authenticator.id)
         .collect::<HashSet<_>>();
     if requested_ids.iter().any(|id| !existing_ids.contains(id)) {
-        return Err(ControlPlaneError::InvalidInput("authenticator_order_unknown").into());
+        return Err(ControlPlaneError::InvalidInput("login_entry_order_unknown").into());
     }
     if requested_ids.len() != existing_authenticators.len() {
-        return Err(ControlPlaneError::InvalidInput("authenticator_order_missing").into());
+        return Err(ControlPlaneError::InvalidInput("login_entry_order_missing").into());
     }
     Ok(())
 }
@@ -396,7 +396,7 @@ fn upsert_self_registration_enabled(options: &mut Value, enabled: bool) {
     }
     let values = options
         .as_object_mut()
-        .expect("authenticator options were normalized to an object");
+        .expect("login entry options were normalized to an object");
     let extension_config = values
         .entry("extension_config".to_string())
         .or_insert_with(|| Value::Object(Map::new()));
@@ -433,7 +433,7 @@ fn replace_extension_config(
     }
     options
         .as_object_mut()
-        .expect("authenticator options were normalized to an object")
+        .expect("login entry options were normalized to an object")
         .insert(
             "extension_config".to_string(),
             Value::Object(extension_config),

@@ -16,7 +16,7 @@ async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
         .snapshot();
     let expected = [
         (
-            "http.public.auth.login-instances.v1",
+            "http.public.auth.login-entries.v1",
             InterfaceProtocol::Http,
             PrincipalProfile::Public,
             InterfaceExecutionMode::Unary,

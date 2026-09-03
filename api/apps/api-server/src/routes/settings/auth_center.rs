@@ -52,7 +52,7 @@ pub struct AuthCenterContextVariableResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct AuthCenterAuthenticatorResponse {
+pub struct AuthCenterLoginEntryResponse {
     pub id: Uuid,
     pub auth_type: String,
     pub title: String,
@@ -71,13 +71,13 @@ pub struct AuthCenterAuthenticatorResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthCenterOverviewResponse {
-    pub default_authenticator_id: Uuid,
+    pub default_login_entry_id: Uuid,
     pub supported_auth_types: Vec<String>,
-    pub authenticators: Vec<AuthCenterAuthenticatorResponse>,
+    pub login_entries: Vec<AuthCenterLoginEntryResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateAuthCenterAuthenticatorBody {
+pub struct CreateAuthCenterLoginEntryBody {
     pub auth_type: String,
     pub title: String,
     pub description: Option<String>,
@@ -86,23 +86,23 @@ pub struct CreateAuthCenterAuthenticatorBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CopyAuthCenterAuthenticatorBody {
+pub struct CopyAuthCenterLoginEntryBody {
     pub title: String,
     pub sort_order: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct ReorderAuthCenterAuthenticatorsBody {
+pub struct ReorderAuthCenterLoginEntriesBody {
     pub ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateAuthCenterAuthenticatorEnabledBody {
+pub struct UpdateAuthCenterLoginEntryEnabledBody {
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateAuthCenterAuthenticatorConfigBody {
+pub struct UpdateAuthCenterLoginEntryConfigBody {
     pub title: String,
     pub enabled: bool,
     pub description: Option<Option<String>>,
@@ -111,7 +111,7 @@ pub struct UpdateAuthCenterAuthenticatorConfigBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateAuthCenterAuthenticatorPublicUiBlockBody {
+pub struct UpdateAuthCenterLoginEntryPublicUiBlockBody {
     pub public_ui_block: String,
 }
 
@@ -131,52 +131,52 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/settings/auth-center/authenticators",
+            "/settings/auth-center/login-entries",
             console_post(
                 create_auth_center_authenticator,
-                ConsoleOperation("auth_center.authenticators.create".to_string()),
+                ConsoleOperation("auth_center.login_entries.create".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/order",
+            "/settings/auth-center/login-entries/order",
             console_put(
                 reorder_auth_center_authenticators,
-                ConsoleOperation("auth_center.authenticators.order".to_string()),
+                ConsoleOperation("auth_center.login_entries.order".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id/enabled",
+            "/settings/auth-center/login-entries/:id/enabled",
             console_put(
                 update_auth_center_authenticator_enabled,
-                ConsoleOperation("auth_center.authenticators.enabled.update".to_string()),
+                ConsoleOperation("auth_center.login_entries.enabled.update".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id/copy",
+            "/settings/auth-center/login-entries/:id/copy",
             console_post(
                 copy_auth_center_authenticator,
-                ConsoleOperation("auth_center.authenticators.copy".to_string()),
+                ConsoleOperation("auth_center.login_entries.copy".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id/config",
+            "/settings/auth-center/login-entries/:id/config",
             console_put(
                 update_auth_center_authenticator_config,
-                ConsoleOperation("auth_center.authenticators.update".to_string()),
+                ConsoleOperation("auth_center.login_entries.update".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id/public-ui-block",
+            "/settings/auth-center/login-entries/:id/public-ui-block",
             console_put(
                 update_auth_center_authenticator_public_ui_block,
-                ConsoleOperation("auth_center.authenticators.update".to_string()),
+                ConsoleOperation("auth_center.login_entries.update".to_string()),
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id",
+            "/settings/auth-center/login-entries/:id",
             console_delete(
                 delete_auth_center_authenticator,
-                ConsoleOperation("auth_center.authenticators.delete".to_string()),
+                ConsoleOperation("auth_center.login_entries.delete".to_string()),
             ),
         )
 }
@@ -247,7 +247,7 @@ fn auth_center_description(options: &Value) -> Option<String> {
 }
 
 fn auth_center_config_response_values(
-    authenticator: &domain::AuthenticatorRecord,
+    authenticator: &domain::LoginEntryRecord,
     description: Option<String>,
     extension_config: Map<String, Value>,
     config_schema: &[AuthCenterConfigFieldResponse],
@@ -285,10 +285,10 @@ fn auth_center_config_response_values(
     values
 }
 
-pub(crate) fn to_auth_center_authenticator_response(
-    authenticator: domain::AuthenticatorRecord,
+pub(crate) fn to_auth_center_login_entry_response(
+    authenticator: domain::LoginEntryRecord,
     registry: &control_plane::auth::AuthenticatorRegistry,
-) -> AuthCenterAuthenticatorResponse {
+) -> AuthCenterLoginEntryResponse {
     let description = auth_center_description(&authenticator.options);
     let extension_config = auth_center_extension_config(&authenticator.options);
     let config_schema =
@@ -320,7 +320,7 @@ pub(crate) fn to_auth_center_authenticator_response(
             schema: variable.schema,
         })
         .collect();
-    AuthCenterAuthenticatorResponse {
+    AuthCenterLoginEntryResponse {
         id: authenticator.id,
         auth_type: authenticator.auth_type,
         title: authenticator.title,
@@ -341,26 +341,26 @@ pub(crate) fn auth_center_overview_response(
     overview: AuthCenterSettingsOverview,
     registry: &control_plane::auth::AuthenticatorRegistry,
 ) -> AuthCenterOverviewResponse {
-    let authenticators = overview
-        .authenticators
+    let login_entries = overview
+        .login_entries
         .into_iter()
-        .map(|authenticator| to_auth_center_authenticator_response(authenticator, registry))
+        .map(|authenticator| to_auth_center_login_entry_response(authenticator, registry))
         .collect();
 
     AuthCenterOverviewResponse {
-        default_authenticator_id: overview.default_authenticator_id,
+        default_login_entry_id: overview.default_login_entry_id,
         supported_auth_types: overview.supported_auth_types,
-        authenticators,
+        login_entries,
     }
 }
 
-pub(crate) async fn localize_authenticator_response_with(
+pub(crate) async fn localize_login_entry_response_with(
     store: &storage_durable_postgres::MainDurableStore,
     bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
-    response: &mut AuthCenterAuthenticatorResponse,
+    response: &mut AuthCenterLoginEntryResponse,
 ) -> Result<(), ApiError> {
-    if response.id == domain::PASSWORD_LOCAL_AUTHENTICATOR_ID {
+    if response.id == domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID {
         response.title = crate::app_state::project_canonical_display_with(
             store,
             bootstrap_workspace_id,
@@ -378,8 +378,8 @@ pub(crate) async fn localize_authenticator_response_with(
     }
     for variable in &mut response.context_variables {
         let key = match variable.member_path.as_str() {
-            "inputs.authenticator_id" => Some("Authenticator ID"),
-            "inputs.authenticator_selection_available" => Some("Authenticator selection available"),
+            "inputs.login_entry_id" => Some("Login entry ID"),
+            "inputs.authenticator_selection_available" => Some("Login entry selection available"),
             "inputs.auth_event" => Some("Authentication event"),
             "api" => Some("API"),
             _ => None,
@@ -403,8 +403,8 @@ pub(crate) async fn localize_overview_response_with(
     locale: &domain::CatalogLocale,
     response: &mut AuthCenterOverviewResponse,
 ) -> Result<(), ApiError> {
-    for authenticator in &mut response.authenticators {
-        localize_authenticator_response_with(store, bootstrap_workspace_id, locale, authenticator)
+    for authenticator in &mut response.login_entries {
+        localize_login_entry_response_with(store, bootstrap_workspace_id, locale, authenticator)
             .await?;
     }
     Ok(())
@@ -442,10 +442,10 @@ pub async fn get_auth_center_overview(
 
 #[utoipa::path(
     post,
-    path = "/api/console/settings/auth-center/authenticators",
-    request_body = CreateAuthCenterAuthenticatorBody,
+    path = "/api/console/settings/auth-center/login-entries",
+    request_body = CreateAuthCenterLoginEntryBody,
     responses(
-        (status = 201, body = AuthCenterAuthenticatorResponse),
+        (status = 201, body = AuthCenterLoginEntryResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
@@ -455,18 +455,12 @@ pub async fn get_auth_center_overview(
 pub async fn create_auth_center_authenticator(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<CreateAuthCenterAuthenticatorBody>,
-) -> Result<
-    (
-        StatusCode,
-        Json<ApiSuccess<AuthCenterAuthenticatorResponse>>,
-    ),
-    ApiError,
-> {
+    Json(body): Json<CreateAuthCenterLoginEntryBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<AuthCenterLoginEntryResponse>>), ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.create.v1",
+        "http.console.auth-center.login_entries.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -483,10 +477,10 @@ pub async fn create_auth_center_authenticator(
 
 #[utoipa::path(
     post,
-    path = "/api/console/settings/auth-center/authenticators/{id}/copy",
-    request_body = CopyAuthCenterAuthenticatorBody,
+    path = "/api/console/settings/auth-center/login-entries/{id}/copy",
+    request_body = CopyAuthCenterLoginEntryBody,
     responses(
-        (status = 201, body = AuthCenterAuthenticatorResponse),
+        (status = 201, body = AuthCenterLoginEntryResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
@@ -498,18 +492,12 @@ pub async fn copy_auth_center_authenticator(
     State(state): State<Arc<ApiState>>,
     Path(id): Path<Uuid>,
     headers: HeaderMap,
-    Json(body): Json<CopyAuthCenterAuthenticatorBody>,
-) -> Result<
-    (
-        StatusCode,
-        Json<ApiSuccess<AuthCenterAuthenticatorResponse>>,
-    ),
-    ApiError,
-> {
+    Json(body): Json<CopyAuthCenterLoginEntryBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<AuthCenterLoginEntryResponse>>), ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.copy.v1",
+        "http.console.auth-center.login_entries.copy.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -526,7 +514,7 @@ pub async fn copy_auth_center_authenticator(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/settings/auth-center/authenticators/{id}",
+    path = "/api/console/settings/auth-center/login-entries/{id}",
     responses(
         (status = 204),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -546,7 +534,7 @@ pub async fn delete_auth_center_authenticator(
         crate::routes::auth_center_interface::AuthCenterOutput,
     >(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.delete.v1",
+        "http.console.auth-center.login_entries.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -559,8 +547,8 @@ pub async fn delete_auth_center_authenticator(
 
 #[utoipa::path(
     put,
-    path = "/api/console/settings/auth-center/authenticators/order",
-    request_body = ReorderAuthCenterAuthenticatorsBody,
+    path = "/api/console/settings/auth-center/login-entries/order",
+    request_body = ReorderAuthCenterLoginEntriesBody,
     responses(
         (status = 200, body = AuthCenterOverviewResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -571,12 +559,12 @@ pub async fn delete_auth_center_authenticator(
 pub async fn reorder_auth_center_authenticators(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<ReorderAuthCenterAuthenticatorsBody>,
+    Json(body): Json<ReorderAuthCenterLoginEntriesBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.order.v1",
+        "http.console.auth-center.login_entries.order.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -592,10 +580,10 @@ pub async fn reorder_auth_center_authenticators(
 
 #[utoipa::path(
     put,
-    path = "/api/console/settings/auth-center/authenticators/{id}/enabled",
-    request_body = UpdateAuthCenterAuthenticatorEnabledBody,
+    path = "/api/console/settings/auth-center/login-entries/{id}/enabled",
+    request_body = UpdateAuthCenterLoginEntryEnabledBody,
     responses(
-        (status = 200, body = AuthCenterAuthenticatorResponse),
+        (status = 200, body = AuthCenterLoginEntryResponse),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
         (status = 404, body = crate::error_response::ErrorBody)
@@ -605,12 +593,12 @@ pub async fn update_auth_center_authenticator_enabled(
     State(state): State<Arc<ApiState>>,
     Path(id): Path<Uuid>,
     headers: HeaderMap,
-    Json(body): Json<UpdateAuthCenterAuthenticatorEnabledBody>,
-) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
+    Json(body): Json<UpdateAuthCenterLoginEntryEnabledBody>,
+) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.enabled.update.v1",
+        "http.console.auth-center.login_entries.enabled.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -627,10 +615,10 @@ pub async fn update_auth_center_authenticator_enabled(
 
 #[utoipa::path(
     put,
-    path = "/api/console/settings/auth-center/authenticators/{id}/config",
-    request_body = UpdateAuthCenterAuthenticatorConfigBody,
+    path = "/api/console/settings/auth-center/login-entries/{id}/config",
+    request_body = UpdateAuthCenterLoginEntryConfigBody,
     responses(
-        (status = 200, body = AuthCenterAuthenticatorResponse),
+        (status = 200, body = AuthCenterLoginEntryResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
@@ -641,12 +629,12 @@ pub async fn update_auth_center_authenticator_config(
     State(state): State<Arc<ApiState>>,
     Path(id): Path<Uuid>,
     headers: HeaderMap,
-    Json(body): Json<UpdateAuthCenterAuthenticatorConfigBody>,
-) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
+    Json(body): Json<UpdateAuthCenterLoginEntryConfigBody>,
+) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.update.config.v1",
+        "http.console.auth-center.login_entries.update.config.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
@@ -663,10 +651,10 @@ pub async fn update_auth_center_authenticator_config(
 
 #[utoipa::path(
     put,
-    path = "/api/console/settings/auth-center/authenticators/{id}/public-ui-block",
-    request_body = UpdateAuthCenterAuthenticatorPublicUiBlockBody,
+    path = "/api/console/settings/auth-center/login-entries/{id}/public-ui-block",
+    request_body = UpdateAuthCenterLoginEntryPublicUiBlockBody,
     responses(
-        (status = 200, body = AuthCenterAuthenticatorResponse),
+        (status = 200, body = AuthCenterLoginEntryResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
@@ -677,12 +665,12 @@ pub async fn update_auth_center_authenticator_public_ui_block(
     State(state): State<Arc<ApiState>>,
     Path(id): Path<Uuid>,
     headers: HeaderMap,
-    Json(body): Json<UpdateAuthCenterAuthenticatorPublicUiBlockBody>,
-) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
+    Json(body): Json<UpdateAuthCenterLoginEntryPublicUiBlockBody>,
+) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.update.public-ui-block.v1",
+        "http.console.auth-center.login_entries.update.public-ui-block.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,

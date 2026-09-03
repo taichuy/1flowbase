@@ -1,7 +1,8 @@
 use domain::{
-    password_local_identity_claims, ActorContext, AuthenticatorRecord, BoundRole, RoleScopeKind,
-    UserRecord, UserStatus, AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL,
-    AUTH_SUBJECT_TYPE_PHONE, PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    password_local_identity_claims, ActorContext, BoundRole, ExternalIdentityClaim,
+    LoginEntryRecord, RoleScopeKind, UserRecord, UserStatus, VerifiedExternalIdentity,
+    AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
+    BUILTIN_PASSWORD_LOGIN_ENTRY_ID, PASSWORD_LOCAL_CONNECTION_ID,
 };
 use uuid::Uuid;
 
@@ -54,9 +55,9 @@ fn password_local_identity_claims_cover_account_email_and_phone() {
     let claims = password_local_identity_claims("alice", "alice@example.com", Some("18800001111"));
 
     assert_eq!(claims.len(), 3);
-    assert!(claims.iter().all(|claim| {
-        claim.authenticator_id == PASSWORD_LOCAL_AUTHENTICATOR_ID && claim.verified
-    }));
+    assert!(claims
+        .iter()
+        .all(|claim| { claim.connection_id == PASSWORD_LOCAL_CONNECTION_ID && claim.verified }));
     assert_eq!(claims[0].subject_type, AUTH_SUBJECT_TYPE_ACCOUNT);
     assert_eq!(claims[0].subject_value, "alice");
     assert_eq!(claims[1].subject_type, AUTH_SUBJECT_TYPE_EMAIL);
@@ -66,11 +67,12 @@ fn password_local_identity_claims_cover_account_email_and_phone() {
 }
 
 #[test]
-fn authenticator_serialization_keeps_public_ui_block_as_first_class_truth() {
+fn login_entry_serialization_keeps_public_ui_block_as_first_class_truth() {
     // Issue #1444 AC-002/AC-009: public UI content must not be hidden inside
     // private options, because settings and the public projection have distinct DTOs.
-    let authenticator = AuthenticatorRecord {
-        id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    let login_entry = LoginEntryRecord {
+        id: BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        connection_id: PASSWORD_LOCAL_CONNECTION_ID,
         auth_type: "password-local".into(),
         title: "Password".into(),
         enabled: true,
@@ -80,9 +82,29 @@ fn authenticator_serialization_keeps_public_ui_block_as_first_class_truth() {
         options: serde_json::json!({}),
     };
 
-    let serialized = serde_json::to_value(authenticator).unwrap();
+    let serialized = serde_json::to_value(login_entry).unwrap();
 
     assert!(serialized["public_ui_block"]
         .as_str()
         .is_some_and(|source| source.contains("satisfies BlockModule")));
+}
+
+#[test]
+fn verified_external_identity_rejects_unverified_and_local_claims() {
+    let external_connection_id = Uuid::now_v7();
+    let claim = |connection_id, verified| ExternalIdentityClaim {
+        connection_id,
+        subject_type: "oidc_sub".into(),
+        subject_value: "CaseSensitiveSubject".into(),
+        issuer: Some("https://issuer.example".into()),
+        realm: Some("employees".into()),
+        profile: serde_json::json!({ "email": "same@example.com" }),
+        verified,
+        metadata: serde_json::json!({}),
+    };
+
+    assert!(VerifiedExternalIdentity::try_from(claim(external_connection_id, false)).is_err());
+    assert!(VerifiedExternalIdentity::try_from(claim(PASSWORD_LOCAL_CONNECTION_ID, true)).is_err());
+    let verified = VerifiedExternalIdentity::try_from(claim(external_connection_id, true)).unwrap();
+    assert_eq!(verified.subject_value(), "CaseSensitiveSubject");
 }

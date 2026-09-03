@@ -3,7 +3,7 @@ import { apiFetch } from './transport';
 export interface PasswordSignInInput {
   identifier: string;
   password: string;
-  authenticator_id?: string;
+  login_entry_id?: string;
 }
 
 export interface PasswordSignInResponse {
@@ -12,7 +12,7 @@ export interface PasswordSignInResponse {
   current_workspace_id: string;
 }
 
-export interface PublicLoginInstance {
+export interface PublicLoginEntry {
   id: string;
   auth_type: string;
   is_builtin: boolean;
@@ -23,16 +23,16 @@ export interface PublicLoginInstance {
   public_variables: Record<string, unknown>;
 }
 
-export interface PublicLoginInstancesResponse {
-  default_authenticator_id: string;
-  login_instances: PublicLoginInstance[];
+export interface PublicLoginEntriesResponse {
+  default_login_entry_id: string;
+  login_entries: PublicLoginEntry[];
 }
 
-export function fetchPublicLoginInstances(
+export function fetchPublicLoginEntries(
   baseUrl?: string
-): Promise<PublicLoginInstancesResponse> {
-  return apiFetch<PublicLoginInstancesResponse>({
-    path: '/api/public/auth/login-instances',
+): Promise<PublicLoginEntriesResponse> {
+  return apiFetch<PublicLoginEntriesResponse>({
+    path: '/api/public/auth/login-entries',
     baseUrl
   });
 }

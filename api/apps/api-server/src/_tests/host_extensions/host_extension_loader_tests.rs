@@ -132,7 +132,7 @@ async fn seed_pending_restart_host_extension(
 ) -> Uuid {
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await

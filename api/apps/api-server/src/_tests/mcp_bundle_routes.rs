@@ -396,7 +396,7 @@ async fn app_with_installed_mcp_extension(
     let (mut state, _) = test_api_state_with_database_url().await;
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await

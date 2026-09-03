@@ -22,9 +22,9 @@ use interface_runtime::{
     InvocationId, InvocationLineage, PublicPrincipal,
 };
 
-use super::login_instances_interface::{
-    self, PublicLoginInstancesFuture, PublicLoginInstancesInput, PublicLoginInstancesOutput,
-    PublicLoginInstancesPort, PublicLoginInstancesTargetError,
+use super::login_entries_interface::{
+    self, PublicLoginEntriesFuture, PublicLoginEntriesInput, PublicLoginEntriesOutput,
+    PublicLoginEntriesPort, PublicLoginEntriesTargetError,
 };
 use super::public_residual_interface::{
     self, PublicProvidersFuture, PublicProvidersInput, PublicProvidersOutput, PublicProvidersPort,
@@ -44,7 +44,7 @@ pub struct AuthProviderResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct PublicLoginInstanceResponse {
+pub struct PublicLoginEntryResponse {
     pub id: Uuid,
     pub auth_type: String,
     pub is_builtin: bool,
@@ -56,14 +56,14 @@ pub struct PublicLoginInstanceResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct PublicLoginInstancesResponse {
-    pub default_authenticator_id: Uuid,
-    pub login_instances: Vec<PublicLoginInstanceResponse>,
+pub struct PublicLoginEntriesResponse {
+    pub default_login_entry_id: Uuid,
+    pub login_entries: Vec<PublicLoginEntryResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginBody {
-    pub authenticator_id: Option<Uuid>,
+    pub login_entry_id: Option<Uuid>,
     pub identifier: String,
     pub password: String,
 }
@@ -71,7 +71,7 @@ pub struct LoginBody {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SignUpBody {
-    pub authenticator_id: Uuid,
+    pub login_entry_id: Uuid,
     pub account: String,
     pub email: String,
     pub password: String,
@@ -87,35 +87,35 @@ pub struct LoginResponse {
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/providers", get(list_providers))
-        .route("/login-instances", get(list_login_instances))
+        .route("/login-entries", get(list_login_entries))
         .route("/sign-in", post(sign_in))
         .route("/sign-up", post(sign_up))
 }
 
-fn public_authenticator_description(options: &Value) -> Option<String> {
+fn public_login_entry_description(options: &Value) -> Option<String> {
     options
         .get("description")
         .and_then(Value::as_str)
         .map(str::to_string)
 }
 
-fn to_public_login_instance(
-    authenticator: domain::AuthenticatorRecord,
+fn to_public_login_entry(
+    entry: domain::LoginEntryRecord,
     registry: &AuthenticatorRegistry,
-) -> Option<PublicLoginInstanceResponse> {
-    if !authenticator.enabled {
+) -> Option<PublicLoginEntryResponse> {
+    if !entry.enabled {
         return None;
     }
-    let public_variables = registry.public_variables(&authenticator)?;
+    let public_variables = registry.public_variables(&entry)?;
 
-    Some(PublicLoginInstanceResponse {
-        id: authenticator.id,
-        auth_type: authenticator.auth_type,
-        is_builtin: authenticator.is_builtin,
-        title: authenticator.title,
-        description: public_authenticator_description(&authenticator.options),
-        sort_order: authenticator.sort_order,
-        public_ui_block: authenticator.public_ui_block,
+    Some(PublicLoginEntryResponse {
+        id: entry.id,
+        auth_type: entry.auth_type,
+        is_builtin: entry.is_builtin,
+        title: entry.title,
+        description: public_login_entry_description(&entry.options),
+        sort_order: entry.sort_order,
+        public_ui_block: entry.public_ui_block,
         public_variables,
     })
 }
@@ -150,14 +150,14 @@ impl PublicProvidersPort for PublicProvidersAdapter {
         let bootstrap_workspace_id = self.bootstrap_workspace_id;
         Box::pin(async move {
             let mut provider = store
-                .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+                .find_login_entry(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
                 .await
                 .map_err(ApiError::from)
                 .map_err(PublicResidualTargetError)?
-                .map(|authenticator| AuthProviderResponse {
-                    id: authenticator.id,
-                    auth_type: authenticator.auth_type,
-                    title: authenticator.title,
+                .map(|entry| AuthProviderResponse {
+                    id: entry.id,
+                    auth_type: entry.auth_type,
+                    title: entry.title,
                 });
             if let Some(provider) = &mut provider {
                 provider.title = crate::app_state::project_canonical_display_with(
@@ -177,13 +177,13 @@ impl PublicProvidersPort for PublicProvidersAdapter {
 
 #[utoipa::path(
     get,
-    path = "/api/public/auth/login-instances",
-    responses((status = 200, body = PublicLoginInstancesResponse))
+    path = "/api/public/auth/login-entries",
+    responses((status = 200, body = PublicLoginEntriesResponse))
 )]
-pub async fn list_login_instances(
+pub async fn list_login_entries(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<PublicLoginEntriesResponse>>, ApiError> {
     let locale = crate::app_state::request_catalog_locale(&headers, None);
     let boot_snapshot = state
         .extension_boot_snapshot
@@ -193,7 +193,7 @@ pub async fn list_login_instances(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
         .snapshot();
-    let binding_id = interface_runtime::BindingId::new("http.public.auth.login-instances.v1")
+    let binding_id = interface_runtime::BindingId::new("http.public.auth.login-entries.v1")
         .expect("static binding id is valid");
     let activated_authentication = snapshot
         .authentication(&binding_id)
@@ -206,13 +206,9 @@ pub async fn list_login_instances(
         .await?;
     let authentication_activation = activated_authentication.activation().clone();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
-        login_instances_interface::PublicLoginInstancesAuthorization,
+        login_entries_interface::PublicLoginEntriesAuthorization,
     ))
-    .invoke::<
-        PublicLoginInstancesInput,
-        PublicLoginInstancesOutput,
-        PublicLoginInstancesTargetError,
-    >(
+    .invoke::<PublicLoginEntriesInput, PublicLoginEntriesOutput, PublicLoginEntriesTargetError>(
         snapshot,
         InvocationEnvelope::with_principal(
             InvocationLineage::root(InvocationId::now_v7()),
@@ -223,83 +219,83 @@ pub async fn list_login_instances(
             authentication_activation,
             principal,
             None,
-            PublicLoginInstancesInput { locale },
+            PublicLoginEntriesInput { locale },
         ),
     )
     .await
-    .map_err(|failure| public_login_instances_error(failure.into_error()))?;
+    .map_err(|failure| public_login_entries_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(Json(ApiSuccess::new(outcome.into_value().0)))
 }
 
-struct PublicLoginInstancesAdapter {
+struct PublicLoginEntriesAdapter {
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
 }
 
-impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
-    fn list(&self, input: PublicLoginInstancesInput) -> PublicLoginInstancesFuture<'_> {
+impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
+    fn list(&self, input: PublicLoginEntriesInput) -> PublicLoginEntriesFuture<'_> {
         let store = self.store.clone();
         let registry = Arc::clone(&self.authenticator_registry);
         let bootstrap_workspace_id = self.bootstrap_workspace_id;
         Box::pin(async move {
-            let mut login_instances = store
-                .list_authenticators()
+            let mut login_entries = store
+                .list_login_entries()
                 .await
                 .map_err(ApiError::from)?
                 .into_iter()
-                .filter_map(|authenticator| to_public_login_instance(authenticator, &registry))
+                .filter_map(|entry| to_public_login_entry(entry, &registry))
                 .collect::<Vec<_>>();
-            for instance in &mut login_instances {
-                instance.title = crate::app_state::project_canonical_display_with(
+            for entry in &mut login_entries {
+                entry.title = crate::app_state::project_canonical_display_with(
                     &store,
                     bootstrap_workspace_id,
                     &input.locale,
                     "Password",
-                    &instance.title,
+                    &entry.title,
                 )
                 .await?;
             }
-            let default_authenticator_id = login_instances
+            let default_login_entry_id = login_entries
                 .first()
-                .map(|instance| instance.id)
-                .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID);
-            Ok(PublicLoginInstancesOutput(PublicLoginInstancesResponse {
-                default_authenticator_id,
-                login_instances,
+                .map(|entry| entry.id)
+                .unwrap_or(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID);
+            Ok(PublicLoginEntriesOutput(PublicLoginEntriesResponse {
+                default_login_entry_id,
+                login_entries,
             }))
         })
     }
 }
 
-pub(crate) fn compile_public_login_instances_registry(
-    port: Arc<dyn PublicLoginInstancesPort>,
+pub(crate) fn compile_public_login_entries_registry(
+    port: Arc<dyn PublicLoginEntriesPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    login_instances_interface::compile_registry(port)
+    login_entries_interface::compile_registry(port)
 }
 
-pub(crate) fn public_login_instances_port(
+pub(crate) fn public_login_entries_port(
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
-) -> Arc<dyn PublicLoginInstancesPort> {
-    Arc::new(PublicLoginInstancesAdapter {
+) -> Arc<dyn PublicLoginEntriesPort> {
+    Arc::new(PublicLoginEntriesAdapter {
         store,
         authenticator_registry,
         bootstrap_workspace_id,
     })
 }
 
-fn public_login_instances_error(error: InterfaceInvocationError) -> ApiError {
+fn public_login_entries_error(error: InterfaceInvocationError) -> ApiError {
     match error {
         InterfaceInvocationError::TargetFailed(error) => error
-            .into_source::<PublicLoginInstancesTargetError>()
+            .into_source::<PublicLoginEntriesTargetError>()
             .map(|error| error.0)
-            .unwrap_or_else(|| anyhow::anyhow!("public login instances failed").into()),
+            .unwrap_or_else(|| anyhow::anyhow!("public login entries failed").into()),
         error => anyhow::anyhow!(error.to_string()).into(),
     }
 }
@@ -348,9 +344,9 @@ pub async fn sign_in(
                     principal,
                     None,
                     PublicSignInInput(LoginCommand {
-                        authenticator_id: body
-                            .authenticator_id
-                            .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID),
+                        login_entry_id: body
+                            .login_entry_id
+                            .unwrap_or(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID),
                         identifier: body.identifier,
                         password: body.password,
                     }),
@@ -408,7 +404,7 @@ pub async fn sign_up(
         &state,
         public_residual_interface::SIGN_UP_BINDING_ID,
         PublicSignUpInput(SignUpCommand {
-            authenticator_id: body.authenticator_id,
+            login_entry_id: body.login_entry_id,
             account: body.account,
             email: body.email,
             password: body.password,

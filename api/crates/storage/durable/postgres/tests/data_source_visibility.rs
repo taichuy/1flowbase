@@ -3,8 +3,8 @@ use control_plane_contracts::ports::{
     PluginRepository, UpsertPluginInstallationInput,
 };
 use domain::{
-    AuthenticatorRecord, DataSourceDefaults, DataSourceInstanceStatus, PluginDesiredState,
-    PluginVerificationStatus, PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    DataSourceDefaults, DataSourceInstanceStatus, LoginEntryRecord, PluginDesiredState,
+    PluginVerificationStatus, BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
 };
 use serde_json::json;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
@@ -42,8 +42,9 @@ async fn seeded_store() -> (
         .await
         .unwrap();
     store
-        .upsert_authenticator(&AuthenticatorRecord {
-            id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&LoginEntryRecord {
+            id: BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

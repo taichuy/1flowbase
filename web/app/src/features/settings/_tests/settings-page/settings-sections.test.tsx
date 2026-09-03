@@ -88,13 +88,13 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorEnabled: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
-  createSettingsAuthCenterAuthenticator: vi.fn(),
-  copySettingsAuthCenterAuthenticator: vi.fn(),
-  deleteSettingsAuthCenterAuthenticator: vi.fn(),
-  reorderSettingsAuthCenterAuthenticators: vi.fn()
+  updateSettingsAuthCenterLoginEntryEnabled: vi.fn(),
+  updateSettingsAuthCenterLoginEntryConfig: vi.fn(),
+  updateSettingsAuthCenterLoginEntryPublicUiBlock: vi.fn(),
+  createSettingsAuthCenterLoginEntry: vi.fn(),
+  copySettingsAuthCenterLoginEntry: vi.fn(),
+  deleteSettingsAuthCenterLoginEntry: vi.fn(),
+  reorderSettingsAuthCenterLoginEntries: vi.fn()
 }));
 
 const authenticatorConfigSchema = () => [
@@ -540,9 +540,9 @@ describe('SettingsPage', () => {
       undefined
     );
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
+      default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-password-local',
           auth_type: 'password-local',
@@ -560,10 +560,10 @@ describe('SettingsPage', () => {
         }
       ]
     });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryEnabled.mockResolvedValue(
       undefined
     );
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockResolvedValue(
       undefined
     );
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);

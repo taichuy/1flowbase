@@ -1,17 +1,17 @@
 import {
-  copyConsoleAuthCenterAuthenticator,
-  createConsoleAuthCenterAuthenticator,
-  deleteConsoleAuthCenterAuthenticator,
+  copyConsoleAuthCenterLoginEntry,
+  createConsoleAuthCenterLoginEntry,
+  deleteConsoleAuthCenterLoginEntry,
   fetchConsoleAuthCenterOverview,
-  reorderConsoleAuthCenterAuthenticators,
-  type ConsoleAuthCenterCopyAuthenticatorInput,
-  type ConsoleAuthCenterCreateAuthenticatorInput,
-  type ConsoleAuthCenterAuthenticatorEnabledInput,
-  updateConsoleAuthCenterAuthenticatorEnabled,
-  updateConsoleAuthCenterAuthenticatorConfig,
-  updateConsoleAuthCenterAuthenticatorPublicUiBlock,
-  type ConsoleAuthCenterAuthenticatorConfigInput,
-  type ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
+  reorderConsoleAuthCenterLoginEntries,
+  type ConsoleAuthCenterCopyLoginEntryInput,
+  type ConsoleAuthCenterCreateLoginEntryInput,
+  type ConsoleAuthCenterLoginEntryEnabledInput,
+  updateConsoleAuthCenterLoginEntryEnabled,
+  updateConsoleAuthCenterLoginEntryConfig,
+  updateConsoleAuthCenterLoginEntryPublicUiBlock,
+  type ConsoleAuthCenterLoginEntryConfigInput,
+  type ConsoleAuthCenterLoginEntryPublicUiBlockInput,
   type ConsoleAuthCenterOverview
 } from '@1flowbase/api-client';
 
@@ -27,66 +27,66 @@ export function fetchSettingsAuthCenterOverview() {
   return fetchConsoleAuthCenterOverview();
 }
 
-export function updateSettingsAuthCenterAuthenticatorEnabled(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorEnabledInput,
+export function updateSettingsAuthCenterLoginEntryEnabled(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryEnabledInput,
   csrfToken: string
 ) {
-  return updateConsoleAuthCenterAuthenticatorEnabled(
-    authenticatorId,
+  return updateConsoleAuthCenterLoginEntryEnabled(
+    loginEntryId,
     input,
     csrfToken
   );
 }
 
-export function createSettingsAuthCenterAuthenticator(
-  input: ConsoleAuthCenterCreateAuthenticatorInput,
+export function createSettingsAuthCenterLoginEntry(
+  input: ConsoleAuthCenterCreateLoginEntryInput,
   csrfToken: string
 ) {
-  return createConsoleAuthCenterAuthenticator(input, csrfToken);
+  return createConsoleAuthCenterLoginEntry(input, csrfToken);
 }
 
-export function copySettingsAuthCenterAuthenticator(
+export function copySettingsAuthCenterLoginEntry(
   sourceId: string,
-  input: ConsoleAuthCenterCopyAuthenticatorInput,
+  input: ConsoleAuthCenterCopyLoginEntryInput,
   csrfToken: string
 ) {
-  return copyConsoleAuthCenterAuthenticator(sourceId, input, csrfToken);
+  return copyConsoleAuthCenterLoginEntry(sourceId, input, csrfToken);
 }
 
-export function deleteSettingsAuthCenterAuthenticator(
-  authenticatorId: string,
+export function deleteSettingsAuthCenterLoginEntry(
+  loginEntryId: string,
   csrfToken: string
 ) {
-  return deleteConsoleAuthCenterAuthenticator(authenticatorId, csrfToken);
+  return deleteConsoleAuthCenterLoginEntry(loginEntryId, csrfToken);
 }
 
-export function reorderSettingsAuthCenterAuthenticators(
+export function reorderSettingsAuthCenterLoginEntries(
   ids: string[],
   csrfToken: string
 ) {
-  return reorderConsoleAuthCenterAuthenticators({ ids }, csrfToken);
+  return reorderConsoleAuthCenterLoginEntries({ ids }, csrfToken);
 }
 
-export function updateSettingsAuthCenterAuthenticatorConfig(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorConfigInput,
+export function updateSettingsAuthCenterLoginEntryConfig(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryConfigInput,
   csrfToken: string
 ) {
-  return updateConsoleAuthCenterAuthenticatorConfig(
-    authenticatorId,
+  return updateConsoleAuthCenterLoginEntryConfig(
+    loginEntryId,
     input,
     csrfToken
   );
 }
 
-export function updateSettingsAuthCenterAuthenticatorPublicUiBlock(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
+export function updateSettingsAuthCenterLoginEntryPublicUiBlock(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryPublicUiBlockInput,
   csrfToken: string
 ) {
-  return updateConsoleAuthCenterAuthenticatorPublicUiBlock(
-    authenticatorId,
+  return updateConsoleAuthCenterLoginEntryPublicUiBlock(
+    loginEntryId,
     input,
     csrfToken
   );

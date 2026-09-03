@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Alert, Button, Input, Space } from 'antd';
 
 type AuthInputs = {
-  authenticator_id?: string;
+  login_entry_id?: string;
   authenticator_selection_available?: boolean;
   public_variables?: {
     self_registration_enabled?: boolean;
@@ -43,7 +43,7 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
     try {
       await ctx.api.post('/api/public/auth/sign-in', {
         body: {
-          authenticator_id: ctx.inputs.authenticator_id,
+          login_entry_id: ctx.inputs.login_entry_id,
           identifier,
           password
         }
@@ -62,7 +62,7 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
     try {
       await ctx.api.post('/api/public/auth/sign-up', {
         body: {
-          authenticator_id: ctx.inputs.authenticator_id,
+          login_entry_id: ctx.inputs.login_entry_id,
           account,
           email,
           password

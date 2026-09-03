@@ -29,9 +29,9 @@ import {
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 
-export interface AuthenticatorUiBlockStudioProps {
-  authenticatorId: string;
-  authenticatorTitle: string;
+export interface LoginEntryUiBlockStudioProps {
+  loginEntryId: string;
+  loginEntryTitle: string;
   authType: string;
   description: string | null;
   enabled: boolean;
@@ -53,14 +53,14 @@ export interface AuthenticatorUiBlockStudioProps {
 const AUTH_CONTEXT_COMMENT = [
   '/**',
   ' * @1flowbase-context',
-  ' * inputs: authenticator_id, public_variables',
+  ' * inputs: login_entry_id, public_variables',
   ' * interfaces: ctx.api',
   ' * outputs: 无',
   ' */'
 ].join('\n');
-export function AuthenticatorUiBlockStudio({
-  authenticatorId,
-  authenticatorTitle,
+export function LoginEntryUiBlockStudio({
+  loginEntryId,
+  loginEntryTitle,
   authType,
   contextVariables,
   defaultSource = null,
@@ -77,7 +77,7 @@ export function AuthenticatorUiBlockStudio({
   selfRegistrationEnabled,
   source,
   workspaceId
-}: AuthenticatorUiBlockStudioProps) {
+}: LoginEntryUiBlockStudioProps) {
   const editorProjection = useMemo(
     () => ({
       ...createFrontstageJsxEditorProjection({
@@ -98,7 +98,7 @@ export function AuthenticatorUiBlockStudio({
   } | null>(null);
   const previewSequenceRef = useRef(0);
   const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
-    () => createAuthoringBlock(authenticatorId)
+    () => createAuthoringBlock(loginEntryId)
   );
   const previewCapabilities = useMemo(
     () => createPublicAuthPreviewCapabilityHandlers(),
@@ -117,7 +117,7 @@ export function AuthenticatorUiBlockStudio({
         ...unavailable,
         workspace: { id: workspaceId },
         application: null,
-        inputs: createPublicAuthInputs(authenticatorId, publicVariables ?? {}),
+        inputs: createPublicAuthInputs(loginEntryId, publicVariables ?? {}),
         ...createPublicAuthNativeBlockContextCapabilities({
           requestId,
           instanceEpoch,
@@ -128,21 +128,21 @@ export function AuthenticatorUiBlockStudio({
         })
       };
     },
-    [authenticatorId, previewCapabilities, publicVariables, workspaceId]
+    [loginEntryId, previewCapabilities, publicVariables, workspaceId]
   );
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraft(source);
-    setAuthoringBlock(createAuthoringBlock(authenticatorId));
-  }, [authenticatorId, open, source]);
+    setAuthoringBlock(createAuthoringBlock(loginEntryId));
+  }, [loginEntryId, open, source]);
 
   useEffect(() => {
     if (!open) return;
     previewSequenceRef.current = 0;
     setPreviewRequest(null);
-  }, [authenticatorId, open]);
+  }, [loginEntryId, open]);
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -232,7 +232,7 @@ export function AuthenticatorUiBlockStudio({
       loading={false}
       open={open}
       owner="settings:auth-center"
-      path={`file:///auth-center/${authenticatorId}/public-ui-block.tsx`}
+      path={`file:///auth-center/${loginEntryId}/public-ui-block.tsx`}
       readOnly={readOnly}
       saving={saving}
       sections={[
@@ -244,8 +244,8 @@ export function AuthenticatorUiBlockStudio({
         'run'
       ]}
       source={draft}
-      testId={`auth-center-jsx-studio-${authenticatorId}`}
-      windowId={`auth-center-jsx-studio:${authenticatorId}`}
+      testId={`auth-center-jsx-studio-${loginEntryId}`}
+      windowId={`auth-center-jsx-studio:${loginEntryId}`}
       onChange={setDraft}
       onClose={onClose}
       onEditorMount={(editor) => {
@@ -275,7 +275,7 @@ export function AuthenticatorUiBlockStudio({
           runPanel={
             publicVariables && previewRequest ? (
               <JsxStudioRunPanel
-                key={authenticatorId}
+                key={loginEntryId}
                 block={authoringBlock}
                 code={previewRequest.source}
                 createBlockContext={createPreviewBlockContext}
@@ -293,7 +293,7 @@ export function AuthenticatorUiBlockStudio({
                 {
                   key: 'title',
                   label: i18nText('settings', 'auto.name'),
-                  children: authenticatorTitle
+                  children: loginEntryTitle
                 },
                 {
                   key: 'type',
@@ -339,14 +339,14 @@ export function AuthenticatorUiBlockStudio({
 }
 
 function createAuthoringBlock(
-  authenticatorId: string
+  loginEntryId: string
 ): FrontstageBlockInstance {
   return {
-    id: `public-auth:${authenticatorId}`,
+    id: `public-auth:${loginEntryId}`,
     rendererVersion: 'v1',
-    sourceId: `public-auth:${authenticatorId}`,
-    codeRef: `public-auth:${authenticatorId}`,
-    sourceCodeRef: `public-auth:${authenticatorId}`,
+    sourceId: `public-auth:${loginEntryId}`,
+    codeRef: `public-auth:${loginEntryId}`,
+    sourceCodeRef: `public-auth:${loginEntryId}`,
     catalog: {
       providerCode: 'public-auth',
       installationId: 'public-auth-authoring'

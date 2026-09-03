@@ -32,8 +32,8 @@ use crate::{
     },
 };
 use domain::{
-    ActorContext, AuditLogRecord, AuthenticatorRecord, ExtensionCategory, ExtensionSignatureStatus,
-    LocalPluginInstallationRecord, ModelProviderCatalogCacheRecord,
+    ActorContext, AuditLogRecord, ExtensionCategory, ExtensionSignatureStatus,
+    LocalPluginInstallationRecord, LoginEntryRecord, ModelProviderCatalogCacheRecord,
     ModelProviderCatalogRefreshStatus, ModelProviderInstanceRecord, ModelProviderInstanceStatus,
     ModelProviderMainInstanceRecord, ModelProviderPreviewSessionRecord, ModelProviderSecretRecord,
     PermissionDefinition, PluginArtifactInstanceRecord, PluginArtifactInstanceStatus,
@@ -364,13 +364,36 @@ impl RoleConsolePolicyReader for MemoryModelProviderRepository {
 
 #[async_trait]
 impl AuthRepository for MemoryModelProviderRepository {
-    async fn find_authenticator(&self, _id: Uuid) -> Result<Option<AuthenticatorRecord>> {
+    async fn find_authentication_connection(
+        &self,
+        _id: Uuid,
+    ) -> Result<Option<domain::AuthenticationConnectionRecord>> {
+        anyhow::bail!("authentication connections are not used by model provider tests")
+    }
+
+    async fn find_user_for_verified_external_identity(
+        &self,
+        _identity: &domain::VerifiedExternalIdentity,
+    ) -> Result<Option<domain::UserRecord>> {
+        anyhow::bail!("external identities are not used by model provider tests")
+    }
+
+    async fn bind_verified_external_identity(
+        &self,
+        _user_id: Uuid,
+        _identity: &domain::VerifiedExternalIdentity,
+        _audit: &domain::AuditLogRecord,
+    ) -> Result<domain::UserAuthIdentity> {
+        anyhow::bail!("external identities are not used by model provider tests")
+    }
+
+    async fn find_login_entry(&self, _id: Uuid) -> Result<Option<LoginEntryRecord>> {
         Ok(None)
     }
 
     async fn find_user_for_password_login(
         &self,
-        _authenticator_id: Uuid,
+        _connection_id: Uuid,
         _identifier: &str,
     ) -> Result<Option<UserRecord>> {
         Ok(None)

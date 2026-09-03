@@ -158,8 +158,17 @@ pub struct RoleTemplate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AuthenticatorRecord {
+pub struct AuthenticationConnectionRecord {
     pub id: Uuid,
+    pub auth_type: String,
+    pub is_builtin: bool,
+    pub config: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LoginEntryRecord {
+    pub id: Uuid,
+    pub connection_id: Uuid,
     pub auth_type: String,
     pub title: String,
     pub enabled: bool,
@@ -169,7 +178,9 @@ pub struct AuthenticatorRecord {
     pub options: serde_json::Value,
 }
 
-pub const PASSWORD_LOCAL_AUTHENTICATOR_ID: Uuid =
+pub const PASSWORD_LOCAL_CONNECTION_ID: Uuid =
+    Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
+pub const BUILTIN_PASSWORD_LOGIN_ENTRY_ID: Uuid =
     Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
 pub const AUTH_SUBJECT_TYPE_ACCOUNT: &str = "account";
 pub const AUTH_SUBJECT_TYPE_EMAIL: &str = "email";
@@ -177,7 +188,7 @@ pub const AUTH_SUBJECT_TYPE_PHONE: &str = "phone";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalIdentityClaim {
-    pub authenticator_id: Uuid,
+    pub connection_id: Uuid,
     pub subject_type: String,
     pub subject_value: String,
     pub issuer: Option<String>,
@@ -185,6 +196,74 @@ pub struct ExternalIdentityClaim {
     pub profile: serde_json::Value,
     pub verified: bool,
     pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VerifiedExternalIdentity {
+    connection_id: Uuid,
+    subject_type: String,
+    subject_value: String,
+    issuer: Option<String>,
+    realm: Option<String>,
+    profile: serde_json::Value,
+    metadata: serde_json::Value,
+}
+
+impl VerifiedExternalIdentity {
+    pub fn connection_id(&self) -> Uuid {
+        self.connection_id
+    }
+
+    pub fn subject_type(&self) -> &str {
+        &self.subject_type
+    }
+
+    pub fn subject_value(&self) -> &str {
+        &self.subject_value
+    }
+
+    pub fn issuer(&self) -> Option<&str> {
+        self.issuer.as_deref()
+    }
+
+    pub fn realm(&self) -> Option<&str> {
+        self.realm.as_deref()
+    }
+
+    pub fn profile(&self) -> &serde_json::Value {
+        &self.profile
+    }
+
+    pub fn metadata(&self) -> &serde_json::Value {
+        &self.metadata
+    }
+}
+
+impl TryFrom<ExternalIdentityClaim> for VerifiedExternalIdentity {
+    type Error = &'static str;
+
+    fn try_from(claim: ExternalIdentityClaim) -> Result<Self, Self::Error> {
+        if !claim.verified {
+            return Err("external_identity_unverified");
+        }
+        if claim.connection_id == PASSWORD_LOCAL_CONNECTION_ID {
+            return Err("external_identity_uses_local_connection");
+        }
+        let subject_type = claim.subject_type.trim().to_string();
+        let subject_value = claim.subject_value.trim().to_string();
+        if subject_type.is_empty() || subject_value.is_empty() {
+            return Err("external_identity_subject_missing");
+        }
+        Ok(Self {
+            connection_id: claim.connection_id,
+            subject_type,
+            subject_value,
+            issuer: claim.issuer.filter(|value| !value.trim().is_empty()),
+            realm: claim.realm.filter(|value| !value.trim().is_empty()),
+            profile: claim.profile,
+            metadata: claim.metadata,
+        })
+    }
 }
 
 pub fn password_local_identity_claims(
@@ -224,7 +303,7 @@ pub fn password_local_contact_identity_claims(
 
 fn password_local_identity_claim(subject_type: &str, subject_value: &str) -> ExternalIdentityClaim {
     ExternalIdentityClaim {
-        authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        connection_id: PASSWORD_LOCAL_CONNECTION_ID,
         subject_type: subject_type.to_string(),
         subject_value: subject_value.to_string(),
         issuer: None,
@@ -238,9 +317,12 @@ fn password_local_identity_claim(subject_type: &str, subject_value: &str) -> Ext
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserAuthIdentity {
     pub user_id: Uuid,
-    pub authenticator_id: Uuid,
+    pub connection_id: Uuid,
     pub subject_type: String,
     pub subject_value: String,
+    pub issuer: Option<String>,
+    pub realm: Option<String>,
+    pub profile: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

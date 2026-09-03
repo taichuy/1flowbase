@@ -448,12 +448,12 @@ async fn public_auth_sign_in_sets_cookie_and_returns_wrapped_payload() {
 }
 
 #[tokio::test]
-async fn public_auth_login_instances_lists_enabled_supported_instances_without_sensitive_options() {
+async fn public_auth_login_entries_lists_enabled_supported_instances_without_sensitive_options() {
     let (app, database_url) = test_app_with_database_url().await;
     let pool = PgPool::connect(&database_url).await.unwrap();
 
-    sqlx::query("update authenticators set sort_order = 10 where id = $1")
-        .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    sqlx::query("update login_entries set sort_order = 10 where id = $1")
+        .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
         .execute(&pool)
         .await
         .unwrap();
@@ -462,13 +462,23 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     let unsupported_oidc_id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into authenticators (
-          id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options
+        insert into authentication_connections (id, auth_type, is_builtin, config)
+        values ($1, 'oidc', false, '{}')
+        "#,
+    )
+    .bind(unsupported_oidc_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into login_entries (
+          id, connection_id, title, enabled, is_builtin, sort_order, public_ui_block, options
         )
         values
           (
             $1,
-            'password-local',
+            '00000000-0000-0000-0000-000000000001'::uuid,
             'Staff Password',
             true,
             false,
@@ -486,7 +496,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
           ),
           (
             $2,
-            'password-local',
+            '00000000-0000-0000-0000-000000000001'::uuid,
             'Disabled Password',
             false,
             false,
@@ -496,7 +506,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
           ),
           (
             $3,
-            'oidc',
+            $3,
             'Unsupported OIDC',
             true,
             false,
@@ -517,7 +527,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/public/auth/login-instances")
+                .uri("/api/public/auth/login-entries")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -528,10 +538,10 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
-        payload["data"]["default_authenticator_id"],
+        payload["data"]["default_login_entry_id"],
         json!(staff_password_id)
     );
-    let instances = payload["data"]["login_instances"].as_array().unwrap();
+    let instances = payload["data"]["login_entries"].as_array().unwrap();
     let ids = instances
         .iter()
         .map(|instance| instance["id"].as_str().unwrap().to_string())
@@ -540,7 +550,7 @@ async fn public_auth_login_instances_lists_enabled_supported_instances_without_s
         ids,
         vec![
             staff_password_id.to_string(),
-            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID.to_string()
+            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID.to_string()
         ]
     );
 
@@ -588,7 +598,7 @@ async fn public_auth_sign_up_rejects_when_registration_is_disabled_without_write
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "login_entry_id": domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
                         "account": "disabled-signup",
                         "email": "disabled-signup@example.com",
                         "password": "change-me"
@@ -619,7 +629,7 @@ async fn public_auth_sign_up_creates_default_member_identity_and_session() {
     let pool = PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
         r#"
-        update authenticators
+        update login_entries
         set options = jsonb_set(
           options,
           '{extension_config,self_registration_enabled}',
@@ -629,7 +639,7 @@ async fn public_auth_sign_up_creates_default_member_identity_and_session() {
         where id = $1
         "#,
     )
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .execute(&pool)
     .await
     .unwrap();
@@ -643,7 +653,7 @@ async fn public_auth_sign_up_creates_default_member_identity_and_session() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "login_entry_id": domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
                         "account": "self-registered",
                         "email": "self-registered@example.com",
                         "password": "change-me"
@@ -671,11 +681,11 @@ async fn public_auth_sign_up_creates_default_member_identity_and_session() {
         join roles r on r.id = urb.role_id
         join workspace_memberships wm on wm.user_id = u.id
         where u.account = 'self-registered'
-          and i.authenticator_id = $1
+          and i.connection_id = $1
           and i.subject_type = 'account'
         "#,
     )
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -700,7 +710,7 @@ async fn public_auth_sign_up_rejects_duplicate_identity_and_privilege_fields() {
     let pool = PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
         r#"
-        update authenticators
+        update login_entries
         set options = jsonb_set(
           options,
           '{extension_config,self_registration_enabled}',
@@ -710,12 +720,12 @@ async fn public_auth_sign_up_rejects_duplicate_identity_and_privilege_fields() {
         where id = $1
         "#,
     )
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .execute(&pool)
     .await
     .unwrap();
     let valid_body = json!({
-        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "login_entry_id": domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "account": "duplicate-self-registration",
         "email": "duplicate-self-registration@example.com",
         "password": "change-me"
@@ -765,7 +775,7 @@ async fn public_auth_sign_up_rejects_duplicate_identity_and_privilege_fields() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "authenticator_id": domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                        "login_entry_id": domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
                         "account": "privilege-injection",
                         "email": "privilege-injection@example.com",
                         "password": "change-me",
@@ -792,7 +802,7 @@ async fn public_auth_sign_up_rejects_duplicate_identity_and_privilege_fields() {
 }
 
 #[tokio::test]
-async fn public_auth_login_instances_projects_public_ui_block_and_registration_variable() {
+async fn public_auth_login_entries_projects_public_ui_block_and_registration_variable() {
     // Issue #1444 AC-003/AC-006/AC-009: the authenticator-owned Block and
     // server-derived public variables replace the Core-owned password form.
     let app = test_app().await;
@@ -801,7 +811,7 @@ async fn public_auth_login_instances_projects_public_ui_block_and_registration_v
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/public/auth/login-instances")
+                .uri("/api/public/auth/login-entries")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -811,10 +821,10 @@ async fn public_auth_login_instances_projects_public_ui_block_and_registration_v
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let instances = payload["data"]["login_instances"].as_array().unwrap();
+    let instances = payload["data"]["login_entries"].as_array().unwrap();
     let password_local = instances
         .iter()
-        .find(|instance| instance["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .find(|instance| instance["id"] == json!(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID))
         .expect("password-local should be publicly discoverable");
 
     assert_eq!(password_local["is_builtin"], json!(true));
@@ -839,8 +849,8 @@ async fn public_auth_login_instances_projects_public_ui_block_and_registration_v
 async fn public_auth_sign_in_rejects_disabled_authenticator() {
     let (app, database_url) = test_app_with_database_url().await;
     let pool = PgPool::connect(&database_url).await.unwrap();
-    sqlx::query("update authenticators set enabled = false where id = $1")
-        .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    sqlx::query("update login_entries set enabled = false where id = $1")
+        .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
         .execute(&pool)
         .await
         .unwrap();
@@ -866,7 +876,7 @@ async fn public_auth_sign_in_rejects_disabled_authenticator() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["code"], json!("authenticator_disabled"));
+    assert_eq!(payload["code"], json!("login_entry_disabled"));
 }
 
 #[tokio::test]
@@ -915,12 +925,12 @@ async fn public_auth_sign_in_resolves_password_local_identity_subject() {
         update user_auth_identities
         set subject_value = 'identity-route-subject'
         where user_id = $1
-          and authenticator_id = $2
+          and connection_id = $2
           and subject_type = 'account'
         "#,
     )
     .bind(member_id)
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .execute(&pool)
     .await
     .unwrap();
@@ -948,11 +958,9 @@ async fn public_auth_sign_in_resolves_password_local_identity_subject() {
 }
 
 #[tokio::test]
-async fn public_auth_sign_in_resolves_identity_with_requested_authenticator_instance() {
+async fn public_auth_sign_in_uses_shared_credentials_from_a_copied_password_entry() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let staff_member_id =
-        create_member(&app, &cookie, &csrf, "staff-password-user", "staff-pass").await;
     let default_member_id = create_member(
         &app,
         &cookie,
@@ -961,18 +969,21 @@ async fn public_auth_sign_in_resolves_identity_with_requested_authenticator_inst
         "default-pass",
     )
     .await;
-    let staff_member_id = Uuid::parse_str(&staff_member_id).unwrap();
     let default_member_id = Uuid::parse_str(&default_member_id).unwrap();
     let pool = PgPool::connect(&database_url).await.unwrap();
 
-    let staff_authenticator_id = Uuid::now_v7();
+    let copied_login_entry_id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
-        values ($1, 'password-local', 'Staff Password', true, false, 20, '{}')
+        insert into login_entries (
+            id, connection_id, title, enabled, is_builtin, sort_order, options
+        ) values (
+            $1, $2, 'Staff Password', true, false, 20, '{}'
+        )
         "#,
     )
-    .bind(staff_authenticator_id)
+    .bind(copied_login_entry_id)
+    .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
     .execute(&pool)
     .await
     .unwrap();
@@ -982,27 +993,12 @@ async fn public_auth_sign_in_resolves_identity_with_requested_authenticator_inst
         update user_auth_identities
         set subject_value = 'shared-password-subject'
         where user_id = $1
-          and authenticator_id = $2
+          and connection_id = $2
           and subject_type = 'account'
         "#,
     )
     .bind(default_member_id)
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        insert into user_auth_identities (
-            id, user_id, authenticator_id, subject_type, subject_value, metadata
-        )
-        values ($1, $2, $3, 'account', 'shared-password-subject', '{}')
-        "#,
-    )
-    .bind(Uuid::now_v7())
-    .bind(staff_member_id)
-    .bind(staff_authenticator_id)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .execute(&pool)
     .await
     .unwrap();
@@ -1015,9 +1011,9 @@ async fn public_auth_sign_in_resolves_identity_with_requested_authenticator_inst
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "authenticator_id": staff_authenticator_id,
+                        "login_entry_id": copied_login_entry_id,
                         "identifier": "shared-password-subject",
-                        "password": "staff-pass"
+                        "password": "default-pass"
                     })
                     .to_string(),
                 ))

@@ -42,10 +42,11 @@ pub use application::{
 pub use audit::AuditLogRecord;
 pub use auth::{
     password_local_contact_identity_claims, password_local_identity_claims, ActorContext,
-    ApiKeyKind, ApiKeyRecord, AuthenticatorRecord, BoundRole, ExternalIdentityClaim,
-    PermissionDefinition, RoleScopeKind, RoleTemplate, SessionRecord, UserAuthIdentity, UserRecord,
-    UserStatus, AUTH_SUBJECT_TYPE_ACCOUNT, AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE,
-    PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    ApiKeyKind, ApiKeyRecord, AuthenticationConnectionRecord, BoundRole, ExternalIdentityClaim,
+    LoginEntryRecord, PermissionDefinition, RoleScopeKind, RoleTemplate, SessionRecord,
+    UserAuthIdentity, UserRecord, UserStatus, VerifiedExternalIdentity, AUTH_SUBJECT_TYPE_ACCOUNT,
+    AUTH_SUBJECT_TYPE_EMAIL, AUTH_SUBJECT_TYPE_PHONE, BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+    PASSWORD_LOCAL_CONNECTION_ID,
 };
 pub use base::BaseFields;
 pub use builtin_data_model::{

@@ -1,9 +1,12 @@
-use sqlx::PgPool;
+use std::borrow::Cow;
+
+use sqlx::{migrate::Migrator, PgPool};
 use storage_durable_postgres::run_migrations;
 use uuid::Uuid;
 
 const LEGACY_AUTH_TEAM_ACL_CHECKSUM_HEX: &str =
     "c588c5dafce2a9f065474ad847cc264e80ba8ce16e62479071c98bc6923e2019e2bc310c4c9f17b541fbdd0ec0a499f1";
+const LOGIN_ENTRY_CONNECTION_MIGRATION_VERSION: i64 = 20260903010000;
 
 const LEGACY_AUTH_TEAM_ACL_SQL: &str = r#"
 create table if not exists tenants (
@@ -182,6 +185,81 @@ async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
         .unwrap()
 }
 
+fn before_login_entry_connection_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < LOGIN_ENTRY_CONNECTION_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+async fn seed_current_user(pool: &PgPool, id: Uuid, account: &str, email: &str) {
+    sqlx::query(
+        r#"
+        insert into users (id, account, email, password_hash, name, nickname, status)
+        values ($1, $2, $3, 'hash', $2, $2, 'active')
+        "#,
+    )
+    .bind(id)
+    .bind(account)
+    .bind(email)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn seed_current_authenticator(
+    pool: &PgPool,
+    id: Uuid,
+    auth_type: &str,
+    title: &str,
+    is_builtin: bool,
+    public_ui_block: &str,
+) {
+    sqlx::query(
+        r#"
+        insert into authenticators (
+            id, auth_type, title, enabled, is_builtin, sort_order, options, public_ui_block
+        ) values ($1, $2, $3, true, $4, 0, '{}', $5)
+        "#,
+    )
+    .bind(id)
+    .bind(auth_type)
+    .bind(title)
+    .bind(is_builtin)
+    .bind(public_ui_block)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn seed_current_identity(
+    pool: &PgPool,
+    id: Uuid,
+    user_id: Uuid,
+    authenticator_id: Uuid,
+    subject_value: &str,
+) {
+    sqlx::query(
+        r#"
+        insert into user_auth_identities (
+            id, user_id, authenticator_id, subject_type, subject_value, metadata
+        ) values ($1, $2, $3, 'account', $4, '{}')
+        "#,
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(authenticator_id)
+    .bind(subject_value)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 async fn seed_legacy_auth_team_acl_migration(pool: &PgPool) {
     sqlx::raw_sql(LEGACY_AUTH_TEAM_ACL_SQL)
         .execute(pool)
@@ -288,8 +366,8 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    let authenticator_id: Uuid =
-        sqlx::query_scalar("select authenticator_id from user_auth_identities where id = $1")
+    let connection_id: Uuid =
+        sqlx::query_scalar("select connection_id from user_auth_identities where id = $1")
             .bind(identity_id)
             .fetch_one(&pool)
             .await
@@ -299,7 +377,7 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
         select count(*)
         from information_schema.columns
         where table_schema = current_schema()
-          and table_name = 'authenticators'
+          and table_name = 'login_entries'
           and column_name = 'name'
         "#,
     )
@@ -309,7 +387,7 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
     let legacy_authenticator_count: i64 = sqlx::query_scalar(
         r#"
         select count(*)
-        from authenticators
+        from login_entries
         where id = $1
         "#,
     )
@@ -323,7 +401,7 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
         from pg_indexes
         where schemaname = current_schema()
           and tablename = 'user_auth_identities'
-          and indexname = 'user_auth_identities_subject_uidx'
+          and indexname = 'user_auth_identities_local_subject_uidx'
         "#,
     )
     .fetch_one(&pool)
@@ -333,7 +411,7 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
         r#"
         select exists (
             select 1
-            from authenticators
+            from login_entries
             cross join jsonb_array_elements(
                 coalesce(options -> 'config_form_schema', '[]'::jsonb)
             ) item
@@ -342,15 +420,182 @@ async fn migrations_upgrade_legacy_authenticator_identity_schema() {
         )
         "#,
     )
-    .bind(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+    .bind(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     .fetch_one(&pool)
     .await
     .unwrap();
 
     assert_eq!(authenticator_name_column_count, 0);
-    assert_eq!(authenticator_id, domain::PASSWORD_LOCAL_AUTHENTICATOR_ID);
+    assert_eq!(connection_id, domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID);
     assert_eq!(authenticator_name_key_count, 0);
     assert_eq!(legacy_authenticator_count, 0);
-    assert!(subject_index.contains("authenticator_id"));
+    assert!(subject_index.contains("connection_id"));
     assert!(!has_legacy_name_config);
+}
+
+#[tokio::test]
+async fn migration_collapses_same_user_password_identities_and_preserves_custom_ui() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    before_login_entry_connection_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let user_id = Uuid::now_v7();
+    let copied_entry_id = Uuid::now_v7();
+    seed_current_user(&pool, user_id, "root", "root@example.com").await;
+    seed_current_authenticator(
+        &pool,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        "password-local",
+        "Password",
+        true,
+        "builtin source",
+    )
+    .await;
+    seed_current_authenticator(
+        &pool,
+        copied_entry_id,
+        "password-local",
+        "Staff password",
+        false,
+        "custom source must survive",
+    )
+    .await;
+    seed_current_identity(
+        &pool,
+        Uuid::now_v7(),
+        user_id,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        "root",
+    )
+    .await;
+    seed_current_identity(&pool, Uuid::now_v7(), user_id, copied_entry_id, "ROOT").await;
+
+    run_migrations(&pool).await.unwrap();
+
+    let identity_count: i64 =
+        sqlx::query_scalar("select count(*) from user_auth_identities where connection_id = $1")
+            .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let copied_entry: (Uuid, String) =
+        sqlx::query_as("select connection_id, public_ui_block from login_entries where id = $1")
+            .bind(copied_entry_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(identity_count, 1);
+    assert_eq!(copied_entry.0, domain::PASSWORD_LOCAL_CONNECTION_ID);
+    assert_eq!(copied_entry.1, "custom source must survive");
+}
+
+#[tokio::test]
+async fn migration_rejects_conflicting_password_identity_owners() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    before_login_entry_connection_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let first_user_id = Uuid::now_v7();
+    let second_user_id = Uuid::now_v7();
+    let first_entry_id = Uuid::now_v7();
+    let second_entry_id = Uuid::now_v7();
+    seed_current_user(&pool, first_user_id, "first", "first@example.com").await;
+    seed_current_user(&pool, second_user_id, "second", "second@example.com").await;
+    seed_current_authenticator(
+        &pool,
+        first_entry_id,
+        "password-local",
+        "First password",
+        false,
+        "first source",
+    )
+    .await;
+    seed_current_authenticator(
+        &pool,
+        second_entry_id,
+        "password-local",
+        "Second password",
+        false,
+        "second source",
+    )
+    .await;
+    seed_current_identity(
+        &pool,
+        Uuid::now_v7(),
+        first_user_id,
+        first_entry_id,
+        "shared",
+    )
+    .await;
+    seed_current_identity(
+        &pool,
+        Uuid::now_v7(),
+        second_user_id,
+        second_entry_id,
+        "SHARED",
+    )
+    .await;
+
+    let error = run_migrations(&pool)
+        .await
+        .expect_err("conflicting local identities must fail closed");
+    assert!(error
+        .to_string()
+        .contains("cannot merge password-local identity namespaces with conflicting users"));
+}
+
+#[tokio::test]
+async fn migrated_external_identity_subjects_are_case_sensitive() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    before_login_entry_connection_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
+    let user_id = Uuid::now_v7();
+    let connection_id = Uuid::now_v7();
+    seed_current_user(&pool, user_id, "external", "external@example.com").await;
+    seed_current_authenticator(
+        &pool,
+        connection_id,
+        "oidc-test",
+        "OIDC",
+        false,
+        "external source",
+    )
+    .await;
+    seed_current_identity(
+        &pool,
+        Uuid::now_v7(),
+        user_id,
+        connection_id,
+        "CaseSensitiveSubject",
+    )
+    .await;
+    run_migrations(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"
+        insert into user_auth_identities (
+            id, user_id, connection_id, subject_type, subject_value,
+            profile, verified, metadata
+        ) values ($1, $2, $3, 'account', 'casesensitivesubject', '{}', true, '{}')
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(connection_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let identity_count: i64 =
+        sqlx::query_scalar("select count(*) from user_auth_identities where connection_id = $1")
+            .bind(connection_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(identity_count, 2);
 }

@@ -184,7 +184,7 @@ pub(super) async fn seed_network_egress_resolver(
     let package = TempNetworkEgressPackage::new(proxy_url);
     let root = state
         .store
-        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
+        .find_user_for_password_login(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID, "root")
         .await
         .unwrap()
         .unwrap();

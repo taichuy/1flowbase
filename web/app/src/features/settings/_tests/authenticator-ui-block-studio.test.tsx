@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { AuthenticatorUiBlockStudio } from '../components/auth-center/AuthenticatorUiBlockStudio';
+import { LoginEntryUiBlockStudio } from '../components/auth-center/LoginEntryUiBlockStudio';
 import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
+import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
 
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
@@ -23,6 +24,9 @@ vi.mock(
   '../../frontstage/hooks/use-frontstage-block-catalog',
   () => blockCatalogHook
 );
+vi.mock('../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
 vi.mock(
   '../../frontstage/components/jsx-studio/JsxStudioResourcePanel',
   () => ({
@@ -109,7 +113,11 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
-describe('AuthenticatorUiBlockStudio', () => {
+describe('LoginEntryUiBlockStudio', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     monacoHook.addExtraLib.mockReturnValue({ dispose: vi.fn() });
@@ -140,14 +148,14 @@ describe('AuthenticatorUiBlockStudio', () => {
 
   test('D4-AC-005 injects the standard Native React declarations into Monaco', async () => {
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={[
           {
-            label: 'ctx.inputs.authenticator_id',
-            member_path: 'inputs.authenticator_id',
+            label: 'ctx.inputs.login_entry_id',
+            member_path: 'inputs.login_entry_id',
             schema: { type: 'string' }
           }
         ]}
@@ -171,11 +179,21 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    await waitFor(() =>
-      expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
-        expect.stringContaining('declare namespace JSX'),
-        'file:///1flowbase/native-react-jsx.d.ts'
-      )
+    await waitFor(
+      () =>
+        expect(screen.getByRole('group', { name: '代码' })).toHaveAttribute(
+          'aria-busy',
+          'false'
+        ),
+      { timeout: 5000 }
+    );
+    await waitFor(
+      () =>
+        expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
+          expect.stringContaining('declare namespace JSX'),
+          'file:///1flowbase/native-react-jsx.d.ts'
+        ),
+      { timeout: 5000 }
     );
     expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining('interface NativeReactBlockContext'),
@@ -189,17 +207,17 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
       expect.objectContaining({
         contextVariables: [
-          expect.objectContaining({ member_path: 'inputs.authenticator_id' })
+          expect.objectContaining({ member_path: 'inputs.login_entry_id' })
         ]
       })
     );
   });
 
-  test('AC-024 marks a missing Auth context catalog unavailable', () => {
+  test('AC-024 marks a missing Auth context catalog unavailable', async () => {
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={undefined as never}
         description={null}
@@ -222,17 +240,17 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '变量' }));
+    fireEvent.click(await screen.findByRole('button', { name: '变量' }));
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
       expect.objectContaining({ contextVariables: undefined })
     );
   });
 
-  test('AC-004 uses the shared Studio configuration panel', () => {
+  test('AC-004 uses the shared Studio configuration panel', async () => {
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={[]}
         description={null}
@@ -251,7 +269,7 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '区块设置' }));
+    fireEvent.click(await screen.findByRole('button', { name: '区块设置' }));
     expect(
       screen
         .getByText('Password')
@@ -262,9 +280,9 @@ describe('AuthenticatorUiBlockStudio', () => {
   test('AC-043/044/045 runs the current draft from the header without saving it', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={[]}
         description={null}
@@ -287,9 +305,16 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'TSX source' }), {
-      target: { value: 'first unsaved draft' }
-    });
+    fireEvent.change(
+      await screen.findByRole(
+        'textbox',
+        { name: 'TSX source' },
+        { timeout: 5000 }
+      ),
+      {
+        target: { value: 'first unsaved draft' }
+      }
+    );
     fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
     expect(resourcePanelHook.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ runPanel: expect.anything() })
@@ -353,7 +378,7 @@ describe('AuthenticatorUiBlockStudio', () => {
       observeApiCall
     });
     expect(previewContext.inputs).toEqual({
-      authenticator_id: 'password-local',
+      login_entry_id: 'password-local',
       authenticator_selection_available: false,
       public_variables: {
         title: 'Password',
@@ -364,11 +389,11 @@ describe('AuthenticatorUiBlockStudio', () => {
     expect(previewContext.application).toBeNull();
   });
 
-  test('AC-013 keeps editor errors in a content-sized notice row', () => {
+  test('AC-013 keeps editor errors in a content-sized notice row', async () => {
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={[]}
         description={null}
@@ -387,7 +412,7 @@ describe('AuthenticatorUiBlockStudio', () => {
       />
     );
 
-    expect(screen.getByRole('alert').parentElement).toHaveClass(
+    expect((await screen.findByRole('alert')).parentElement).toHaveClass(
       'frontstage-jsx-studio__editor-notice'
     );
   });
@@ -400,9 +425,9 @@ export default { main } satisfies BlockModule;`;
       'export default function PasswordLocalAuth() { return null; }';
     const onSave = vi.fn();
     render(
-      <AuthenticatorUiBlockStudio
-        authenticatorId="password-local"
-        authenticatorTitle="Password"
+      <LoginEntryUiBlockStudio
+        loginEntryId="password-local"
+        loginEntryTitle="Password"
         authType="password_local"
         contextVariables={[]}
         defaultSource={defaultSource}
@@ -423,24 +448,19 @@ export default { main } satisfies BlockModule;`;
     );
 
     expect(
-      screen.getByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
+      await screen.findByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'auto.run' }));
-    fireEvent.click(screen.getByRole('button', { name: 'auto.save' }));
+    fireEvent.click(screen.getByRole('button', { name: /运\s*行/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     expect(onSave).not.toHaveBeenCalled();
     expect(trialPanelHook.render).not.toHaveBeenCalled();
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'auto.auth_center_restore_default_ui'
+        name: '恢复默认'
       })
     );
-    const confirmText = (await screen.findAllByText('auto.confirm')).find(
-      (element) => element.tagName === 'SPAN'
-    );
-    const confirmButton = confirmText?.closest('button');
-    expect(confirmButton).not.toBeNull();
-    fireEvent.click(confirmButton as HTMLElement);
+    fireEvent.click(await screen.findByRole('button', { name: /确\s*认/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(defaultSource));
   });
 });

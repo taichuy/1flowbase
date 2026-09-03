@@ -1,14 +1,14 @@
 use anyhow::Result;
 use control_plane_contracts::ports::LifecyclePublicationCatalog;
 use control_plane_contracts::ports::{
-    ApplicationRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
-    CreateApplicationInput, CreateMemberInput, FlowRepository, MemberRepository,
+    ApplicationRepository, AuthRepository, BootstrapRepository, CreateApplicationInput,
+    CreateMemberInput, FlowRepository, LoginEntrySettingsRepository, MemberRepository,
     UpdateProfileInput, WorkspaceRepository,
 };
 use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use domain::{
-    ActorContext, ApplicationRecord, AuditLogRecord, AuthenticatorRecord, FlowChangeKind,
-    FlowEditorState, PermissionDefinition, RoleScopeKind, TenantRecord, UserRecord,
+    ActorContext, ApplicationRecord, AuditLogRecord, FlowChangeKind, FlowEditorState,
+    LoginEntryRecord, PermissionDefinition, RoleScopeKind, TenantRecord, UserRecord,
     WorkspaceRecord,
 };
 use sqlx::{PgPool, Row};
@@ -97,17 +97,14 @@ impl PgControlPlaneStore {
         &self.pool
     }
 
-    pub async fn upsert_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
-        BootstrapRepository::upsert_authenticator(self, authenticator).await
+    pub async fn upsert_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
+        BootstrapRepository::upsert_login_entry(self, authenticator).await
     }
 
-    pub async fn update_authenticator_config(
-        &self,
-        authenticator: &AuthenticatorRecord,
-    ) -> Result<()> {
+    pub async fn update_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
         sqlx::query(
             r#"
-            update authenticators
+            update login_entries
             set title = $2,
                 enabled = $3,
                 public_ui_block = $4,
@@ -127,33 +124,53 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    pub async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
+    pub async fn create_login_entry(&self, login_entry: &LoginEntryRecord) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        let connection_auth_type: String = sqlx::query_scalar(
+            r#"
+            insert into authentication_connections (id, auth_type, is_builtin, config)
+            values ($1, $2, $3, '{}'::jsonb)
+            on conflict (id) do update set id = authentication_connections.id
+            returning auth_type
+            "#,
+        )
+        .bind(login_entry.connection_id)
+        .bind(&login_entry.auth_type)
+        .bind(login_entry.connection_id == domain::PASSWORD_LOCAL_CONNECTION_ID)
+        .fetch_one(&mut *tx)
+        .await?;
+        if connection_auth_type != login_entry.auth_type {
+            return Err(ControlPlaneError::Conflict("authentication_connection_type").into());
+        }
         sqlx::query(
             r#"
-            insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, public_ui_block, options)
+            insert into login_entries (
+                id, connection_id, title, enabled, is_builtin, sort_order, public_ui_block, options
+            )
             values ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
-        .bind(authenticator.id)
-        .bind(&authenticator.auth_type)
-        .bind(&authenticator.title)
-        .bind(authenticator.enabled)
-        .bind(authenticator.is_builtin)
-        .bind(authenticator.sort_order)
-        .bind(&authenticator.public_ui_block)
-        .bind(&authenticator.options)
-        .execute(&self.pool)
+        .bind(login_entry.id)
+        .bind(login_entry.connection_id)
+        .bind(&login_entry.title)
+        .bind(login_entry.enabled)
+        .bind(login_entry.is_builtin)
+        .bind(login_entry.sort_order)
+        .bind(&login_entry.public_ui_block)
+        .bind(&login_entry.options)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(())
     }
 
-    pub async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
+    pub async fn delete_login_entry(&self, id: Uuid) -> Result<()> {
         let mut tx = self.pool.begin().await?;
-        let authenticator = sqlx::query(
+        let login_entry = sqlx::query(
             r#"
             select is_builtin
-            from authenticators
+            from login_entries
             where id = $1
             for update
             "#,
@@ -161,24 +178,14 @@ impl PgControlPlaneStore {
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?;
-        let Some(authenticator) = authenticator else {
-            return Err(ControlPlaneError::NotFound("authenticator").into());
+        let Some(login_entry) = login_entry else {
+            return Err(ControlPlaneError::NotFound("login_entry").into());
         };
-        if authenticator.get::<bool, _>("is_builtin") {
-            return Err(ControlPlaneError::InvalidInput("builtin_authenticator").into());
+        if login_entry.get::<bool, _>("is_builtin") {
+            return Err(ControlPlaneError::InvalidInput("builtin_login_entry").into());
         }
 
-        let identity_count: i64 = sqlx::query_scalar(
-            "select count(*) from user_auth_identities where authenticator_id = $1",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if identity_count > 0 {
-            return Err(ControlPlaneError::Conflict("authenticator_identity_bindings").into());
-        }
-
-        sqlx::query("delete from authenticators where id = $1")
+        sqlx::query("delete from login_entries where id = $1")
             .bind(id)
             .execute(&mut *tx)
             .await?;
@@ -187,12 +194,12 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    pub async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
+    pub async fn update_login_entry_order(&self, ids: &[Uuid]) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         for (index, id) in ids.iter().enumerate() {
             sqlx::query(
                 r#"
-                update authenticators
+                update login_entries
                 set sort_order = $2,
                     updated_at = now()
                 where id = $1
@@ -256,20 +263,20 @@ impl PgControlPlaneStore {
         .await
     }
 
-    pub async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
-        AuthRepository::find_authenticator(self, id).await
+    pub async fn find_login_entry(&self, id: Uuid) -> Result<Option<LoginEntryRecord>> {
+        AuthRepository::find_login_entry(self, id).await
     }
 
-    pub async fn list_authenticators(&self) -> Result<Vec<AuthenticatorRecord>> {
-        AuthRepository::list_authenticators(self).await
+    pub async fn list_login_entries(&self) -> Result<Vec<LoginEntryRecord>> {
+        AuthRepository::list_login_entries(self).await
     }
 
     pub async fn find_user_for_password_login(
         &self,
-        authenticator_id: Uuid,
+        connection_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
-        AuthRepository::find_user_for_password_login(self, authenticator_id, identifier).await
+        AuthRepository::find_user_for_password_login(self, connection_id, identifier).await
     }
 
     pub async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>> {
@@ -411,21 +418,21 @@ impl PgControlPlaneStore {
 }
 
 #[async_trait::async_trait]
-impl AuthenticatorSettingsRepository for PgControlPlaneStore {
-    async fn create_authenticator(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
-        PgControlPlaneStore::create_authenticator(self, authenticator).await
+impl LoginEntrySettingsRepository for PgControlPlaneStore {
+    async fn create_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
+        PgControlPlaneStore::create_login_entry(self, authenticator).await
     }
 
-    async fn update_authenticator_config(&self, authenticator: &AuthenticatorRecord) -> Result<()> {
-        PgControlPlaneStore::update_authenticator_config(self, authenticator).await
+    async fn update_login_entry(&self, authenticator: &LoginEntryRecord) -> Result<()> {
+        PgControlPlaneStore::update_login_entry(self, authenticator).await
     }
 
-    async fn delete_authenticator_if_unbound(&self, id: Uuid) -> Result<()> {
-        PgControlPlaneStore::delete_authenticator_if_unbound(self, id).await
+    async fn delete_login_entry(&self, id: Uuid) -> Result<()> {
+        PgControlPlaneStore::delete_login_entry(self, id).await
     }
 
-    async fn update_authenticator_order(&self, ids: &[Uuid]) -> Result<()> {
-        PgControlPlaneStore::update_authenticator_order(self, ids).await
+    async fn update_login_entry_order(&self, ids: &[Uuid]) -> Result<()> {
+        PgControlPlaneStore::update_login_entry_order(self, ids).await
     }
 }
 

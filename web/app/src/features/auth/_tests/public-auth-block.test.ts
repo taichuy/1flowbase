@@ -34,7 +34,7 @@ describe('public Auth Block host adapter', () => {
     expect(
       createPublicAuthInputs(instance.id, instance.public_variables, true)
     ).toEqual({
-      authenticator_id: instance.id,
+      login_entry_id: instance.id,
       authenticator_selection_available: true,
       public_variables: instance.public_variables
     });

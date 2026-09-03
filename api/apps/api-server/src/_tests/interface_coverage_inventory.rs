@@ -163,7 +163,7 @@ fn issue_1944_inventory_is_finite_frozen_and_source_anchored() {
     assert_eq!(
         inventory.migration_scope,
         [
-            "public.auth.login-instances",
+            "public.auth.login-entries",
             "console.host-infrastructure.providers",
             "application.native.runs",
             "mcp.user-api-key.tools",

@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth_repository::identity_binding::{
-        insert_password_identities_for_authenticator, insert_password_local_identities,
+        insert_password_identities_for_connection, insert_password_local_identities,
         replace_password_local_contact_identities,
     },
     auth_repository::map_user_row,
@@ -82,9 +82,9 @@ impl SelfRegistrationRepository for PgControlPlaneStore {
             .execute(&mut *tx)
             .await?;
 
-            insert_password_identities_for_authenticator(
+            insert_password_identities_for_connection(
                 &mut tx,
-                input.authenticator_id,
+                input.connection_id,
                 user_id,
                 &input.account,
                 &input.email,

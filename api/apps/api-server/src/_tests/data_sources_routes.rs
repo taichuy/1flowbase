@@ -181,7 +181,7 @@ async fn seed_data_source_installation(
 ) -> String {
     let root = state
         .store
-        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
+        .find_user_for_password_login(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID, "root")
         .await
         .unwrap()
         .unwrap();

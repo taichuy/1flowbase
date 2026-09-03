@@ -254,25 +254,25 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         vec![
             (
                 "DELETE",
-                "/api/console/settings/auth-center/authenticators/{id}",
+                "/api/console/settings/auth-center/login-entries/{id}",
             ),
             ("GET", "/api/console/settings/auth-center/overview"),
-            ("POST", "/api/console/settings/auth-center/authenticators"),
+            ("POST", "/api/console/settings/auth-center/login-entries"),
             (
                 "POST",
-                "/api/console/settings/auth-center/authenticators/{id}/copy",
+                "/api/console/settings/auth-center/login-entries/{id}/copy",
             ),
             (
                 "PUT",
-                "/api/console/settings/auth-center/authenticators/order",
+                "/api/console/settings/auth-center/login-entries/order",
             ),
             (
                 "PUT",
-                "/api/console/settings/auth-center/authenticators/{id}/config",
+                "/api/console/settings/auth-center/login-entries/{id}/config",
             ),
             (
                 "PUT",
-                "/api/console/settings/auth-center/authenticators/{id}/enabled",
+                "/api/console/settings/auth-center/login-entries/{id}/enabled",
             ),
         ]
     );

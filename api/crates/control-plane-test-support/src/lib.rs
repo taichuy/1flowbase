@@ -26,9 +26,7 @@ mod tests {
 
     use async_trait::async_trait;
     use control_plane::ports::{BootstrapRepository, WorkspaceBootstrapResult};
-    use domain::{
-        AuthenticatorRecord, PermissionDefinition, RoleTemplate, TenantRecord, UserRecord,
-    };
+    use domain::{LoginEntryRecord, PermissionDefinition, RoleTemplate, TenantRecord, UserRecord};
     use uuid::Uuid;
 
     #[derive(Debug, PartialEq, Eq)]
@@ -53,20 +51,20 @@ mod tests {
 
     #[async_trait]
     impl BootstrapRepository for RecordingBootstrapRepository {
-        async fn replace_authenticator_public_ui_block_if_matches(
+        async fn replace_login_entry_public_ui_block_if_matches(
             &self,
-            _authenticator_id: Uuid,
+            _login_entry_id: Uuid,
             _expected: &str,
             _replacement: &str,
         ) -> anyhow::Result<bool> {
-            unreachable!("authorization fixture does not bootstrap authenticators")
+            unreachable!("authorization fixture does not bootstrap login_entries")
         }
 
-        async fn upsert_authenticator(
+        async fn upsert_login_entry(
             &self,
-            _authenticator: &AuthenticatorRecord,
+            _authenticator: &LoginEntryRecord,
         ) -> anyhow::Result<()> {
-            unreachable!("authorization fixture does not bootstrap authenticators")
+            unreachable!("authorization fixture does not bootstrap login_entries")
         }
 
         async fn upsert_permission_catalog(

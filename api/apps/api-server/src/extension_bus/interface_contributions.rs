@@ -244,7 +244,7 @@ pub(crate) fn production_interface_contributions(
             Arc::clone(state),
             true,
         ));
-    let public_login_instances = crate::routes::auth::public_login_instances_port(
+    let public_login_entries = crate::routes::auth::public_login_entries_port(
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
@@ -253,6 +253,7 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.session_ttl_days,
+        Arc::clone(&state.authenticator_registry),
     );
     let public_providers = crate::routes::auth::public_providers_port(
         state.store.clone(),
@@ -418,10 +419,10 @@ pub(crate) fn production_interface_contributions(
 
     Ok(vec![
         InterfaceRegistryContribution::new(
-            "api-server.public-login-instances",
-            &["public.auth.login-instances.read"],
+            "api-server.public-login-entries",
+            &["public.auth.login-entries.read"],
             &["api-server.public-auth"],
-            crate::routes::auth::compile_public_login_instances_registry(public_login_instances)?,
+            crate::routes::auth::compile_public_login_entries_registry(public_login_entries)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.public-sign-in",
@@ -855,13 +856,13 @@ pub(crate) fn production_interface_contributions(
             "api-server.console-auth-center",
             &[
                 "auth_center.overview.view",
-                "auth_center.authenticators.create",
-                "auth_center.authenticators.order",
-                "auth_center.authenticators.enabled.update",
-                "auth_center.authenticators.copy",
-                "auth_center.authenticators.update.config",
-                "auth_center.authenticators.update.public-ui-block",
-                "auth_center.authenticators.delete",
+                "auth_center.login_entries.create",
+                "auth_center.login_entries.order",
+                "auth_center.login_entries.enabled.update",
+                "auth_center.login_entries.copy",
+                "auth_center.login_entries.update.config",
+                "auth_center.login_entries.update.public-ui-block",
+                "auth_center.login_entries.delete",
             ],
             &["api-server.console-auth-center"],
             crate::routes::auth_center_interface::compile_registry(console_auth_center)?,

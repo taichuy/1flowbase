@@ -5,14 +5,14 @@ const {
   navigateSpy,
   fetchCurrentMe,
   fetchCurrentSession,
-  fetchLoginInstances,
+  fetchLoginEntries,
   renderedBlocks
 } =
   vi.hoisted(() => ({
     navigateSpy: vi.fn(),
     fetchCurrentMe: vi.fn(),
     fetchCurrentSession: vi.fn(),
-    fetchLoginInstances: vi.fn(),
+    fetchLoginEntries: vi.fn(),
     renderedBlocks: vi.fn()
   }));
 
@@ -26,20 +26,20 @@ vi.mock('@tanstack/react-router', async () => {
 vi.mock('../api/session', () => ({
   fetchCurrentMe,
   fetchCurrentSession,
-  fetchLoginInstances
+  fetchLoginEntries
 }));
 
 vi.mock('../components/PublicAuthBlock', () => ({
   PublicAuthBlock: (props: {
     instance: { id: string; public_ui_block: string };
-    authenticatorSelector: { request: () => void } | null;
+    loginEntrySelector: { request: () => void } | null;
     onAuthenticated: (session: {
       csrf_token: string;
       effective_display_role: string;
       current_workspace_id: string;
     }) => Promise<void>;
   }) => {
-    renderedBlocks(props.instance, Boolean(props.authenticatorSelector));
+    renderedBlocks(props.instance, Boolean(props.loginEntrySelector));
     return (
       <>
         <button
@@ -53,8 +53,8 @@ vi.mock('../components/PublicAuthBlock', () => ({
         >
           Run {props.instance.id}
         </button>
-        {props.authenticatorSelector ? (
-          <button onClick={props.authenticatorSelector.request}>
+        {props.loginEntrySelector ? (
+          <button onClick={props.loginEntrySelector.request}>
             Request authenticator selector
           </button>
         ) : null}
@@ -89,12 +89,12 @@ describe('SignInPage', () => {
     navigateSpy.mockReset();
     fetchCurrentMe.mockReset();
     fetchCurrentSession.mockReset();
-    fetchLoginInstances.mockReset();
+    fetchLoginEntries.mockReset();
     renderedBlocks.mockReset();
     useAuthStore.getState().setAnonymous();
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: passwordInstance.id,
-      login_instances: [passwordInstance]
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      login_entries: [passwordInstance]
     });
     fetchCurrentMe.mockResolvedValue({
       id: 'user-1',
@@ -156,9 +156,9 @@ describe('SignInPage', () => {
       sort_order: 10,
       public_ui_block: 'qr block'
     };
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: passwordInstance.id,
-      login_instances: [passwordInstance, qrInstance]
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      login_entries: [passwordInstance, qrInstance]
     });
 
     const view = render(
@@ -181,12 +181,12 @@ describe('SignInPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'QR code' }));
     expect(navigateSpy).toHaveBeenCalledWith({
       to: '/sign-in',
-      search: { authenticator_id: 'auth-qr' }
+      search: { login_entry_id: 'auth-qr' }
     });
 
     view.rerender(
       <AppProviders>
-        <SignInPage authenticatorId="auth-qr" />
+        <SignInPage loginEntryId="auth-qr" />
       </AppProviders>
     );
     expect(
@@ -205,7 +205,7 @@ describe('SignInPage', () => {
     );
     expect(navigateSpy).toHaveBeenLastCalledWith({
       to: '/sign-in',
-      search: { authenticator_id: undefined },
+      search: { login_entry_id: undefined },
       replace: true
     });
 
@@ -233,14 +233,14 @@ describe('SignInPage', () => {
       sort_order: 10,
       public_ui_block: 'qr block'
     };
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: passwordInstance.id,
-      login_instances: [passwordInstance, qrInstance]
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      login_entries: [passwordInstance, qrInstance]
     });
 
     render(
       <AppProviders>
-        <SignInPage authenticatorId="auth-qr" />
+        <SignInPage loginEntryId="auth-qr" />
       </AppProviders>
     );
 
@@ -262,14 +262,14 @@ describe('SignInPage', () => {
       sort_order: 10,
       public_ui_block: 'qr block'
     };
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: passwordInstance.id,
-      login_instances: [passwordInstance, qrInstance]
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      login_entries: [passwordInstance, qrInstance]
     });
 
     render(
       <AppProviders>
-        <SignInPage authenticatorId="missing-authenticator" />
+        <SignInPage loginEntryId="missing-authenticator" />
       </AppProviders>
     );
 
@@ -279,7 +279,7 @@ describe('SignInPage', () => {
     await waitFor(() =>
       expect(navigateSpy).toHaveBeenCalledWith({
         to: '/sign-in',
-        search: { authenticator_id: undefined },
+        search: { login_entry_id: undefined },
         replace: true
       })
     );
@@ -287,9 +287,9 @@ describe('SignInPage', () => {
   });
 
   test('AC-002 shows the escape form when no login instances are enabled', async () => {
-    fetchLoginInstances.mockResolvedValue({
-      default_authenticator_id: '',
-      login_instances: []
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: '',
+      login_entries: []
     });
 
     render(
@@ -306,7 +306,7 @@ describe('SignInPage', () => {
   });
 
   test('AC-001 shows the escape form when login instance discovery fails', async () => {
-    fetchLoginInstances.mockRejectedValue(new Error('network failed'));
+    fetchLoginEntries.mockRejectedValue(new Error('network failed'));
     render(
       <AppProviders>
         <SignInPage />

@@ -102,8 +102,9 @@ async fn seed_store() -> (
         .await
         .unwrap();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -184,7 +185,7 @@ async fn seed_store_before_main_instance_aggregation() -> (
             add column if not exists scope_id uuid not null
             default '00000000-0000-0000-0000-000000000000'::uuid;
         alter table plugin_installations add column if not exists updated_by uuid;
-        alter table authenticators
+        alter table login_entries
             add column if not exists public_ui_block text not null default '';
         "#,
     )
@@ -205,8 +206,9 @@ async fn seed_store_before_main_instance_aggregation() -> (
         .await
         .unwrap();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

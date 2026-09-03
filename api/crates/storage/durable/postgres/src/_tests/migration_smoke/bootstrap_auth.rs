@@ -18,8 +18,9 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
         .await
         .unwrap();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -51,12 +52,12 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
         .any(|permission| permission.code == "workspace.configure.all"));
     assert_eq!(
         store
-            .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+            .find_login_entry(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
             .await
             .unwrap()
             .unwrap()
             .id,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
     );
     let root_identities: Vec<(String, String)> = sqlx::query_as(
         r#"
@@ -86,8 +87,9 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
     let store = PgControlPlaneStore::new(pool);
 
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -113,7 +115,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
 
     let mut saved = store
-        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+        .find_login_entry(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
         .await
         .unwrap()
         .unwrap();
@@ -136,11 +138,12 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
             "lockout_after_attempts": 5
         }
     });
-    store.update_authenticator_config(&saved).await.unwrap();
+    store.update_login_entry(&saved).await.unwrap();
 
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,
@@ -166,7 +169,7 @@ async fn bootstrap_repository_preserves_password_local_saved_config_on_conflict(
         .unwrap();
 
     let after_bootstrap = store
-        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+        .find_login_entry(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
         .await
         .unwrap()
         .unwrap();
@@ -197,8 +200,9 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
-    let mut authenticator = domain::AuthenticatorRecord {
-        id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    let mut authenticator = domain::LoginEntryRecord {
+        id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
         auth_type: "password-local".into(),
         title: "Password".into(),
         enabled: true,
@@ -207,10 +211,10 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
         public_ui_block: "previous official block".into(),
         options: serde_json::json!({}),
     };
-    store.upsert_authenticator(&authenticator).await.unwrap();
+    store.upsert_login_entry(&authenticator).await.unwrap();
 
     let replaced = control_plane_contracts::ports::BootstrapRepository::
-        replace_authenticator_public_ui_block_if_matches(
+        replace_login_entry_public_ui_block_if_matches(
             &store,
             authenticator.id,
             "previous official block",
@@ -221,7 +225,7 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
     assert!(replaced);
     assert_eq!(
         store
-            .find_authenticator(authenticator.id)
+            .find_login_entry(authenticator.id)
             .await
             .unwrap()
             .unwrap()
@@ -230,12 +234,9 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
     );
 
     authenticator.public_ui_block = "custom saved block".into();
-    store
-        .update_authenticator_config(&authenticator)
-        .await
-        .unwrap();
+    store.update_login_entry(&authenticator).await.unwrap();
     let replaced = control_plane_contracts::ports::BootstrapRepository::
-        replace_authenticator_public_ui_block_if_matches(
+        replace_login_entry_public_ui_block_if_matches(
             &store,
             authenticator.id,
             "previous official block",
@@ -246,7 +247,7 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
     assert!(!replaced);
     assert_eq!(
         store
-            .find_authenticator(authenticator.id)
+            .find_login_entry(authenticator.id)
             .await
             .unwrap()
             .unwrap()
@@ -256,15 +257,16 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
 }
 
 #[tokio::test]
-async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict() {
+async fn bootstrap_repository_overwrites_non_builtin_login_entry_on_conflict() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
     let oidc_id = Uuid::now_v7();
 
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
+        .upsert_login_entry(&domain::LoginEntryRecord {
             id: oidc_id,
+            connection_id: oidc_id,
             auth_type: "oidc".into(),
             title: "OIDC".into(),
             enabled: false,
@@ -282,8 +284,9 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
         .unwrap();
 
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
+        .upsert_login_entry(&domain::LoginEntryRecord {
             id: oidc_id,
+            connection_id: oidc_id,
             auth_type: "oidc".into(),
             title: "OIDC Login".into(),
             enabled: true,
@@ -300,7 +303,7 @@ async fn bootstrap_repository_overwrites_non_builtin_authenticator_on_conflict()
         .await
         .unwrap();
 
-    let oidc = store.find_authenticator(oidc_id).await.unwrap().unwrap();
+    let oidc = store.find_login_entry(oidc_id).await.unwrap().unwrap();
     assert_eq!(oidc.title, "OIDC Login");
     assert!(oidc.enabled);
     // Provider reconciliation may refresh provider-owned defaults/config, but a

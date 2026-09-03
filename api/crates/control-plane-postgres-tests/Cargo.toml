@@ -49,6 +49,10 @@ path = "tests/role_console_policy_integration.rs"
 name = "dependency_boundaries"
 path = "tests/dependency_boundaries.rs"
 
+[[test]]
+name = "external_identity_binding"
+path = "tests/external_identity_binding.rs"
+
 [dev-dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
@@ -62,6 +66,7 @@ serde_json.workspace = true
 sqlx.workspace = true
 storage-durable = { path = "../storage/durable/core" }
 storage-durable-postgres = { path = "../storage/durable/postgres" }
+storage-ephemeral = { path = "../storage/ephemeral" }
 time.workspace = true
 tokio.workspace = true
 uuid.workspace = true

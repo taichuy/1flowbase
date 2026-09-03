@@ -9,7 +9,7 @@ pub const PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK: &str = r#"import { useState }
 import { Alert, Button, Input, Space } from 'antd';
 
 type AuthInputs = {
-  authenticator_id?: string;
+  login_entry_id?: string;
   public_variables?: {
     self_registration_enabled?: boolean;
   };
@@ -43,7 +43,7 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
     try {
       await ctx.api.post('/api/public/auth/sign-in', {
         body: {
-          authenticator_id: ctx.inputs.authenticator_id,
+          login_entry_id: ctx.inputs.login_entry_id,
           identifier,
           password
         }
@@ -62,7 +62,7 @@ export default function PasswordLocalAuth({ ctx }: { ctx: AuthContext }) {
     try {
       await ctx.api.post('/api/public/auth/sign-up', {
         body: {
-          authenticator_id: ctx.inputs.authenticator_id,
+          login_entry_id: ctx.inputs.login_entry_id,
           account,
           email,
           password
@@ -224,7 +224,7 @@ pub fn password_local_public_variables(options: &Value) -> Map<String, Value> {
 }
 
 pub fn authenticator_host_public_variables(
-    authenticator: &domain::AuthenticatorRecord,
+    authenticator: &domain::LoginEntryRecord,
 ) -> Map<String, Value> {
     let mut variables = Map::from_iter([
         (

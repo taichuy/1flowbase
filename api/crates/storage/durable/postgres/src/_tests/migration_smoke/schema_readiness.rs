@@ -24,7 +24,7 @@ async fn migration_smoke_creates_auth_and_workspace_tables() {
     assert!(tables.contains(&"users".to_string()));
     assert!(tables.contains(&"roles".to_string()));
     assert!(tables.contains(&"permission_definitions".to_string()));
-    assert!(tables.contains(&"authenticators".to_string()));
+    assert!(tables.contains(&"login_entries".to_string()));
     assert!(tables.contains(&"workspaces".to_string()));
     assert!(tables.contains(&"workspace_memberships".to_string()));
 }
@@ -384,7 +384,7 @@ async fn migration_smoke_creates_system_global_scoped_readiness_columns_and_inde
         );
     }
 
-    for excluded_table in ["authenticators", "tenants", "users", "workspaces"] {
+    for excluded_table in ["login_entries", "tenants", "users", "workspaces"] {
         let system_scope_check_count: i64 = sqlx::query_scalar(
             r#"
             select count(*)

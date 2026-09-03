@@ -492,7 +492,7 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
     let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await
@@ -623,7 +623,7 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
     let _schema_guard = Arc::clone(&state);
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await
@@ -771,7 +771,7 @@ async fn ac_001_deletes_runtime_extension_as_a_preserving_family_uninstall() {
     let _schema_guard = Arc::clone(&state);
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await
@@ -895,7 +895,7 @@ async fn ac_008_deletes_capability_plugin_as_a_preserving_family_uninstall() {
     let _schema_guard = Arc::clone(&state);
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await

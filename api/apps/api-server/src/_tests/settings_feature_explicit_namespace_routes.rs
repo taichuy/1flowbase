@@ -188,7 +188,7 @@ async fn explicit_settings_features_authorize_representative_routes_and_writes()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("cookie", &auth_cookie)
                 .header("x-csrf-token", &auth_csrf)
                 .header("content-type", "application/json")
@@ -214,8 +214,8 @@ async fn explicit_settings_features_authorize_representative_routes_and_writes()
             Request::builder()
                 .method("DELETE")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &auth_cookie)
                 .header("x-csrf-token", &auth_csrf)

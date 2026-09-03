@@ -14,7 +14,7 @@ async fn eil_f04_all_four_public_auth_routes_have_compiled_bindings() {
 
     for (method, path) in [
         ("GET", "/api/public/auth/providers"),
-        ("GET", "/api/public/auth/login-instances"),
+        ("GET", "/api/public/auth/login-entries"),
         ("POST", "/api/public/auth/sign-in"),
         ("POST", "/api/public/auth/sign-up"),
     ] {

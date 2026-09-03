@@ -2,7 +2,7 @@ import { ConfigProvider } from 'antd';
 import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import type { PublicLoginInstance } from '../../api/session';
+import type { PublicLoginEntry } from '../../api/session';
 import { PublicAuthBlock } from '../../components/PublicAuthBlock';
 
 const source = `
@@ -19,7 +19,7 @@ const source = `
           mode === 'sign_in'
             ? '/api/public/auth/sign-in'
             : '/api/public/auth/sign-up',
-          { body: { authenticator_id: ctx.inputs.authenticator_id, ...values } }
+          { body: { login_entry_id: ctx.inputs.login_entry_id, ...values } }
         );
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Authentication failed');
@@ -78,7 +78,7 @@ function Fixture() {
   const [showLegacy, setShowLegacy] = useState(false);
   const [pageMounted, setPageMounted] = useState(true);
   const activeSource = showLegacy ? legacySource : source;
-  const instance = useMemo<PublicLoginInstance>(
+  const instance = useMemo<PublicLoginEntry>(
     () => ({
       id: 'auth-password-local',
       auth_type: 'password-local',

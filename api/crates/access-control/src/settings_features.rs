@@ -381,27 +381,27 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/auth-center/overview"),
                 (
                     "POST",
-                    "/api/console/settings/auth-center/authenticators",
+                    "/api/console/settings/auth-center/login-entries",
                 ),
                 (
                     "PUT",
-                    "/api/console/settings/auth-center/authenticators/order",
+                    "/api/console/settings/auth-center/login-entries/order",
                 ),
                 (
                     "PUT",
-                    "/api/console/settings/auth-center/authenticators/{id}/enabled",
+                    "/api/console/settings/auth-center/login-entries/{id}/enabled",
                 ),
                 (
                     "POST",
-                    "/api/console/settings/auth-center/authenticators/{id}/copy",
+                    "/api/console/settings/auth-center/login-entries/{id}/copy",
                 ),
                 (
                     "PUT",
-                    "/api/console/settings/auth-center/authenticators/{id}/config",
+                    "/api/console/settings/auth-center/login-entries/{id}/config",
                 ),
                 (
                     "DELETE",
-                    "/api/console/settings/auth-center/authenticators/{id}",
+                    "/api/console/settings/auth-center/login-entries/{id}",
                 ),
             ]),
         },

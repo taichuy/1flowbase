@@ -231,7 +231,7 @@ impl PostgreSqlPostRestoreHealthVerifier {
                 return Err(PostRestoreDependencyError);
             }
             let authenticator =
-                AuthRepository::find_authenticator(&store, domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+                AuthRepository::find_login_entry(&store, domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
                     .await
                     .map_err(|_| PostRestoreDependencyError)?
                     .filter(|authenticator| authenticator.enabled)

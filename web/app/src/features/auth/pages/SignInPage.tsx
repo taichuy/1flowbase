@@ -15,8 +15,8 @@ import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
   fetchCurrentSession,
-  fetchLoginInstances,
-  type PublicLoginInstance
+  fetchLoginEntries,
+  type PublicLoginEntry
 } from '../api/session';
 import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
 
@@ -35,41 +35,41 @@ const PublicAuthBlock = lazy(() =>
 import './sign-in-page.css';
 
 interface SignInPageProps {
-  authenticatorId?: string;
+  loginEntryId?: string;
 }
 
-export function SignInPage({ authenticatorId }: SignInPageProps) {
+export function SignInPage({ loginEntryId }: SignInPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
-  const [loginInstances, setLoginInstances] = useState<PublicLoginInstance[]>(
+  const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>(
     []
   );
   const [loading, setLoading] = useState(true);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
-  const selectedLoginInstance = useMemo(
+  const selectedLoginEntry = useMemo(
     () =>
-      loginInstances.length === 1
-        ? loginInstances[0]
-        : (loginInstances.find((item) => item.id === authenticatorId) ?? null),
-    [authenticatorId, loginInstances]
+      loginEntries.length === 1
+        ? loginEntries[0]
+        : (loginEntries.find((item) => item.id === loginEntryId) ?? null),
+    [loginEntryId, loginEntries]
   );
   const selectedInstanceUsesLegacyContract = Boolean(
-    selectedLoginInstance &&
-    diagnoseLegacyBlockModuleSource(selectedLoginInstance.public_ui_block)
+    selectedLoginEntry &&
+    diagnoseLegacyBlockModuleSource(selectedLoginEntry.public_ui_block)
   );
 
   useEffect(() => {
     let active = true;
-    fetchLoginInstances()
+    fetchLoginEntries()
       .then((payload) => {
         if (!active) return;
-        setLoginInstances(payload.login_instances);
+        setLoginEntries(payload.login_entries);
         setDiscoveryFailed(false);
       })
       .catch(() => {
         if (!active) return;
-        setLoginInstances([]);
+        setLoginEntries([]);
         setDiscoveryFailed(true);
       })
       .finally(() => {
@@ -80,34 +80,34 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
     };
   }, []);
 
-  const requestAuthenticatorSelector = useCallback(() => {
+  const requestLoginEntrySelector = useCallback(() => {
     void navigate({
       to: '/sign-in',
-      search: { authenticator_id: undefined },
+      search: { login_entry_id: undefined },
       replace: true
     });
   }, [navigate]);
 
-  const authenticatorSelector = useMemo(
+  const loginEntrySelector = useMemo(
     () =>
-      loginInstances.length > 1
-        ? { request: requestAuthenticatorSelector }
+      loginEntries.length > 1
+        ? { request: requestLoginEntrySelector }
         : null,
-    [loginInstances.length, requestAuthenticatorSelector]
+    [loginEntries.length, requestLoginEntrySelector]
   );
 
   useEffect(() => {
-    if (loading || discoveryFailed || !authenticatorId) return;
-    const pointsToEnabledAuthenticator =
-      loginInstances.length > 1 &&
-      loginInstances.some((instance) => instance.id === authenticatorId);
-    if (!pointsToEnabledAuthenticator) requestAuthenticatorSelector();
+    if (loading || discoveryFailed || !loginEntryId) return;
+    const pointsToEnabledLoginEntry =
+      loginEntries.length > 1 &&
+      loginEntries.some((instance) => instance.id === loginEntryId);
+    if (!pointsToEnabledLoginEntry) requestLoginEntrySelector();
   }, [
-    authenticatorId,
+    loginEntryId,
     discoveryFailed,
     loading,
-    loginInstances,
-    requestAuthenticatorSelector
+    loginEntries,
+    requestLoginEntrySelector
   ]);
 
   const handleAuthenticated = useCallback(
@@ -147,9 +147,9 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
         }}
       >
         <div className="auth-sign-in-content">
-          {loginInstances.length > 1 && !selectedLoginInstance ? (
+          {loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">
-              {loginInstances.map((instance) => (
+              {loginEntries.map((instance) => (
                 <button
                   key={instance.id}
                   className="auth-sign-in-selector-button"
@@ -157,7 +157,7 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
                   onClick={() =>
                     void navigate({
                       to: '/sign-in',
-                      search: { authenticator_id: instance.id }
+                      search: { login_entry_id: instance.id }
                     })
                   }
                 >
@@ -167,26 +167,27 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
             </div>
           ) : null}
           {!loading &&
-          selectedLoginInstance &&
+          selectedLoginEntry &&
           selectedInstanceUsesLegacyContract ? (
             <BuiltinPasswordSignIn
-              authenticatorSelector={authenticatorSelector}
+              loginEntryId={selectedLoginEntry.id}
+              loginEntrySelector={loginEntrySelector}
               onAuthenticated={handleAuthenticated}
             />
           ) : null}
           {!loading &&
-          selectedLoginInstance &&
+          selectedLoginEntry &&
           !selectedInstanceUsesLegacyContract ? (
             <Suspense fallback={null}>
               <PublicAuthBlock
-                key={selectedLoginInstance.id}
-                instance={selectedLoginInstance}
-                authenticatorSelector={authenticatorSelector}
+                key={selectedLoginEntry.id}
+                instance={selectedLoginEntry}
+                loginEntrySelector={loginEntrySelector}
                 onAuthenticated={handleAuthenticated}
               />
             </Suspense>
           ) : null}
-          {!loading && (discoveryFailed || loginInstances.length === 0) ? (
+          {!loading && (discoveryFailed || loginEntries.length === 0) ? (
             <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
           ) : null}
         </div>

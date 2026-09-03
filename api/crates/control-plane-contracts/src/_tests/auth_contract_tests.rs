@@ -1,5 +1,5 @@
 use crate::{
-    ApiKeyRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
+    ApiKeyRepository, AuthRepository, BootstrapRepository, LoginEntrySettingsRepository,
     MemberRepository, RoleConsolePolicyMigrationCutoverMarker,
     RoleConsolePolicyMigrationCutoverState, RoleConsolePolicyMigrationRepository,
     RoleConsolePolicyMigrationSource, RoleConsolePolicyReader, RoleRepository,
@@ -11,7 +11,7 @@ fn auth_repository_contract_keeps_migration_and_role_dto_semantics() {
     auth_traits_remain_canonical::<
         dyn BootstrapRepository,
         dyn AuthRepository,
-        dyn AuthenticatorSettingsRepository,
+        dyn LoginEntrySettingsRepository,
         dyn ApiKeyRepository,
         dyn WorkspaceRepository,
         dyn RoleConsolePolicyMigrationRepository,
@@ -60,7 +60,7 @@ fn auth_traits_remain_canonical<
 where
     Bootstrap: BootstrapRepository + ?Sized,
     Auth: AuthRepository + ?Sized,
-    AuthenticatorSettings: AuthenticatorSettingsRepository + ?Sized,
+    AuthenticatorSettings: LoginEntrySettingsRepository + ?Sized,
     ApiKey: ApiKeyRepository + ?Sized,
     Workspace: WorkspaceRepository + ?Sized,
     Migration: RoleConsolePolicyMigrationRepository + ?Sized,

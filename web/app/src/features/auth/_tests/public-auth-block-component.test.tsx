@@ -56,7 +56,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     render(
       <PublicAuthBlock
         instance={instance(source)}
-        authenticatorSelector={{ request: requestSelector }}
+        loginEntrySelector={{ request: requestSelector }}
         onAuthenticated={vi.fn()}
         nativeCompiler={compiler(source)}
       />
@@ -78,7 +78,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     render(
       <PublicAuthBlock
         instance={instance('broken source')}
-        authenticatorSelector={{ request: requestSelector }}
+        loginEntrySelector={{ request: requestSelector }}
         onAuthenticated={vi.fn()}
         nativeCompiler={nativeCompiler}
       />
@@ -342,6 +342,7 @@ describe('PublicAuthBlock Native Host composition', () => {
 
     await waitFor(() =>
       expect(passwordSignIn).toHaveBeenCalledWith({
+        login_entry_id: 'auth-password-local',
         identifier: 'root',
         password: 'change-me'
       })

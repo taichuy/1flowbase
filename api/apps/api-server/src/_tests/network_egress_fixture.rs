@@ -176,7 +176,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     let package = TempNetworkEgressPackage::new(proxy_url, acquire_behavior);
     let root = state
         .store
-        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
+        .find_user_for_password_login(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID, "root")
         .await
         .expect("root lookup must succeed")
         .expect("test bootstrap must have a root user");

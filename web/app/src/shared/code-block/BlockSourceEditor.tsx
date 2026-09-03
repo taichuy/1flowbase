@@ -1,5 +1,12 @@
 import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react';
-import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from 'react';
 
 import type { BlockSourceExtraLib } from './extra-lib';
 import { loadMonacoEditorModule } from './monaco-runtime';
@@ -42,6 +49,7 @@ export function BlockSourceEditor({
 }: BlockSourceEditorProps) {
   const monacoRef = useRef<Monaco | null>(null);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const [ready, setReady] = useState(false);
   const registeredMarkersRef = useRef<{
     monaco: Monaco;
     model: NonNullable<ReturnType<Parameters<OnMount>[0]['getModel']>>;
@@ -156,7 +164,12 @@ export function BlockSourceEditor({
   );
 
   return (
-    <div aria-label={ariaLabel} role="group" style={{ height }}>
+    <div
+      aria-busy={!ready}
+      aria-label={ariaLabel}
+      role="group"
+      style={{ height }}
+    >
       <Suspense fallback={null}>
         <Editor
           height="100%"
@@ -167,6 +180,7 @@ export function BlockSourceEditor({
           onMount={(editor, monaco) => {
             editorRef.current = editor;
             monacoRef.current = monaco;
+            setReady(true);
             registerExtraLibs(monaco);
             registerDiagnostics(editor, monaco);
             onMount?.(editor, monaco);

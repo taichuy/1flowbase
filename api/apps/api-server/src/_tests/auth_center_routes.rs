@@ -8,7 +8,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use control_plane::ports::{I18nCatalogRepository, UpsertCatalogTranslationInput};
-use domain::AuthenticatorRecord;
+use domain::LoginEntryRecord;
 use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation};
 use serde_json::json;
 use sqlx::PgPool;
@@ -47,8 +47,8 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
     let (state, _) = test_api_state_with_database_url().await;
     for (msgid, value) in [
         ("Password", "密码"),
-        ("Authenticator ID", "认证器 ID"),
-        ("Authenticator selection available", "可选择其他认证器"),
+        ("Login entry ID", "登录入口 ID"),
+        ("Login entry selection available", "可选择其他登录入口"),
         ("Authentication event", "认证事件"),
     ] {
         seed_authentication_translation(&state, msgid, value).await;
@@ -56,8 +56,9 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
     let custom_id = Uuid::now_v7();
     state
         .store
-        .upsert_authenticator(&AuthenticatorRecord {
+        .upsert_login_entry(&LoginEntryRecord {
             id: custom_id,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".to_owned(),
             title: "Staff Password".to_owned(),
             enabled: true,
@@ -87,17 +88,17 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let authenticators = payload["data"]["authenticators"].as_array().unwrap();
-    let builtin = authenticators
+    let login_entries = payload["data"]["login_entries"].as_array().unwrap();
+    let builtin = login_entries
         .iter()
-        .find(|item| item["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .find(|item| item["id"] == json!(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID))
         .unwrap();
     assert_eq!(builtin["title"], "密码");
     assert_eq!(builtin["config_values"]["title"], "密码");
     assert_eq!(builtin["auth_type"], "password-local");
     let runtime = builtin["context_variables"].as_array().unwrap();
     assert!(runtime.iter().any(
-        |item| item["label"] == "认证器 ID" && item["member_path"] == "inputs.authenticator_id"
+        |item| item["label"] == "登录入口 ID" && item["member_path"] == "inputs.login_entry_id"
     ));
     assert!(runtime
         .iter()
@@ -106,7 +107,7 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
         .iter()
         .any(|item| item["label"] == "API" && item["member_path"] == "api"));
     assert_eq!(
-        authenticators
+        login_entries
             .iter()
             .find(|item| item["id"] == custom_id.to_string())
             .unwrap()["title"],
@@ -126,11 +127,11 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
         .unwrap();
     let english: serde_json::Value =
         serde_json::from_slice(&to_bytes(english.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let builtin = english["data"]["authenticators"]
+    let builtin = english["data"]["login_entries"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|item| item["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .find(|item| item["id"] == json!(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID))
         .unwrap();
     assert_eq!(builtin["title"], "Password");
 }
@@ -138,10 +139,12 @@ async fn ac_012_013_auth_center_localizes_builtin_displays_and_preserves_customi
 #[tokio::test]
 async fn console_auth_center_overview_lists_authenticators_with_schema_form_values() {
     let (state, _database_url) = test_api_state_with_database_url().await;
+    let oidc_id = Uuid::now_v7();
     state
         .store
-        .upsert_authenticator(&AuthenticatorRecord {
-            id: Uuid::now_v7(),
+        .upsert_login_entry(&LoginEntryRecord {
+            id: oidc_id,
+            connection_id: oidc_id,
             auth_type: "oidc".to_string(),
             title: "OIDC".to_string(),
             enabled: false,
@@ -196,14 +199,14 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
-        payload["data"]["default_authenticator_id"],
-        json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+        payload["data"]["default_login_entry_id"],
+        json!(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID)
     );
 
-    let authenticators = payload["data"]["authenticators"].as_array().unwrap();
-    let password_local = authenticators
+    let login_entries = payload["data"]["login_entries"].as_array().unwrap();
+    let password_local = login_entries
         .iter()
-        .find(|authenticator| authenticator["id"] == json!(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID))
+        .find(|authenticator| authenticator["id"] == json!(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID))
         .expect("password-local should be visible in auth center overview");
     assert_eq!(password_local["auth_type"], json!("password-local"));
     assert_eq!(password_local["title"], json!("Password"));
@@ -264,7 +267,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         }));
     }
     for member_path in [
-        "inputs.authenticator_id",
+        "inputs.login_entry_id",
         "inputs.authenticator_selection_available",
         "inputs.auth_event",
         "api",
@@ -319,7 +322,7 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
         .iter()
         .all(|field| field["key"] != "public_ui_block"));
 
-    let oidc = authenticators
+    let oidc = login_entries
         .iter()
         .find(|authenticator| authenticator["title"] == "OIDC")
         .expect("custom authenticator should be visible in auth center overview");
@@ -364,8 +367,8 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/config",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/config",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
@@ -389,8 +392,9 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
 }
 
 #[tokio::test]
-async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators() {
-    let app = test_app().await;
+async fn console_auth_center_creates_copies_reorders_and_deletes_login_entries() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let create = app
@@ -398,7 +402,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -440,7 +444,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{staff_password_id}/config"
+                    "/api/console/settings/auth-center/login-entries/{staff_password_id}/config"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -467,7 +471,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{staff_password_id}/copy"
+                    "/api/console/settings/auth-center/login-entries/{staff_password_id}/copy"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -506,7 +510,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/settings/auth-center/authenticators/order")
+                .uri("/api/console/settings/auth-center/login-entries/order")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -514,7 +518,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
                     json!({
                         "ids": [
                             staff_backup_uuid,
-                            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
                             staff_password_uuid
                         ]
                     })
@@ -527,7 +531,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
     assert_eq!(reorder.status(), StatusCode::OK);
     let reordered: serde_json::Value =
         serde_json::from_slice(&to_bytes(reorder.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let ids = reordered["data"]["authenticators"]
+    let ids = reordered["data"]["login_entries"]
         .as_array()
         .unwrap()
         .iter()
@@ -537,30 +541,36 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         ids,
         vec![
             staff_backup_id.clone(),
-            domain::PASSWORD_LOCAL_AUTHENTICATOR_ID.to_string(),
+            domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID.to_string(),
             staff_password_id.clone()
         ]
     );
     assert_eq!(
-        reordered["data"]["authenticators"][0]["sort_order"],
+        reordered["data"]["login_entries"][0]["sort_order"],
         json!(0)
     );
     assert_eq!(
-        reordered["data"]["authenticators"][1]["sort_order"],
+        reordered["data"]["login_entries"][1]["sort_order"],
         json!(10)
     );
     assert_eq!(
-        reordered["data"]["authenticators"][2]["sort_order"],
+        reordered["data"]["login_entries"][2]["sort_order"],
         json!(20)
     );
 
+    let identity_count_before_delete: i64 =
+        sqlx::query_scalar("select count(*) from user_auth_identities where connection_id = $1")
+            .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     let delete = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("DELETE")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{staff_backup_id}"
+                    "/api/console/settings/auth-center/login-entries/{staff_backup_id}"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -570,6 +580,20 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         .await
         .unwrap();
     assert_eq!(delete.status(), StatusCode::NO_CONTENT);
+    let identity_count_after_delete: i64 =
+        sqlx::query_scalar("select count(*) from user_auth_identities where connection_id = $1")
+            .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let connection_count: i64 =
+        sqlx::query_scalar("select count(*) from authentication_connections where id = $1")
+            .bind(domain::PASSWORD_LOCAL_CONNECTION_ID)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(identity_count_after_delete, identity_count_before_delete);
+    assert_eq!(connection_count, 1);
 
     let overview = app
         .oneshot(
@@ -584,7 +608,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
         .unwrap();
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(overview.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert!(payload["data"]["authenticators"]
+    assert!(payload["data"]["login_entries"]
         .as_array()
         .unwrap()
         .iter()
@@ -593,8 +617,7 @@ async fn console_auth_center_creates_copies_reorders_and_deletes_authenticators(
 
 #[tokio::test]
 async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
-    let (app, database_url) = test_app_with_database_url().await;
-    let pool = PgPool::connect(&database_url).await.unwrap();
+    let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let unknown_type = app
@@ -602,7 +625,7 @@ async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -634,8 +657,8 @@ async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -651,81 +674,21 @@ async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(builtin_payload["code"], json!("builtin_authenticator"));
-
-    let bound_password_id = Uuid::now_v7();
-    sqlx::query(
-        r#"
-        insert into authenticators (id, auth_type, title, enabled, is_builtin, sort_order, options)
-        values ($1, 'password-local', 'Bound Password', true, false, 40, '{}')
-        "#,
-    )
-    .bind(bound_password_id)
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        r#"
-        insert into user_auth_identities (id, user_id, authenticator_id, subject_type, subject_value, metadata)
-        select $1, id, $2, 'account', account, '{}'
-        from users
-        where account = 'root'
-        "#,
-    )
-    .bind(Uuid::now_v7())
-    .bind(bound_password_id)
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    let bound_delete = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{bound_password_id}"
-                ))
-                .header("cookie", &root_cookie)
-                .header("x-csrf-token", &root_csrf)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(bound_delete.status(), StatusCode::CONFLICT);
-    let bound_payload: serde_json::Value = serde_json::from_slice(
-        &to_bytes(bound_delete.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        bound_payload["code"],
-        json!("authenticator_identity_bindings")
-    );
+    assert_eq!(builtin_payload["code"], json!("builtin_login_entry"));
 
     let missing_password_id = Uuid::now_v7();
     for (ids, expected_code) in [
         (
             json!([
-                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-                bound_password_id
+                domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+                domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             ]),
-            "authenticator_order_duplicate",
+            "login_entry_order_duplicate",
         ),
+        (json!([]), "login_entry_order_missing"),
         (
-            json!([domain::PASSWORD_LOCAL_AUTHENTICATOR_ID]),
-            "authenticator_order_missing",
-        ),
-        (
-            json!([
-                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
-                bound_password_id,
-                missing_password_id
-            ]),
-            "authenticator_order_unknown",
+            json!([domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID, missing_password_id]),
+            "login_entry_order_unknown",
         ),
     ] {
         let response = app
@@ -733,7 +696,7 @@ async fn console_auth_center_lifecycle_rejects_unsafe_inputs() {
             .oneshot(
                 Request::builder()
                     .method("PUT")
-                    .uri("/api/console/settings/auth-center/authenticators/order")
+                    .uri("/api/console/settings/auth-center/login-entries/order")
                     .header("cookie", &root_cookie)
                     .header("x-csrf-token", &root_csrf)
                     .header("content-type", "application/json")
@@ -766,7 +729,7 @@ async fn console_auth_center_create_requires_session_csrf_and_manage_permission(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("content-type", "application/json")
                 .body(Body::from(body.clone()))
                 .unwrap(),
@@ -781,7 +744,7 @@ async fn console_auth_center_create_requires_session_csrf_and_manage_permission(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("cookie", &root_cookie)
                 .header("content-type", "application/json")
                 .body(Body::from(body.clone()))
@@ -829,7 +792,7 @@ async fn console_auth_center_create_requires_session_csrf_and_manage_permission(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/settings/auth-center/authenticators")
+                .uri("/api/console/settings/auth-center/login-entries")
                 .header("cookie", &member_cookie)
                 .header("x-csrf-token", &member_csrf)
                 .header("content-type", "application/json")
@@ -887,8 +850,9 @@ async fn console_auth_center_updates_authenticator_enabled_state() {
     let oidc_id = Uuid::now_v7();
     state
         .store
-        .upsert_authenticator(&AuthenticatorRecord {
+        .upsert_login_entry(&LoginEntryRecord {
             id: oidc_id,
+            connection_id: oidc_id,
             auth_type: "oidc".to_string(),
             title: "OIDC".to_string(),
             enabled: true,
@@ -908,7 +872,7 @@ async fn console_auth_center_updates_authenticator_enabled_state() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{oidc_id}/enabled"
+                    "/api/console/settings/auth-center/login-entries/{oidc_id}/enabled"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -934,8 +898,8 @@ async fn console_auth_center_updates_authenticator_enabled_state() {
         .unwrap();
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(overview.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let authenticators = payload["data"]["authenticators"].as_array().unwrap();
-    let oidc = authenticators
+    let login_entries = payload["data"]["login_entries"].as_array().unwrap();
+    let oidc = login_entries
         .iter()
         .find(|authenticator| authenticator["id"] == json!(oidc_id))
         .expect("updated authenticator should be visible");
@@ -948,8 +912,9 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
     let oidc_id = Uuid::now_v7();
     state
         .store
-        .upsert_authenticator(&AuthenticatorRecord {
+        .upsert_login_entry(&LoginEntryRecord {
             id: oidc_id,
+            connection_id: oidc_id,
             auth_type: "oidc".to_string(),
             title: "OIDC".to_string(),
             enabled: false,
@@ -986,7 +951,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{oidc_id}/config"
+                    "/api/console/settings/auth-center/login-entries/{oidc_id}/config"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -1045,7 +1010,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
 
     let saved = state
         .store
-        .find_authenticator(oidc_id)
+        .find_login_entry(oidc_id)
         .await
         .unwrap()
         .unwrap();
@@ -1076,7 +1041,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{oidc_id}/public-ui-block"
+                    "/api/console/settings/auth-center/login-entries/{oidc_id}/public-ui-block"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -1104,7 +1069,7 @@ async fn console_auth_center_update_config_updates_editable_fields_and_preserves
         .is_none());
     let saved = state
         .store
-        .find_authenticator(oidc_id)
+        .find_login_entry(oidc_id)
         .await
         .unwrap()
         .unwrap();
@@ -1121,8 +1086,8 @@ async fn console_auth_center_update_config_rejects_blank_title() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/config",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/config",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -1157,8 +1122,8 @@ async fn console_auth_center_public_ui_block_rejects_blank_source() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/public-ui-block",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/public-ui-block",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
@@ -1192,8 +1157,8 @@ async fn console_auth_center_update_config_requires_session_csrf_and_manage_perm
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/config",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/config",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("content-type", "application/json")
                 .body(Body::from(body.clone()))
@@ -1210,8 +1175,8 @@ async fn console_auth_center_update_config_requires_session_csrf_and_manage_perm
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/config",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/config",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &root_cookie)
                 .header("content-type", "application/json")
@@ -1255,8 +1220,8 @@ async fn console_auth_center_update_config_requires_session_csrf_and_manage_perm
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{}/config",
-                    domain::PASSWORD_LOCAL_AUTHENTICATOR_ID
+                    "/api/console/settings/auth-center/login-entries/{}/config",
+                    domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID
                 ))
                 .header("cookie", &member_cookie)
                 .header("x-csrf-token", &member_csrf)

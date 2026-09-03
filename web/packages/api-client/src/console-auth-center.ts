@@ -10,7 +10,7 @@ export interface ConsoleAuthCenterConfigField {
   pattern?: string;
 }
 
-export interface ConsoleAuthCenterAuthenticatorConfigValues {
+export interface ConsoleAuthCenterLoginEntryConfigValues {
   title: string;
   enabled: boolean;
   description?: string | null;
@@ -25,7 +25,7 @@ export interface ConsoleAuthCenterContextVariable {
   schema: Record<string, unknown>;
 }
 
-export interface ConsoleAuthCenterAuthenticator {
+export interface ConsoleAuthCenterLoginEntry {
   id: string;
   auth_type: string;
   title: string;
@@ -38,10 +38,10 @@ export interface ConsoleAuthCenterAuthenticator {
   public_variables: Record<string, unknown> | null;
   context_variables: ConsoleAuthCenterContextVariable[];
   config_schema: ConsoleAuthCenterConfigField[];
-  config_values: ConsoleAuthCenterAuthenticatorConfigValues;
+  config_values: ConsoleAuthCenterLoginEntryConfigValues;
 }
 
-export interface ConsoleAuthCenterAuthenticatorConfigInput {
+export interface ConsoleAuthCenterLoginEntryConfigInput {
   title: string;
   enabled: boolean;
   description?: string | null;
@@ -49,21 +49,21 @@ export interface ConsoleAuthCenterAuthenticatorConfigInput {
   extension_config: Record<string, unknown>;
 }
 
-export interface ConsoleAuthCenterAuthenticatorPublicUiBlockInput {
+export interface ConsoleAuthCenterLoginEntryPublicUiBlockInput {
   public_ui_block: string;
 }
 
-export interface ConsoleAuthCenterAuthenticatorEnabledInput {
+export interface ConsoleAuthCenterLoginEntryEnabledInput {
   enabled: boolean;
 }
 
 export interface ConsoleAuthCenterOverview {
-  default_authenticator_id: string;
+  default_login_entry_id: string;
   supported_auth_types: string[];
-  authenticators: ConsoleAuthCenterAuthenticator[];
+  login_entries: ConsoleAuthCenterLoginEntry[];
 }
 
-export interface ConsoleAuthCenterCreateAuthenticatorInput {
+export interface ConsoleAuthCenterCreateLoginEntryInput {
   auth_type: string;
   title: string;
   description?: string | null;
@@ -71,12 +71,12 @@ export interface ConsoleAuthCenterCreateAuthenticatorInput {
   sort_order?: number;
 }
 
-export interface ConsoleAuthCenterCopyAuthenticatorInput {
+export interface ConsoleAuthCenterCopyLoginEntryInput {
   title: string;
   sort_order?: number;
 }
 
-export interface ConsoleAuthCenterReorderAuthenticatorsInput {
+export interface ConsoleAuthCenterReorderLoginEntriesInput {
   ids: string[];
 }
 
@@ -87,14 +87,14 @@ export function fetchConsoleAuthCenterOverview(baseUrl?: string) {
   });
 }
 
-export function updateConsoleAuthCenterAuthenticatorEnabled(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorEnabledInput,
+export function updateConsoleAuthCenterLoginEntryEnabled(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryEnabledInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAuthCenterAuthenticator> {
-  return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/enabled`,
+): Promise<ConsoleAuthCenterLoginEntry> {
+  return apiFetch<ConsoleAuthCenterLoginEntry>({
+    path: `/api/console/settings/auth-center/login-entries/${encodeURIComponent(loginEntryId)}/enabled`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -102,13 +102,13 @@ export function updateConsoleAuthCenterAuthenticatorEnabled(
   });
 }
 
-export function createConsoleAuthCenterAuthenticator(
-  input: ConsoleAuthCenterCreateAuthenticatorInput,
+export function createConsoleAuthCenterLoginEntry(
+  input: ConsoleAuthCenterCreateLoginEntryInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAuthCenterAuthenticator> {
-  return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: '/api/console/settings/auth-center/authenticators',
+): Promise<ConsoleAuthCenterLoginEntry> {
+  return apiFetch<ConsoleAuthCenterLoginEntry>({
+    path: '/api/console/settings/auth-center/login-entries',
     method: 'POST',
     body: input,
     csrfToken,
@@ -116,14 +116,14 @@ export function createConsoleAuthCenterAuthenticator(
   });
 }
 
-export function copyConsoleAuthCenterAuthenticator(
+export function copyConsoleAuthCenterLoginEntry(
   sourceId: string,
-  input: ConsoleAuthCenterCopyAuthenticatorInput,
+  input: ConsoleAuthCenterCopyLoginEntryInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAuthCenterAuthenticator> {
-  return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(sourceId)}/copy`,
+): Promise<ConsoleAuthCenterLoginEntry> {
+  return apiFetch<ConsoleAuthCenterLoginEntry>({
+    path: `/api/console/settings/auth-center/login-entries/${encodeURIComponent(sourceId)}/copy`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -131,13 +131,13 @@ export function copyConsoleAuthCenterAuthenticator(
   });
 }
 
-export function deleteConsoleAuthCenterAuthenticator(
-  authenticatorId: string,
+export function deleteConsoleAuthCenterLoginEntry(
+  loginEntryId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<void> {
   return apiFetch<void>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}`,
+    path: `/api/console/settings/auth-center/login-entries/${encodeURIComponent(loginEntryId)}`,
     method: 'DELETE',
     csrfToken,
     baseUrl,
@@ -145,13 +145,13 @@ export function deleteConsoleAuthCenterAuthenticator(
   });
 }
 
-export function reorderConsoleAuthCenterAuthenticators(
-  input: ConsoleAuthCenterReorderAuthenticatorsInput,
+export function reorderConsoleAuthCenterLoginEntries(
+  input: ConsoleAuthCenterReorderLoginEntriesInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleAuthCenterOverview> {
   return apiFetch<ConsoleAuthCenterOverview>({
-    path: '/api/console/settings/auth-center/authenticators/order',
+    path: '/api/console/settings/auth-center/login-entries/order',
     method: 'PUT',
     body: input,
     csrfToken,
@@ -159,14 +159,14 @@ export function reorderConsoleAuthCenterAuthenticators(
   });
 }
 
-export function updateConsoleAuthCenterAuthenticatorConfig(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorConfigInput,
+export function updateConsoleAuthCenterLoginEntryConfig(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryConfigInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAuthCenterAuthenticator> {
-  return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/config`,
+): Promise<ConsoleAuthCenterLoginEntry> {
+  return apiFetch<ConsoleAuthCenterLoginEntry>({
+    path: `/api/console/settings/auth-center/login-entries/${encodeURIComponent(loginEntryId)}/config`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -174,14 +174,14 @@ export function updateConsoleAuthCenterAuthenticatorConfig(
   });
 }
 
-export function updateConsoleAuthCenterAuthenticatorPublicUiBlock(
-  authenticatorId: string,
-  input: ConsoleAuthCenterAuthenticatorPublicUiBlockInput,
+export function updateConsoleAuthCenterLoginEntryPublicUiBlock(
+  loginEntryId: string,
+  input: ConsoleAuthCenterLoginEntryPublicUiBlockInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAuthCenterAuthenticator> {
-  return apiFetch<ConsoleAuthCenterAuthenticator>({
-    path: `/api/console/settings/auth-center/authenticators/${encodeURIComponent(authenticatorId)}/public-ui-block`,
+): Promise<ConsoleAuthCenterLoginEntry> {
+  return apiFetch<ConsoleAuthCenterLoginEntry>({
+    path: `/api/console/settings/auth-center/login-entries/${encodeURIComponent(loginEntryId)}/public-ui-block`,
     method: 'PUT',
     body: input,
     csrfToken,

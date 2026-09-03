@@ -102,11 +102,11 @@ async fn dynamic_openapi_contains_runtime_and_model_detail_routes() {
         "/api/console/user-api-keys",
         "/api/console/user-api-keys/role-options",
         "/api/console/user-api-keys/{api_key_id}/revoke",
-        "/api/public/auth/login-instances",
-        "/api/console/settings/auth-center/authenticators",
-        "/api/console/settings/auth-center/authenticators/{id}/copy",
-        "/api/console/settings/auth-center/authenticators/{id}",
-        "/api/console/settings/auth-center/authenticators/order",
+        "/api/public/auth/login-entries",
+        "/api/console/settings/auth-center/login-entries",
+        "/api/console/settings/auth-center/login-entries/{id}/copy",
+        "/api/console/settings/auth-center/login-entries/{id}",
+        "/api/console/settings/auth-center/login-entries/order",
         "/api/runtime/models/{model_code}/list",
         "/api/runtime/models/{model_code}/get/{id}",
         "/api/runtime/models/{model_code}/create",
@@ -287,30 +287,30 @@ async fn openapi_contains_auth_center_lifecycle_schemas() {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
     assert!(payload["paths"].as_object().is_some_and(|paths| paths
-        .contains_key("/api/console/settings/auth-center/authenticators/{id}/public-ui-block")));
+        .contains_key("/api/console/settings/auth-center/login-entries/{id}/public-ui-block")));
     let components = payload["components"]["schemas"]
         .as_object()
         .cloned()
         .unwrap_or_default();
 
     for schema in [
-        "CreateAuthCenterAuthenticatorBody",
-        "CopyAuthCenterAuthenticatorBody",
-        "ReorderAuthCenterAuthenticatorsBody",
-        "UpdateAuthCenterAuthenticatorConfigBody",
-        "UpdateAuthCenterAuthenticatorPublicUiBlockBody",
-        "PublicLoginInstanceResponse",
-        "PublicLoginInstancesResponse",
+        "CreateAuthCenterLoginEntryBody",
+        "CopyAuthCenterLoginEntryBody",
+        "ReorderAuthCenterLoginEntriesBody",
+        "UpdateAuthCenterLoginEntryConfigBody",
+        "UpdateAuthCenterLoginEntryPublicUiBlockBody",
+        "PublicLoginEntryResponse",
+        "PublicLoginEntriesResponse",
     ] {
         assert!(components.contains_key(schema), "missing schema {schema}");
     }
     assert!(
-        components["UpdateAuthCenterAuthenticatorConfigBody"]["properties"]
+        components["UpdateAuthCenterLoginEntryConfigBody"]["properties"]
             .as_object()
             .is_some_and(|properties| !properties.contains_key("public_ui_block"))
     );
     assert_eq!(
-        components["UpdateAuthCenterAuthenticatorPublicUiBlockBody"]["properties"]
+        components["UpdateAuthCenterLoginEntryPublicUiBlockBody"]["properties"]
             .as_object()
             .map(|properties| properties.keys().cloned().collect::<Vec<_>>()),
         Some(vec!["public_ui_block".to_string()])

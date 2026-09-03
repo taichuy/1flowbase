@@ -1,6 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use control_plane::auth::{AuthKernel, LoginCommand, LoginResult, SessionIssuer};
+use control_plane::auth::{
+    AuthKernel, AuthenticatorRegistry, LoginCommand, LoginResult, SessionIssuer,
+};
 use interface_runtime::{
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
     BindingId, CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
@@ -55,6 +57,7 @@ struct PublicSignInAdapter {
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
+    authenticator_registry: Arc<AuthenticatorRegistry>,
 }
 
 impl PublicSignInPort for PublicSignInAdapter {
@@ -62,13 +65,18 @@ impl PublicSignInPort for PublicSignInAdapter {
         let store = self.store.clone();
         let session_store = Arc::clone(&self.session_store);
         let session_ttl_days = self.session_ttl_days;
+        let registry = Arc::clone(&self.authenticator_registry);
         Box::pin(async move {
-            AuthKernel::new(store, SessionIssuer::new(session_store, session_ttl_days))
-                .login(input.0)
-                .await
-                .map(PublicSignInOutput)
-                .map_err(ApiError::from)
-                .map_err(PublicSignInTargetError)
+            AuthKernel::with_registry(
+                store,
+                SessionIssuer::new(session_store, session_ttl_days),
+                registry.as_ref().clone(),
+            )
+            .login(input.0)
+            .await
+            .map(PublicSignInOutput)
+            .map_err(ApiError::from)
+            .map_err(PublicSignInTargetError)
         })
     }
 }
@@ -213,11 +221,13 @@ pub(crate) fn public_sign_in_port(
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
+    authenticator_registry: Arc<AuthenticatorRegistry>,
 ) -> Arc<dyn PublicSignInPort> {
     Arc::new(PublicSignInAdapter {
         store,
         session_store,
         session_ttl_days,
+        authenticator_registry,
     })
 }
 

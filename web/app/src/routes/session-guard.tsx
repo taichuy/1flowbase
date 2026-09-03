@@ -16,7 +16,7 @@ export function SessionGuard({ children }: PropsWithChildren) {
     return (
       <Navigate
         to="/sign-in"
-        search={{ authenticator_id: undefined }}
+        search={{ login_entry_id: undefined }}
         replace
       />
     );

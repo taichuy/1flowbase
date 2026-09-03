@@ -13,7 +13,7 @@ import { SignInPage } from '../features/auth/pages/SignInPage';
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
   notFoundComponent: () => (
-    <Navigate to="/sign-in" search={{ authenticator_id: undefined }} replace />
+    <Navigate to="/sign-in" search={{ login_entry_id: undefined }} replace />
   )
 });
 
@@ -21,7 +21,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: () => (
-    <Navigate to="/sign-in" search={{ authenticator_id: undefined }} replace />
+    <Navigate to="/sign-in" search={{ login_entry_id: undefined }} replace />
   )
 });
 
@@ -29,15 +29,15 @@ const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
   validateSearch: (search: Record<string, unknown>) => ({
-    authenticator_id:
-      typeof search.authenticator_id === 'string' &&
-      search.authenticator_id.trim().length > 0
-        ? search.authenticator_id
+    login_entry_id:
+      typeof search.login_entry_id === 'string' &&
+      search.login_entry_id.trim().length > 0
+        ? search.login_entry_id
         : undefined
   }),
   component: () => {
-    const { authenticator_id } = signInRoute.useSearch();
-    return <SignInPage authenticatorId={authenticator_id} />;
+    const { login_entry_id } = signInRoute.useSearch();
+    return <SignInPage loginEntryId={login_entry_id} />;
   }
 });
 

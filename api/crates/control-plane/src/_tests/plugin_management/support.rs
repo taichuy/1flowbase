@@ -39,8 +39,8 @@ use crate::{
     },
 };
 use domain::{
-    ActorContext, AuditLogRecord, AuthenticatorRecord, ExtensionCategory, ExtensionSignatureStatus,
-    HostInfrastructureProviderConfigRecord, LocalPluginInstallationRecord,
+    ActorContext, AuditLogRecord, ExtensionCategory, ExtensionSignatureStatus,
+    HostInfrastructureProviderConfigRecord, LocalPluginInstallationRecord, LoginEntryRecord,
     ModelProviderCatalogCacheRecord, ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
     ModelProviderDiscoveryMode, ModelProviderInstanceRecord, ModelProviderInstanceStatus,
     ModelProviderSecretRecord, NodeContributionDependencyStatus, PermissionDefinition,

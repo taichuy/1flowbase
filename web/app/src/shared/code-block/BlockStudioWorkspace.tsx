@@ -24,47 +24,47 @@ export type BlockStudioSection =
 
 const STUDIO_SECTION_DEFINITIONS: Array<{
   key: BlockStudioSection;
-  label: string;
+  labelKey: string;
   icon: ReactNode;
 }> = [
   {
     key: 'code',
-    label: i18nText('frontstage', 'auto.code'),
+    labelKey: 'auto.code',
     icon: <CodeOutlined />
   },
   {
     key: 'templates',
-    label: i18nText('frontstage', 'auto.code_template'),
+    labelKey: 'auto.code_template',
     icon: <FileTextOutlined />
   },
   {
     key: 'interfaces',
-    label: i18nText('frontstage', 'auto.interfaces'),
+    labelKey: 'auto.interfaces',
     icon: <ApiOutlined />
   },
   {
     key: 'variables',
-    label: i18nText('frontstage', 'auto.variables'),
+    labelKey: 'auto.variables',
     icon: <DatabaseOutlined />
   },
   {
     key: 'block-tree',
-    label: i18nText('frontstage', 'auto.block_tree'),
+    labelKey: 'auto.block_tree',
     icon: <ApartmentOutlined />
   },
   {
     key: 'components',
-    label: i18nText('frontstage', 'auto.components'),
+    labelKey: 'auto.components',
     icon: <AppstoreOutlined />
   },
   {
     key: 'configuration',
-    label: i18nText('frontstage', 'auto.configuration'),
+    labelKey: 'auto.configuration',
     icon: <SettingOutlined />
   },
   {
     key: 'run',
-    label: i18nText('frontstage', 'auto.preview'),
+    labelKey: 'auto.preview',
     icon: <PlayCircleOutlined />
   }
 ];
@@ -160,24 +160,27 @@ export function BlockStudioWorkspace({
       >
         {STUDIO_SECTION_DEFINITIONS.filter((section) =>
           sections.includes(section.key)
-        ).map((section) => (
-          <Tooltip key={section.key} title={section.label} placement="left">
-            <Button
-              aria-label={section.label}
-              className={[
-                'frontstage-jsx-studio__rail-button',
-                activeSection === section.key
-                  ? 'frontstage-jsx-studio__rail-button--active'
-                  : null
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              icon={section.icon}
-              type="text"
-              onClick={() => onSectionChange(section.key)}
-            />
-          </Tooltip>
-        ))}
+        ).map((section) => {
+          const label = i18nText('frontstage', section.labelKey);
+          return (
+            <Tooltip key={section.key} title={label} placement="left">
+              <Button
+                aria-label={label}
+                className={[
+                  'frontstage-jsx-studio__rail-button',
+                  activeSection === section.key
+                    ? 'frontstage-jsx-studio__rail-button--active'
+                    : null
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                icon={section.icon}
+                type="text"
+                onClick={() => onSectionChange(section.key)}
+              />
+            </Tooltip>
+          );
+        })}
       </nav>
 
       <aside

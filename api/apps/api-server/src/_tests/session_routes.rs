@@ -561,7 +561,7 @@ async fn expired_memory_session_is_rejected_by_require_session() {
         .unwrap();
     let user = state
         .store
-        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
+        .find_user_for_password_login(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID, "root")
         .await
         .unwrap()
         .unwrap();

@@ -38,8 +38,9 @@ async fn receipt_store() -> (
         .await
         .unwrap();
     store
-        .upsert_authenticator(&domain::AuthenticatorRecord {
-            id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        .upsert_login_entry(&domain::LoginEntryRecord {
+            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
             auth_type: "password-local".into(),
             title: "Password".into(),
             enabled: true,

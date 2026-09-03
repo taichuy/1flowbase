@@ -106,12 +106,12 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.auth-center",
         &[
-            "auth_center.authenticators.copy",
-            "auth_center.authenticators.create",
-            "auth_center.authenticators.delete",
-            "auth_center.authenticators.enabled.update",
-            "auth_center.authenticators.order",
-            "auth_center.authenticators.update",
+            "auth_center.login_entries.copy",
+            "auth_center.login_entries.create",
+            "auth_center.login_entries.delete",
+            "auth_center.login_entries.enabled.update",
+            "auth_center.login_entries.order",
+            "auth_center.login_entries.update",
             "auth_center.overview.view",
         ],
     ),

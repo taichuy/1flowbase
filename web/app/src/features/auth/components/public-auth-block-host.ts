@@ -12,12 +12,12 @@ import type { BlockContextOutputs } from '@1flowbase/page-protocol';
 import { getAuthApiBaseUrl } from '../api/session';
 
 export function createPublicAuthInputs(
-  authenticatorId: string,
+  loginEntryId: string,
   publicVariables: Record<string, unknown>,
   authenticatorSelectionAvailable = false
 ): Record<string, unknown> {
   return {
-    authenticator_id: authenticatorId,
+    login_entry_id: loginEntryId,
     authenticator_selection_available: authenticatorSelectionAvailable,
     public_variables: publicVariables
   };

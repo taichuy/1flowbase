@@ -13,82 +13,82 @@ use interface_runtime::{
     TargetReference,
 };
 
-use super::auth::PublicLoginInstancesResponse;
+use super::auth::PublicLoginEntriesResponse;
 use crate::error_response::ApiError;
 
-pub(crate) const INTERFACE_ID: &str = "public.auth.login-instances.list";
-const HANDLER_REFERENCE: &str = "api-server.public-auth.login-instances";
+pub(crate) const INTERFACE_ID: &str = "public.auth.login-entries.list";
+const HANDLER_REFERENCE: &str = "api-server.public-auth.login-entries";
 
-pub(crate) struct PublicLoginInstancesInput {
+pub(crate) struct PublicLoginEntriesInput {
     pub(crate) locale: domain::CatalogLocale,
 }
 
-impl InterfaceContract for PublicLoginInstancesInput {
-    const CONTRACT_ID: &'static str = "public-login-instances-input";
+impl InterfaceContract for PublicLoginEntriesInput {
+    const CONTRACT_ID: &'static str = "public-login-entries-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicLoginInstancesOutput(pub(crate) PublicLoginInstancesResponse);
+pub(crate) struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse);
 
-impl InterfaceContract for PublicLoginInstancesOutput {
-    const CONTRACT_ID: &'static str = "public-login-instances-output";
+impl InterfaceContract for PublicLoginEntriesOutput {
+    const CONTRACT_ID: &'static str = "public-login-entries-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicLoginInstancesTargetError(pub(crate) ApiError);
+pub(crate) struct PublicLoginEntriesTargetError(pub(crate) ApiError);
 
-impl From<ApiError> for PublicLoginInstancesTargetError {
+impl From<ApiError> for PublicLoginEntriesTargetError {
     fn from(error: ApiError) -> Self {
         Self(error)
     }
 }
 
-impl InterfaceContract for PublicLoginInstancesTargetError {
-    const CONTRACT_ID: &'static str = "public-login-instances-error";
+impl InterfaceContract for PublicLoginEntriesTargetError {
+    const CONTRACT_ID: &'static str = "public-login-entries-error";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) type PublicLoginInstancesFuture<'a> = Pin<
+pub(crate) type PublicLoginEntriesFuture<'a> = Pin<
     Box<
-        dyn Future<Output = Result<PublicLoginInstancesOutput, PublicLoginInstancesTargetError>>
+        dyn Future<Output = Result<PublicLoginEntriesOutput, PublicLoginEntriesTargetError>>
             + Send
             + 'a,
     >,
 >;
 
-pub(crate) trait PublicLoginInstancesPort: Send + Sync + 'static {
-    fn list(&self, input: PublicLoginInstancesInput) -> PublicLoginInstancesFuture<'_>;
+pub(crate) trait PublicLoginEntriesPort: Send + Sync + 'static {
+    fn list(&self, input: PublicLoginEntriesInput) -> PublicLoginEntriesFuture<'_>;
 }
 
-struct PublicLoginInstancesHandler {
-    port: Arc<dyn PublicLoginInstancesPort>,
+struct PublicLoginEntriesHandler {
+    port: Arc<dyn PublicLoginEntriesPort>,
 }
 
 impl
     InterfaceHandler<
-        PublicLoginInstancesInput,
-        PublicLoginInstancesOutput,
-        PublicLoginInstancesTargetError,
+        PublicLoginEntriesInput,
+        PublicLoginEntriesOutput,
+        PublicLoginEntriesTargetError,
         PublicPrincipal,
-    > for PublicLoginInstancesHandler
+    > for PublicLoginEntriesHandler
 {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext<PublicPrincipal>,
-        input: PublicLoginInstancesInput,
-    ) -> InterfaceHandlerFuture<PublicLoginInstancesOutput, PublicLoginInstancesTargetError> {
+        input: PublicLoginEntriesInput,
+    ) -> InterfaceHandlerFuture<PublicLoginEntriesOutput, PublicLoginEntriesTargetError> {
         let port = Arc::clone(&self.port);
         Box::pin(async move {
             port.list(input)
                 .await
-                .map_err(|error| InterfaceTargetFailure::new("public_login_instances", error))
+                .map_err(|error| InterfaceTargetFailure::new("public_login_entries", error))
         })
     }
 }
 
-pub(crate) struct PublicLoginInstancesAuthorization;
+pub(crate) struct PublicLoginEntriesAuthorization;
 
-impl InterfaceAuthorizationPort<PublicPrincipal> for PublicLoginInstancesAuthorization {
+impl InterfaceAuthorizationPort<PublicPrincipal> for PublicLoginEntriesAuthorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {
         AuthorizationAdapterReference::new("api-server.public").expect("static adapter is valid")
     }
@@ -102,7 +102,7 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for PublicLoginInstancesAuthori
 }
 
 pub(crate) fn compile_registry(
-    port: Arc<dyn PublicLoginInstancesPort>,
+    port: Arc<dyn PublicLoginEntriesPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
     let identity = InterfaceIdentity::new(
@@ -110,15 +110,15 @@ pub(crate) fn compile_registry(
         InterfaceVersion::new("1").expect("static interface version is valid"),
     );
     let contracts = InterfaceContracts::unary(
-        contract::<PublicLoginInstancesInput>(),
-        contract::<PublicLoginInstancesOutput>(),
-        contract::<PublicLoginInstancesTargetError>(),
+        contract::<PublicLoginEntriesInput>(),
+        contract::<PublicLoginEntriesOutput>(),
+        contract::<PublicLoginEntriesTargetError>(),
     );
-    let operation = AuthorizationOperation::new("public.auth.login-instances.read")
+    let operation = AuthorizationOperation::new("public.auth.login-entries.read")
         .expect("static operation is valid");
     let owner = InterfaceOwner::new("api-server.public-auth").expect("static owner is valid");
     let mut compiler = RegistryCompiler::new(
-        GraphFingerprint::new("graph:public-login-instances-v1")
+        GraphFingerprint::new("graph:public-login-entries-v1")
             .expect("static graph fingerprint is valid"),
         [operation.clone()],
         [owner.clone()],
@@ -135,7 +135,7 @@ pub(crate) fn compile_registry(
         InterfaceExecution::new(
             InterfaceExecutionMode::Unary,
             HandlerReference::new(HANDLER_REFERENCE).expect("static handler is valid"),
-            TargetReference::new("control-plane.authenticator.list-public")
+            TargetReference::new("control-plane.login-entry.list-public")
                 .expect("static target is valid"),
         ),
         InterfaceAuditPolicy::ReadOnly,
@@ -172,11 +172,11 @@ pub(crate) fn compile_registry(
     )?;
     compiler.register_binding(
         ProtocolBinding::new(
-            BindingId::new("http.public.auth.login-instances.v1").expect("static binding is valid"),
+            BindingId::new("http.public.auth.login-entries.v1").expect("static binding is valid"),
             identity,
             contracts,
             ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/auth/login-instances")
+                RouteIdentity::new("GET", "/api/public/auth/login-entries")
                     .expect("static route is valid"),
             ),
         ),
@@ -189,14 +189,14 @@ pub(crate) fn compile_registry(
         ),
     )?;
     compiler.bind_handler::<
-        PublicLoginInstancesInput,
-        PublicLoginInstancesOutput,
-        PublicLoginInstancesTargetError,
+        PublicLoginEntriesInput,
+        PublicLoginEntriesOutput,
+        PublicLoginEntriesTargetError,
         PublicPrincipal,
     >(
         &interface_id,
         HandlerReference::new(HANDLER_REFERENCE).expect("static handler is valid"),
-        Arc::new(PublicLoginInstancesHandler { port }),
+        Arc::new(PublicLoginEntriesHandler { port }),
     )?;
     compiler.compile()
 }

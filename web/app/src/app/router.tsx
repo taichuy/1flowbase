@@ -750,10 +750,10 @@ const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
   validateSearch: (search: Record<string, unknown>) => ({
-    authenticator_id:
-      typeof search.authenticator_id === 'string' &&
-      search.authenticator_id.trim().length > 0
-        ? search.authenticator_id
+    login_entry_id:
+      typeof search.login_entry_id === 'string' &&
+      search.login_entry_id.trim().length > 0
+        ? search.login_entry_id
         : undefined
   }),
   component: () => <Navigate to="/" replace />

@@ -1044,6 +1044,7 @@ dependencies = [
  "sqlx",
  "storage-durable",
  "storage-durable-postgres",
+ "storage-ephemeral",
  "time",
  "tokio",
  "uuid",

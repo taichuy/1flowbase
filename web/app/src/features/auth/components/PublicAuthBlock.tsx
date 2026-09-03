@@ -26,7 +26,7 @@ import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
 import type {
   PasswordSignInResponse,
-  PublicLoginInstance
+  PublicLoginEntry
 } from '../api/session';
 import { BuiltinPasswordSignIn } from './BuiltinPasswordSignIn';
 import {
@@ -39,8 +39,8 @@ const PUBLIC_AUTH_PREPARATION_TIMEOUT_MS = 10_000;
 type PublicAuthAttempt = 0 | 1;
 
 export interface PublicAuthBlockProps {
-  instance: PublicLoginInstance;
-  authenticatorSelector?: { request: () => void } | null;
+  instance: PublicLoginEntry;
+  loginEntrySelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
@@ -79,7 +79,7 @@ type PublicAuthRenderSnapshot =
 
 export function PublicAuthBlock({
   instance,
-  authenticatorSelector = null,
+  loginEntrySelector = null,
   onAuthenticated,
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
@@ -186,9 +186,9 @@ export function PublicAuthBlock({
             emitEvent: ({ name }) => {
               if (
                 name === 'authenticator_selector_requested' &&
-                authenticatorSelector
+                loginEntrySelector
               ) {
-                authenticatorSelector.request();
+                loginEntrySelector.request();
               }
             },
             interfaceHandler: async (effect) => {
@@ -218,7 +218,7 @@ export function PublicAuthBlock({
                 inputs: createPublicAuthInputs(
                   instance.id,
                   instance.public_variables,
-                  Boolean(authenticatorSelector)
+                  Boolean(loginEntrySelector)
                 ),
                 ...capabilities
               },
@@ -242,7 +242,7 @@ export function PublicAuthBlock({
     },
     [
       block,
-      authenticatorSelector,
+      loginEntrySelector,
       instance,
       nativeCompiler,
       nativeCompilerWorkerFactory,
@@ -300,7 +300,8 @@ export function PublicAuthBlock({
       ) : null}
       {escapeFallbackVisible ? (
         <BuiltinPasswordSignIn
-          authenticatorSelector={authenticatorSelector}
+          loginEntryId={instance.id}
+          loginEntrySelector={loginEntrySelector}
           onAuthenticated={onAuthenticated}
         />
       ) : null}
@@ -324,7 +325,7 @@ function createPublicAuthPlan(
 }
 
 function createPublicAuthNativeBlock(
-  instance: PublicLoginInstance
+  instance: PublicLoginEntry
 ): FrontstageBlockInstance {
   return {
     id: `public-auth:${instance.id}`,

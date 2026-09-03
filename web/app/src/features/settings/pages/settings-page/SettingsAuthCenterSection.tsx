@@ -32,22 +32,22 @@ import type {
 } from '../../../../shared/schema-ui/v1/contracts/plugin-form-schema';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
-  createSettingsAuthCenterAuthenticator,
-  deleteSettingsAuthCenterAuthenticator,
+  createSettingsAuthCenterLoginEntry,
+  deleteSettingsAuthCenterLoginEntry,
   fetchSettingsAuthCenterOverview,
-  reorderSettingsAuthCenterAuthenticators,
+  reorderSettingsAuthCenterLoginEntries,
   settingsAuthCenterOverviewQueryKey,
-  updateSettingsAuthCenterAuthenticatorEnabled,
-  updateSettingsAuthCenterAuthenticatorConfig,
-  updateSettingsAuthCenterAuthenticatorPublicUiBlock,
+  updateSettingsAuthCenterLoginEntryEnabled,
+  updateSettingsAuthCenterLoginEntryConfig,
+  updateSettingsAuthCenterLoginEntryPublicUiBlock,
   type SettingsAuthCenterOverview
 } from '../../api/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { AuthenticatorUiBlockStudio } from '../../components/auth-center/AuthenticatorUiBlockStudio';
+import { LoginEntryUiBlockStudio } from '../../components/auth-center/LoginEntryUiBlockStudio';
 
 import './auth-center-panel.css';
 
-type AuthenticatorRow = SettingsAuthCenterOverview['authenticators'][number];
+type LoginEntryRow = SettingsAuthCenterOverview['login_entries'][number];
 
 const DEFAULT_AUTH_CENTER_DRAWER_WIDTH = 520;
 const MIN_AUTH_CENTER_DRAWER_WIDTH = 480;
@@ -55,7 +55,7 @@ const MAX_AUTH_CENTER_DRAWER_WIDTH = 960;
 const AUTH_CENTER_DRAG_DATA_TYPE =
   'application/x-1flowbase-auth-center-authenticator-id';
 
-type AuthenticatorConfigFormValues = {
+type LoginEntryConfigFormValues = {
   title: string;
   enabled: boolean;
   description: string | null;
@@ -63,14 +63,14 @@ type AuthenticatorConfigFormValues = {
   extension_config: Record<string, unknown>;
 };
 
-type AuthenticatorLifecycleFormValues = {
+type LoginEntryLifecycleFormValues = {
   auth_type?: string;
   title: string;
   description?: string | null;
   enabled?: boolean;
 };
 
-function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
+function authCenterConfigFormValues(row: LoginEntryRow): SchemaFormValues {
   const description =
     typeof row.config_values.description === 'string'
       ? row.config_values.description
@@ -90,17 +90,17 @@ function authCenterConfigFormValues(row: AuthenticatorRow): SchemaFormValues {
   return values;
 }
 
-function authCenterConfigFormSchema(row: AuthenticatorRow): PluginFormSchema {
+function authCenterConfigFormSchema(row: LoginEntryRow): PluginFormSchema {
   return {
     schema_version: '1.0.0',
     fields: row.config_schema.map((field) => ({ ...field }))
   };
 }
 
-function toAuthenticatorConfigFormValues(
+function toLoginEntryConfigFormValues(
   values: SchemaFormValues,
-  row: AuthenticatorRow
-): AuthenticatorConfigFormValues {
+  row: LoginEntryRow
+): LoginEntryConfigFormValues {
   const commonKeys = new Set([
     'title',
     'description',
@@ -140,40 +140,34 @@ function authCenterLifecycleErrorMessage(error: unknown, fallbackKey: string) {
     error && typeof error === 'object' && 'code' in error
       ? (error as { code?: unknown }).code
       : null;
-  if (code === 'authenticator_identity_bindings') {
-    return i18nText(
-      'settings',
-      'auto.auth_center_delete_bound_authenticator_failed'
-    );
-  }
-  if (code === 'builtin_authenticator') {
+  if (code === 'builtin_login_entry') {
     return i18nText('settings', 'auto.auth_center_delete_builtin_failed');
   }
 
   return i18nText('settings', fallbackKey);
 }
 
-function AuthenticatorConfigDrawer({
+function LoginEntryConfigDrawer({
   authenticator,
   open,
-  canManageAuthenticators,
+  canManageLoginEntries,
   hasCsrfToken,
   submitting,
   onClose,
   onSubmit
 }: {
-  authenticator: AuthenticatorRow | null;
+  authenticator: LoginEntryRow | null;
   open: boolean;
-  canManageAuthenticators: boolean;
+  canManageLoginEntries: boolean;
   hasCsrfToken: boolean;
   submitting: boolean;
   onClose: () => void;
   onSubmit: (
-    authenticatorId: string,
-    values: AuthenticatorConfigFormValues
+    loginEntryId: string,
+    values: LoginEntryConfigFormValues
   ) => Promise<void>;
 }) {
-  const accessErrorMessage = !canManageAuthenticators
+  const accessErrorMessage = !canManageLoginEntries
     ? i18nText('settings', 'auto.auth_center_manage_permission_required')
     : !hasCsrfToken
       ? i18nText('settings', 'auto.auth_center_csrf_required')
@@ -222,7 +216,7 @@ function AuthenticatorConfigDrawer({
       onSubmit={(values) =>
         onSubmit(
           authenticator.id,
-          toAuthenticatorConfigFormValues(values, authenticator)
+          toLoginEntryConfigFormValues(values, authenticator)
         )
       }
     />
@@ -230,18 +224,18 @@ function AuthenticatorConfigDrawer({
 }
 
 export function SettingsAuthCenterSection() {
-  const [selectedAuthenticatorId, setSelectedAuthenticatorId] = useState<
+  const [selectedLoginEntryId, setSelectedLoginEntryId] = useState<
     string | null
   >(null);
-  const [selectedUiAuthenticatorId, setSelectedUiAuthenticatorId] = useState<
+  const [selectedUiLoginEntryId, setSelectedUiLoginEntryId] = useState<
     string | null
   >(null);
-  const [lifecycleForm] = Form.useForm<AuthenticatorLifecycleFormValues>();
+  const [lifecycleForm] = Form.useForm<LoginEntryLifecycleFormValues>();
   const [isLifecycleModalOpen, setLifecycleModalOpen] = useState(false);
-  const [draggedAuthenticatorId, setDraggedAuthenticatorId] = useState<
+  const [draggedLoginEntryId, setDraggedLoginEntryId] = useState<
     string | null
   >(null);
-  const [dragOverAuthenticatorId, setDragOverAuthenticatorId] = useState<
+  const [dragOverLoginEntryId, setDragOverLoginEntryId] = useState<
     string | null
   >(null);
   const [operationErrorMessage, setOperationErrorMessage] = useState<
@@ -251,27 +245,27 @@ export function SettingsAuthCenterSection() {
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const queryClient = useQueryClient();
-  const canManageAuthenticators =
+  const canManageLoginEntries =
     actor?.effective_display_role === 'root' ||
     (me?.permissions ?? []).includes('user.manage.all');
   const overviewQuery = useQuery({
     queryKey: settingsAuthCenterOverviewQueryKey,
     queryFn: fetchSettingsAuthCenterOverview
   });
-  const selectedAuthenticator =
-    selectedAuthenticatorId && overviewQuery.data
-      ? (overviewQuery.data.authenticators.find(
-          (row) => row.id === selectedAuthenticatorId
+  const selectedLoginEntry =
+    selectedLoginEntryId && overviewQuery.data
+      ? (overviewQuery.data.login_entries.find(
+          (row) => row.id === selectedLoginEntryId
         ) ?? null)
       : null;
-  const selectedUiAuthenticator =
-    selectedUiAuthenticatorId && overviewQuery.data
-      ? (overviewQuery.data.authenticators.find(
-          (row) => row.id === selectedUiAuthenticatorId
+  const selectedUiLoginEntry =
+    selectedUiLoginEntryId && overviewQuery.data
+      ? (overviewQuery.data.login_entries.find(
+          (row) => row.id === selectedUiLoginEntryId
         ) ?? null)
       : null;
   const requireAuthCenterWrite = () => {
-    if (!canManageAuthenticators) {
+    if (!canManageLoginEntries) {
       throw new Error(
         i18nText('settings', 'auto.auth_center_manage_permission_required')
       );
@@ -283,8 +277,8 @@ export function SettingsAuthCenterSection() {
     return csrfToken;
   };
   const nextSortOrder =
-    (overviewQuery.data?.authenticators.at(-1)?.sort_order ?? 0) + 10;
-  const openCreateAuthenticator = () => {
+    (overviewQuery.data?.login_entries.at(-1)?.sort_order ?? 0) + 10;
+  const openCreateLoginEntry = () => {
     setOperationErrorMessage(null);
     lifecycleForm.setFieldsValue({
       auth_type: overviewQuery.data?.supported_auth_types[0],
@@ -295,12 +289,12 @@ export function SettingsAuthCenterSection() {
     setLifecycleModalOpen(true);
   };
   const enabledMutation = useMutation({
-    mutationFn: (input: { authenticatorId: string; enabled: boolean }) => {
+    mutationFn: (input: { loginEntryId: string; enabled: boolean }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return updateSettingsAuthCenterAuthenticatorEnabled(
-        input.authenticatorId,
+      return updateSettingsAuthCenterLoginEntryEnabled(
+        input.loginEntryId,
         { enabled: input.enabled },
         csrfToken
       );
@@ -315,7 +309,7 @@ export function SettingsAuthCenterSection() {
           overview
             ? {
                 ...overview,
-                authenticators: overview.authenticators.map((row) =>
+                login_entries: overview.login_entries.map((row) =>
                   row.id === authenticator.id ? authenticator : row
                 )
               }
@@ -333,10 +327,10 @@ export function SettingsAuthCenterSection() {
   });
   const configMutation = useMutation({
     mutationFn: (input: {
-      authenticatorId: string;
-      values: AuthenticatorConfigFormValues;
+      loginEntryId: string;
+      values: LoginEntryConfigFormValues;
     }) => {
-      if (!canManageAuthenticators) {
+      if (!canManageLoginEntries) {
         throw new Error(
           i18nText('settings', 'auto.auth_center_manage_permission_required')
         );
@@ -344,8 +338,8 @@ export function SettingsAuthCenterSection() {
       if (!csrfToken) {
         throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
       }
-      return updateSettingsAuthCenterAuthenticatorConfig(
-        input.authenticatorId,
+      return updateSettingsAuthCenterLoginEntryConfig(
+        input.loginEntryId,
         {
           title: input.values.title,
           enabled: input.values.enabled,
@@ -363,21 +357,21 @@ export function SettingsAuthCenterSection() {
           overview
             ? {
                 ...overview,
-                authenticators: overview.authenticators.map((row) =>
+                login_entries: overview.login_entries.map((row) =>
                   row.id === authenticator.id ? authenticator : row
                 )
               }
             : overview
       );
-      setSelectedAuthenticatorId(null);
+      setSelectedLoginEntryId(null);
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
     }
   });
   const publicUiBlockMutation = useMutation({
-    mutationFn: (input: { authenticatorId: string; publicUiBlock: string }) => {
-      if (!canManageAuthenticators) {
+    mutationFn: (input: { loginEntryId: string; publicUiBlock: string }) => {
+      if (!canManageLoginEntries) {
         throw new Error(
           i18nText('settings', 'auto.auth_center_manage_permission_required')
         );
@@ -385,8 +379,8 @@ export function SettingsAuthCenterSection() {
       if (!csrfToken) {
         throw new Error(i18nText('settings', 'auto.auth_center_csrf_required'));
       }
-      return updateSettingsAuthCenterAuthenticatorPublicUiBlock(
-        input.authenticatorId,
+      return updateSettingsAuthCenterLoginEntryPublicUiBlock(
+        input.loginEntryId,
         { public_ui_block: input.publicUiBlock },
         csrfToken
       );
@@ -398,7 +392,7 @@ export function SettingsAuthCenterSection() {
           overview
             ? {
                 ...overview,
-                authenticators: overview.authenticators.map((row) =>
+                login_entries: overview.login_entries.map((row) =>
                   row.id === authenticator.id ? authenticator : row
                 )
               }
@@ -410,8 +404,8 @@ export function SettingsAuthCenterSection() {
     }
   });
   const createMutation = useMutation({
-    mutationFn: (values: AuthenticatorLifecycleFormValues) =>
-      createSettingsAuthCenterAuthenticator(
+    mutationFn: (values: LoginEntryLifecycleFormValues) =>
+      createSettingsAuthCenterLoginEntry(
         {
           auth_type: values.auth_type ?? '',
           title: values.title,
@@ -428,8 +422,8 @@ export function SettingsAuthCenterSection() {
           overview
             ? {
                 ...overview,
-                authenticators: [
-                  ...overview.authenticators,
+                login_entries: [
+                  ...overview.login_entries,
                   authenticator
                 ].sort(
                   (left, right) =>
@@ -452,20 +446,20 @@ export function SettingsAuthCenterSection() {
     }
   });
   const deleteMutation = useMutation({
-    mutationFn: (authenticatorId: string) =>
-      deleteSettingsAuthCenterAuthenticator(
-        authenticatorId,
+    mutationFn: (loginEntryId: string) =>
+      deleteSettingsAuthCenterLoginEntry(
+        loginEntryId,
         requireAuthCenterWrite()
       ),
-    onSuccess: async (_, authenticatorId) => {
+    onSuccess: async (_, loginEntryId) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
         (overview) =>
           overview
             ? {
                 ...overview,
-                authenticators: overview.authenticators.filter(
-                  (row) => row.id !== authenticatorId
+                login_entries: overview.login_entries.filter(
+                  (row) => row.id !== loginEntryId
                 )
               }
             : overview
@@ -482,7 +476,7 @@ export function SettingsAuthCenterSection() {
   });
   const reorderMutation = useMutation({
     mutationFn: (ids: string[]) =>
-      reorderSettingsAuthCenterAuthenticators(ids, requireAuthCenterWrite()),
+      reorderSettingsAuthCenterLoginEntries(ids, requireAuthCenterWrite()),
     onSuccess: (overview) => {
       queryClient.setQueryData<SettingsAuthCenterOverview>(
         settingsAuthCenterOverviewQueryKey,
@@ -498,41 +492,41 @@ export function SettingsAuthCenterSection() {
       );
     }
   });
-  const canDragSortAuthenticators =
+  const canDragSortLoginEntries =
     Boolean(csrfToken) &&
-    canManageAuthenticators &&
+    canManageLoginEntries &&
     !reorderMutation.isPending &&
-    (overviewQuery.data?.authenticators.length ?? 0) > 1;
-  const getDraggedAuthenticatorId = (event: DragEvent<HTMLElement>) =>
-    draggedAuthenticatorId ||
+    (overviewQuery.data?.login_entries.length ?? 0) > 1;
+  const getDraggedLoginEntryId = (event: DragEvent<HTMLElement>) =>
+    draggedLoginEntryId ||
     event.dataTransfer.getData(AUTH_CENTER_DRAG_DATA_TYPE);
-  const dropAuthenticatorBeforeTarget = (
-    sourceAuthenticatorId: string,
-    targetAuthenticatorId: string
+  const dropLoginEntryBeforeTarget = (
+    sourceLoginEntryId: string,
+    targetLoginEntryId: string
   ) => {
-    const authenticators = overviewQuery.data?.authenticators ?? [];
-    const sourceIndex = authenticators.findIndex(
-      (authenticator) => authenticator.id === sourceAuthenticatorId
+    const login_entries = overviewQuery.data?.login_entries ?? [];
+    const sourceIndex = login_entries.findIndex(
+      (authenticator) => authenticator.id === sourceLoginEntryId
     );
-    const targetIndex = authenticators.findIndex(
-      (authenticator) => authenticator.id === targetAuthenticatorId
+    const targetIndex = login_entries.findIndex(
+      (authenticator) => authenticator.id === targetLoginEntryId
     );
     if (
       sourceIndex < 0 ||
       targetIndex < 0 ||
       sourceIndex === targetIndex ||
-      !canDragSortAuthenticators
+      !canDragSortLoginEntries
     ) {
       return;
     }
 
-    const nextRows = [...authenticators];
-    const [movedAuthenticator] = nextRows.splice(sourceIndex, 1);
-    nextRows.splice(targetIndex, 0, movedAuthenticator);
+    const nextRows = [...login_entries];
+    const [movedLoginEntry] = nextRows.splice(sourceIndex, 1);
+    nextRows.splice(targetIndex, 0, movedLoginEntry);
     setOperationErrorMessage(null);
     reorderMutation.mutate(nextRows.map((authenticator) => authenticator.id));
   };
-  const authenticatorColumns: ColumnsType<AuthenticatorRow> = [
+  const authenticatorColumns: ColumnsType<LoginEntryRow> = [
     {
       title: i18nText('settings', 'auto.auth_center_sequence'),
       key: 'sequence',
@@ -553,8 +547,8 @@ export function SettingsAuthCenterSection() {
                 { value1: row.title }
               )}
               className="settings-auth-center__drag-handle"
-              disabled={!canDragSortAuthenticators}
-              draggable={canDragSortAuthenticators}
+              disabled={!canDragSortLoginEntries}
+              draggable={canDragSortLoginEntries}
               icon={<BarsOutlined aria-hidden="true" />}
               size="small"
               type="text"
@@ -563,14 +557,14 @@ export function SettingsAuthCenterSection() {
               }}
               onDragEnd={(event) => {
                 event.stopPropagation();
-                setDraggedAuthenticatorId(null);
-                setDragOverAuthenticatorId(null);
+                setDraggedLoginEntryId(null);
+                setDragOverLoginEntryId(null);
               }}
               onDragStart={(event) => {
                 event.stopPropagation();
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData(AUTH_CENTER_DRAG_DATA_TYPE, row.id);
-                setDraggedAuthenticatorId(row.id);
+                setDraggedLoginEntryId(row.id);
               }}
             />
           </Tooltip>
@@ -600,14 +594,14 @@ export function SettingsAuthCenterSection() {
       render: (enabled: boolean, row) => (
         <Switch
           checked={enabled}
-          disabled={!csrfToken || !canManageAuthenticators}
+          disabled={!csrfToken || !canManageLoginEntries}
           loading={
             enabledMutation.isPending &&
-            enabledMutation.variables?.authenticatorId === row.id
+            enabledMutation.variables?.loginEntryId === row.id
           }
           onChange={(checked) => {
             enabledMutation.mutate({
-              authenticatorId: row.id,
+              loginEntryId: row.id,
               enabled: checked
             });
           }}
@@ -627,7 +621,7 @@ export function SettingsAuthCenterSection() {
             size="small"
             onClick={() => {
               configMutation.reset();
-              setSelectedAuthenticatorId(row.id);
+              setSelectedLoginEntryId(row.id);
             }}
           >
             {i18nText('settings', 'auto.edit')}
@@ -637,7 +631,7 @@ export function SettingsAuthCenterSection() {
             size="small"
             onClick={() => {
               publicUiBlockMutation.reset();
-              setSelectedUiAuthenticatorId(row.id);
+              setSelectedUiLoginEntryId(row.id);
             }}
           >
             {i18nText('settings', 'auto.auth_center_ui_action')}
@@ -648,7 +642,7 @@ export function SettingsAuthCenterSection() {
             })}
             okText={i18nText('settings', 'auto.delete')}
             cancelText={i18nText('settings', 'auto.cancel')}
-            disabled={row.is_builtin || !csrfToken || !canManageAuthenticators}
+            disabled={row.is_builtin || !csrfToken || !canManageLoginEntries}
             onConfirm={() => {
               setOperationErrorMessage(null);
               deleteMutation.mutate(row.id);
@@ -673,7 +667,7 @@ export function SettingsAuthCenterSection() {
                 disabled={
                   row.is_builtin ||
                   !csrfToken ||
-                  !canManageAuthenticators ||
+                  !canManageLoginEntries ||
                   (deleteMutation.isPending &&
                     deleteMutation.variables === row.id)
                 }
@@ -703,10 +697,10 @@ export function SettingsAuthCenterSection() {
               icon={<PlusOutlined aria-hidden="true" />}
               disabled={
                 !csrfToken ||
-                !canManageAuthenticators ||
+                !canManageLoginEntries ||
                 overviewQuery.data.supported_auth_types.length === 0
               }
-              onClick={openCreateAuthenticator}
+              onClick={openCreateLoginEntry}
             >
               {i18nText('settings', 'auto.new')}
             </Button>
@@ -718,44 +712,44 @@ export function SettingsAuthCenterSection() {
             className="settings-auth-center__table"
             rowKey="id"
             columns={authenticatorColumns}
-            dataSource={overviewQuery.data.authenticators}
+            dataSource={overviewQuery.data.login_entries}
             onRow={(row) => ({
               className:
-                dragOverAuthenticatorId === row.id
+                dragOverLoginEntryId === row.id
                   ? 'settings-auth-center__row--drag-over'
                   : undefined,
               onDragLeave: () => {
-                setDragOverAuthenticatorId((currentId) =>
+                setDragOverLoginEntryId((currentId) =>
                   currentId === row.id ? null : currentId
                 );
               },
               onDragOver: (event) => {
-                const sourceAuthenticatorId = getDraggedAuthenticatorId(event);
+                const sourceLoginEntryId = getDraggedLoginEntryId(event);
                 if (
-                  !canDragSortAuthenticators ||
-                  !sourceAuthenticatorId ||
-                  sourceAuthenticatorId === row.id
+                  !canDragSortLoginEntries ||
+                  !sourceLoginEntryId ||
+                  sourceLoginEntryId === row.id
                 ) {
                   return;
                 }
 
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
-                setDragOverAuthenticatorId(row.id);
+                setDragOverLoginEntryId(row.id);
               },
               onDrop: (event) => {
                 event.preventDefault();
-                const sourceAuthenticatorId = getDraggedAuthenticatorId(event);
-                setDraggedAuthenticatorId(null);
-                setDragOverAuthenticatorId(null);
+                const sourceLoginEntryId = getDraggedLoginEntryId(event);
+                setDraggedLoginEntryId(null);
+                setDragOverLoginEntryId(null);
                 if (
-                  !sourceAuthenticatorId ||
-                  sourceAuthenticatorId === row.id
+                  !sourceLoginEntryId ||
+                  sourceLoginEntryId === row.id
                 ) {
                   return;
                 }
 
-                dropAuthenticatorBeforeTarget(sourceAuthenticatorId, row.id);
+                dropLoginEntryBeforeTarget(sourceLoginEntryId, row.id);
               }
             })}
             pagination={false}
@@ -763,20 +757,20 @@ export function SettingsAuthCenterSection() {
           />
         </Flex>
       ) : null}
-      <AuthenticatorConfigDrawer
-        authenticator={selectedAuthenticator}
-        open={selectedAuthenticatorId != null}
-        canManageAuthenticators={canManageAuthenticators}
+      <LoginEntryConfigDrawer
+        authenticator={selectedLoginEntry}
+        open={selectedLoginEntryId != null}
+        canManageLoginEntries={canManageLoginEntries}
         hasCsrfToken={csrfToken != null}
         submitting={configMutation.isPending}
         onClose={() => {
           configMutation.reset();
-          setSelectedAuthenticatorId(null);
+          setSelectedLoginEntryId(null);
         }}
-        onSubmit={async (authenticatorId, values) => {
+        onSubmit={async (loginEntryId, values) => {
           await new Promise<void>((resolve, reject) => {
             configMutation.mutate(
-              { authenticatorId, values },
+              { loginEntryId, values },
               {
                 onError: (error) => reject(error),
                 onSuccess: () => resolve()
@@ -785,28 +779,28 @@ export function SettingsAuthCenterSection() {
           });
         }}
       />
-      {selectedUiAuthenticator ? (
-        <AuthenticatorUiBlockStudio
-          authenticatorId={selectedUiAuthenticator.id}
-          authenticatorTitle={selectedUiAuthenticator.title}
-          authType={selectedUiAuthenticator.auth_type}
-          contextVariables={selectedUiAuthenticator.context_variables}
+      {selectedUiLoginEntry ? (
+        <LoginEntryUiBlockStudio
+          loginEntryId={selectedUiLoginEntry.id}
+          loginEntryTitle={selectedUiLoginEntry.title}
+          authType={selectedUiLoginEntry.auth_type}
+          contextVariables={selectedUiLoginEntry.context_variables}
           defaultSource={
-            selectedUiAuthenticator.default_public_ui_block ?? null
+            selectedUiLoginEntry.default_public_ui_block ?? null
           }
           description={
-            typeof selectedUiAuthenticator.config_values.description ===
+            typeof selectedUiLoginEntry.config_values.description ===
             'string'
-              ? selectedUiAuthenticator.config_values.description
+              ? selectedUiLoginEntry.config_values.description
               : null
           }
-          enabled={selectedUiAuthenticator.enabled}
+          enabled={selectedUiLoginEntry.enabled}
           interfacePathPrefixes={
-            selectedUiAuthenticator.interface_path_prefixes
+            selectedUiLoginEntry.interface_path_prefixes
           }
-          publicVariables={selectedUiAuthenticator.public_variables}
+          publicVariables={selectedUiLoginEntry.public_variables}
           selfRegistrationEnabled={
-            selectedUiAuthenticator.config_values.self_registration_enabled ===
+            selectedUiLoginEntry.config_values.self_registration_enabled ===
             true
           }
           workspaceId={actor?.current_workspace_id ?? ''}
@@ -821,19 +815,19 @@ export function SettingsAuthCenterSection() {
                   )
               : null
           }
-          open={selectedUiAuthenticatorId != null}
-          readOnly={!canManageAuthenticators || csrfToken == null}
+          open={selectedUiLoginEntryId != null}
+          readOnly={!canManageLoginEntries || csrfToken == null}
           saving={publicUiBlockMutation.isPending}
-          source={selectedUiAuthenticator.public_ui_block}
+          source={selectedUiLoginEntry.public_ui_block}
           onClose={() => {
             publicUiBlockMutation.reset();
-            setSelectedUiAuthenticatorId(null);
+            setSelectedUiLoginEntryId(null);
           }}
           onSave={async (publicUiBlock) => {
             await new Promise<void>((resolve, reject) => {
               publicUiBlockMutation.mutate(
                 {
-                  authenticatorId: selectedUiAuthenticator.id,
+                  loginEntryId: selectedUiLoginEntry.id,
                   publicUiBlock
                 },
                 {

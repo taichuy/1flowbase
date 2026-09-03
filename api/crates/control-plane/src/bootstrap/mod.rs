@@ -1,6 +1,6 @@
 use access_control::{bootstrap_role_templates, permission_catalog};
 use anyhow::Result;
-use domain::AuthenticatorRecord;
+use domain::LoginEntryRecord;
 
 use crate::i18n_catalog::VerifiedOfficialCatalogSeed;
 use crate::ports::BootstrapRepository;
@@ -96,15 +96,16 @@ where
         official_catalog: Option<&VerifiedOfficialCatalogSeed>,
     ) -> Result<BootstrapResult> {
         self.repository
-            .replace_authenticator_public_ui_block_if_matches(
-                domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            .replace_login_entry_public_ui_block_if_matches(
+                domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
                 crate::auth::public_ui::PREVIOUS_PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
                 crate::auth::public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK,
             )
             .await?;
         self.repository
-            .upsert_authenticator(&AuthenticatorRecord {
-                id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            .upsert_login_entry(&LoginEntryRecord {
+                id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+                connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
                 auth_type: "password-local".into(),
                 title: "Password".into(),
                 enabled: true,

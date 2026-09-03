@@ -7,15 +7,16 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
     auth::{
-        AuthKernel, AuthenticatorAuthentication, AuthenticatorProvider, AuthenticatorRegistry,
-        LoginCommand, SessionIssuer,
+        AuthKernel, AuthenticatorProvider, AuthenticatorRegistry, LoginCommand, SessionIssuer,
+        VerifiedAuthentication,
     },
     errors::ControlPlaneError,
     ports::AuthRepository,
 };
 use domain::{
-    ActorContext, AuditLogRecord, AuthenticatorRecord, BoundRole, ExternalIdentityClaim,
-    PermissionDefinition, RoleScopeKind, ScopeContext, UserRecord, UserStatus,
+    ActorContext, AuditLogRecord, AuthenticationConnectionRecord, BoundRole, ExternalIdentityClaim,
+    LoginEntryRecord, PermissionDefinition, RoleScopeKind, ScopeContext, UserAuthIdentity,
+    UserRecord, UserStatus, VerifiedExternalIdentity,
 };
 use plugin_framework::{
     AuthProviderContributionManifest, HostExtensionBootstrapPhase, HostExtensionRegistry,
@@ -27,23 +28,30 @@ use crate::_tests::support::{password_hash, MemorySessionStore};
 
 #[derive(Clone)]
 struct InstanceAwareAuthRepository {
-    authenticators: Arc<HashMap<Uuid, AuthenticatorRecord>>,
+    login_entries: Arc<HashMap<Uuid, LoginEntryRecord>>,
     user: UserRecord,
     password_login_calls: Arc<Mutex<Vec<(Uuid, String)>>>,
+    bound_external_identity: Option<(Uuid, String)>,
 }
 
 impl InstanceAwareAuthRepository {
-    fn new(authenticators: Vec<AuthenticatorRecord>, user: UserRecord) -> Self {
+    fn new(login_entries: Vec<LoginEntryRecord>, user: UserRecord) -> Self {
         Self {
-            authenticators: Arc::new(
-                authenticators
+            login_entries: Arc::new(
+                login_entries
                     .into_iter()
                     .map(|authenticator| (authenticator.id, authenticator))
                     .collect(),
             ),
             user,
             password_login_calls: Arc::new(Mutex::new(Vec::new())),
+            bound_external_identity: None,
         }
+    }
+
+    fn with_bound_external_identity(mut self, connection_id: Uuid, subject: &str) -> Self {
+        self.bound_external_identity = Some((connection_id, subject.to_string()));
+        self
     }
 
     fn password_login_calls(&self) -> Vec<(Uuid, String)> {
@@ -56,27 +64,65 @@ impl InstanceAwareAuthRepository {
 
 #[async_trait]
 impl AuthRepository for InstanceAwareAuthRepository {
-    async fn find_authenticator(&self, id: Uuid) -> Result<Option<AuthenticatorRecord>> {
-        Ok(self.authenticators.get(&id).cloned())
+    async fn find_authentication_connection(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<AuthenticationConnectionRecord>> {
+        Ok(self
+            .login_entries
+            .values()
+            .find(|entry| entry.connection_id == id)
+            .map(|entry| AuthenticationConnectionRecord {
+                id,
+                auth_type: entry.auth_type.clone(),
+                is_builtin: entry.auth_type == "password-local",
+                config: serde_json::json!({}),
+            }))
+    }
+
+    async fn find_login_entry(&self, id: Uuid) -> Result<Option<LoginEntryRecord>> {
+        Ok(self.login_entries.get(&id).cloned())
     }
 
     async fn find_user_for_password_login(
         &self,
-        authenticator_id: Uuid,
+        connection_id: Uuid,
         identifier: &str,
     ) -> Result<Option<UserRecord>> {
         self.password_login_calls
             .lock()
             .expect("password login calls lock should be free")
-            .push((authenticator_id, identifier.to_string()));
+            .push((connection_id, identifier.to_string()));
         Ok(
-            (authenticator_id == STAFF_PASSWORD_AUTHENTICATOR_ID && identifier == "root")
+            (connection_id == domain::PASSWORD_LOCAL_CONNECTION_ID && identifier == "root")
                 .then(|| self.user.clone()),
         )
     }
 
     async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>> {
         Ok((self.user.id == user_id).then(|| self.user.clone()))
+    }
+
+    async fn find_user_for_verified_external_identity(
+        &self,
+        identity: &VerifiedExternalIdentity,
+    ) -> Result<Option<UserRecord>> {
+        Ok(self
+            .bound_external_identity
+            .as_ref()
+            .is_some_and(|(connection_id, subject)| {
+                *connection_id == identity.connection_id() && subject == identity.subject_value()
+            })
+            .then(|| self.user.clone()))
+    }
+
+    async fn bind_verified_external_identity(
+        &self,
+        _user_id: Uuid,
+        _identity: &VerifiedExternalIdentity,
+        _audit: &AuditLogRecord,
+    ) -> Result<UserAuthIdentity> {
+        anyhow::bail!("binding is not supported by this test repository")
     }
 
     async fn default_scope_for_user(&self, _user_id: Uuid) -> Result<ScopeContext> {
@@ -144,36 +190,36 @@ impl AuthRepository for InstanceAwareAuthRepository {
     }
 }
 
-struct CrossInstanceClaimProvider {
-    user: UserRecord,
+struct ExternalIdentityProvider {
+    connection_id: Uuid,
+    subject: &'static str,
 }
 
 #[async_trait]
-impl AuthenticatorProvider for CrossInstanceClaimProvider {
+impl AuthenticatorProvider for ExternalIdentityProvider {
     fn auth_type(&self) -> &'static str {
         "external-test"
     }
 
     async fn authenticate(
         &self,
-        _authenticator: &AuthenticatorRecord,
+        _authenticator: &LoginEntryRecord,
         _identifier: &str,
         _password: &str,
         _repository: &dyn AuthRepository,
-    ) -> Result<AuthenticatorAuthentication> {
-        Ok(AuthenticatorAuthentication {
-            user: self.user.clone(),
-            external_identity_claim: Some(ExternalIdentityClaim {
-                authenticator_id: OTHER_EXTERNAL_AUTHENTICATOR_ID,
-                subject_type: "email".to_string(),
-                subject_value: "root@example.com".to_string(),
-                issuer: None,
-                realm: None,
-                profile: serde_json::json!({}),
-                verified: true,
-                metadata: serde_json::json!({}),
-            }),
+    ) -> Result<VerifiedAuthentication> {
+        let identity = VerifiedExternalIdentity::try_from(ExternalIdentityClaim {
+            connection_id: self.connection_id,
+            subject_type: "email".to_string(),
+            subject_value: self.subject.to_string(),
+            issuer: None,
+            realm: None,
+            profile: serde_json::json!({}),
+            verified: true,
+            metadata: serde_json::json!({}),
         })
+        .expect("fixture claim should be verified");
+        Ok(VerifiedAuthentication::ExternalIdentity(identity))
     }
 }
 
@@ -211,9 +257,14 @@ const PARTNER_EXTERNAL_AUTHENTICATOR_ID: Uuid =
 const OTHER_EXTERNAL_AUTHENTICATOR_ID: Uuid =
     Uuid::from_u128(0x00000000_0000_0000_0000_000000000013);
 
-fn authenticator(id: Uuid, title: &str, auth_type: &str) -> AuthenticatorRecord {
-    AuthenticatorRecord {
+fn authenticator(id: Uuid, title: &str, auth_type: &str) -> LoginEntryRecord {
+    LoginEntryRecord {
         id,
+        connection_id: if auth_type == "password-local" {
+            domain::PASSWORD_LOCAL_CONNECTION_ID
+        } else {
+            id
+        },
         auth_type: auth_type.to_string(),
         title: title.to_string(),
         enabled: true,
@@ -288,7 +339,7 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
             variable.member_path == "inputs.authenticator_selection_available"
                 && variable.schema == serde_json::json!({ "type": "boolean" })
         }));
-    let record = AuthenticatorRecord {
+    let record = LoginEntryRecord {
         options: serde_json::json!({
             "extension_config": {
                 "issuer": "https://issuer.example.test",
@@ -309,14 +360,21 @@ fn backend_only_auth_provider_contributes_block_schema_and_public_projection() {
 }
 
 #[tokio::test]
-async fn password_local_provider_reads_identity_from_selected_authenticator_instance() {
+async fn password_local_entries_share_the_local_credential_connection() {
     let user = test_user();
     let repository = InstanceAwareAuthRepository::new(
-        vec![authenticator(
-            STAFF_PASSWORD_AUTHENTICATOR_ID,
-            "Staff Password",
-            "password-local",
-        )],
+        vec![
+            authenticator(
+                STAFF_PASSWORD_AUTHENTICATOR_ID,
+                "Staff Password",
+                "password-local",
+            ),
+            authenticator(
+                domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+                "Built-in Password",
+                "password-local",
+            ),
+        ],
         user,
     );
     let kernel = AuthKernel::new(
@@ -326,7 +384,7 @@ async fn password_local_provider_reads_identity_from_selected_authenticator_inst
 
     kernel
         .login(LoginCommand {
-            authenticator_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
+            login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
         })
@@ -335,7 +393,7 @@ async fn password_local_provider_reads_identity_from_selected_authenticator_inst
 
     assert_eq!(
         repository.password_login_calls(),
-        vec![(STAFF_PASSWORD_AUTHENTICATOR_ID, "root".to_string())]
+        vec![(domain::PASSWORD_LOCAL_CONNECTION_ID, "root".to_string())]
     );
 }
 
@@ -351,7 +409,10 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
         user.clone(),
     );
     let registry =
-        AuthenticatorRegistry::from_providers(vec![Arc::new(CrossInstanceClaimProvider { user })]);
+        AuthenticatorRegistry::from_providers(vec![Arc::new(ExternalIdentityProvider {
+            connection_id: OTHER_EXTERNAL_AUTHENTICATOR_ID,
+            subject: "root@example.com",
+        })]);
     let kernel = AuthKernel::with_registry(
         repository,
         SessionIssuer::new(MemorySessionStore::default(), 7),
@@ -360,7 +421,7 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
 
     let result = kernel
         .login(LoginCommand {
-            authenticator_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),
         })
@@ -368,6 +429,82 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
 
     match result {
         Ok(_) => panic!("cross-instance claim should be rejected"),
+        Err(error) => assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::NotAuthenticated)
+        )),
+    }
+}
+
+#[tokio::test]
+async fn auth_kernel_resolves_only_a_bound_verified_external_identity() {
+    let user = test_user();
+    let repository = InstanceAwareAuthRepository::new(
+        vec![authenticator(
+            PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            "Partner External",
+            "external-test",
+        )],
+        user,
+    )
+    .with_bound_external_identity(
+        PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+        "bound-subject@example.com",
+    );
+    let registry =
+        AuthenticatorRegistry::from_providers(vec![Arc::new(ExternalIdentityProvider {
+            connection_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            subject: "bound-subject@example.com",
+        })]);
+    let kernel = AuthKernel::with_registry(
+        repository,
+        SessionIssuer::new(MemorySessionStore::default(), 7),
+        registry,
+    );
+
+    let result = kernel
+        .login(LoginCommand {
+            login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            identifier: "ignored".to_string(),
+            password: "ignored".to_string(),
+        })
+        .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn auth_kernel_does_not_merge_an_unbound_external_email() {
+    let user = test_user();
+    let repository = InstanceAwareAuthRepository::new(
+        vec![authenticator(
+            PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            "Partner External",
+            "external-test",
+        )],
+        user,
+    );
+    let registry =
+        AuthenticatorRegistry::from_providers(vec![Arc::new(ExternalIdentityProvider {
+            connection_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            subject: "root@example.com",
+        })]);
+    let kernel = AuthKernel::with_registry(
+        repository,
+        SessionIssuer::new(MemorySessionStore::default(), 7),
+        registry,
+    );
+
+    let result = kernel
+        .login(LoginCommand {
+            login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
+            identifier: "root@example.com".to_string(),
+            password: "ignored".to_string(),
+        })
+        .await;
+
+    match result {
+        Ok(_) => panic!("matching email without an identity binding must be rejected"),
         Err(error) => assert!(matches!(
             error.downcast_ref::<ControlPlaneError>(),
             Some(ControlPlaneError::NotAuthenticated)

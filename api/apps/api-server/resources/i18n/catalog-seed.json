@@ -24,8 +24,8 @@
         "keys": [
           "API",
           "Authentication event",
-          "Authenticator ID",
-          "Authenticator selection available",
+          "Login entry ID",
+          "Login entry selection available",
           "Local",
           "Password"
         ],
@@ -37,8 +37,8 @@
         "keys": [
           "API",
           "Authentication event",
-          "Authenticator ID",
-          "Authenticator selection available",
+          "Login entry ID",
+          "Login entry selection available",
           "Local",
           "Password"
         ],
@@ -68,8 +68,8 @@
         "keys": [
           "Applications API set enabled",
           "Applications API set enabled in the system backend.",
-          "Auth center authenticators order",
-          "Auth center authenticators order in the system backend.",
+          "Auth center login entries order",
+          "Auth center login entries order in the system backend.",
           "Batch delete models",
           "Batch delete models in the system backend.",
           "Billing credit adjust",
@@ -100,8 +100,8 @@
           "Complete callback task in the system backend.",
           "Complete run archive upload session",
           "Complete run archive upload session in the system backend.",
-          "Copy auth center authenticators",
-          "Copy auth center authenticators in the system backend.",
+          "Copy auth center login entries",
+          "Copy auth center login entries in the system backend.",
           "Copy MCP instances",
           "Copy MCP instances in the system backend.",
           "Create application",
@@ -110,8 +110,8 @@
           "Create application in the system backend.",
           "Create application tag",
           "Create application tag in the system backend.",
-          "Create auth center authenticators",
-          "Create auth center authenticators in the system backend.",
+          "Create auth center login entries",
+          "Create auth center login entries in the system backend.",
           "Create billing pricing rules",
           "Create billing pricing rules in the system backend.",
           "Create data sources",
@@ -158,8 +158,8 @@
           "Delete an installed extension version in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
-          "Delete auth center authenticators",
-          "Delete auth center authenticators in the system backend.",
+          "Delete auth center login entries",
+          "Delete auth center login entries in the system backend.",
           "Delete billing pricing rules",
           "Delete billing pricing rules in the system backend.",
           "Delete debug variable cache entries",
@@ -572,8 +572,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
-          "Update auth center authenticators enabled",
-          "Update auth center authenticators enabled in the system backend.",
+          "Update auth center login entries enabled",
+          "Update auth center login entries enabled in the system backend.",
           "Update billing pricing rules",
           "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
@@ -719,8 +719,8 @@
         "keys": [
           "Applications API set enabled",
           "Applications API set enabled in the system backend.",
-          "Auth center authenticators order",
-          "Auth center authenticators order in the system backend.",
+          "Auth center login entries order",
+          "Auth center login entries order in the system backend.",
           "Batch delete models",
           "Batch delete models in the system backend.",
           "Billing credit adjust",
@@ -751,8 +751,8 @@
           "Complete callback task in the system backend.",
           "Complete run archive upload session",
           "Complete run archive upload session in the system backend.",
-          "Copy auth center authenticators",
-          "Copy auth center authenticators in the system backend.",
+          "Copy auth center login entries",
+          "Copy auth center login entries in the system backend.",
           "Copy MCP instances",
           "Copy MCP instances in the system backend.",
           "Create application",
@@ -761,8 +761,8 @@
           "Create application in the system backend.",
           "Create application tag",
           "Create application tag in the system backend.",
-          "Create auth center authenticators",
-          "Create auth center authenticators in the system backend.",
+          "Create auth center login entries",
+          "Create auth center login entries in the system backend.",
           "Create billing pricing rules",
           "Create billing pricing rules in the system backend.",
           "Create data sources",
@@ -809,8 +809,8 @@
           "Delete an installed extension version in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
-          "Delete auth center authenticators",
-          "Delete auth center authenticators in the system backend.",
+          "Delete auth center login entries",
+          "Delete auth center login entries in the system backend.",
           "Delete billing pricing rules",
           "Delete billing pricing rules in the system backend.",
           "Delete debug variable cache entries",
@@ -1223,8 +1223,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
-          "Update auth center authenticators enabled",
-          "Update auth center authenticators enabled in the system backend.",
+          "Update auth center login entries enabled",
+          "Update auth center login entries enabled in the system backend.",
           "Update billing pricing rules",
           "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
@@ -1820,17 +1820,17 @@
       }
     },
     {
-      "key": "Auth center authenticators order",
+      "key": "Auth center login entries order",
       "translations": {
-        "en_US": "Auth center authenticators order",
-        "zh_Hans": "调整认证中心认证器顺序"
+        "en_US": "Auth center login entries order",
+        "zh_Hans": "调整认证中心登录入口顺序"
       }
     },
     {
-      "key": "Auth center authenticators order in the system backend.",
+      "key": "Auth center login entries order in the system backend.",
       "translations": {
-        "en_US": "Auth center authenticators order in the system backend.",
-        "zh_Hans": "调整认证中心认证器顺序（系统后端）"
+        "en_US": "Auth center login entries order in the system backend.",
+        "zh_Hans": "调整认证中心登录入口顺序（系统后端）"
       }
     },
     {
@@ -1855,17 +1855,17 @@
       }
     },
     {
-      "key": "Authenticator ID",
+      "key": "Login entry ID",
       "translations": {
-        "en_US": "Authenticator ID",
-        "zh_Hans": "认证器 ID"
+        "en_US": "Login entry ID",
+        "zh_Hans": "登录入口 ID"
       }
     },
     {
-      "key": "Authenticator selection available",
+      "key": "Login entry selection available",
       "translations": {
-        "en_US": "Authenticator selection available",
-        "zh_Hans": "可选择其他认证器"
+        "en_US": "Login entry selection available",
+        "zh_Hans": "可选择其他登录入口"
       }
     },
     {
@@ -2142,17 +2142,17 @@
       }
     },
     {
-      "key": "Copy auth center authenticators",
+      "key": "Copy auth center login entries",
       "translations": {
-        "en_US": "Copy auth center authenticators",
-        "zh_Hans": "复制认证中心认证器"
+        "en_US": "Copy auth center login entries",
+        "zh_Hans": "复制认证中心登录入口"
       }
     },
     {
-      "key": "Copy auth center authenticators in the system backend.",
+      "key": "Copy auth center login entries in the system backend.",
       "translations": {
-        "en_US": "Copy auth center authenticators in the system backend.",
-        "zh_Hans": "复制认证中心认证器（系统后端）"
+        "en_US": "Copy auth center login entries in the system backend.",
+        "zh_Hans": "复制认证中心登录入口（系统后端）"
       }
     },
     {
@@ -2226,17 +2226,17 @@
       }
     },
     {
-      "key": "Create auth center authenticators",
+      "key": "Create auth center login entries",
       "translations": {
-        "en_US": "Create auth center authenticators",
-        "zh_Hans": "创建认证中心认证器"
+        "en_US": "Create auth center login entries",
+        "zh_Hans": "创建认证中心登录入口"
       }
     },
     {
-      "key": "Create auth center authenticators in the system backend.",
+      "key": "Create auth center login entries in the system backend.",
       "translations": {
-        "en_US": "Create auth center authenticators in the system backend.",
-        "zh_Hans": "创建认证中心认证器（系统后端）"
+        "en_US": "Create auth center login entries in the system backend.",
+        "zh_Hans": "创建认证中心登录入口（系统后端）"
       }
     },
     {
@@ -2653,17 +2653,17 @@
       }
     },
     {
-      "key": "Delete auth center authenticators",
+      "key": "Delete auth center login entries",
       "translations": {
-        "en_US": "Delete auth center authenticators",
-        "zh_Hans": "删除认证中心认证器"
+        "en_US": "Delete auth center login entries",
+        "zh_Hans": "删除认证中心登录入口"
       }
     },
     {
-      "key": "Delete auth center authenticators in the system backend.",
+      "key": "Delete auth center login entries in the system backend.",
       "translations": {
-        "en_US": "Delete auth center authenticators in the system backend.",
-        "zh_Hans": "删除认证中心认证器（系统后端）"
+        "en_US": "Delete auth center login entries in the system backend.",
+        "zh_Hans": "删除认证中心登录入口（系统后端）"
       }
     },
     {
@@ -6023,42 +6023,42 @@
       "key": "Update auth center authenticator config",
       "translations": {
         "en_US": "Update auth center authenticator config",
-        "zh_Hans": "更新认证中心认证器配置"
+        "zh_Hans": "更新认证中心登录入口配置"
       }
     },
     {
       "key": "Update auth center authenticator config in the system backend.",
       "translations": {
         "en_US": "Update auth center authenticator config in the system backend.",
-        "zh_Hans": "更新认证中心认证器配置（系统后端）"
+        "zh_Hans": "更新认证中心登录入口配置（系统后端）"
       }
     },
     {
       "key": "Update auth center authenticator public UI block",
       "translations": {
         "en_US": "Update auth center authenticator public UI block",
-        "zh_Hans": "更新认证中心认证器公共界面区块"
+        "zh_Hans": "更新认证中心登录入口公共界面区块"
       }
     },
     {
       "key": "Update auth center authenticator public UI block in the system backend.",
       "translations": {
         "en_US": "Update auth center authenticator public UI block in the system backend.",
-        "zh_Hans": "更新认证中心认证器公共界面区块（系统后端）"
+        "zh_Hans": "更新认证中心登录入口公共界面区块（系统后端）"
       }
     },
     {
-      "key": "Update auth center authenticators enabled",
+      "key": "Update auth center login entries enabled",
       "translations": {
-        "en_US": "Update auth center authenticators enabled",
-        "zh_Hans": "更新认证中心认证器启用状态"
+        "en_US": "Update auth center login entries enabled",
+        "zh_Hans": "更新认证中心登录入口启用状态"
       }
     },
     {
-      "key": "Update auth center authenticators enabled in the system backend.",
+      "key": "Update auth center login entries enabled in the system backend.",
       "translations": {
-        "en_US": "Update auth center authenticators enabled in the system backend.",
-        "zh_Hans": "更新认证中心认证器启用状态（系统后端）"
+        "en_US": "Update auth center login entries enabled in the system backend.",
+        "zh_Hans": "更新认证中心登录入口启用状态（系统后端）"
       }
     },
     {

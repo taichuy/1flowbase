@@ -1,8 +1,9 @@
-use domain::AuthenticatorRecord;
+use domain::LoginEntryRecord;
 
 #[derive(Debug, Clone)]
-pub struct StoredAuthenticatorRow {
+pub struct StoredLoginEntryRow {
     pub id: uuid::Uuid,
+    pub connection_id: uuid::Uuid,
     pub auth_type: String,
     pub title: String,
     pub enabled: bool,
@@ -15,9 +16,10 @@ pub struct StoredAuthenticatorRow {
 pub struct PgAuthMapper;
 
 impl PgAuthMapper {
-    pub fn to_authenticator_record(row: StoredAuthenticatorRow) -> AuthenticatorRecord {
-        AuthenticatorRecord {
+    pub fn to_login_entry_record(row: StoredLoginEntryRow) -> LoginEntryRecord {
+        LoginEntryRecord {
             id: row.id,
+            connection_id: row.connection_id,
             auth_type: row.auth_type,
             title: row.title,
             enabled: row.enabled,

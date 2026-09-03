@@ -830,7 +830,7 @@ async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_work
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
-        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         "root",
     )
     .await

@@ -18,13 +18,13 @@
       "category": "authentication",
       "path": "api/crates/control-plane/src/auth/mod.rs",
       "projection": "auth-center context variable label",
-      "key": "Authenticator ID"
+      "key": "Login entry ID"
     },
     {
       "category": "authentication",
       "path": "api/crates/control-plane/src/auth/mod.rs",
       "projection": "auth-center context variable label",
-      "key": "Authenticator selection available"
+      "key": "Login entry selection available"
     },
     {
       "category": "authentication",

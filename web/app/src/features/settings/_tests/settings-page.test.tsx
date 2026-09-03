@@ -88,13 +88,13 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorEnabled: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
-  updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
-  createSettingsAuthCenterAuthenticator: vi.fn(),
-  copySettingsAuthCenterAuthenticator: vi.fn(),
-  deleteSettingsAuthCenterAuthenticator: vi.fn(),
-  reorderSettingsAuthCenterAuthenticators: vi.fn()
+  updateSettingsAuthCenterLoginEntryEnabled: vi.fn(),
+  updateSettingsAuthCenterLoginEntryConfig: vi.fn(),
+  updateSettingsAuthCenterLoginEntryPublicUiBlock: vi.fn(),
+  createSettingsAuthCenterLoginEntry: vi.fn(),
+  copySettingsAuthCenterLoginEntry: vi.fn(),
+  deleteSettingsAuthCenterLoginEntry: vi.fn(),
+  reorderSettingsAuthCenterLoginEntries: vi.fn()
 }));
 
 const authenticatorConfigSchema = () => [
@@ -540,9 +540,9 @@ describe('SettingsPage', () => {
       undefined
     );
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
+      default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-password-local',
           auth_type: 'password-local',
@@ -560,10 +560,10 @@ describe('SettingsPage', () => {
         }
       ]
     });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryEnabled.mockResolvedValue(
       undefined
     );
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockResolvedValue(
       undefined
     );
     modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([]);
@@ -1023,9 +1023,9 @@ describe('SettingsPage', () => {
   test('renders auth center actions and opens configuration drawer', async () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
+      default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-oidc-main',
           auth_type: 'oidc',
@@ -1085,7 +1085,7 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => {
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+        authCenterApi.updateSettingsAuthCenterLoginEntryEnabled
       ).toHaveBeenCalledWith('auth-oidc-main', { enabled: false }, 'csrf-123');
     });
 
@@ -1108,9 +1108,9 @@ describe('SettingsPage', () => {
   test('initializes auth center config form from authenticator fields', async () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
+      default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-password-local',
           auth_type: 'password-local',
@@ -1160,9 +1160,9 @@ describe('SettingsPage', () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview
       .mockResolvedValueOnce({
-        default_authenticator_id: 'auth-oidc-main',
+        default_login_entry_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
-        authenticators: [
+        login_entries: [
           {
             id: 'auth-oidc-main',
             auth_type: 'oidc',
@@ -1183,9 +1183,9 @@ describe('SettingsPage', () => {
         ]
       })
       .mockResolvedValueOnce({
-        default_authenticator_id: 'auth-oidc-main',
+        default_login_entry_id: 'auth-oidc-main',
         supported_auth_types: ['password-local'],
-        authenticators: [
+        login_entries: [
           {
             id: 'auth-oidc-main',
             auth_type: 'oidc',
@@ -1205,25 +1205,23 @@ describe('SettingsPage', () => {
           }
         ]
       });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
-      {
-        id: 'auth-oidc-main',
-        auth_type: 'oidc',
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockResolvedValue({
+      id: 'auth-oidc-main',
+      auth_type: 'oidc',
+      title: 'OIDC Login',
+      enabled: true,
+      is_builtin: false,
+      sort_order: 10,
+      config_schema: authenticatorConfigSchema(),
+      config_values: {
         title: 'OIDC Login',
         enabled: true,
-        is_builtin: false,
-        sort_order: 10,
-        config_schema: authenticatorConfigSchema(),
-        config_values: {
-          title: 'OIDC Login',
-          enabled: true,
-          description: 'Primary OIDC login',
-          extension_config: {
-            issuer_url: 'https://idp.example.com'
-          }
+        description: 'Primary OIDC login',
+        extension_config: {
+          issuer_url: 'https://idp.example.com'
         }
       }
-    );
+    });
 
     renderApp('/settings/auth-center');
 
@@ -1243,7 +1241,7 @@ describe('SettingsPage', () => {
 
     await waitFor(() => {
       expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
+        authCenterApi.updateSettingsAuthCenterLoginEntryConfig
       ).toHaveBeenCalledWith(
         'auth-oidc-main',
         {
@@ -1267,9 +1265,9 @@ describe('SettingsPage', () => {
   test('shows auth center config errors in the drawer', async () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
+      default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-oidc-main',
           auth_type: 'oidc',
@@ -1286,7 +1284,7 @@ describe('SettingsPage', () => {
         }
       ]
     });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
+    authCenterApi.updateSettingsAuthCenterLoginEntryConfig.mockRejectedValue(
       new Error('permission denied')
     );
 
@@ -1307,9 +1305,9 @@ describe('SettingsPage', () => {
   test('shows auth center manage permission error in the drawer', async () => {
     authenticateWithPermissions(['user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
+      default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-oidc-main',
           auth_type: 'oidc',
@@ -1333,7 +1331,7 @@ describe('SettingsPage', () => {
     const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
 
     expect(
-      within(dialog).getByText('需要认证器管理权限。')
+      within(dialog).getByText('需要登录入口管理权限。')
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Authenticator title')).toBeDisabled();
     expect(
@@ -1348,9 +1346,9 @@ describe('SettingsPage', () => {
     authenticateWithPermissions(['user.view.all', 'user.manage.all']);
     useAuthStore.setState({ csrfToken: null });
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
+      default_login_entry_id: 'auth-oidc-main',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-oidc-main',
           auth_type: 'oidc',
@@ -1388,9 +1386,9 @@ describe('SettingsPage', () => {
   test('opens auth center configuration drawer when extension config fields are absent', async () => {
     authenticateWithPermissions(['user.view.all']);
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
+      default_login_entry_id: 'auth-password-local',
       supported_auth_types: ['password-local'],
-      authenticators: [
+      login_entries: [
         {
           id: 'auth-password-local',
           auth_type: 'password-local',

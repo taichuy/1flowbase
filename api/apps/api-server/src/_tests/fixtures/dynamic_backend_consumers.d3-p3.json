@@ -112,10 +112,10 @@
       "Delete plugins families"
     ],
     [
-      "auth_center.authenticators.delete",
+      "auth_center.login_entries.delete",
       "DELETE",
-      "/api/console/settings/auth-center/authenticators/:id",
-      "Delete auth center authenticators"
+      "/api/console/settings/auth-center/login-entries/:id",
+      "Delete auth center login entries"
     ],
     [
       "billing.pricing_rules.delete",
@@ -1552,16 +1552,16 @@
       "Enable plugins"
     ],
     [
-      "auth_center.authenticators.create",
+      "auth_center.login_entries.create",
       "POST",
-      "/api/console/settings/auth-center/authenticators",
-      "Create auth center authenticators"
+      "/api/console/settings/auth-center/login-entries",
+      "Create auth center login entries"
     ],
     [
-      "auth_center.authenticators.copy",
+      "auth_center.login_entries.copy",
       "POST",
-      "/api/console/settings/auth-center/authenticators/:id/copy",
-      "Copy auth center authenticators"
+      "/api/console/settings/auth-center/login-entries/:id/copy",
+      "Copy auth center login entries"
     ],
     [
       "billing.credit.adjust",
@@ -2062,27 +2062,27 @@
       "Update MCP upstream credentials"
     ],
     [
-      "auth_center.authenticators.order",
+      "auth_center.login_entries.order",
       "PUT",
-      "/api/console/settings/auth-center/authenticators/order",
-      "Auth center authenticators order"
+      "/api/console/settings/auth-center/login-entries/order",
+      "Auth center login entries order"
     ],
     [
       "update_auth_center_authenticator_config",
       "PUT",
-      "/api/console/settings/auth-center/authenticators/:id/config",
+      "/api/console/settings/auth-center/login-entries/:id/config",
       "Update auth center authenticator config"
     ],
     [
-      "auth_center.authenticators.enabled.update",
+      "auth_center.login_entries.enabled.update",
       "PUT",
-      "/api/console/settings/auth-center/authenticators/:id/enabled",
-      "Update auth center authenticators enabled"
+      "/api/console/settings/auth-center/login-entries/:id/enabled",
+      "Update auth center login entries enabled"
     ],
     [
       "update_auth_center_authenticator_public_ui_block",
       "PUT",
-      "/api/console/settings/auth-center/authenticators/:id/public-ui-block",
+      "/api/console/settings/auth-center/login-entries/:id/public-ui-block",
       "Update auth center authenticator public UI block"
     ],
     [
