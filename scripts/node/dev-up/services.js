@@ -5,7 +5,6 @@ const { parseEnvFile } = require('./env.js');
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const FRONTEND_COLD_STARTUP_TIMEOUT_MS = 60_000;
-const CARGO_COLD_STARTUP_TIMEOUT_MS = 60_000;
 const DEFAULT_WEB_PORT = 3100;
 const DEFAULT_API_SERVER_PORT = 7800;
 const DEFAULT_API_SERVER_ADDR = '0.0.0.0:7800';
@@ -118,7 +117,7 @@ function getServiceDefinitions(repoRoot) {
       bindHost: apiServerAddress.bindHost,
       probeHost: '127.0.0.1',
       port: apiServerAddress.port,
-      startupTimeoutMs: CARGO_COLD_STARTUP_TIMEOUT_MS,
+      startupTimeoutMs: null,
       readinessProbe: {
         path: '/health',
         expectedJson: {
@@ -135,7 +134,6 @@ function getServiceDefinitions(repoRoot) {
 }
 
 module.exports = {
-  CARGO_COLD_STARTUP_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
   FRONTEND_COLD_STARTUP_TIMEOUT_MS,
   ensureRuntimeDirs,

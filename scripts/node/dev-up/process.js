@@ -37,6 +37,9 @@ function getBindHost(service) {
 }
 
 function getStartupTimeoutMs(service) {
+  if (service?.startupTimeoutMs === null) {
+    return null;
+  }
   if (!service || !Number.isFinite(service.startupTimeoutMs) || service.startupTimeoutMs <= 0) {
     return DEFAULT_STARTUP_TIMEOUT_MS;
   }
@@ -110,9 +113,9 @@ function isPortOpen(host, port, timeoutMs = 300) {
   });
 }
 
-async function waitForPort(host, port, timeoutMs = 15000) {
+async function waitForPort(host, port, timeoutMs = 15000, shouldContinue = () => true) {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
+  while ((timeoutMs === null || Date.now() - startedAt < timeoutMs) && shouldContinue()) {
     if (await isPortOpen(host, port)) {
       return true;
     }
@@ -136,8 +139,20 @@ async function waitForPortToClose(host, port, timeoutMs = 5000, isPortOpenImpl =
   return !(await isPortOpenImpl(host, port));
 }
 
-function waitForServicePort(service, waitForPortImpl = waitForPort) {
-  return waitForPortImpl(getProbeHost(service), service.port, getStartupTimeoutMs(service));
+function waitForServicePort(
+  service,
+  waitForPortImpl = waitForPort,
+  isProcessAliveImpl = isProcessAlive
+) {
+  const timeoutMs = getStartupTimeoutMs(service);
+  const shouldContinue =
+    timeoutMs === null
+      ? () => {
+          const pidRecord = readPidRecord(service.pidFile);
+          return Boolean(pidRecord && isProcessAliveImpl(pidRecord.pid));
+        }
+      : undefined;
+  return waitForPortImpl(getProbeHost(service), service.port, timeoutMs, shouldContinue);
 }
 
 function probeHttpReadiness(service) {
@@ -244,6 +259,8 @@ async function waitForServiceReadiness(
   {
     probeHttpReadinessImpl = probeHttpReadiness,
     sleepImpl = sleep,
+    readPidRecordImpl = readPidRecord,
+    isProcessAliveImpl = isProcessAlive,
   } = {}
 ) {
   if (!service.readinessProbe) {
@@ -251,8 +268,20 @@ async function waitForServiceReadiness(
   }
 
   const startedAt = Date.now();
+  const timeoutMs = getStartupTimeoutMs(service);
   let latestFailure = null;
-  while (Date.now() - startedAt < getStartupTimeoutMs(service)) {
+  while (timeoutMs === null || Date.now() - startedAt < timeoutMs) {
+    if (timeoutMs === null) {
+      const pidRecord = readPidRecordImpl(service.pidFile);
+      if (!pidRecord || !isProcessAliveImpl(pidRecord.pid)) {
+        return (
+          latestFailure || {
+            ready: false,
+            reason: `${service.label} process exited before readiness`,
+          }
+        );
+      }
+    }
     const readiness = await probeHttpReadinessImpl(service);
     if (readiness.ready) {
       return readiness;
@@ -262,10 +291,12 @@ async function waitForServiceReadiness(
     await sleepImpl(250);
   }
 
-  return latestFailure || {
-    ready: false,
-    reason: `HTTP GET ${service.readinessProbe.path || '/'} did not become ready`,
-  };
+  return (
+    latestFailure || {
+      ready: false,
+      reason: `HTTP GET ${service.readinessProbe.path || '/'} did not become ready`,
+    }
+  );
 }
 
 function readServiceLogTail(logFile, maxLines = 80, maxChars = 12000) {
@@ -582,7 +613,9 @@ async function startService(
     throw new Error(
       startupFailureMessage(
         service,
-        `port ${service.port} did not accept connections before startup timeout`,
+        getStartupTimeoutMs(service) === null
+          ? `process exited before port ${service.port} accepted connections`
+          : `port ${service.port} did not accept connections before startup timeout`,
         readServiceLogTailImpl(service.logFile)
       )
     );

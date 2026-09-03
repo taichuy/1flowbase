@@ -6,7 +6,6 @@ const os = require('node:os');
 const path = require('path');
 
 const {
-  CARGO_COLD_STARTUP_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
   buildDevDatabaseMaintenanceHintLines,
   configurePostgresToolchain,
@@ -29,6 +28,7 @@ const {
   resolveComposeCommand,
   stopService,
   waitForPortToClose,
+  waitForServiceReadiness,
   waitForServicePort,
 } = require('../core.js');
 
@@ -373,12 +373,12 @@ test('dev-up seeds a new web env from existing worktree port configuration', () 
   );
 });
 
-test('getServiceDefinitions gives cargo services extra startup time for cold cargo builds', () => {
+test('AC-001 api-server startup has no fixed compilation time window', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);
 
   assert.equal(services.web.startupTimeoutMs, 60_000);
-  assert.equal(services['api-server'].startupTimeoutMs, CARGO_COLD_STARTUP_TIMEOUT_MS);
+  assert.equal(services['api-server'].startupTimeoutMs, null);
 });
 
 test('getServiceDefinitions leaves frontend pnpm startup interactive', () => {
@@ -411,6 +411,61 @@ test('waitForServicePort honors per-service startup timeout overrides', async ()
       timeoutMs: 60_000,
     },
   ]);
+});
+
+test('AC-002 unbounded startup still supplies a child-process liveness guard', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-unbounded-'));
+  const pidFile = path.join(tempRoot, 'api-server.json');
+  fs.writeFileSync(pidFile, JSON.stringify({ pid: 4242 }));
+  const calls = [];
+
+  const ready = await waitForServicePort(
+    {
+      probeHost: '127.0.0.1',
+      port: 7800,
+      startupTimeoutMs: null,
+      pidFile,
+    },
+    async (host, port, timeoutMs, shouldContinue) => {
+      calls.push({ host, port, timeoutMs, shouldContinue: shouldContinue() });
+      return false;
+    },
+    () => true
+  );
+
+  assert.equal(ready, false);
+  assert.deepEqual(calls, [
+    {
+      host: '127.0.0.1',
+      port: 7800,
+      timeoutMs: null,
+      shouldContinue: true,
+    },
+  ]);
+});
+
+test('AC-002 unbounded health readiness stops when the child process exits', async () => {
+  const service = {
+    label: 'api-server',
+    port: 7800,
+    startupTimeoutMs: null,
+    pidFile: '/tmp/oneflowbase-api-server.json',
+    readinessProbe: { path: '/health' },
+  };
+
+  const readiness = await waitForServiceReadiness(service, {
+    readPidRecordImpl: () => ({ pid: 4242 }),
+    isProcessAliveImpl: () => false,
+    probeHttpReadinessImpl: async () => {
+      throw new Error('readiness probe must not run after process exit');
+    },
+    sleepImpl: async () => {},
+  });
+
+  assert.deepEqual(readiness, {
+    ready: false,
+    reason: 'api-server process exited before readiness',
+  });
 });
 
 test('waitForPortToClose waits until a cleared port stops accepting connections', async () => {
