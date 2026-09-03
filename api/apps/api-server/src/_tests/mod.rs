@@ -63,6 +63,7 @@ mod system_backups_routes;
 mod system_maintenance;
 mod ui_component_catalog_source;
 mod ui_management_routes;
+mod webmcp_routes;
 
 pub(crate) use application::{
     create_gated_provider_instance, create_marker_output_provider_instance,

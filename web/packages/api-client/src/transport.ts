@@ -29,6 +29,7 @@ export interface ApiRequestOptions {
   baseUrl?: string;
   expectJson?: boolean;
   unwrapSuccess?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ApiBlobResponse {
@@ -114,7 +115,8 @@ export async function apiFetch<T>({
   csrfToken,
   baseUrl = getDefaultApiBaseUrl(),
   expectJson = true,
-  unwrapSuccess = true
+  unwrapSuccess = true,
+  signal
 }: ApiRequestOptions): Promise<T> {
   if (body !== undefined && rawBody !== undefined) {
     throw new Error(
@@ -147,7 +149,8 @@ export async function apiFetch<T>({
         ? JSON.stringify(body)
         : rawBody !== undefined
           ? rawBody
-          : undefined
+          : undefined,
+    signal
   });
 
   if (!response.ok) {

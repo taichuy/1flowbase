@@ -371,6 +371,7 @@ fn console_router_with_assembly(
         .nest("/api/agent/v1", routes::application_public_api::router())
         .nest("/api/ex", routes::application_public_api::ex::router())
         .nest("/api", routes::mcp_protocol::router())
+        .nest("/api", routes::webmcp::router())
         .nest("/api/console", console_route_assembly.into_router())
         .nest("/api/runtime", routes::runtime_models::router())
         .nest("/api/public/auth", routes::auth::router());

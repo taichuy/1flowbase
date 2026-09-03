@@ -83,6 +83,7 @@ import {
   type McpBundleImportSource
 } from './bundle/McpBundleImportFlow';
 import { downloadMcpBundle } from './bundle/mcp-bundle-download';
+import { notifyWebMcpRegistrationsChanged } from '../../../webmcp/registration-events';
 
 type InstanceFormValues = SaveConsoleMcpInstanceBody;
 type CopyInstanceFormValues = CopySettingsMcpInstanceBody;
@@ -234,6 +235,7 @@ export function McpInstancesTab({
       return createSettingsMcpInstance(values, csrfToken);
     },
     onSuccess: async () => {
+      notifyWebMcpRegistrationsChanged();
       message.success(i18nText('settings', 'auto.mcp_saved'));
       setInstanceModalOpen(false);
       setEditingInstance(null);
@@ -246,6 +248,7 @@ export function McpInstancesTab({
     mutationFn: (instanceId: string) =>
       deleteSettingsMcpInstance(instanceId, csrfToken),
     onSuccess: async () => {
+      notifyWebMcpRegistrationsChanged();
       message.success(i18nText('settings', 'auto.mcp_deleted'));
       await queryClient.invalidateQueries({
         queryKey: settingsMcpCatalogQueryKey
@@ -761,7 +764,8 @@ export function McpInstancesTab({
             name: '',
             description_short: null,
             status: 'draft',
-            default_entry_path: '/'
+            default_entry_path: '/',
+            webmcp_exposure: 'disabled'
           });
           setInstanceModalOpen(true);
         }}
@@ -776,7 +780,8 @@ export function McpInstancesTab({
             name: record.name,
             description_short: record.description_short,
             status: record.status,
-            default_entry_path: record.default_entry_path
+            default_entry_path: record.default_entry_path,
+            webmcp_exposure: record.webmcp_exposure
           });
           setInstanceModalOpen(true);
         }}

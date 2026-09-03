@@ -38,6 +38,7 @@ pub struct CreateMcpInstanceCommand {
     pub description_short: Option<String>,
     pub status: domain::McpInstanceStatus,
     pub default_entry_path: String,
+    pub webmcp_exposure: domain::WebMcpExposure,
 }
 
 pub struct CopyMcpInstanceCommand {
@@ -671,6 +672,7 @@ where
                 description_short: command.description_short,
                 status: command.status,
                 default_entry_path: command.default_entry_path,
+                webmcp_exposure: command.webmcp_exposure,
             })
             .await
     }
@@ -718,6 +720,7 @@ where
                     description_short: source.description_short,
                     status: domain::McpInstanceStatus::Draft,
                     default_entry_path: source.default_entry_path,
+                    webmcp_exposure: domain::WebMcpExposure::Disabled,
                 },
                 groups: source_groups
                     .into_iter()
@@ -787,6 +790,7 @@ where
                 description_short: command.description_short,
                 status: command.status,
                 default_entry_path: command.default_entry_path,
+                webmcp_exposure: command.webmcp_exposure,
             })
             .await
     }

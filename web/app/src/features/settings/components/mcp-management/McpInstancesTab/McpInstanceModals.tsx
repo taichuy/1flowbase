@@ -9,6 +9,7 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Tooltip,
   Typography
 } from 'antd';
@@ -174,6 +175,18 @@ export function McpInstanceEditorModal({
           rules={[{ required: true }]}
         >
           <Input />
+        </Form.Item>
+        <Form.Item
+          name="webmcp_exposure"
+          label="WebMCP"
+          getValueProps={(value) => ({
+            checked: value === 'authenticated_session'
+          })}
+          getValueFromEvent={(checked: boolean) =>
+            checked ? 'authenticated_session' : 'disabled'
+          }
+        >
+          <Switch />
         </Form.Item>
       </Form>
     </Modal>

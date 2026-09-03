@@ -18,6 +18,7 @@ async fn mcp_instance_copy_reuses_tools_and_excludes_client_credentials() {
             description_short: Some("Copy this configuration".into()),
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/ops".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();

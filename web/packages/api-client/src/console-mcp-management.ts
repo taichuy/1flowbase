@@ -8,6 +8,7 @@ export interface ConsoleMcpInstance {
   description_short: string | null;
   status: string;
   default_entry_path: string;
+  webmcp_exposure: WebMcpExposure;
   managed_by: ConsoleMcpManagedBundleSource | null;
   created_by: string;
   updated_by: string;
@@ -15,6 +16,8 @@ export interface ConsoleMcpInstance {
   updated_at: string;
   llm_tool_registration: ConsoleMcpLlmToolRegistration;
 }
+
+export type WebMcpExposure = 'disabled' | 'authenticated_session';
 
 export interface ConsoleMcpManagedBundleSource {
   organization: string;
@@ -340,6 +343,7 @@ export interface SaveConsoleMcpInstanceBody {
   description_short: string | null;
   status: string;
   default_entry_path: string;
+  webmcp_exposure: WebMcpExposure;
 }
 
 export interface CopyConsoleMcpInstanceBody {

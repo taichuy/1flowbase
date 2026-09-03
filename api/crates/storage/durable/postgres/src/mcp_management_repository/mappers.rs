@@ -22,6 +22,14 @@ pub(super) fn parse_instance_status(value: &str) -> Result<domain::McpInstanceSt
     }
 }
 
+pub(super) fn parse_webmcp_exposure(value: &str) -> Result<domain::WebMcpExposure> {
+    match value {
+        "disabled" => Ok(domain::WebMcpExposure::Disabled),
+        "authenticated_session" => Ok(domain::WebMcpExposure::AuthenticatedSession),
+        _ => anyhow::bail!("invalid WebMCP exposure"),
+    }
+}
+
 pub(super) fn parse_tool_status(value: &str) -> Result<domain::McpToolStatus> {
     match value {
         "draft" => Ok(domain::McpToolStatus::Draft),
@@ -144,6 +152,7 @@ pub(super) fn map_instance(row: sqlx::postgres::PgRow) -> Result<domain::McpInst
         description_short: row.get("description_short"),
         status: parse_instance_status(row.get::<String, _>("status").as_str())?,
         default_entry_path: row.get("default_entry_path"),
+        webmcp_exposure: parse_webmcp_exposure(row.get::<String, _>("webmcp_exposure").as_str())?,
         managed_by: managed_bundle_source(&row),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),

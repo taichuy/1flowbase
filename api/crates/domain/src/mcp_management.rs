@@ -238,6 +238,22 @@ pub enum McpInstanceStatus {
     Archived,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WebMcpExposure {
+    Disabled,
+    AuthenticatedSession,
+}
+
+impl WebMcpExposure {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::AuthenticatedSession => "authenticated_session",
+        }
+    }
+}
+
 impl McpInstanceStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -478,6 +494,7 @@ pub struct McpInstanceRecord {
     pub description_short: Option<String>,
     pub status: McpInstanceStatus,
     pub default_entry_path: String,
+    pub webmcp_exposure: WebMcpExposure,
     pub managed_by: Option<McpManagedBundleSource>,
     pub created_by: Uuid,
     pub updated_by: Uuid,

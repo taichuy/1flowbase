@@ -20,6 +20,7 @@ mod plugins_and_models_group;
 pub mod runtime_i18n_catalog;
 #[path = "settings/mod.rs"]
 mod settings_group;
+pub mod webmcp;
 
 pub use applications_group::{
     application_api, application_orchestration, application_runtime, applications, debug_run_stream,

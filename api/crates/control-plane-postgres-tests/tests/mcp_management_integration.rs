@@ -554,6 +554,7 @@ async fn mcp_proxy_graph_records_preserve_connection_and_binding_associations() 
                 description_short: None,
                 status: domain::McpInstanceStatus::Enabled,
                 default_entry_path: "/".into(),
+                webmcp_exposure: domain::WebMcpExposure::Disabled,
             })
             .await
             .unwrap();
@@ -610,6 +611,7 @@ async fn mcp_bundle_graph_replace_is_atomic_and_preserves_credentials_and_other_
         description_short: None,
         status: domain::McpInstanceStatus::Enabled,
         default_entry_path: "/".into(),
+        webmcp_exposure: domain::WebMcpExposure::Disabled,
     };
     let original = store
         .create_mcp_instance(&create_instance(
@@ -834,6 +836,7 @@ async fn mcp_management_refreshes_des_id_and_exports_configuration_only() {
             description_short: Some("Operations tools".into()),
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -949,6 +952,7 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -1032,6 +1036,7 @@ async fn mcp_group_delete_removes_binding_only_instance_subtree_without_touching
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -1043,6 +1048,7 @@ async fn mcp_group_delete_removes_binding_only_instance_subtree_without_touching
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -1154,6 +1160,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -1270,6 +1277,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             description_short: None,
             status: domain::McpInstanceStatus::Disabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();
@@ -1380,6 +1388,7 @@ async fn mcp_instance_directory_rules_cover_visibility_and_directory_export() {
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".into(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
         })
         .await
         .unwrap();

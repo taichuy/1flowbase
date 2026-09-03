@@ -20,6 +20,7 @@ describe('McpInstanceTable', () => {
             description_short: null,
             status: 'enabled',
             default_entry_path: '/',
+            webmcp_exposure: 'disabled',
             managed_by: null,
             created_by: 'user-1',
             updated_by: 'user-1',
@@ -67,6 +68,7 @@ describe('McpInstanceTable', () => {
             description_short: null,
             status: 'enabled',
             default_entry_path: '/frontstage',
+            webmcp_exposure: 'authenticated_session',
             managed_by: {
               organization: '1flowbase',
               bundle_id: 'frontstage_assistant',

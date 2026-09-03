@@ -1529,6 +1529,7 @@ mod tests {
             description_short: None,
             status: domain::McpInstanceStatus::Enabled,
             default_entry_path: "/".to_string(),
+            webmcp_exposure: domain::WebMcpExposure::Disabled,
             managed_by: None,
             created_by: workspace_id,
             updated_by: workspace_id,

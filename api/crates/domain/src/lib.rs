@@ -118,7 +118,8 @@ pub use mcp_management::{
     McpManagedBundleSource, McpRiskLevel, McpToolAvailabilityStatus, McpToolBindingRecord,
     McpToolExecutionTarget, McpToolRecord, McpToolStatus, McpUpstreamAuthType,
     McpUpstreamConnectionRecord, McpUpstreamConnectionStatus, McpUpstreamSourceStatus,
-    McpUpstreamToolSourceRecord, McpUpstreamTransport, MCP_ASSISTANT_CLIENT_CAPABILITY_CODES,
+    McpUpstreamToolSourceRecord, McpUpstreamTransport, WebMcpExposure,
+    MCP_ASSISTANT_CLIENT_CAPABILITY_CODES,
 };
 pub use model_provider::{
     LocalPluginInstallationRecord, ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord,

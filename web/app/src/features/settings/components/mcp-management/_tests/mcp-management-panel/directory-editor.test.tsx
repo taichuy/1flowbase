@@ -519,6 +519,7 @@ function renderPanelWithMountedTool({
               description_short: null,
               status: 'enabled',
               default_entry_path: '/',
+              webmcp_exposure: 'disabled',
               managed_by: null,
               created_by: 'user-1',
               updated_by: 'user-1',
