@@ -442,23 +442,35 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 
 当前 demo dev 仍是本地 scaffold，不代表进程内 RuntimeExtensionHost debug runtime 已经打通。
 
-## 清理rust缓存
+## 重置并预热 Rust 缓存
 
-在仓库根目录执行：
-
-```bash
-cargo clean --manifest-path api/Cargo.toml
-```
-
-这会清理 Rust workspace 的 `api/target/` 中间产物。
-
-随后预热全部 debug 构建目标：
+需要回收 `api/target/` 的大量中间产物，并在清理后一次性恢复日常开发缓存时，在仓库根目录执行：
 
 ```bash
-cargo build --manifest-path api/Cargo.toml --workspace --all-targets --locked
+node scripts/node/reset-rust-cache/cli.js
 ```
 
-后续日常开发、运行和测试会复用这批 debug 缓存。若你后面要跑 release 二进制，则还需单独预热：
+该入口会严格按顺序执行：
+
+1. 停止当前 worktree 的 `api-server`，删除 `api/target/`；
+2. 预热 workspace 全部 dev targets；
+3. 精确预热 `dev-up` 使用的 `api-server` binary；
+4. 使用项目统一的 `CARGO_PROFILE_TEST_DEBUG=0` 预热 workspace test targets，但不运行测试。
+
+预热命令读取 `.1flowbase.verify.local.json` 中的 `backend.cargoJobs` 与
+`backend.incremental`，避免清理、日常构建和测试使用不同的构建身份。任一阶段失败时立即停止；只有输出
+`Rust 缓存清理与全量预热完成` 才表示全部缓存已经成功生成。
+
+这个流程会真实删除当前 worktree 的 Rust 缓存并执行完整冷构建，耗时和磁盘写入量都较大。不要把它作为普通开发启动命令；没有清理需求时，继续使用 `dev-up` 或定向 Cargo 命令，让增量缓存自然复用。
+
+若只想查看或删除缓存而不重新预热，使用 `clean-build-cache`：
+
+```bash
+node scripts/node/clean-build-cache/cli.js backend --dry-run
+node scripts/node/clean-build-cache/cli.js backend
+```
+
+若后面要运行 release 二进制，仍需单独预热 release profile：
 
 ```bash
 cargo build --manifest-path api/Cargo.toml --workspace --release --locked
