@@ -543,16 +543,17 @@ async function triggerRuntimeRecovery({ page, webBaseUrl, timeout = 30_000 }) {
       const states = readiness.body.transitions.map((entry) => entry.state);
       if (
         !states
-          .slice(-3)
+          .slice(-4)
           .every(
-            (state, index) => state === ["Degraded", "Warming", "Ready"][index],
+            (state, index) =>
+              state === ["Degraded", "Building", "Validating", "Ready"][index],
           )
       ) {
         throw new Error(
           `runtime recovery transition mismatch: ${states.join(" -> ")}`,
         );
       }
-      return readiness.body.transitions.slice(-3);
+      return readiness.body.transitions.slice(-4);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

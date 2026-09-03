@@ -60,9 +60,8 @@ test("DV-F04 vite config exposes lifecycle readiness after bounded warmup", () =
   assert.match(viteConfigSource, /oneFlowbaseDevRuntimePlugin/u);
   assert.match(viteConfigSource, /warmup:\s*\{/u);
   assert.match(runtimeSource, /\/__1flowbase_dev_ready/u);
-  assert.match(runtimeSource, /'Scanning'/u);
-  assert.match(runtimeSource, /'Optimizing'/u);
-  assert.match(runtimeSource, /'Warming'/u);
+  assert.match(runtimeSource, /'Building'/u);
+  assert.match(runtimeSource, /'Validating'/u);
   assert.match(runtimeSource, /'Ready'/u);
   assert.match(runtimeSource, /'Degraded'/u);
   assert.match(runtimeSource, /attachPreReadyTrafficGate/u);
@@ -300,24 +299,26 @@ test("DV-F08 anonymous bootstrap avoids full API and dynamic auth barrels", () =
   assert.match(registrySource, /loadAntDesignRootModule/u);
 });
 
-test('DV-F04 vite config exposes lifecycle readiness after bounded warmup', () => {
-  const viteConfigSource = fs.readFileSync(viteConfigPath, 'utf8');
+test("DV-F04 vite config exposes lifecycle readiness after bounded warmup", () => {
+  const viteConfigSource = fs.readFileSync(viteConfigPath, "utf8");
   const runtimeSource = fs.readFileSync(
-    path.resolve(path.dirname(viteConfigPath), 'vite', 'dev-runtime.ts'),
-    'utf8'
+    path.resolve(path.dirname(viteConfigPath), "vite", "dev-runtime.ts"),
+    "utf8",
   );
 
   assert.match(viteConfigSource, /oneFlowbaseDevRuntimePlugin/u);
   assert.match(viteConfigSource, /warmup:\s*\{/u);
   assert.match(runtimeSource, /\/__1flowbase_dev_ready/u);
-  assert.match(runtimeSource, /'Scanning'/u);
-  assert.match(runtimeSource, /'Optimizing'/u);
-  assert.match(runtimeSource, /'Warming'/u);
+  assert.match(runtimeSource, /'Building'/u);
+  assert.match(runtimeSource, /'Validating'/u);
   assert.match(runtimeSource, /'Ready'/u);
   assert.match(runtimeSource, /'Degraded'/u);
   assert.match(runtimeSource, /attachPreReadyTrafficGate/u);
   assert.match(runtimeSource, /response\.statusCode = 503/u);
   assert.match(runtimeSource, /fs\.writeFileSync/u);
   assert.match(runtimeSource, /RECOVERY_PROBE_PATH/u);
-  assert.doesNotMatch(runtimeSource, /allowedHosts|cors|cloudflare|access token/iu);
+  assert.doesNotMatch(
+    runtimeSource,
+    /allowedHosts|cors|cloudflare|access token/iu,
+  );
 });

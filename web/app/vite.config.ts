@@ -154,7 +154,6 @@ export default defineConfig(({ command, mode }) => {
         ...deferredNativeAntDesignEsModuleSources
       ],
       include: [
-        '@1flowbase/api-client/auth',
         ...DEV_CRITICAL_INTEROP_SPECIFIERS,
         '@ant-design/icons',
         '@ant-design/x/es/bubble',

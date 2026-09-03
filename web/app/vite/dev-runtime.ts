@@ -7,18 +7,51 @@ import type { Plugin, ViteDevServer } from 'vite';
 const HMR_PROBE_ID = 'virtual:1flowbase-dev-hmr-probe';
 const RESOLVED_HMR_PROBE_ID = `\0${HMR_PROBE_ID}`;
 const DEV_GENERATION_META_NAME = '1flowbase-dev-generation';
+const DEV_GENERATION_MANIFEST_NAME = '1flowbase-generation-manifest.json';
 const DEV_CRITICAL_INTEROP_SPECIFIERS = ['is-mobile', 'react-is'] as const;
 const DEV_GENERATIONS_RETAINED = 2;
+const DEV_WORKSPACE_DEPENDENCY_ROOTS = ['packages/api-client'] as const;
 const READY_PATH = '/__1flowbase_dev_ready';
 const HMR_PROBE_PATH = '/__1flowbase_dev_hmr_probe';
 const RECOVERY_PROBE_PATH = '/__1flowbase_dev_recovery_probe';
 
 type DevRuntimeState =
-  | 'Scanning'
-  | 'Optimizing'
-  | 'Warming'
+  | 'Building'
+  | 'Validating'
   | 'Ready'
+  | 'Retired'
   | 'Degraded';
+
+type DevRuntimeStage =
+  | 'entry_transform'
+  | 'optimizer_contract'
+  | 'manifest_publish'
+  | 'recovery';
+
+type DevRuntimeError = {
+  stage: DevRuntimeStage;
+  specifier?: string;
+  name: string;
+  message: string;
+};
+
+type DevGenerationInput = {
+  path: string;
+  kind: 'config' | 'workspace-manifest' | 'workspace-source';
+  digest: string;
+};
+
+type DevGenerationDependencyManifest = {
+  schemaVersion: '1flowbase.dev-generation-manifest/v1';
+  mode: string;
+  toolchain: {
+    runtime: string;
+    platform: NodeJS.Platform;
+    arch: string;
+  };
+  viteEnvironment: Record<string, string>;
+  inputs: DevGenerationInput[];
+};
 
 type DevRuntimeReceipt = {
   state: DevRuntimeState;
@@ -26,7 +59,7 @@ type DevRuntimeReceipt = {
   generation: string;
   startedAt: string;
   readyAt: string | null;
-  error: string | null;
+  error: DevRuntimeError | null;
   transitions: Array<{ state: DevRuntimeState; at: string }>;
 };
 
@@ -35,9 +68,37 @@ function transitionRuntime(receipt: DevRuntimeReceipt, state: DevRuntimeState) {
   receipt.transitions.push({ state, at: new Date().toISOString() });
 }
 
-function devCacheIdentity(root: string, mode: string) {
-  const hash = crypto.createHash('sha256');
-  const inputs = [
+function sha256(content: string | Buffer) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+function normalizeManifestPath(webRoot: string, filePath: string) {
+  return path.relative(webRoot, filePath).split(path.sep).join('/');
+}
+
+function collectRuntimeSourceFiles(directory: string): string[] {
+  if (!fs.existsSync(directory)) return [];
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '_tests' || entry.name === 'node_modules') return [];
+        return collectRuntimeSourceFiles(entryPath);
+      }
+      if (!entry.isFile()) return [];
+      if (/\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(entry.name)) return [];
+      return /\.[cm]?[jt]sx?$/u.test(entry.name) ? [entryPath] : [];
+    });
+}
+
+function createDevGenerationDependencyManifest(
+  root: string,
+  mode: string
+): DevGenerationDependencyManifest {
+  const webRoot = path.resolve(root, '..');
+  const configInputs = [
     path.resolve(root, '..', 'pnpm-lock.yaml'),
     path.resolve(root, '..', 'package.json'),
     path.resolve(root, 'package.json'),
@@ -48,31 +109,89 @@ function devCacheIdentity(root: string, mode: string) {
     path.resolve(root, 'vite.config.ts'),
     path.resolve(root, 'vite', 'dev-runtime.ts')
   ];
-
-  for (const filePath of inputs) {
-    hash.update(filePath);
-    hash.update('\0');
-    hash.update(
-      fs.existsSync(filePath) ? fs.readFileSync(filePath) : '<missing>'
-    );
-    hash.update('\0');
-  }
-
   const viteEnvironment = Object.fromEntries(
     Object.entries(process.env)
       .filter(([name]) => name.startsWith('VITE_'))
       .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, value]) => [name, value || ''])
   );
-  hash.update(
-    JSON.stringify({
+  const inputs: DevGenerationInput[] = configInputs.map((filePath) => ({
+    path: normalizeManifestPath(webRoot, filePath),
+    kind: 'config',
+    digest: sha256(
+      fs.existsSync(filePath) ? fs.readFileSync(filePath) : '<missing>'
+    )
+  }));
+  for (const dependencyRoot of DEV_WORKSPACE_DEPENDENCY_ROOTS) {
+    const absoluteRoot = path.join(webRoot, dependencyRoot);
+    const packageManifest = path.join(absoluteRoot, 'package.json');
+    inputs.push({
+      path: normalizeManifestPath(webRoot, packageManifest),
+      kind: 'workspace-manifest',
+      digest: sha256(
+        fs.existsSync(packageManifest)
+          ? fs.readFileSync(packageManifest)
+          : '<missing>'
+      )
+    });
+    for (const sourceFile of collectRuntimeSourceFiles(
+      path.join(absoluteRoot, 'src')
+    )) {
+      inputs.push({
+        path: normalizeManifestPath(webRoot, sourceFile),
+        kind: 'workspace-source',
+        digest: sha256(fs.readFileSync(sourceFile))
+      });
+    }
+  }
+  inputs.sort((left, right) => left.path.localeCompare(right.path));
+  return {
+    schemaVersion: '1flowbase.dev-generation-manifest/v1',
+    mode,
+    toolchain: {
       runtime: process.version,
       platform: process.platform,
-      arch: process.arch,
-      mode,
-      viteEnvironment
-    })
+      arch: process.arch
+    },
+    viteEnvironment,
+    inputs
+  };
+}
+
+function devCacheIdentity(root: string, mode: string) {
+  return sha256(
+    JSON.stringify(createDevGenerationDependencyManifest(root, mode))
   );
-  return hash.digest('hex');
+}
+
+function persistDevGenerationDependencyManifest(
+  cacheDirectory: string,
+  manifest: DevGenerationDependencyManifest
+) {
+  fs.mkdirSync(cacheDirectory, { recursive: true });
+  const manifestPath = path.join(cacheDirectory, DEV_GENERATION_MANIFEST_NAME);
+  const stagingPath = `${manifestPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(
+    stagingPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8'
+  );
+  fs.renameSync(stagingPath, manifestPath);
+  return manifestPath;
+}
+
+function createDevRuntimeError(
+  stage: DevRuntimeStage,
+  error: unknown,
+  specifier?: string
+): DevRuntimeError {
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  return {
+    stage,
+    ...(specifier ? { specifier } : {}),
+    name: normalized.name,
+    message: normalized.message
+  };
 }
 
 function devGenerationCacheDirectory(root: string, mode: string) {
@@ -220,9 +339,11 @@ function hmrProbeSource(probeFile: string | null) {
 async function warmRuntime(
   server: ViteDevServer,
   receipt: DevRuntimeReceipt,
+  manifest: DevGenerationDependencyManifest,
   afterReady?: () => void
 ) {
-  transitionRuntime(receipt, 'Warming');
+  if (receipt.state !== 'Building') transitionRuntime(receipt, 'Building');
+  let stage: DevRuntimeStage = 'entry_transform';
   try {
     await Promise.all([
       server.transformRequest('/src/bootstrap.ts'),
@@ -231,16 +352,20 @@ async function warmRuntime(
       server.transformRequest('/src/app/ApplicationBootBoundary.tsx'),
       server.transformRequest('/src/app/ApplicationRuntimeBootstrap.tsx')
     ]);
+    transitionRuntime(receipt, 'Validating');
+    stage = 'optimizer_contract';
     await waitForCriticalInteropCache(server.config.cacheDir);
+    stage = 'manifest_publish';
+    persistDevGenerationDependencyManifest(server.config.cacheDir, manifest);
     receipt.error = null;
     receipt.readyAt = new Date().toISOString();
     transitionRuntime(receipt, 'Ready');
     afterReady?.();
   } catch (error: unknown) {
-    receipt.error = error instanceof Error ? error.message : String(error);
+    receipt.error = createDevRuntimeError(stage, error);
     transitionRuntime(receipt, 'Degraded');
     server.config.logger.error(
-      `[1flowbase-dev-runtime] warmup failed: ${receipt.error}`
+      `[1flowbase-dev-runtime] ${stage} failed: ${receipt.error.message}`
     );
   }
 }
@@ -248,16 +373,20 @@ async function warmRuntime(
 function attachRecoveryProbeMiddleware(
   server: ViteDevServer,
   receipt: DevRuntimeReceipt,
+  manifest: DevGenerationDependencyManifest,
   afterReady?: () => void
 ) {
   server.middlewares.use(RECOVERY_PROBE_PATH, (_request, response) => {
-    receipt.error = 'controlled recovery probe';
+    receipt.error = createDevRuntimeError(
+      'recovery',
+      new Error('controlled recovery probe')
+    );
     transitionRuntime(receipt, 'Degraded');
     response.statusCode = 202;
     response.setHeader('content-type', 'application/json; charset=utf-8');
     response.setHeader('cache-control', 'no-store');
     response.end(JSON.stringify({ state: receipt.state }));
-    setImmediate(() => void warmRuntime(server, receipt, afterReady));
+    setImmediate(() => void warmRuntime(server, receipt, manifest, afterReady));
   });
 }
 
@@ -291,7 +420,8 @@ function oneFlowbaseDevRuntimePlugin({
   mode: string;
   command: 'serve' | 'build';
 }): Plugin {
-  const generation = devCacheIdentity(root, mode);
+  const manifest = createDevGenerationDependencyManifest(root, mode);
+  const generation = sha256(JSON.stringify(manifest));
   const runtimeDirectory = path.join(
     path.resolve(root, '..', '..'),
     'tmp',
@@ -359,24 +489,29 @@ function oneFlowbaseDevRuntimePlugin({
     configureServer(server) {
       runtimeLogger = server.config.logger;
       const receipt = {
-        state: 'Scanning' as DevRuntimeState,
+        state: 'Building' as DevRuntimeState,
         cacheIdentity: generation,
         generation,
         startedAt: new Date().toISOString(),
         readyAt: null,
         error: null,
         transitions: [
-          { state: 'Scanning' as DevRuntimeState, at: new Date().toISOString() }
+          { state: 'Building' as DevRuntimeState, at: new Date().toISOString() }
         ]
       };
       attachReadinessMiddleware(server, receipt);
       if (hmrProbeFile) attachHmrProbeMiddleware(server, hmrProbeFile);
-      attachRecoveryProbeMiddleware(server, receipt, retireStaleGenerations);
+      attachRecoveryProbeMiddleware(
+        server,
+        receipt,
+        manifest,
+        retireStaleGenerations
+      );
       attachPreReadyTrafficGate(server, receipt);
-      transitionRuntime(receipt, 'Optimizing');
       server.httpServer?.once(
         'listening',
-        () => void warmRuntime(server, receipt, retireStaleGenerations)
+        () =>
+          void warmRuntime(server, receipt, manifest, retireStaleGenerations)
       );
       server.httpServer?.once('close', () => {
         if (hmrProbeFile && fs.existsSync(hmrProbeFile)) {
@@ -389,15 +524,19 @@ function oneFlowbaseDevRuntimePlugin({
 
 export {
   DEV_CRITICAL_INTEROP_SPECIFIERS,
+  DEV_GENERATION_MANIFEST_NAME,
   DEV_GENERATION_META_NAME,
   HMR_PROBE_ID,
   HMR_PROBE_PATH,
   RECOVERY_PROBE_PATH,
   READY_PATH,
+  createDevGenerationDependencyManifest,
+  createDevRuntimeError,
   devCacheIdentity,
   devGenerationCacheDirectory,
   hmrProbeSource,
   oneFlowbaseDevRuntimePlugin,
+  persistDevGenerationDependencyManifest,
   pruneDevGenerationCaches,
   verifyCriticalInteropCache,
   waitForCriticalInteropCache

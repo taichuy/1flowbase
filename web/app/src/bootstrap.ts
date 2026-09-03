@@ -23,6 +23,7 @@ function shouldReloadModuleGraph(error: unknown) {
 }
 
 function renderBootFailure(error: unknown) {
+  console.error('[1flowbase-bootstrap] application module graph failed', error);
   const generation = currentGeneration();
   const reloadKey = `${DEV_RELOAD_PREFIX}:${generation}`;
   if (

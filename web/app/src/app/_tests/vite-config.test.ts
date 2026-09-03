@@ -153,6 +153,19 @@ describe('vite config', () => {
     }
   });
 
+  test('AC-002 leaves local ESM workspace packages out of dependency pre-optimization', async () => {
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+
+    const optimizeInclude = source.match(
+      /include:\s*\[([\s\S]*?)\],\s*needsInterop/u
+    )?.[1];
+    expect(optimizeInclude).toBeDefined();
+    expect(optimizeInclude).not.toContain("'@1flowbase/api-client/auth'");
+  });
+
   test('replaces the react-draggable debug process lookup in dev and production bundles', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),
