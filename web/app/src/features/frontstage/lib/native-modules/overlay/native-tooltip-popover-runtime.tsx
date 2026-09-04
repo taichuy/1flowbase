@@ -108,6 +108,7 @@ function useSurfaceTooltipAnchor({
   useLayoutEffect(() => {
     if (!active || !surface) return;
     return surface.registerAnchor({
+      target: () => tooltipRef.current?.nativeElement ?? null,
       measure: () => tooltipRef.current,
       commit: (tooltip) => tooltip?.forceAlign()
     });
