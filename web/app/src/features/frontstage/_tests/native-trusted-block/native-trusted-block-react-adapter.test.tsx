@@ -34,9 +34,11 @@ const providerRecords = vi.hoisted(() => ({
 
 afterEach(() => vi.unstubAllGlobals());
 
-vi.mock('@ant-design/cssinjs', async () => {
+vi.mock('@ant-design/cssinjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ant-design/cssinjs')>();
   const React = await vi.importActual<typeof import('react')>('react');
   return {
+    ...actual,
     createCache: vi.fn(() => ({})),
     StyleProvider({
       children,
