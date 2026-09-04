@@ -15,7 +15,9 @@ const storageStatePath = join(outputDir, 'storage-state.json');
 const pageId = '01a06a10-eebf-78c3-9cf0-4919909fda31';
 const staticStylesBlockId = '01a06a11-326d-7291-afdb-aeee729183f0';
 const revealBlockId = '01a06a11-33ab-7f80-b106-312b7d34f5ac';
-const baseUrl = `http://127.0.0.1:3100/demo/pages/${pageId}/blocks`;
+const webBaseUrl = process.env.FLOWBASE_WEB_BASE_URL ?? 'http://127.0.0.1:3100';
+const apiBaseUrl = process.env.FLOWBASE_API_BASE_URL ?? 'http://127.0.0.1:7800';
+const baseUrl = `${webBaseUrl}/demo/pages/${pageId}/blocks`;
 
 async function main() {
   mkdirSync(outputDir, { recursive: true });
@@ -23,7 +25,7 @@ async function main() {
   const credentials = loadRootCredentials({ repoRoot });
   const session = await openTemporaryConsoleSession({
     playwright,
-    apiBaseUrl: 'http://127.0.0.1:7800',
+    apiBaseUrl,
     account: credentials.account,
     password: credentials.password,
     storageStatePath
