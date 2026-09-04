@@ -10,6 +10,7 @@ import {
 
 import { prepareNativeReactSource } from '../native-react-source-preparation';
 import type { NativeReactBrowserCompileResult } from '../native-react-compiler-browser';
+import { createFrontstageNativeReactModuleRegistry } from '../../../features/frontstage/lib/native-modules/registry';
 
 const frozenSource = 'export default function Block() { return null; }';
 function compiledArtifact() {
@@ -154,6 +155,37 @@ describe('Native React source preparation', () => {
     expect(moduleRegistry.resolveModuleAssets).toHaveBeenCalledWith(
       artifact.program.injectedModules.map(({ source }) => source)
     );
+  });
+
+  test('I1989-AC-static-style returns CSS generated while evaluating shared JSX Studio source', async () => {
+    const source = `import { createStaticStyles } from 'antd-style';
+const styles = createStaticStyles(({ css }) => ({ root: css({ color: '#abcdef' }) }));
+export default function Block() { return <div className={styles.root} />; }`;
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const compiled = compileNativeReactComponent(source, registry.definitions);
+    if (!compiled.ok)
+      throw new Error('Static style fixture failed to compile.');
+
+    const result = await prepareNativeReactSource({
+      frozenSource: source,
+      requestId: 'static-style',
+      compiler: compilerReturning({
+        ok: true,
+        artifact: compiled.artifact,
+        diagnostics: []
+      }),
+      registryFactory: () => registry
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const element = result.component({} as never) as unknown as {
+      props: { className: string };
+    };
+    const css = new TextDecoder().decode(result.moduleAssets[0]?.bytes);
+    expect(css).toContain(element.props.className);
+    expect(css).toContain('#abcdef');
+    expect(document.head).not.toHaveTextContent('#abcdef');
   });
 
   test('R6-P1 converts module asset failures to typed runtime diagnostics', async () => {

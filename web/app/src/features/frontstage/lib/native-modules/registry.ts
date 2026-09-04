@@ -32,7 +32,10 @@ import {
   ANT_DESIGN_COLORS_EXPORTS,
   loadAntDesignColorsModule
 } from './ant-design-colors-runtime';
-import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import {
+  ANTD_STYLE_EXPORTS,
+  loadAntdStyleModuleForArtifact
+} from './antd-style-runtime';
 import { loadAntdImgCropModule } from './image-crop/antd-img-crop-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
@@ -125,9 +128,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('clsx', ['default', 'clsx'], async () => ({
     module: await import('clsx')
   })),
-  registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
-    module: await loadAntdStyleModule()
-  })),
+  registration(
+    'antd-style',
+    ANTD_STYLE_EXPORTS,
+    loadAntdStyleModuleForArtifact
+  ),
   registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
     module: await import('@1flowbase/ui')
   })),
@@ -190,9 +195,7 @@ export function getFrontstageNativeReactModuleRegistry(): NativeReactModuleRegis
 export function createFrontstageNativeReactModuleRegistry(
   overrides: NativeTrustedBlockInjectedModuleMap = {}
 ): NativeReactModuleRegistry {
-  if (Object.keys(overrides).length === 0) {
-    return getFrontstageNativeReactModuleRegistry();
-  }
+  // Each artifact evaluation owns its module flights and generated style assets.
   return createNativeReactModuleRegistry(
     registrations.map((entry) => {
       const override = overrides[entry.module_source];

@@ -34,6 +34,22 @@ import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-o
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 
 type NativePreparationSource = ConsoleFrontstageBlockNodeCode;
+type NativeComponentEvaluation = Awaited<
+  ReturnType<typeof evaluateNativeReactComponentArtifactWithRegistry>
+>;
+type NativeComponentFlight =
+  | {
+      ok: true;
+      evaluated: Extract<NativeComponentEvaluation, { ok: true }>;
+      moduleAssets: Awaited<
+        ReturnType<NativeReactModuleRegistry['resolveModuleAssets']>
+      >;
+      moduleSources: string[];
+    }
+  | {
+      ok: false;
+      evaluated: Extract<NativeComponentEvaluation, { ok: false }>;
+    };
 
 export interface UseFrontstagePageCanvasNativePreparationsInput {
   actorId: string | null | undefined;
@@ -84,11 +100,7 @@ export function useFrontstagePageCanvasNativePreparations({
   const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
     useState<Record<string, number>>({});
   const componentFactoryFlights = useMemo(
-    () =>
-      new Map<
-        string,
-        ReturnType<typeof evaluateNativeReactComponentArtifactWithRegistry>
-      >(),
+    () => new Map<string, Promise<NativeComponentFlight>>(),
     []
   );
   useEffect(
@@ -210,37 +222,52 @@ export function useFrontstagePageCanvasNativePreparations({
           await enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
           if (forceCompile) componentFactoryFlights.delete(componentFactoryKey);
-          const moduleRegistry = moduleRegistryFactory();
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);
           if (!componentFactoryFlight) {
+            const moduleRegistry = moduleRegistryFactory();
             componentFactoryFlight =
-              evaluateNativeReactComponentArtifactWithRegistry(
-                artifact,
-                moduleRegistry
-              );
+              (async (): Promise<NativeComponentFlight> => {
+                const evaluated =
+                  await evaluateNativeReactComponentArtifactWithRegistry(
+                    artifact,
+                    moduleRegistry
+                  );
+                if (!evaluated.ok) return { ok: false, evaluated };
+                const moduleSources =
+                  evaluated.artifact.program.injectedModules.map(
+                    (module) => module.source
+                  );
+                const moduleAssets =
+                  await moduleRegistry.resolveModuleAssets(moduleSources);
+                return {
+                  ok: true,
+                  evaluated,
+                  moduleAssets,
+                  moduleSources
+                };
+              })();
             componentFactoryFlights.set(
               componentFactoryKey,
               componentFactoryFlight
             );
           }
-          const evaluated = await componentFactoryFlight;
+          let componentFlight;
+          try {
+            componentFlight = await componentFactoryFlight;
+          } catch (error) {
+            componentFactoryFlights.delete(componentFactoryKey);
+            throw error;
+          }
           throwIfAborted(signal);
-          if (!evaluated.ok) {
+          if (!componentFlight.ok) {
             componentFactoryFlights.delete(componentFactoryKey);
             throw new Error(
-              evaluated.diagnostics[0]?.message ??
+              componentFlight.evaluated.diagnostics[0]?.message ??
                 'Native React module resolution failed.'
             );
           }
-          const moduleAssets = await moduleRegistry.resolveModuleAssets(
-            evaluated.artifact.program.injectedModules.map(
-              (module) => module.source
-            )
-          );
-          const moduleSources = evaluated.artifact.program.injectedModules.map(
-            (module) => module.source
-          );
+          const { evaluated, moduleAssets, moduleSources } = componentFlight;
           throwIfAborted(signal);
           return {
             artifact: evaluated.artifact,

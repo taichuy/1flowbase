@@ -46,3 +46,29 @@ export function loadAntdStyleModule(): Promise<typeof import('antd-style')> {
   });
   return moduleFlight;
 }
+
+export async function loadAntdStyleModuleForArtifact(): Promise<{
+  module: Record<string, unknown>;
+  readonly styles?: readonly { css: string }[];
+}> {
+  const antdStyleModule = await loadAntdStyleModule();
+  if (typeof document === 'undefined') return { module: antdStyleModule };
+
+  // Module-top-level styles belong to the evaluated artifact, not the host page.
+  const styleContainer = document.createDocumentFragment();
+  const artifactInstance = antdStyleModule.createInstance({
+    container: styleContainer
+  });
+  return {
+    module: {
+      ...antdStyleModule,
+      createStaticStyles: artifactInstance.createStaticStyles
+    },
+    get styles() {
+      const css = [...styleContainer.querySelectorAll('style')]
+        .map((style) => style.textContent ?? '')
+        .join('\n');
+      return css === '' ? [] : [{ css }];
+    }
+  };
+}
