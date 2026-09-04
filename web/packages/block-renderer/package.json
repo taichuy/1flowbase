@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@1flowbase/page-protocol": "workspace:*",
-    "antd": "^6.1.1",
+    "antd": "6.6.2",
     "echarts": "6.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
