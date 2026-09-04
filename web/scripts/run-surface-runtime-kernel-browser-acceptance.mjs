@@ -354,7 +354,10 @@ async function readStaticStylesState(block) {
     },
     pairs,
     itemCount: state.items.length,
-    itemSizes: state.items.map(({ geometry }) => geometry),
+    itemContentBoxes: state.items.map(
+      ({ computedContentBox }) => computedContentBox
+    ),
+    itemBorderBoxes: state.items.map(({ borderBox }) => borderBox),
     popoverCount: state.tooltips.length,
     visiblePopoverCount: state.tooltips.filter(({ visible }) => visible).length,
     itemRuleInShadow: state.items.every(
@@ -365,6 +368,12 @@ async function readStaticStylesState(block) {
     ),
     styleOwners: state.items.map((item) => ({
       itemProbeId: item.probeId,
+      authoredRuleSize: item.authoredRuleSize,
+      computedContentBox: item.computedContentBox,
+      borderBox: item.borderBox,
+      boxSizing: item.boxSizing,
+      border: item.border,
+      padding: item.padding,
       surfaceStyleOwners: item.surfaceStyleOwners,
       documentHeadStyleOwners: item.documentHeadStyleOwners
     })),
@@ -509,6 +518,48 @@ async function readSurfaceState(block, options) {
         height: rect.height
       };
     };
+    const parsePixelValue = (value) => {
+      const match = value.trim().match(/^(-?(?:\d+\.?\d*|\.\d+))px$/u);
+      return match ? Number.parseFloat(match[1]) : Number.NaN;
+    };
+    const boxModel = (element) => {
+      const style = getComputedStyle(element);
+      const padding = {
+        top: parsePixelValue(style.paddingTop),
+        right: parsePixelValue(style.paddingRight),
+        bottom: parsePixelValue(style.paddingBottom),
+        left: parsePixelValue(style.paddingLeft)
+      };
+      const border = {
+        top: parsePixelValue(style.borderTopWidth),
+        right: parsePixelValue(style.borderRightWidth),
+        bottom: parsePixelValue(style.borderBottomWidth),
+        left: parsePixelValue(style.borderLeftWidth)
+      };
+      const computedWidth = parsePixelValue(style.width);
+      const computedHeight = parsePixelValue(style.height);
+      const horizontalInsets =
+        padding.left + padding.right + border.left + border.right;
+      const verticalInsets =
+        padding.top + padding.bottom + border.top + border.bottom;
+      const computedContentBox = {
+        width:
+          style.boxSizing === 'border-box'
+            ? computedWidth - horizontalInsets
+            : computedWidth,
+        height:
+          style.boxSizing === 'border-box'
+            ? computedHeight - verticalInsets
+            : computedHeight
+      };
+      return {
+        computedContentBox,
+        borderBox: geometry(element),
+        boxSizing: style.boxSizing,
+        border,
+        padding
+      };
+    };
     const centerVector = (source, target) => {
       const sourceRect = source.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
@@ -554,16 +605,18 @@ async function readSurfaceState(block, options) {
             } catch {
               return;
             }
+            const width = rule.style.getPropertyValue('width');
+            const height = rule.style.getPropertyValue('height');
             if (
               selectorMatches &&
-              Number.parseFloat(rule.style.getPropertyValue('width')) === 280 &&
-              Number.parseFloat(rule.style.getPropertyValue('height')) === 280
+              parsePixelValue(width) === 280 &&
+              parsePixelValue(height) === 280
             ) {
               matches.push({
                 ownerType,
                 ownerRoot,
-                width: rule.style.getPropertyValue('width'),
-                height: rule.style.getPropertyValue('height')
+                width,
+                height
               });
             }
           });
@@ -695,15 +748,18 @@ async function readSurfaceState(block, options) {
       for (const { shadow, sheets } of shadowScopes) {
         for (const element of shadow.querySelectorAll('*')) {
           if (overlayHost.contains(element)) continue;
-          const rect = element.getBoundingClientRect();
+          if (!visible(element)) continue;
+          const surfaceStyleOwners = matchingGeometryRules(element, sheets);
+          if (surfaceStyleOwners.length === 0) continue;
+          const metrics = boxModel(element);
           if (
-            Math.abs(rect.width - 280) > 0.5 ||
-            Math.abs(rect.height - 280) > 0.5
+            !Number.isFinite(metrics.computedContentBox.width) ||
+            !Number.isFinite(metrics.computedContentBox.height) ||
+            Math.abs(metrics.computedContentBox.width - 280) > 0.5 ||
+            Math.abs(metrics.computedContentBox.height - 280) > 0.5
           ) {
             continue;
           }
-          const surfaceStyleOwners = matchingGeometryRules(element, sheets);
-          if (surfaceStyleOwners.length === 0) continue;
           let probeId = probeState.itemIds.get(element);
           if (!probeId) {
             probeId = `surface-item-${probeState.nextItemId}`;
@@ -713,7 +769,16 @@ async function readSurfaceState(block, options) {
           }
           items.push({
             probeId,
-            geometry: geometry(element),
+            geometry: metrics.borderBox,
+            authoredRuleSize: surfaceStyleOwners.map(({ width, height }) => ({
+              width,
+              height
+            })),
+            computedContentBox: metrics.computedContentBox,
+            borderBox: metrics.borderBox,
+            boxSizing: metrics.boxSizing,
+            border: metrics.border,
+            padding: metrics.padding,
             surfaceStyleOwners,
             documentHeadStyleOwners: matchingGeometryRules(
               element,
@@ -901,14 +966,14 @@ function maxVectorDelta(before, after) {
 }
 
 function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
-  const allItemsAre280 = staticStyles.itemSizes.every(
+  const allContentBoxesAre280 = staticStyles.itemContentBoxes.every(
     (size) =>
       Math.abs((size?.width ?? 0) - 280) <= 0.5 &&
       Math.abs((size?.height ?? 0) - 280) <= 0.5
   );
   if (
     staticStyles.itemCount !== 12 ||
-    !allItemsAre280 ||
+    !allContentBoxesAre280 ||
     !staticStyles.itemRuleInShadow ||
     staticStyles.itemRuleInDocumentHead ||
     staticStyles.popoverCount !== 12 ||
