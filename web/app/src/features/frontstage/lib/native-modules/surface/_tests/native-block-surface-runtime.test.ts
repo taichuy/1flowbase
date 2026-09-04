@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { NativeOverlayHost } from '../../native-overlay-host';
 import { createNativeBlockSurfaceRuntime } from '../native-block-surface-runtime';
 
+const restoreObserverHarnesses: Array<() => void> = [];
+
 afterEach(() => {
+  for (const restore of restoreObserverHarnesses.splice(0).reverse()) restore();
   document.body.replaceChildren();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -421,8 +424,14 @@ function installObserverHarnesses() {
     takeRecords = vi.fn(() => []);
   }
 
-  vi.stubGlobal('ResizeObserver', ResizeObserverHarness);
-  vi.stubGlobal('MutationObserver', MutationObserverHarness);
+  const originalResizeObserver = window.ResizeObserver;
+  const originalMutationObserver = window.MutationObserver;
+  window.ResizeObserver = ResizeObserverHarness;
+  window.MutationObserver = MutationObserverHarness;
+  restoreObserverHarnesses.push(() => {
+    window.ResizeObserver = originalResizeObserver;
+    window.MutationObserver = originalMutationObserver;
+  });
   return {
     resize: {
       disconnect: resizeDisconnect,
