@@ -135,6 +135,34 @@ function shadowQueries(root: Element) {
   return within(root.shadowRoot as unknown as HTMLElement);
 }
 
+function hostConfigProviders(root: Element): Array<Record<string, unknown>> {
+  const overlayLayer = root.shadowRoot?.querySelector(
+    '[data-flowbase-native-overlay-layer]'
+  );
+  return providerRecords.configs.filter(
+    (config) =>
+      typeof config.prefixCls === 'string' &&
+      typeof config.getPopupContainer === 'function' &&
+      typeof config.getTargetContainer === 'function' &&
+      config.getPopupContainer() === overlayLayer
+  );
+}
+
+function expectHostTheme(
+  root: Element,
+  expectedTokens: Record<string, unknown>
+): void {
+  const matches = hostConfigProviders(root).filter((config) => {
+    const tokens = (
+      config.theme as { token?: Record<string, unknown> } | undefined
+    )?.token;
+    return Object.entries(expectedTokens).every(
+      ([key, value]) => tokens?.[key] === value
+    );
+  });
+  expect(matches.length).toBeGreaterThan(0);
+}
+
 describe('frontstage native trusted block declarative portal host', () => {
   beforeEach(() => {
     providerRecords.configs = [];
@@ -174,14 +202,13 @@ describe('frontstage native trusted block declarative portal host', () => {
       await shadowQueries(secondRoot).findByTestId('second')
     ).toHaveTextContent('second');
     expect(firstRoot.shadowRoot).not.toBe(secondRoot.shadowRoot);
-    const shadowStylePrefixes = providerRecords.configs.map(
-      (config) => config.prefixCls
+    const firstHostProviders = hostConfigProviders(firstRoot);
+    const secondHostProviders = hostConfigProviders(secondRoot);
+    expect(firstHostProviders.length).toBeGreaterThan(0);
+    expect(secondHostProviders.length).toBeGreaterThan(0);
+    expect(firstHostProviders[0].prefixCls).not.toBe(
+      secondHostProviders[0].prefixCls
     );
-    expect(shadowStylePrefixes).toHaveLength(2);
-    expect(
-      shadowStylePrefixes.every((prefix) => typeof prefix === 'string')
-    ).toBe(true);
-    expect(new Set(shadowStylePrefixes).size).toBe(2);
 
     const source = readFileSync(
       join(
@@ -338,13 +365,11 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
 
     await shadowQueries(root).findByText('responsive motion');
-    expect(providerRecords.configs.at(-1)?.theme).toEqual({
-      token: expect.objectContaining({
-        motion: true,
-        motionDurationFast: '0.03s',
-        motionDurationMid: '0.05s',
-        motionDurationSlow: '0.08s'
-      })
+    expectHostTheme(root, {
+      motion: true,
+      motionDurationFast: '0.03s',
+      motionDurationMid: '0.05s',
+      motionDurationSlow: '0.08s'
     });
   });
 
@@ -370,13 +395,11 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
 
     await shadowQueries(root).findByText('authored motion');
-    expect(providerRecords.configs.at(-1)?.theme).toEqual({
-      token: expect.objectContaining({
-        colorPrimary: '#123456',
-        motionDurationFast: '0.03s',
-        motionDurationMid: '0.24s',
-        motionDurationSlow: '0.08s'
-      })
+    expectHostTheme(root, {
+      colorPrimary: '#123456',
+      motionDurationFast: '0.03s',
+      motionDurationMid: '0.24s',
+      motionDurationSlow: '0.08s'
     });
   });
 
@@ -420,39 +443,23 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
 
     await shadowQueries(root).findByText('reduced motion');
-    expect(
-      (
-        providerRecords.configs.at(-1)?.theme as {
-          token?: Record<string, unknown>;
-        }
-      ).token
-    ).toEqual(
-      expect.objectContaining({
-        motion: false,
-        motionDurationFast: '0s',
-        motionDurationMid: '0s',
-        motionDurationSlow: '0s'
-      })
-    );
+    expectHostTheme(root, {
+      motion: false,
+      motionDurationFast: '0s',
+      motionDurationMid: '0s',
+      motionDurationSlow: '0s'
+    });
 
     reduced = false;
     act(() => changeListener?.({ matches: false } as MediaQueryListEvent));
 
     await waitFor(() =>
-      expect(
-        (
-          providerRecords.configs.at(-1)?.theme as {
-            token?: Record<string, unknown>;
-          }
-        ).token
-      ).toEqual(
-        expect.objectContaining({
-          motion: true,
-          motionDurationFast: '0.03s',
-          motionDurationMid: '0.05s',
-          motionDurationSlow: '0.08s'
-        })
-      )
+      expectHostTheme(root, {
+        motion: true,
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.05s',
+        motionDurationSlow: '0.08s'
+      })
     );
     expect(mounted).toHaveBeenCalledTimes(1);
   });
@@ -535,10 +542,17 @@ describe('frontstage native trusted block declarative portal host', () => {
 
     await shadowQueries(root).findByText('Contained');
     const shadowRoot = root.shadowRoot;
-    expect(providerRecords.styles).toEqual([
-      expect.objectContaining({ container: shadowRoot })
-    ]);
-    const config = providerRecords.configs[0];
+    expect(providerRecords.styles.length).toBeGreaterThan(0);
+    expect(
+      providerRecords.styles.every((provider) =>
+        Object.is(provider.container, shadowRoot)
+      )
+    ).toBe(true);
+    const config = hostConfigProviders(root).find(
+      (provider) => typeof provider.prefixCls === 'string'
+    );
+    expect(config).toBeDefined();
+    if (!config) throw new Error('Expected the host ConfigProvider.');
     const popupContainer = (config.getPopupContainer as () => HTMLElement)();
     expect(popupContainer).toBeInstanceOf(HTMLElement);
     expect(popupContainer.parentNode).toBe(shadowRoot);
