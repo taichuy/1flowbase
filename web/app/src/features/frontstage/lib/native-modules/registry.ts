@@ -50,6 +50,12 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     { NativeBlockDropdown },
     { NativeBlockMessage },
     { NativeBlockMenu },
+    {
+      NativeBlockCascader,
+      NativeBlockDatePicker,
+      NativeBlockSelect,
+      NativeBlockTreeSelect
+    },
     { NativeBlockPopover, NativeBlockTooltip }
   ] = await Promise.all([
     loadAntDesignRootModule(),
@@ -58,16 +64,21 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     import('./native-dropdown-runtime'),
     import('./native-message-runtime'),
     import('./menu/native-menu-runtime'),
+    import('./overlay/native-generic-overlay-runtime'),
     import('./overlay/native-tooltip-popover-runtime')
   ]);
   return {
     ...antdModule,
     Affix: NativeBlockAffix,
     Anchor: NativeBlockAnchor,
+    Cascader: NativeBlockCascader,
+    DatePicker: NativeBlockDatePicker,
     Dropdown: NativeBlockDropdown,
     Menu: NativeBlockMenu,
     Popover: NativeBlockPopover,
+    Select: NativeBlockSelect,
     Tooltip: NativeBlockTooltip,
+    TreeSelect: NativeBlockTreeSelect,
     message: NativeBlockMessage
   };
 }

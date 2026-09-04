@@ -15,12 +15,14 @@ import {
 } from 'react';
 
 import { useNativeBlockSurface } from '../native-block-surface-context';
+import { useNativeSurfacePopupContainer } from './native-surface-popup-container';
 
 const NativeBlockTooltipComponent = forwardRef<TooltipRef, TooltipProps>(
   function NativeBlockTooltipComponent(
     { defaultOpen, getPopupContainer, onOpenChange, open, ...props },
     forwardedRef
   ) {
+    const popupContainer = useNativeSurfacePopupContainer(getPopupContainer);
     const [observedOpen, setObservedOpen] = useState(defaultOpen ?? false);
     const tooltipRef = useRef<TooltipRef | null>(null);
     const mergedRef = useTooltipRef(tooltipRef, forwardedRef);
@@ -41,7 +43,7 @@ const NativeBlockTooltipComponent = forwardRef<TooltipRef, TooltipProps>(
         {...props}
         ref={mergedRef}
         defaultOpen={defaultOpen}
-        getPopupContainer={getPopupContainer}
+        getPopupContainer={popupContainer}
         onOpenChange={handleOpenChange}
         open={open}
       />
@@ -54,6 +56,7 @@ const NativeBlockPopoverComponent = forwardRef<TooltipRef, PopoverProps>(
     { defaultOpen, getPopupContainer, onOpenChange, open, ...props },
     forwardedRef
   ) {
+    const popupContainer = useNativeSurfacePopupContainer(getPopupContainer);
     const [observedOpen, setObservedOpen] = useState(defaultOpen ?? false);
     const tooltipRef = useRef<TooltipRef | null>(null);
     const mergedRef = useTooltipRef(tooltipRef, forwardedRef);
@@ -74,7 +77,7 @@ const NativeBlockPopoverComponent = forwardRef<TooltipRef, PopoverProps>(
         {...props}
         ref={mergedRef}
         defaultOpen={defaultOpen}
-        getPopupContainer={getPopupContainer}
+        getPopupContainer={popupContainer}
         onOpenChange={handleOpenChange}
         open={open}
       />
