@@ -1,5 +1,12 @@
 /* global document, Element, getComputedStyle, HTMLElement, process, requestAnimationFrame, ShadowRoot, window */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,8 +17,22 @@ const { buildChromiumLaunchOptions, loadPlaywright } = pageDebugCore;
 const { loadRootCredentials, openTemporaryConsoleSession } = pageDebugAuth;
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '../..');
-const outputDir = join(repoRoot, 'tmp/test-governance/surface-runtime-kernel');
+const runId = `${new Date().toISOString().replace(/[:.]/gu, '-')}-${process.pid}`;
+const outputDir = process.env.SURFACE_RUNTIME_KERNEL_OUTPUT_DIR
+  ? resolve(repoRoot, process.env.SURFACE_RUNTIME_KERNEL_OUTPUT_DIR)
+  : join(
+      repoRoot,
+      'tmp/test-governance/surface-runtime-kernel',
+      `run-${runId}`
+    );
 const storageStatePath = join(outputDir, 'storage-state.json');
+const storageStateTemporaryPath = join(
+  outputDir,
+  `.storage-state.temporary-${process.pid}.json`
+);
+const evidencePath = join(outputDir, 'evidence.json');
+const staticScreenshotPath = join(outputDir, 'static-styles-popovers.png');
+const revealScreenshotPath = join(outputDir, 'reveal-popover.png');
 const pageId = '01a06a10-eebf-78c3-9cf0-4919909fda31';
 const staticStylesBlockId = '01a06a11-326d-7291-afdb-aeee729183f0';
 const revealBlockId = '01a06a11-33ab-7f80-b106-312b7d34f5ac';
@@ -22,7 +43,29 @@ const apiBaseUrl = process.env.FLOWBASE_API_BASE_URL ?? 'http://127.0.0.1:7800';
 const baseUrl = `${webBaseUrl}/demo/pages/${pageId}/blocks`;
 
 async function main() {
+  if (existsSync(outputDir) && readdirSync(outputDir).length > 0) {
+    throw new Error(
+      `Surface Runtime Kernel output directory must be empty: ${outputDir}`
+    );
+  }
   mkdirSync(outputDir, { recursive: true });
+  const evidence = {
+    schemaVersion: 1,
+    run: {
+      id: runId,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      outputDir
+    },
+    pageId,
+    staticStylesBlockId,
+    revealBlockId,
+    phases: {
+      Static: pendingPhaseEvidence({ screenshot: staticScreenshotPath }),
+      Reveal: pendingPhaseEvidence({ screenshot: revealScreenshotPath })
+    }
+  };
+  atomicWriteJson(evidencePath, evidence);
   const playwright = loadPlaywright(repoRoot);
   const credentials = loadRootCredentials({ repoRoot });
   const session = await openTemporaryConsoleSession({
@@ -30,10 +73,11 @@ async function main() {
     apiBaseUrl,
     account: credentials.account,
     password: credentials.password,
-    storageStatePath
+    storageStatePath: storageStateTemporaryPath
   });
   let browser;
   try {
+    renameSync(storageStateTemporaryPath, storageStatePath);
     browser = await playwright.chromium.launch(
       buildChromiumLaunchOptions({ headless: true })
     );
@@ -69,35 +113,41 @@ async function main() {
     const page = await context.newPage();
     const pageErrors = [];
     const consoleErrors = [];
-    page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('pageerror', (error) =>
+      pageErrors.push({
+        timestamp: new Date().toISOString(),
+        message: error.message
+      })
+    );
     page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text());
+      if (message.type() === 'error') {
+        consoleErrors.push({
+          timestamp: new Date().toISOString(),
+          message: message.text()
+        });
+      }
     });
 
-    const staticStyles = await verifyStaticStylesBlock(page);
-    const reveal = await verifyRevealBlock(page);
-    const acceptance = {
-      staticStyles,
-      reveal,
-      pageErrors: pageErrors.length,
-      consoleErrors: consoleErrors.length
-    };
-    writeFileSync(
-      join(outputDir, 'evidence.json'),
-      `${JSON.stringify(
-        {
-          pageId,
-          staticStylesBlockId,
-          revealBlockId,
-          acceptance,
-          pageErrors,
-          consoleErrors
-        },
-        null,
-        2
-      )}\n`
-    );
-    assertAcceptance(acceptance);
+    const staticStyles = await runEvidencePhase({
+      evidence,
+      phase: 'Static',
+      pageErrors,
+      consoleErrors,
+      run: () => verifyStaticStylesBlock(page),
+      assertResult: assertStaticAcceptance
+    });
+    const reveal = await runEvidencePhase({
+      evidence,
+      phase: 'Reveal',
+      pageErrors,
+      consoleErrors,
+      run: () => verifyRevealBlock(page),
+      assertResult: assertRevealAcceptance,
+      collectFailureEvidence: () => readRevealScrollChannels(page)
+    });
+    const acceptance = { staticStyles, reveal };
+    evidence.run.completedAt = new Date().toISOString();
+    atomicWriteJson(evidencePath, evidence);
     process.stdout.write(`${JSON.stringify(acceptance, null, 2)}\n`);
     await context.close();
   } finally {
@@ -136,9 +186,7 @@ async function verifyStaticStylesBlock(page) {
     afterScroll.overlayVectors,
     afterResize
   );
-  await block.screenshot({
-    path: join(outputDir, 'static-styles-popovers.png')
-  });
+  await atomicScreenshot(block, staticScreenshotPath);
   return {
     ...initial,
     geometryByRelation: {
@@ -151,13 +199,14 @@ async function verifyStaticStylesBlock(page) {
       afterScroll.documentAfter.top === afterScroll.documentBefore.top &&
       afterScroll.documentAfter.left === afterScroll.documentBefore.left,
     scrollAlignmentError,
-    resizeAlignmentError
+    resizeAlignmentError,
+    artifacts: { screenshot: staticScreenshotPath }
   };
 }
 
 async function verifyRevealBlock(page) {
   await page.setViewportSize({ width: 1560, height: 900 });
-  await openReadyBlock(page, revealBlockId);
+  const { fixtureMountOperations } = await openReadyBlock(page, revealBlockId);
   await settleLayout(page);
   const block = page.locator(
     `[data-flowbase-frontstage-block-id="${revealBlockId}"]`
@@ -197,9 +246,10 @@ async function verifyRevealBlock(page) {
     afterScroll.overlayVectors,
     afterResize
   );
-  await block.screenshot({ path: join(outputDir, 'reveal-popover.png') });
+  await atomicScreenshot(block, revealScreenshotPath);
   return {
     ...state,
+    fixtureMountOperations,
     surface: relationState.surface,
     relations: relationState.relations,
     geometryByRelation: {
@@ -221,8 +271,16 @@ async function verifyRevealBlock(page) {
           call.before.documentLeft === call.after.documentLeft
       ),
     scrollAlignmentError,
-    resizeAlignmentError
+    resizeAlignmentError,
+    artifacts: { screenshot: revealScreenshotPath }
   };
+}
+
+async function readRevealScrollChannels(page) {
+  return page.evaluate(() => ({
+    fixtureMountOperations: window.__fixtureMountOperations ?? [],
+    surfaceScrollCalls: window.__surfaceScrollCalls ?? []
+  }));
 }
 
 async function openReadyBlock(page, blockId) {
@@ -234,19 +292,100 @@ async function openReadyBlock(page, blockId) {
   );
   await block.waitFor({ state: 'attached', timeout: 90000 });
   if (blockId === revealBlockId) {
-    await block.evaluate((frame) => {
-      const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
-      if (!(owner instanceof HTMLElement)) {
-        throw new Error('Frontstage scroll owner is missing.');
-      }
+    await block.evaluate(() => {
       window.__surfaceScrollCalls = [];
-      const frameRect = frame.getBoundingClientRect();
-      const ownerRect = owner.getBoundingClientRect();
-      owner.scrollTop = Math.max(
-        0,
-        owner.scrollTop + frameRect.top - ownerRect.bottom + 1
-      );
+      window.__fixtureMountOperations = [];
     });
+    await page.waitForFunction(
+      (id) => {
+        const frame = document.querySelector(
+          `[data-flowbase-frontstage-block-id="${id}"]`
+        );
+        if (!(frame instanceof HTMLElement)) return false;
+        const runtimeHost = frame.querySelector(
+          '[data-flowbase-native-trusted-block-root]'
+        );
+        const materialized =
+          frame.getAttribute('data-flowbase-frontstage-render-status') ===
+            'ready' && runtimeHost?.shadowRoot != null;
+        if (materialized) return true;
+
+        const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
+        if (!(owner instanceof HTMLElement)) {
+          throw new Error('Frontstage scroll owner is missing.');
+        }
+        const frameRect = frame.getBoundingClientRect();
+        const ownerRect = owner.getBoundingClientRect();
+        const edgeVisibility = 16;
+        if (frameRect.height <= edgeVisibility) {
+          throw new Error(
+            'Reveal Block is too short for a partial edge-pin mount fixture.'
+          );
+        }
+        const desiredTop = ownerRect.bottom - edgeVisibility;
+        const maximumScrollTop = Math.max(
+          0,
+          owner.scrollHeight - owner.clientHeight
+        );
+        const nextScrollTop = Math.max(
+          0,
+          Math.min(
+            maximumScrollTop,
+            owner.scrollTop + frameRect.top - desiredTop
+          )
+        );
+        if (Math.abs(nextScrollTop - owner.scrollTop) <= 0.5) {
+          const visibleHeight = Math.max(
+            0,
+            Math.min(frameRect.bottom, ownerRect.bottom) -
+              Math.max(frameRect.top, ownerRect.top)
+          );
+          if (visibleHeight >= frameRect.height - 0.5) {
+            throw new Error(
+              'Reveal mount fixture found the target fully visible before materialization.'
+            );
+          }
+          return false;
+        }
+
+        const beforeTop = owner.scrollTop;
+        const documentBefore = {
+          left: document.documentElement.scrollLeft,
+          top: document.documentElement.scrollTop
+        };
+        owner.scrollTop = nextScrollTop;
+        const pinnedRect = frame.getBoundingClientRect();
+        const visibleHeight = Math.max(
+          0,
+          Math.min(pinnedRect.bottom, ownerRect.bottom) -
+            Math.max(pinnedRect.top, ownerRect.top)
+        );
+        window.__fixtureMountOperations.push({
+          timestamp: new Date().toISOString(),
+          beforeTop,
+          requestedTop: nextScrollTop,
+          afterTop: owner.scrollTop,
+          targetTop: pinnedRect.top,
+          ownerTop: ownerRect.top,
+          ownerBottom: ownerRect.bottom,
+          targetHeight: pinnedRect.height,
+          visibleHeight,
+          documentBefore,
+          documentAfter: {
+            left: document.documentElement.scrollLeft,
+            top: document.documentElement.scrollTop
+          }
+        });
+        if (visibleHeight >= pinnedRect.height - 0.5) {
+          throw new Error(
+            'Reveal mount fixture fully scrolled the target into the owner viewport.'
+          );
+        }
+        return false;
+      },
+      blockId,
+      { polling: 'raf', timeout: 90000 }
+    );
   } else {
     await block.scrollIntoViewIfNeeded();
   }
@@ -275,6 +414,11 @@ async function openReadyBlock(page, blockId) {
     { timeout: 90000 }
   );
   await settleLayout(page);
+  return blockId === revealBlockId
+    ? block.evaluate(() => ({
+        fixtureMountOperations: window.__fixtureMountOperations ?? []
+      }))
+    : { fixtureMountOperations: [] };
 }
 
 async function readStaticStylesState(block) {
@@ -965,7 +1109,107 @@ function maxVectorDelta(before, after) {
   );
 }
 
-function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
+function pendingPhaseEvidence(artifacts) {
+  return {
+    status: 'pending',
+    startedAt: null,
+    completedAt: null,
+    artifacts,
+    pageErrors: [],
+    consoleErrors: [],
+    evidence: null,
+    error: null
+  };
+}
+
+async function runEvidencePhase({
+  evidence,
+  phase,
+  pageErrors,
+  consoleErrors,
+  run,
+  assertResult,
+  collectFailureEvidence
+}) {
+  const phaseEvidence = evidence.phases[phase];
+  const pageErrorStart = pageErrors.length;
+  const consoleErrorStart = consoleErrors.length;
+  phaseEvidence.status = 'running';
+  phaseEvidence.startedAt = new Date().toISOString();
+  let result = null;
+  try {
+    result = await run();
+    assertResult(result);
+    phaseEvidence.pageErrors = pageErrors.slice(pageErrorStart);
+    phaseEvidence.consoleErrors = consoleErrors.slice(consoleErrorStart);
+    if (
+      phaseEvidence.pageErrors.length > 0 ||
+      phaseEvidence.consoleErrors.length > 0
+    ) {
+      throw new Error(`${phase} browser phase emitted page or console errors.`);
+    }
+    phaseEvidence.status = 'passed';
+    phaseEvidence.evidence = result;
+    phaseEvidence.artifacts = result.artifacts ?? {};
+    phaseEvidence.completedAt = new Date().toISOString();
+    atomicWriteJson(evidencePath, evidence);
+    return result;
+  } catch (error) {
+    if (result === null && collectFailureEvidence) {
+      try {
+        result = await collectFailureEvidence();
+      } catch {
+        // Preserve the phase's original failure when the page is unavailable.
+      }
+    }
+    phaseEvidence.status = 'failed';
+    phaseEvidence.evidence = result;
+    phaseEvidence.artifacts = result?.artifacts ?? phaseEvidence.artifacts;
+    phaseEvidence.pageErrors = pageErrors.slice(pageErrorStart);
+    phaseEvidence.consoleErrors = consoleErrors.slice(consoleErrorStart);
+    phaseEvidence.error = serializeError(error, phase);
+    phaseEvidence.completedAt = new Date().toISOString();
+    evidence.run.completedAt = phaseEvidence.completedAt;
+    atomicWriteJson(evidencePath, evidence);
+    throw error;
+  }
+}
+
+function atomicWriteJson(path, value) {
+  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    renameSync(temporaryPath, path);
+  } catch (error) {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+    throw error;
+  }
+}
+
+async function atomicScreenshot(locator, path) {
+  const temporaryPath = path.replace(
+    /\.png$/u,
+    `.temporary-${process.pid}-${Date.now()}.png`
+  );
+  try {
+    await locator.screenshot({ path: temporaryPath });
+    renameSync(temporaryPath, path);
+  } catch (error) {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+    throw error;
+  }
+}
+
+function serializeError(error, phase) {
+  return {
+    phase,
+    name: error instanceof Error ? error.name : 'Error',
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? (error.stack ?? null) : null
+  };
+}
+
+function assertStaticAcceptance(staticStyles) {
   const allContentBoxesAre280 = staticStyles.itemContentBoxes.every(
     (size) =>
       Math.abs((size?.width ?? 0) - 280) <= 0.5 &&
@@ -987,24 +1231,36 @@ function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
     !staticStyles.ownerScrollChanged ||
     !staticStyles.documentScrollUnchanged ||
     staticStyles.scrollAlignmentError > 3 ||
-    staticStyles.resizeAlignmentError > 3 ||
+    staticStyles.resizeAlignmentError > 3
+  ) {
+    throw new Error(
+      `Static Surface browser acceptance failed: ${JSON.stringify(staticStyles)}`
+    );
+  }
+}
+
+function assertRevealAcceptance(reveal) {
+  const fixtureMountStayedAtEdge =
+    reveal.fixtureMountOperations.length > 0 &&
+    reveal.fixtureMountOperations.every(
+      (operation) =>
+        operation.visibleHeight <= 18 &&
+        operation.visibleHeight < operation.targetHeight - 0.5 &&
+        operation.documentBefore.top === operation.documentAfter.top &&
+        operation.documentBefore.left === operation.documentAfter.left
+    );
+  if (
+    !fixtureMountStayedAtEdge ||
     reveal.relations.length !== 1 ||
     !reveal.buttonVisible ||
     !reveal.popoverVisible ||
     !reveal.ownerScrollChanged ||
     !reveal.documentScrollUnchanged ||
     reveal.scrollAlignmentError > 3 ||
-    reveal.resizeAlignmentError > 3 ||
-    pageErrors > 0 ||
-    consoleErrors > 0
+    reveal.resizeAlignmentError > 3
   ) {
     throw new Error(
-      `Surface Runtime Kernel browser acceptance failed: ${JSON.stringify({
-        staticStyles,
-        reveal,
-        pageErrors,
-        consoleErrors
-      })}`
+      `Reveal Surface browser acceptance failed: ${JSON.stringify(reveal)}`
     );
   }
 }
