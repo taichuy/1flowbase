@@ -15,6 +15,8 @@ const storageStatePath = join(outputDir, 'storage-state.json');
 const pageId = '01a06a10-eebf-78c3-9cf0-4919909fda31';
 const staticStylesBlockId = '01a06a11-326d-7291-afdb-aeee729183f0';
 const revealBlockId = '01a06a11-33ab-7f80-b106-312b7d34f5ac';
+const expectedStaticPairCount = 12;
+const minimumAssignmentMarginSquaredPixels = 9;
 const webBaseUrl = process.env.FLOWBASE_WEB_BASE_URL ?? 'http://127.0.0.1:3100';
 const apiBaseUrl = process.env.FLOWBASE_API_BASE_URL ?? 'http://127.0.0.1:7800';
 const baseUrl = `${webBaseUrl}/demo/pages/${pageId}/blocks`;
@@ -110,10 +112,22 @@ async function verifyStaticStylesBlock(page) {
     `[data-flowbase-frontstage-block-id="${staticStylesBlockId}"]`
   );
   const initial = await readStaticStylesState(block);
-  const afterScroll = await changeOwnerScrollAndMeasure(page, block, 96);
+  const relationOptions = {
+    mode: 'tracked-static',
+    pairs: initial.pairs.map(({ itemProbeId, tooltipContent }) => ({
+      itemProbeId,
+      tooltipContent
+    }))
+  };
+  const afterScroll = await changeOwnerScrollAndMeasure(
+    page,
+    block,
+    96,
+    relationOptions
+  );
   await page.setViewportSize({ width: 1540, height: 880 });
   await settleLayout(page);
-  const afterResize = await readOverlayVectors(block);
+  const afterResize = await readOverlayVectors(block, relationOptions);
   const scrollAlignmentError = maxVectorDelta(
     initial.overlayVectors,
     afterScroll.overlayVectors
@@ -152,13 +166,9 @@ async function verifyRevealBlock(page) {
   await block
     .getByRole('button', { name: revealButtonName, exact: true })
     .waitFor({ state: 'visible', timeout: 90000 });
-  const relationState = await readSurfaceState(block, {
-    buttonName: revealButtonName,
-    includeItemStyleOwners: false
-  });
-  const revealRelation = relationState.relations.find(
-    ({ triggerName }) => triggerName === revealButtonName
-  );
+  const relationOptions = { mode: 'reveal', buttonName: revealButtonName };
+  const relationState = await readSurfaceState(block, relationOptions);
+  const revealRelation = relationState.relations[0];
   const state = await block.evaluate((frame) => {
     const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
     return {
@@ -169,11 +179,7 @@ async function verifyRevealBlock(page) {
       surfaceScrollCalls: window.__surfaceScrollCalls ?? []
     };
   });
-  const relationOptions = {
-    buttonName: revealButtonName,
-    includeItemStyleOwners: false
-  };
-  const initialVectors = await readOverlayVectors(block, relationOptions);
+  const initialVectors = relationState.overlayVectors;
   const afterScroll = await changeOwnerScrollAndMeasure(
     page,
     block,
@@ -272,22 +278,85 @@ async function openReadyBlock(page, blockId) {
 }
 
 async function readStaticStylesState(block) {
-  const state = await readSurfaceState(block, {
-    includeItemStyleOwners: true
+  const state = await readSurfaceState(block, { mode: 'discover-static' });
+  if (
+    state.items.length !== expectedStaticPairCount ||
+    state.tooltips.length !== expectedStaticPairCount
+  ) {
+    throw new Error(
+      `Static Surface requires a ${expectedStaticPairCount}x${expectedStaticPairCount} geometry matrix; found ${state.items.length} items and ${state.tooltips.length} tooltips.`
+    );
+  }
+  const tooltipContents = state.tooltips.map(({ content }) => content);
+  if (
+    tooltipContents.some((content) => content.length === 0) ||
+    new Set(tooltipContents).size !== tooltipContents.length
+  ) {
+    throw new Error(
+      'Static Surface role=tooltip content must be non-empty and globally unique.'
+    );
+  }
+  const itemProbeIds = state.items.map(({ probeId }) => probeId);
+  if (new Set(itemProbeIds).size !== itemProbeIds.length) {
+    throw new Error('Static Surface item DOM identities are not unique.');
+  }
+  const costMatrix = state.items.map((item) =>
+    state.tooltips.map((tooltip) => centerDistanceSquared(item, tooltip))
+  );
+  const optimal = solveAssignment(costMatrix);
+  if (!Number.isFinite(optimal.cost)) {
+    throw new Error(
+      'Static Surface optimal geometry assignment is not finite.'
+    );
+  }
+  let secondBestCost = Infinity;
+  for (const [itemIndex, tooltipIndex] of optimal.assignment.entries()) {
+    const withoutMatchedEdge = costMatrix.map((row) => [...row]);
+    withoutMatchedEdge[itemIndex][tooltipIndex] = Infinity;
+    secondBestCost = Math.min(
+      secondBestCost,
+      solveAssignment(withoutMatchedEdge).cost
+    );
+  }
+  const ambiguityMargin = secondBestCost - optimal.cost;
+  if (
+    !Number.isFinite(secondBestCost) ||
+    ambiguityMargin < minimumAssignmentMarginSquaredPixels
+  ) {
+    throw new Error(
+      `Static Surface geometry assignment is ambiguous: best=${optimal.cost}, secondBest=${secondBestCost}, margin=${ambiguityMargin}, requiredMargin=${minimumAssignmentMarginSquaredPixels}.`
+    );
+  }
+  const pairs = optimal.assignment.map((tooltipIndex, itemIndex) => {
+    const item = state.items[itemIndex];
+    const tooltip = state.tooltips[tooltipIndex];
+    return {
+      relationKey: `${item.probeId}:${tooltip.content}`,
+      itemProbeId: item.probeId,
+      tooltipContent: tooltip.content,
+      tooltipRole: tooltip.role,
+      tooltipId: tooltip.id,
+      costSquaredPixels: costMatrix[itemIndex][tooltipIndex],
+      itemGeometry: item.geometry,
+      tooltipGeometry: tooltip.geometry,
+      vector: centerVector(item, tooltip)
+    };
   });
   return {
     surface: state.surface,
-    relations: state.relations,
+    matching: {
+      algorithm: 'hungarian-exact-minimum-cost-assignment',
+      matrixShape: [state.items.length, state.tooltips.length],
+      optimalCostSquaredPixels: optimal.cost,
+      secondBestCostSquaredPixels: secondBestCost,
+      ambiguityMarginSquaredPixels: ambiguityMargin,
+      requiredMarginSquaredPixels: minimumAssignmentMarginSquaredPixels
+    },
+    pairs,
     itemCount: state.items.length,
     itemSizes: state.items.map(({ geometry }) => geometry),
-    triggerCount: state.relations.length,
-    visibleTriggerCount: state.relations.filter(
-      ({ triggerVisible }) => triggerVisible
-    ).length,
-    popoverCount: state.relations.length,
-    visiblePopoverCount: state.relations.filter(
-      ({ tooltipVisible }) => tooltipVisible
-    ).length,
+    popoverCount: state.tooltips.length,
+    visiblePopoverCount: state.tooltips.filter(({ visible }) => visible).length,
     itemRuleInShadow: state.items.every(
       ({ surfaceStyleOwners }) => surfaceStyleOwners.length > 0
     ),
@@ -295,11 +364,18 @@ async function readStaticStylesState(block) {
       ({ documentHeadStyleOwners }) => documentHeadStyleOwners.length > 0
     ),
     styleOwners: state.items.map((item) => ({
-      relationIds: item.relationIds,
+      itemProbeId: item.probeId,
       surfaceStyleOwners: item.surfaceStyleOwners,
       documentHeadStyleOwners: item.documentHeadStyleOwners
     })),
-    overlayVectors: state.overlayVectors
+    overlayVectors: pairs.map(
+      ({ relationKey, itemGeometry, tooltipGeometry, vector }) => ({
+        relationKey,
+        itemGeometry,
+        tooltipGeometry,
+        ...vector
+      })
+    )
   };
 }
 
@@ -307,7 +383,7 @@ async function changeOwnerScrollAndMeasure(
   page,
   block,
   delta,
-  relationOptions = { includeItemStyleOwners: false }
+  relationOptions
 ) {
   const before = await block.evaluate((frame, scrollDelta) => {
     const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
@@ -354,10 +430,7 @@ async function changeOwnerScrollAndMeasure(
   };
 }
 
-async function readOverlayVectors(
-  block,
-  options = { includeItemStyleOwners: false }
-) {
+async function readOverlayVectors(block, options) {
   return (await readSurfaceState(block, options)).overlayVectors;
 }
 
@@ -407,6 +480,8 @@ async function readSurfaceState(block, options) {
         Number.parseFloat(style.opacity || '1') > 0
       );
     };
+    const normalizeContent = (value) =>
+      value?.replace(/\s+/gu, ' ').trim() ?? '';
     const accessibleName = (element) => {
       const label = element.getAttribute('aria-label');
       if (label) return label.trim();
@@ -419,18 +494,12 @@ async function readSurfaceState(block, options) {
           .join(' ');
         if (labelText) return labelText;
       }
-      return element.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
+      return normalizeContent(element.textContent);
     };
     const isButton = (element) =>
       element instanceof HTMLElement &&
       (element.localName === 'button' ||
         element.getAttribute('role') === 'button');
-    const composedParent = (element) => {
-      if (element.assignedSlot) return element.assignedSlot;
-      if (element.parentElement) return element.parentElement;
-      const ownerRoot = element.getRootNode();
-      return ownerRoot instanceof ShadowRoot ? ownerRoot.host : null;
-    };
     const geometry = (element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -440,20 +509,19 @@ async function readSurfaceState(block, options) {
         height: rect.height
       };
     };
-    const isExpectedItemGeometry = (element) => {
-      const rect = element.getBoundingClientRect();
-      return (
-        Math.abs(rect.width - 280) <= 0.5 && Math.abs(rect.height - 280) <= 0.5
-      );
-    };
-    const findItemOwner = (trigger) => {
-      let candidate = composedParent(trigger);
-      while (candidate instanceof Element) {
-        if (isExpectedItemGeometry(candidate)) return candidate;
-        if (candidate === runtimeHost) break;
-        candidate = composedParent(candidate);
-      }
-      return null;
+    const centerVector = (source, target) => {
+      const sourceRect = source.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      return {
+        left:
+          targetRect.left +
+          targetRect.width / 2 -
+          (sourceRect.left + sourceRect.width / 2),
+        top:
+          targetRect.top +
+          targetRect.height / 2 -
+          (sourceRect.top + sourceRect.height / 2)
+      };
     };
     const describeSurfaceElement = (element) => ({
       tagName: element.localName,
@@ -462,52 +530,6 @@ async function readSurfaceState(block, options) {
       ),
       overlayLayerId: element.getAttribute('data-flowbase-native-overlay-layer')
     });
-
-    const triggers = [...root.querySelectorAll('[aria-describedby]')].filter(
-      (candidate) =>
-        isButton(candidate) &&
-        (!readOptions.buttonName ||
-          accessibleName(candidate) === readOptions.buttonName)
-    );
-    const relations = triggers.flatMap((trigger) =>
-      (trigger.getAttribute('aria-describedby') ?? '')
-        .split(/\s+/u)
-        .filter(Boolean)
-        .map((relationId) => {
-          const tooltip = root.getElementById(relationId);
-          if (
-            !(tooltip instanceof HTMLElement) ||
-            tooltip.getAttribute('role') !== 'tooltip' ||
-            !overlayHost.contains(tooltip)
-          ) {
-            throw new Error(
-              `ARIA tooltip relation ${relationId} is not owned by the current Surface overlay host.`
-            );
-          }
-          const triggerRect = trigger.getBoundingClientRect();
-          const tooltipRect = tooltip.getBoundingClientRect();
-          return {
-            relationId,
-            triggerName: accessibleName(trigger),
-            triggerRole: 'button',
-            triggerVisible: visible(trigger),
-            tooltipRole: tooltip.getAttribute('role'),
-            tooltipVisible: visible(tooltip),
-            triggerGeometry: geometry(trigger),
-            tooltipGeometry: geometry(tooltip),
-            vector: {
-              left: tooltipRect.left - triggerRect.left,
-              top: tooltipRect.top - triggerRect.top
-            },
-            itemOwner: findItemOwner(trigger)
-          };
-        })
-    );
-    if (relations.length === 0) {
-      throw new Error(
-        'No stable button aria-describedby to role=tooltip relation exists in the current Surface.'
-      );
-    }
 
     const visitRules = (rules, visit) => {
       for (const rule of rules) {
@@ -540,7 +562,6 @@ async function readSurfaceState(block, options) {
               matches.push({
                 ownerType,
                 ownerRoot,
-                selector: rule.selectorText,
                 width: rule.style.getPropertyValue('width'),
                 height: rule.style.getPropertyValue('height')
               });
@@ -552,11 +573,12 @@ async function readSurfaceState(block, options) {
       }
       return matches;
     };
-    const surfaceSheets = [];
+    const shadowScopes = [];
     const collectShadowSheets = (shadow, path) => {
+      const sheets = [];
       for (const style of shadow.querySelectorAll('style')) {
-        if (style.sheet) {
-          surfaceSheets.push({
+        if (style.getRootNode() === shadow && style.sheet) {
+          sheets.push({
             sheet: style.sheet,
             ownerType: 'shadow-style-element',
             ownerRoot: path
@@ -564,12 +586,13 @@ async function readSurfaceState(block, options) {
         }
       }
       for (const sheet of shadow.adoptedStyleSheets) {
-        surfaceSheets.push({
+        sheets.push({
           sheet,
           ownerType: 'shadow-adopted-style-sheet',
           ownerRoot: path
         });
       }
+      shadowScopes.push({ shadow, sheets });
       for (const element of shadow.querySelectorAll('*')) {
         if (element.shadowRoot) {
           collectShadowSheets(
@@ -589,56 +612,180 @@ async function readSurfaceState(block, options) {
         ownerType: 'document-head-style-sheet',
         ownerRoot: 'document.head'
       }));
-    const uniqueItems = new Map();
-    if (readOptions.includeItemStyleOwners) {
-      for (const relation of relations) {
-        if (!(relation.itemOwner instanceof Element)) {
-          throw new Error(
-            `ARIA trigger ${relation.relationId} has no composed 280x280 item owner.`
-          );
-        }
-        const existing = uniqueItems.get(relation.itemOwner);
-        if (existing) {
-          existing.relationIds.push(relation.relationId);
-          continue;
-        }
-        uniqueItems.set(relation.itemOwner, {
-          relationIds: [relation.relationId],
-          geometry: geometry(relation.itemOwner),
-          surfaceStyleOwners: matchingGeometryRules(
-            relation.itemOwner,
-            surfaceSheets
-          ),
-          documentHeadStyleOwners: matchingGeometryRules(
-            relation.itemOwner,
-            documentHeadSheets
-          )
-        });
+    const surface = {
+      frameBlockId,
+      runtimeHost: describeSurfaceElement(runtimeHost),
+      overlayHost: describeSurfaceElement(overlayHost)
+    };
+    const visibleTooltips = [
+      ...overlayHost.querySelectorAll('[role="tooltip"]')
+    ]
+      .filter((element) => visible(element))
+      .map((element) => ({
+        element,
+        content: normalizeContent(element.innerText || element.textContent),
+        id: element.id || null,
+        role: element.getAttribute('role'),
+        geometry: geometry(element),
+        visible: true
+      }));
+
+    if (readOptions.mode === 'reveal') {
+      const buttons = [
+        ...root.querySelectorAll('button,[role="button"]')
+      ].filter(
+        (element) =>
+          isButton(element) &&
+          visible(element) &&
+          accessibleName(element) === readOptions.buttonName
+      );
+      if (buttons.length !== 1) {
+        throw new Error(
+          `Reveal Surface requires one visible role=button named ${readOptions.buttonName}; found ${buttons.length}.`
+        );
       }
+      if (
+        visibleTooltips.length !== 1 ||
+        visibleTooltips[0].content.length === 0
+      ) {
+        throw new Error(
+          `Reveal Surface requires one visible role=tooltip with unique non-empty content; found ${visibleTooltips.length}.`
+        );
+      }
+      const button = buttons[0];
+      const tooltip = visibleTooltips[0];
+      const relationKey = `reveal:${tooltip.content}`;
+      const vector = centerVector(button, tooltip.element);
+      return {
+        surface,
+        relations: [
+          {
+            relationKey,
+            triggerName: accessibleName(button),
+            triggerRole: 'button',
+            triggerVisible: true,
+            tooltipContent: tooltip.content,
+            tooltipId: tooltip.id,
+            tooltipRole: tooltip.role,
+            tooltipVisible: true,
+            triggerGeometry: geometry(button),
+            tooltipGeometry: tooltip.geometry,
+            vector
+          }
+        ],
+        overlayVectors: [
+          {
+            relationKey,
+            itemGeometry: geometry(button),
+            tooltipGeometry: tooltip.geometry,
+            ...vector
+          }
+        ]
+      };
+    }
+
+    window.__surfaceGeometryProbeState ??= {
+      itemIds: new WeakMap(),
+      itemsById: new Map(),
+      nextItemId: 1
+    };
+    const probeState = window.__surfaceGeometryProbeState;
+    if (readOptions.mode === 'discover-static') {
+      const items = [];
+      for (const { shadow, sheets } of shadowScopes) {
+        for (const element of shadow.querySelectorAll('*')) {
+          if (overlayHost.contains(element)) continue;
+          const rect = element.getBoundingClientRect();
+          if (
+            Math.abs(rect.width - 280) > 0.5 ||
+            Math.abs(rect.height - 280) > 0.5
+          ) {
+            continue;
+          }
+          const surfaceStyleOwners = matchingGeometryRules(element, sheets);
+          if (surfaceStyleOwners.length === 0) continue;
+          let probeId = probeState.itemIds.get(element);
+          if (!probeId) {
+            probeId = `surface-item-${probeState.nextItemId}`;
+            probeState.nextItemId += 1;
+            probeState.itemIds.set(element, probeId);
+            probeState.itemsById.set(probeId, element);
+          }
+          items.push({
+            probeId,
+            geometry: geometry(element),
+            surfaceStyleOwners,
+            documentHeadStyleOwners: matchingGeometryRules(
+              element,
+              documentHeadSheets
+            )
+          });
+        }
+      }
+      return {
+        surface,
+        items,
+        tooltips: visibleTooltips.map(
+          ({
+            content,
+            id,
+            role,
+            geometry: tooltipGeometry,
+            visible: isVisible
+          }) => ({
+            content,
+            id,
+            role,
+            geometry: tooltipGeometry,
+            visible: isVisible
+          })
+        )
+      };
+    }
+
+    if (readOptions.mode !== 'tracked-static') {
+      throw new Error(
+        `Unknown Surface geometry read mode: ${readOptions.mode}`
+      );
+    }
+    const tooltipByContent = new Map();
+    for (const tooltip of visibleTooltips) {
+      if (!tooltip.content || tooltipByContent.has(tooltip.content)) {
+        throw new Error(
+          'Tracked Static Surface tooltip content is empty or no longer unique.'
+        );
+      }
+      tooltipByContent.set(tooltip.content, tooltip);
     }
     return {
-      surface: {
-        frameBlockId,
-        runtimeHost: describeSurfaceElement(runtimeHost),
-        overlayHost: describeSurfaceElement(overlayHost),
-        relationIds: relations.map(({ relationId }) => relationId)
-      },
-      relations: relations.map((relation) => ({
-        relationId: relation.relationId,
-        triggerName: relation.triggerName,
-        triggerRole: relation.triggerRole,
-        triggerVisible: relation.triggerVisible,
-        tooltipRole: relation.tooltipRole,
-        tooltipVisible: relation.tooltipVisible,
-        triggerGeometry: relation.triggerGeometry,
-        tooltipGeometry: relation.tooltipGeometry,
-        vector: relation.vector
-      })),
-      items: [...uniqueItems.values()],
-      overlayVectors: relations.map(({ relationId, vector }) => ({
-        relationId,
-        ...vector
-      }))
+      surface,
+      overlayVectors: readOptions.pairs.map(
+        ({ itemProbeId, tooltipContent }) => {
+          const item = probeState.itemsById.get(itemProbeId);
+          const tooltip = tooltipByContent.get(tooltipContent);
+          if (
+            !(item instanceof Element) ||
+            probeState.itemIds.get(item) !== itemProbeId ||
+            !item.isConnected
+          ) {
+            throw new Error(
+              `Tracked Static Surface item ${itemProbeId} is not the original DOM element.`
+            );
+          }
+          if (!tooltip) {
+            throw new Error(
+              `Tracked Static Surface tooltip content disappeared: ${tooltipContent}`
+            );
+          }
+          const vector = centerVector(item, tooltip.element);
+          return {
+            relationKey: `${itemProbeId}:${tooltipContent}`,
+            itemGeometry: geometry(item),
+            tooltipGeometry: tooltip.geometry,
+            ...vector
+          };
+        }
+      )
     };
   }, options);
 }
@@ -652,14 +799,98 @@ async function settleLayout(page) {
   );
 }
 
+function centerVector(source, target) {
+  return {
+    left:
+      target.geometry.left +
+      target.geometry.width / 2 -
+      (source.geometry.left + source.geometry.width / 2),
+    top:
+      target.geometry.top +
+      target.geometry.height / 2 -
+      (source.geometry.top + source.geometry.height / 2)
+  };
+}
+
+function centerDistanceSquared(source, target) {
+  const vector = centerVector(source, target);
+  return vector.left * vector.left + vector.top * vector.top;
+}
+
+function solveAssignment(costMatrix) {
+  const size = costMatrix.length;
+  if (size === 0 || costMatrix.some((row) => row.length !== size)) {
+    return { assignment: [], cost: Infinity };
+  }
+  const rowPotential = Array(size + 1).fill(0);
+  const columnPotential = Array(size + 1).fill(0);
+  const matchedRowByColumn = Array(size + 1).fill(0);
+  const predecessor = Array(size + 1).fill(0);
+
+  for (let row = 1; row <= size; row += 1) {
+    matchedRowByColumn[0] = row;
+    const minimumReducedCost = Array(size + 1).fill(Infinity);
+    const usedColumn = Array(size + 1).fill(false);
+    let column = 0;
+    do {
+      usedColumn[column] = true;
+      const activeRow = matchedRowByColumn[column];
+      let delta = Infinity;
+      let nextColumn = 0;
+      for (let candidate = 1; candidate <= size; candidate += 1) {
+        if (usedColumn[candidate]) continue;
+        const edgeCost = costMatrix[activeRow - 1][candidate - 1];
+        const reducedCost =
+          edgeCost - rowPotential[activeRow] - columnPotential[candidate];
+        if (reducedCost < minimumReducedCost[candidate]) {
+          minimumReducedCost[candidate] = reducedCost;
+          predecessor[candidate] = column;
+        }
+        if (minimumReducedCost[candidate] < delta) {
+          delta = minimumReducedCost[candidate];
+          nextColumn = candidate;
+        }
+      }
+      if (!Number.isFinite(delta)) {
+        return { assignment: [], cost: Infinity };
+      }
+      for (let candidate = 0; candidate <= size; candidate += 1) {
+        if (usedColumn[candidate]) {
+          rowPotential[matchedRowByColumn[candidate]] += delta;
+          columnPotential[candidate] -= delta;
+        } else {
+          minimumReducedCost[candidate] -= delta;
+        }
+      }
+      column = nextColumn;
+    } while (matchedRowByColumn[column] !== 0);
+
+    do {
+      const previousColumn = predecessor[column];
+      matchedRowByColumn[column] = matchedRowByColumn[previousColumn];
+      column = previousColumn;
+    } while (column !== 0);
+  }
+
+  const assignment = Array(size).fill(-1);
+  for (let column = 1; column <= size; column += 1) {
+    assignment[matchedRowByColumn[column] - 1] = column - 1;
+  }
+  const cost = assignment.reduce(
+    (total, column, row) => total + costMatrix[row][column],
+    0
+  );
+  return { assignment, cost };
+}
+
 function maxVectorDelta(before, after) {
   if (before.length === 0 || before.length !== after.length) return Infinity;
   const afterByRelationId = new Map(
-    after.map((vector) => [vector.relationId, vector])
+    after.map((vector) => [vector.relationKey, vector])
   );
   return Math.max(
     ...before.map((vector) => {
-      const next = afterByRelationId.get(vector.relationId);
+      const next = afterByRelationId.get(vector.relationKey);
       if (!next) return Infinity;
       return Math.max(
         Math.abs(vector.left - next.left),
@@ -680,10 +911,14 @@ function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
     !allItemsAre280 ||
     !staticStyles.itemRuleInShadow ||
     staticStyles.itemRuleInDocumentHead ||
-    staticStyles.triggerCount !== 12 ||
-    staticStyles.visibleTriggerCount !== 12 ||
     staticStyles.popoverCount !== 12 ||
     staticStyles.visiblePopoverCount !== 12 ||
+    staticStyles.pairs.length !== 12 ||
+    staticStyles.matching.matrixShape[0] !== 12 ||
+    staticStyles.matching.matrixShape[1] !== 12 ||
+    !Number.isFinite(staticStyles.matching.optimalCostSquaredPixels) ||
+    staticStyles.matching.ambiguityMarginSquaredPixels <
+      minimumAssignmentMarginSquaredPixels ||
     !staticStyles.ownerScrollChanged ||
     !staticStyles.documentScrollUnchanged ||
     staticStyles.scrollAlignmentError > 3 ||
