@@ -6,7 +6,6 @@ import {
 } from 'antd';
 import {
   forwardRef,
-  type ComponentProps,
   type ComponentPropsWithoutRef,
   type ComponentRef
 } from 'react';
@@ -44,13 +43,18 @@ const NativeBlockTreeSelectComponent = forwardRef<
   );
 });
 
-function NativeBlockDatePickerComponent({
-  getPopupContainer,
-  ...props
-}: ComponentProps<typeof AntdDatePicker>) {
+const NativeBlockDatePickerComponent = forwardRef<
+  ComponentRef<typeof AntdDatePicker>,
+  ComponentPropsWithoutRef<typeof AntdDatePicker>
+>(function NativeBlockDatePickerComponent(
+  { getPopupContainer, ...props },
+  ref
+) {
   const popupContainer = useNativeSurfacePopupContainer(getPopupContainer);
-  return <AntdDatePicker {...props} getPopupContainer={popupContainer} />;
-}
+  return (
+    <AntdDatePicker {...props} ref={ref} getPopupContainer={popupContainer} />
+  );
+});
 
 export const NativeBlockCascader = Object.assign(NativeBlockCascaderComponent, {
   _InternalPanelDoNotUseOrYouWillBeFired:
