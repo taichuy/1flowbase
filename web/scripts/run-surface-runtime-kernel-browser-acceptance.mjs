@@ -1,4 +1,4 @@
-/* global document, Element, getComputedStyle, HTMLElement, process, requestAnimationFrame, ShadowRoot, window */
+/* global document, Element, getComputedStyle, HTMLElement, performance, process, requestAnimationFrame, ShadowRoot, window */
 import {
   existsSync,
   mkdirSync,
@@ -38,6 +38,8 @@ const staticStylesBlockId = '01a06a11-326d-7291-afdb-aeee729183f0';
 const revealBlockId = '01a06a11-33ab-7f80-b106-312b7d34f5ac';
 const expectedStaticPairCount = 12;
 const minimumAssignmentMarginSquaredPixels = 9;
+const staticConvergenceTimeoutMilliseconds = 15000;
+const geometryStabilityEpsilonPixels = 0.5;
 const webBaseUrl = process.env.FLOWBASE_WEB_BASE_URL ?? 'http://127.0.0.1:3100';
 const apiBaseUrl = process.env.FLOWBASE_API_BASE_URL ?? 'http://127.0.0.1:7800';
 const baseUrl = `${webBaseUrl}/demo/pages/${pageId}/blocks`;
@@ -161,7 +163,8 @@ async function verifyStaticStylesBlock(page) {
   const block = page.locator(
     `[data-flowbase-frontstage-block-id="${staticStylesBlockId}"]`
   );
-  const initial = await readStaticStylesState(block);
+  const convergence = await waitForStaticSurfaceConvergence(page, block);
+  const initial = readStaticStylesState(convergence.state);
   const relationOptions = {
     mode: 'tracked-static',
     pairs: initial.pairs.map(({ itemProbeId, tooltipContent }) => ({
@@ -173,7 +176,8 @@ async function verifyStaticStylesBlock(page) {
     page,
     block,
     96,
-    relationOptions
+    relationOptions,
+    initial.overlayVectors
   );
   await page.setViewportSize({ width: 1540, height: 880 });
   await settleLayout(page);
@@ -189,10 +193,16 @@ async function verifyStaticStylesBlock(page) {
   await atomicScreenshot(block, staticScreenshotPath);
   return {
     ...initial,
+    preScrollConvergence: convergence.evidence,
     geometryByRelation: {
       initial: initial.overlayVectors,
       afterScroll: afterScroll.overlayVectors,
-      afterResize
+      afterResize,
+      scrollDeltas: afterScroll.pairDeltas
+    },
+    ownerScroll: {
+      beforeTop: afterScroll.beforeTop,
+      afterTop: afterScroll.afterTop
     },
     ownerScrollChanged: afterScroll.afterTop !== afterScroll.beforeTop,
     documentScrollUnchanged:
@@ -233,7 +243,8 @@ async function verifyRevealBlock(page) {
     page,
     block,
     -72,
-    relationOptions
+    relationOptions,
+    initialVectors
   );
   const scrollAlignmentError = maxVectorDelta(
     initialVectors,
@@ -255,7 +266,12 @@ async function verifyRevealBlock(page) {
     geometryByRelation: {
       initial: initialVectors,
       afterScroll: afterScroll.overlayVectors,
-      afterResize
+      afterResize,
+      scrollDeltas: afterScroll.pairDeltas
+    },
+    ownerScroll: {
+      beforeTop: afterScroll.beforeTop,
+      afterTop: afterScroll.afterTop
     },
     buttonVisible: revealRelation?.triggerVisible ?? false,
     popoverVisible: revealRelation?.tooltipVisible ?? false,
@@ -421,8 +437,61 @@ async function openReadyBlock(page, blockId) {
     : { fixtureMountOperations: [] };
 }
 
-async function readStaticStylesState(block) {
-  const state = await readSurfaceState(block, { mode: 'discover-static' });
+async function waitForStaticSurfaceConvergence(page, block) {
+  const startedAt = Date.now();
+  let attemptCount = 0;
+  let previousSnapshot = null;
+  let latestSnapshot = null;
+  const recentSnapshots = [];
+
+  while (Date.now() - startedAt <= staticConvergenceTimeoutMilliseconds) {
+    await page.evaluate(
+      () =>
+        new Promise((resolvePromise) => requestAnimationFrame(resolvePromise))
+    );
+    const state = await readSurfaceState(block, { mode: 'discover-static' });
+    attemptCount += 1;
+    latestSnapshot = state.convergenceSnapshot;
+    recentSnapshots.push(latestSnapshot);
+    if (recentSnapshots.length > 2) recentSnapshots.shift();
+    const qualifies = staticConvergenceSnapshotQualifies(latestSnapshot);
+    if (
+      qualifies &&
+      previousSnapshot &&
+      staticConvergenceSnapshotsAreStable(previousSnapshot, latestSnapshot)
+    ) {
+      return {
+        state,
+        evidence: {
+          status: 'converged',
+          attemptCount,
+          durationMilliseconds: Date.now() - startedAt,
+          timeoutMilliseconds: staticConvergenceTimeoutMilliseconds,
+          stabilityEpsilonPixels: geometryStabilityEpsilonPixels,
+          snapshots: [previousSnapshot, latestSnapshot]
+        }
+      };
+    }
+    previousSnapshot = qualifies ? latestSnapshot : null;
+  }
+
+  const error = new Error(
+    `Static Surface did not reach state-based geometry convergence within ${staticConvergenceTimeoutMilliseconds}ms after ${attemptCount} animation-frame snapshots. Latest snapshot: ${JSON.stringify(latestSnapshot)}`
+  );
+  error.evidence = {
+    preScrollConvergence: {
+      status: 'timed-out',
+      attemptCount,
+      durationMilliseconds: Date.now() - startedAt,
+      timeoutMilliseconds: staticConvergenceTimeoutMilliseconds,
+      stabilityEpsilonPixels: geometryStabilityEpsilonPixels,
+      snapshots: recentSnapshots
+    }
+  };
+  throw error;
+}
+
+function readStaticStylesState(state) {
   if (
     state.items.length !== expectedStaticPairCount ||
     state.tooltips.length !== expectedStaticPairCount
@@ -536,7 +605,8 @@ async function changeOwnerScrollAndMeasure(
   page,
   block,
   delta,
-  relationOptions
+  relationOptions,
+  beforeOverlayVectors
 ) {
   const before = await block.evaluate((frame, scrollDelta) => {
     const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
@@ -579,7 +649,11 @@ async function changeOwnerScrollAndMeasure(
     afterTop,
     documentBefore: before.document,
     documentAfter,
-    overlayVectors
+    overlayVectors,
+    pairDeltas: describeOverlayVectorDeltas(
+      beforeOverlayVectors,
+      overlayVectors
+    )
   };
 }
 
@@ -812,7 +886,11 @@ async function readSurfaceState(block, options) {
     const surface = {
       frameBlockId,
       runtimeHost: describeSurfaceElement(runtimeHost),
-      overlayHost: describeSurfaceElement(overlayHost)
+      overlayHost: describeSurfaceElement(overlayHost),
+      overlayState: overlayHost.getAttribute(
+        'data-flowbase-native-overlay-state'
+      ),
+      overlayPopoverOpen: overlayHost.matches(':popover-open')
     };
     const visibleTooltips = [
       ...overlayHost.querySelectorAll('[role="tooltip"]')
@@ -948,7 +1026,47 @@ async function readSurfaceState(block, options) {
             geometry: tooltipGeometry,
             visible: isVisible
           })
-        )
+        ),
+        convergenceSnapshot: {
+          capturedAtMilliseconds: performance.now(),
+          qualifyingItemCount: items.length,
+          visibleTooltipCount: visibleTooltips.length,
+          tooltipContentsUnique:
+            visibleTooltips.every(({ content }) => content.length > 0) &&
+            new Set(visibleTooltips.map(({ content }) => content)).size ===
+              visibleTooltips.length,
+          frameBorderBox: geometry(frame),
+          intrinsicHeight: Number.parseFloat(
+            frame.getAttribute('data-flowbase-frontstage-intrinsic-height') ??
+              ''
+          ),
+          owner: (() => {
+            const owner = frame.closest(
+              '[data-flowbase-frontstage-scroll-owner]'
+            );
+            if (!(owner instanceof HTMLElement)) {
+              throw new Error('Frontstage scroll owner is missing.');
+            }
+            return {
+              scrollHeight: owner.scrollHeight,
+              clientHeight: owner.clientHeight
+            };
+          })(),
+          overlay: {
+            state: surface.overlayState,
+            popoverOpen: surface.overlayPopoverOpen
+          },
+          itemBorderBoxes: items.map(({ probeId, borderBox }) => ({
+            probeId,
+            ...borderBox
+          })),
+          tooltipBorderBoxes: visibleTooltips.map(
+            ({ content, geometry: tooltipGeometry }) => ({
+              content,
+              ...tooltipGeometry
+            })
+          )
+        }
       };
     }
 
@@ -1006,6 +1124,101 @@ async function settleLayout(page) {
         requestAnimationFrame(() => requestAnimationFrame(resolvePromise))
       )
   );
+}
+
+function staticConvergenceSnapshotQualifies(snapshot) {
+  return (
+    snapshot.qualifyingItemCount === expectedStaticPairCount &&
+    snapshot.visibleTooltipCount === expectedStaticPairCount &&
+    snapshot.tooltipContentsUnique &&
+    snapshot.overlay.state === 'open' &&
+    snapshot.overlay.popoverOpen &&
+    Number.isFinite(snapshot.intrinsicHeight) &&
+    Math.abs(snapshot.frameBorderBox.height - snapshot.intrinsicHeight) <=
+      geometryStabilityEpsilonPixels &&
+    snapshot.owner.scrollHeight > 0 &&
+    snapshot.owner.clientHeight > 0 &&
+    snapshot.itemBorderBoxes.length === expectedStaticPairCount &&
+    snapshot.tooltipBorderBoxes.length === expectedStaticPairCount
+  );
+}
+
+function staticConvergenceSnapshotsAreStable(before, after) {
+  return (
+    scalarIsStable(before.intrinsicHeight, after.intrinsicHeight) &&
+    geometryIsStable(before.frameBorderBox, after.frameBorderBox) &&
+    scalarIsStable(before.owner.scrollHeight, after.owner.scrollHeight) &&
+    scalarIsStable(before.owner.clientHeight, after.owner.clientHeight) &&
+    keyedGeometriesAreStable(
+      before.itemBorderBoxes,
+      after.itemBorderBoxes,
+      'probeId'
+    ) &&
+    keyedGeometriesAreStable(
+      before.tooltipBorderBoxes,
+      after.tooltipBorderBoxes,
+      'content'
+    )
+  );
+}
+
+function scalarIsStable(before, after) {
+  return (
+    Number.isFinite(before) &&
+    Number.isFinite(after) &&
+    Math.abs(before - after) <= geometryStabilityEpsilonPixels
+  );
+}
+
+function geometryIsStable(before, after) {
+  return (
+    scalarIsStable(before.left, after.left) &&
+    scalarIsStable(before.top, after.top) &&
+    scalarIsStable(before.width, after.width) &&
+    scalarIsStable(before.height, after.height)
+  );
+}
+
+function keyedGeometriesAreStable(before, after, key) {
+  if (before.length !== after.length) return false;
+  const afterByKey = new Map(after.map((entry) => [entry[key], entry]));
+  return before.every((entry) => {
+    const next = afterByKey.get(entry[key]);
+    return next ? geometryIsStable(entry, next) : false;
+  });
+}
+
+function describeOverlayVectorDeltas(before, after) {
+  const afterByRelationId = new Map(
+    after.map((vector) => [vector.relationKey, vector])
+  );
+  return before.map((vector) => {
+    const next = afterByRelationId.get(vector.relationKey);
+    if (!next) {
+      throw new Error(
+        `Tracked Surface relation disappeared while measuring scroll: ${vector.relationKey}`
+      );
+    }
+    return {
+      relationKey: vector.relationKey,
+      itemCenterDelta: centerDelta(vector.itemGeometry, next.itemGeometry),
+      popupCenterDelta: centerDelta(
+        vector.tooltipGeometry,
+        next.tooltipGeometry
+      ),
+      relativeVectorDelta: {
+        left: next.left - vector.left,
+        top: next.top - vector.top
+      }
+    };
+  });
+}
+
+function centerDelta(before, after) {
+  return {
+    left: after.left + after.width / 2 - (before.left + before.width / 2),
+    top: after.top + after.height / 2 - (before.top + before.height / 2)
+  };
 }
 
 function centerVector(source, target) {
@@ -1155,6 +1368,9 @@ async function runEvidencePhase({
     atomicWriteJson(evidencePath, evidence);
     return result;
   } catch (error) {
+    if (result === null && error instanceof Error && error.evidence) {
+      result = error.evidence;
+    }
     if (result === null && collectFailureEvidence) {
       try {
         result = await collectFailureEvidence();
