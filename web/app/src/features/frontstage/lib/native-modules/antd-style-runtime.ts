@@ -38,6 +38,7 @@ export type AntdStyleShadowProvider =
   ComponentType<AntdStyleShadowProviderProps>;
 
 let moduleFlight: Promise<typeof import('antd-style')> | undefined;
+let artifactStyleInstanceSequence = 0;
 
 export function loadAntdStyleModule(): Promise<typeof import('antd-style')> {
   moduleFlight ??= import('antd-style').catch((error: unknown) => {
@@ -57,7 +58,8 @@ export async function loadAntdStyleModuleForArtifact(): Promise<{
   // Module-top-level styles belong to the evaluated artifact, not the host page.
   const styleContainer = document.createDocumentFragment();
   const artifactInstance = antdStyleModule.createInstance({
-    container: styleContainer
+    container: styleContainer,
+    key: nextArtifactStyleInstanceKey()
   });
   return {
     module: {
@@ -71,4 +73,15 @@ export async function loadAntdStyleModuleForArtifact(): Promise<{
       return css === '' ? [] : [{ css }];
     }
   };
+}
+
+function nextArtifactStyleInstanceKey(): string {
+  let sequence = ++artifactStyleInstanceSequence;
+  let suffix = '';
+  while (sequence > 0) {
+    sequence -= 1;
+    suffix = String.fromCharCode(97 + (sequence % 26)) + suffix;
+    sequence = Math.floor(sequence / 26);
+  }
+  return `native-static-${suffix}`;
 }
