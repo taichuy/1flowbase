@@ -898,6 +898,29 @@ describe('frontstage native trusted block declarative portal host', () => {
     }
   });
 
+  test('D1-AC-001 exposes only the scoped reveal capability to BlockContext', async () => {
+    const root = createBlockRoot();
+    let receivedContext: BlockContext | undefined;
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="surface:1"
+        plan={createPlan()}
+        component={({ ctx }) => {
+          receivedContext = ctx;
+          return <output data-testid="surface-target">Surface target</output>;
+        }}
+        ctx={createContext()}
+      />
+    );
+
+    const target = await shadowQueries(root).findByTestId('surface-target');
+    expect(receivedContext?.ui.surface?.reveal(target)).toBe(true);
+    expect(Object.keys(receivedContext?.ui.surface ?? {})).toEqual(['reveal']);
+    expect(receivedContext?.ui.surface).not.toHaveProperty('scrollOwner');
+    expect(receivedContext?.ui.surface).not.toHaveProperty('targetRoot');
+  });
+
   test('D3R-AC-008 surface unmount cleans portal DOM and host-owned scope', async () => {
     const root = createBlockRoot();
     root.setAttribute('data-flowbase-native-trusted-block-id', 'before-host');

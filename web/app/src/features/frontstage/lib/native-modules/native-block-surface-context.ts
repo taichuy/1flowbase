@@ -5,14 +5,9 @@ import {
   type ReactNode
 } from 'react';
 
-import type { NativeOverlayHost } from './native-overlay-host';
+import type { NativeBlockSurfaceRuntime } from './surface/native-block-surface-runtime';
 
-export interface NativeBlockSurfaceScope {
-  targetRoot: ShadowRoot;
-  scrollOwner: HTMLElement | Window;
-  layoutEpoch: string;
-  overlayHost: NativeOverlayHost;
-}
+export type NativeBlockSurfaceScope = NativeBlockSurfaceRuntime;
 
 const NativeBlockSurfaceContext = createContext<NativeBlockSurfaceScope | null>(
   null

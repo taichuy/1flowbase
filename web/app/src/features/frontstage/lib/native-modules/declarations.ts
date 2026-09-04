@@ -56,6 +56,9 @@ const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
         readonly available: { readonly width: number; readonly height: number };
         reportIntrinsicSize(size: { readonly height: number }): void;
       };
+      readonly surface?: {
+        reveal(target: Element): boolean;
+      };
     };
   }
   export interface BlockComponentProps { readonly ctx: BlockContext; }

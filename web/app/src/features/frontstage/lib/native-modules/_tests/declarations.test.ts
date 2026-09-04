@@ -133,6 +133,20 @@ void namedResult;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('D1-AC-001 type-checks the narrow BlockContext surface capability', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import type { BlockContext } from '@1flowbase/block-sdk';
+
+declare const ctx: BlockContext;
+declare const target: Element;
+const accepted: boolean | undefined = ctx.ui.surface?.reveal(target);
+void accepted;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

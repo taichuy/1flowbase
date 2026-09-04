@@ -148,10 +148,15 @@ export interface BlockContextSizing {
   reportIntrinsicSize(size: BlockContextIntrinsicSize): void;
 }
 
+export interface BlockContextSurface {
+  reveal(target: Element): boolean;
+}
+
 export interface BlockContextUi {
   locale?: string;
   density?: 'compact' | 'comfortable';
   sizing?: BlockContextSizing;
+  surface?: BlockContextSurface;
 }
 
 export interface BlockExternalAssetHandle {

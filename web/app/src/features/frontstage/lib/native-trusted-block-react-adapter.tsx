@@ -49,10 +49,11 @@ import {
   resolveNativeBlockScrollOwner
 } from './native-modules/native-block-surface-context';
 import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
+import { createNativeOverlayHost } from './native-modules/native-overlay-host';
 import {
-  createNativeOverlayHost,
-  type NativeOverlayHost
-} from './native-modules/native-overlay-host';
+  createNativeBlockSurfaceRuntime,
+  type NativeBlockSurfaceRuntime
+} from './native-modules/surface/native-block-surface-runtime';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -149,9 +150,10 @@ export function FrontstageNativeTrustedBlockPortalHost({
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
-  const [overlayHostState, setOverlayHostState] = useState<{
+  const [, setSurfaceGeneration] = useState(0);
+  const [surfaceRuntimeState, setSurfaceRuntimeState] = useState<{
     surface: NativeTrustedBlockPortalSurface;
-    host: NativeOverlayHost;
+    runtime: NativeBlockSurfaceRuntime;
   } | null>(null);
   const lifecycleRef = useRef<TrustedFrontendContributionHandle | null>(null);
   const renderInput = useMemo(
@@ -229,17 +231,27 @@ export function FrontstageNativeTrustedBlockPortalHost({
   );
   const blockContext = useMemo<BlockContext | null>(
     () =>
-      surface && externalAssetScope
+      surface && externalAssetScope && surfaceRuntimeState?.surface === surface
         ? {
             ...ctx,
             root: surface.shadowRoot,
-            assets: externalAssetScope.assets
+            assets: externalAssetScope.assets,
+            ui: {
+              ...ctx.ui,
+              surface: surfaceRuntimeState.runtime.blockContextSurface
+            }
           }
         : null,
-    [ctx, externalAssetScope, surface]
+    [ctx, externalAssetScope, surface, surfaceRuntimeState]
   );
   const overlayHost =
-    overlayHostState?.surface === surface ? overlayHostState.host : null;
+    surfaceRuntimeState?.surface === surface
+      ? surfaceRuntimeState.runtime.overlayHost
+      : null;
+  const surfaceRuntime =
+    surfaceRuntimeState?.surface === surface
+      ? surfaceRuntimeState.runtime
+      : null;
 
   useLayoutEffect(() => {
     if (!surface) return;
@@ -247,9 +259,28 @@ export function FrontstageNativeTrustedBlockPortalHost({
       blockId: plan.blockId,
       targetRoot: surface.shadowRoot
     });
-    setOverlayHostState({ surface, host });
-    return () => host.dispose();
+    const runtime = createNativeBlockSurfaceRuntime({
+      layoutEpoch: surfaceLayoutEpoch,
+      overlayHost: host,
+      scrollOwner: resolveNativeBlockScrollOwner(root),
+      targetRoot: surface.shadowRoot
+    });
+    setSurfaceRuntimeState({ surface, runtime });
+    return () => {
+      runtime.dispose();
+      host.dispose();
+    };
+    // The runtime survives layout modes; its monotonic generation fences ABA.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.blockId, surface]);
+
+  useLayoutEffect(() => {
+    if (!surfaceRuntime) return;
+    const generation = surfaceRuntime.advanceLayoutEpoch(surfaceLayoutEpoch);
+    setSurfaceGeneration((current) =>
+      current === generation ? current : generation
+    );
+  }, [surfaceLayoutEpoch, surfaceRuntime]);
 
   useLayoutEffect(
     () => () => externalAssetScope?.dispose(),
@@ -267,7 +298,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
     !antdStylePrefix ||
     !portalContainment ||
     !blockContext ||
-    !overlayHost
+    !overlayHost ||
+    !surfaceRuntime
   ) {
     return null;
   }
@@ -277,7 +309,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
     root,
     shadowRoot: surface.shadowRoot,
     mountElement: surface.mountElement,
-    scrollOwner: resolveNativeBlockScrollOwner(root),
+    scrollOwner: surfaceRuntime.scrollOwner,
     portalContainment
   };
   const content = (
@@ -303,10 +335,9 @@ export function FrontstageNativeTrustedBlockPortalHost({
       styleCache,
       moduleSources,
       antdStylePrefix,
-      overlayHost,
+      surfaceRuntime,
       { ...providerScope, theme: runtimeMotionTheme },
-      providerWrapper,
-      surfaceLayoutEpoch
+      providerWrapper
     ),
     surface.mountElement,
     renderEpoch
@@ -517,12 +548,12 @@ function wrapWithHostProviders(
   styleCache: ReturnType<typeof createCache>,
   moduleSources: readonly string[],
   antdStylePrefix: string,
-  overlayHost: NativeOverlayHost,
+  surfaceRuntime: NativeBlockSurfaceRuntime,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
-  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper,
-  surfaceLayoutEpoch = 'stable'
+  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
-  const getPopupContainer = () => overlayHost.getPopupContainer();
+  const getPopupContainer = () =>
+    surfaceRuntime.overlayHost.getPopupContainer();
   const getTargetContainer = () => context.scrollOwner;
   const isolatedPrefix = createShadowStylePrefix(context.plan.blockId);
   const hostChildren = (
@@ -534,14 +565,7 @@ function wrapWithHostProviders(
         prefixCls={isolatedPrefix}
         theme={providerScope?.theme}
       >
-        <NativeBlockSurfaceProvider
-          scope={{
-            targetRoot: context.shadowRoot,
-            scrollOwner: context.scrollOwner,
-            layoutEpoch: surfaceLayoutEpoch,
-            overlayHost
-          }}
-        >
+        <NativeBlockSurfaceProvider scope={surfaceRuntime}>
           <AntdApp>{children}</AntdApp>
         </NativeBlockSurfaceProvider>
       </ConfigProvider>
