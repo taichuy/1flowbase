@@ -345,7 +345,7 @@ async function readStaticStylesState(block) {
 }
 
 async function changeOwnerScrollAndMeasure(page, block, delta) {
-  const before = await page.evaluate(() => {
+  const before = await page.evaluate((scrollDelta) => {
     const owner = document.querySelector(
       '[data-flowbase-frontstage-scroll-owner]'
     );
@@ -361,10 +361,13 @@ async function changeOwnerScrollAndMeasure(page, block, delta) {
     };
     owner.scrollTop = Math.max(
       0,
-      Math.min(owner.scrollHeight - owner.clientHeight, owner.scrollTop + delta)
+      Math.min(
+        owner.scrollHeight - owner.clientHeight,
+        owner.scrollTop + scrollDelta
+      )
     );
     return result;
-  });
+  }, delta);
   await settleLayout(page);
   const [afterTop, documentAfter, overlayVectors] = await Promise.all([
     page
