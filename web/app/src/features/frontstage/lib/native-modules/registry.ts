@@ -49,14 +49,16 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     { NativeBlockAnchor },
     { NativeBlockDropdown },
     { NativeBlockMessage },
-    { NativeBlockMenu }
+    { NativeBlockMenu },
+    { NativeBlockPopover, NativeBlockTooltip }
   ] = await Promise.all([
     loadAntDesignRootModule(),
     import('./native-affix-runtime'),
     import('./native-anchor-runtime'),
     import('./native-dropdown-runtime'),
     import('./native-message-runtime'),
-    import('./menu/native-menu-runtime')
+    import('./menu/native-menu-runtime'),
+    import('./overlay/native-tooltip-popover-runtime')
   ]);
   return {
     ...antdModule,
@@ -64,6 +66,8 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     Anchor: NativeBlockAnchor,
     Dropdown: NativeBlockDropdown,
     Menu: NativeBlockMenu,
+    Popover: NativeBlockPopover,
+    Tooltip: NativeBlockTooltip,
     message: NativeBlockMessage
   };
 }

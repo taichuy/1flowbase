@@ -147,6 +147,24 @@ void accepted;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('D1-AC-004 exposes public forceAlign only for Tooltip-family refs', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import React from 'react';
+import { Dropdown, Popover, Tooltip } from 'antd';
+
+declare const popoverRef: React.ComponentRef<typeof Popover>;
+declare const tooltipRef: React.ComponentRef<typeof Tooltip>;
+declare const dropdownRef: React.ComponentRef<typeof Dropdown>;
+popoverRef.forceAlign();
+tooltipRef.forceAlign();
+// @ts-expect-error Ant Design exposes only the Dropdown trigger HTMLElement.
+dropdownRef.forceAlign();`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

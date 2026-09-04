@@ -1,5 +1,5 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
-import { useEffect, type ComponentType } from 'react';
+import { createRef, useEffect, type ComponentType } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
@@ -374,6 +374,40 @@ describe('native block Dropdown runtime adapter', () => {
     } finally {
       rectSpy.mockRestore();
     }
+  });
+
+  test('D1-AC-004 controlled negative exposes no public Dropdown realign ref', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antdModule = await registry.load('antd');
+    const Dropdown = antdModule.Dropdown as (typeof import('antd'))['Dropdown'];
+    const dropdownRef = createRef<HTMLElement>();
+    const root = document.createElement('div');
+    document.body.append(root);
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="dropdown:public-ref"
+        plan={createPlan()}
+        component={() => (
+          <Dropdown
+            ref={dropdownRef}
+            open
+            align={{ offset: [0, 4] }}
+            menu={{ items: [{ key: 'profile', label: 'Profile' }] }}
+          >
+            <button type="button">Public ref menu</button>
+          </Dropdown>
+        )}
+        ctx={createContext()}
+      />
+    );
+
+    const trigger = await within(
+      (await waitFor(() => root.shadowRoot)) as unknown as HTMLElement
+    ).findByRole('button', { name: 'Public ref menu' });
+    expect(dropdownRef.current).toBe(trigger);
+    expect(dropdownRef.current).not.toHaveProperty('forceAlign');
   });
 });
 
