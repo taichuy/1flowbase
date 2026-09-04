@@ -217,11 +217,43 @@ async function openReadyBlock(page, blockId) {
     `[data-flowbase-frontstage-block-id="${blockId}"]`
   );
   await block.waitFor({ state: 'attached', timeout: 90000 });
+  if (blockId === revealBlockId) {
+    await block.evaluate((frame) => {
+      const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
+      if (!(owner instanceof HTMLElement)) {
+        throw new Error('Frontstage scroll owner is missing.');
+      }
+      window.__surfaceScrollCalls = [];
+      const frameRect = frame.getBoundingClientRect();
+      const ownerRect = owner.getBoundingClientRect();
+      owner.scrollTop = Math.max(
+        0,
+        owner.scrollTop + frameRect.top - ownerRect.bottom + 1
+      );
+    });
+  } else {
+    await block.scrollIntoViewIfNeeded();
+  }
   await page.waitForFunction(
     (id) =>
       document
         .querySelector(`[data-flowbase-frontstage-block-id="${id}"]`)
-        ?.getAttribute('data-flowbase-frontstage-render-status') === 'ready',
+        ?.querySelector('[data-flowbase-native-trusted-block-root]')
+        ?.shadowRoot != null,
+    blockId,
+    { timeout: 90000 }
+  );
+  await page.waitForFunction(
+    (id) => {
+      const frame = document.querySelector(
+        `[data-flowbase-frontstage-block-id="${id}"]`
+      );
+      return (
+        frame?.getAttribute('data-flowbase-frontstage-render-status') ===
+          'ready' &&
+        !frame.querySelector('.frontstage-native-block-state--loading')
+      );
+    },
     blockId,
     { timeout: 90000 }
   );
