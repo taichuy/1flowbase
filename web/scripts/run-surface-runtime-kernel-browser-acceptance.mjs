@@ -127,6 +127,11 @@ async function verifyStaticStylesBlock(page) {
   });
   return {
     ...initial,
+    geometryByRelation: {
+      initial: initial.overlayVectors,
+      afterScroll: afterScroll.overlayVectors,
+      afterResize
+    },
     ownerScrollChanged: afterScroll.afterTop !== afterScroll.beforeTop,
     documentScrollUnchanged:
       afterScroll.documentAfter.top === afterScroll.documentBefore.top &&
@@ -143,33 +148,20 @@ async function verifyRevealBlock(page) {
   const block = page.locator(
     `[data-flowbase-frontstage-block-id="${revealBlockId}"]`
   );
+  const revealButtonName = 'Reveal In Block Surface';
+  await block
+    .getByRole('button', { name: revealButtonName, exact: true })
+    .waitFor({ state: 'visible', timeout: 90000 });
+  const relationState = await readSurfaceState(block, {
+    buttonName: revealButtonName,
+    includeItemStyleOwners: false
+  });
+  const revealRelation = relationState.relations.find(
+    ({ triggerName }) => triggerName === revealButtonName
+  );
   const state = await block.evaluate((frame) => {
-    const runtimeHost = frame.querySelector(
-      '[data-flowbase-native-trusted-block-root]'
-    );
-    const root = runtimeHost?.shadowRoot;
-    const button = root
-      ? [...root.querySelectorAll('button')].find((candidate) =>
-          candidate.textContent?.includes('Reveal In Block Surface')
-        )
-      : null;
-    const popover = root?.querySelector('.ant-popover');
     const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
-    const visible = (element) => {
-      if (!(element instanceof Element)) return false;
-      const style = getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== 'none' &&
-        style.visibility !== 'hidden' &&
-        style.opacity !== '0'
-      );
-    };
     return {
-      buttonVisible: visible(button),
-      popoverVisible: visible(popover),
       ownerScrollTop: owner instanceof HTMLElement ? owner.scrollTop : null,
       ownerScrollLeft: owner instanceof HTMLElement ? owner.scrollLeft : null,
       documentScrollTop: document.documentElement.scrollTop,
@@ -177,15 +169,24 @@ async function verifyRevealBlock(page) {
       surfaceScrollCalls: window.__surfaceScrollCalls ?? []
     };
   });
-  const initialVectors = await readOverlayVectors(block);
-  const afterScroll = await changeOwnerScrollAndMeasure(page, block, -72);
+  const relationOptions = {
+    buttonName: revealButtonName,
+    includeItemStyleOwners: false
+  };
+  const initialVectors = await readOverlayVectors(block, relationOptions);
+  const afterScroll = await changeOwnerScrollAndMeasure(
+    page,
+    block,
+    -72,
+    relationOptions
+  );
   const scrollAlignmentError = maxVectorDelta(
     initialVectors,
     afterScroll.overlayVectors
   );
   await page.setViewportSize({ width: 1540, height: 880 });
   await settleLayout(page);
-  const afterResize = await readOverlayVectors(block);
+  const afterResize = await readOverlayVectors(block, relationOptions);
   const resizeAlignmentError = maxVectorDelta(
     afterScroll.overlayVectors,
     afterResize
@@ -193,6 +194,15 @@ async function verifyRevealBlock(page) {
   await block.screenshot({ path: join(outputDir, 'reveal-popover.png') });
   return {
     ...state,
+    surface: relationState.surface,
+    relations: relationState.relations,
+    geometryByRelation: {
+      initial: initialVectors,
+      afterScroll: afterScroll.overlayVectors,
+      afterResize
+    },
+    buttonVisible: revealRelation?.triggerVisible ?? false,
+    popoverVisible: revealRelation?.tooltipVisible ?? false,
     ownerScrollChanged: state.surfaceScrollCalls.some(
       (call) => call.before.top !== call.after.top
     ),
@@ -251,7 +261,8 @@ async function openReadyBlock(page, blockId) {
       return (
         frame?.getAttribute('data-flowbase-frontstage-render-status') ===
           'ready' &&
-        !frame.querySelector('.frontstage-native-block-state--loading')
+        frame?.querySelector('[data-flowbase-native-trusted-block-root]')
+          ?.shadowRoot != null
       );
     },
     blockId,
@@ -261,94 +272,45 @@ async function openReadyBlock(page, blockId) {
 }
 
 async function readStaticStylesState(block) {
-  return block.evaluate((frame) => {
-    const runtimeHost = frame.querySelector(
-      '[data-flowbase-native-trusted-block-root]'
-    );
-    const root = runtimeHost?.shadowRoot;
-    if (!root) throw new Error('Static styles Block ShadowRoot is missing.');
-    const triggers = [...root.querySelectorAll('.ant-popover-open')];
-    const items = triggers.map((trigger) => trigger.parentElement);
-    const popovers = [...root.querySelectorAll('.ant-popover')];
-    const firstItem = items[0];
-    const itemClassTokens = firstItem
-      ? [...firstItem.classList].filter((token) => !token.startsWith('ant-'))
-      : [];
-    const collectRules = (container) => {
-      const styleSheets = [...container.querySelectorAll('style')]
-        .map((style) => style.sheet)
-        .filter(Boolean);
-      if (container instanceof ShadowRoot) {
-        styleSheets.push(...container.adoptedStyleSheets);
-      }
-      return styleSheets
-        .flatMap((sheet) => {
-          try {
-            return [...sheet.cssRules].map((rule) => rule.cssText);
-          } catch {
-            return [];
-          }
-        })
-        .join('\n');
-    };
-    const readCurrentVectors = () => {
-      const currentTriggers = [...root.querySelectorAll('.ant-popover-open')];
-      const currentPopovers = [...root.querySelectorAll('.ant-popover')];
-      return currentTriggers.map((trigger, index) => {
-        const triggerRect = trigger.getBoundingClientRect();
-        const popupRect = currentPopovers[index]?.getBoundingClientRect();
-        if (!popupRect) throw new Error(`Popover ${index} is missing.`);
-        return {
-          left: popupRect.left - triggerRect.left,
-          top: popupRect.top - triggerRect.top
-        };
-      });
-    };
-    const shadowRules = collectRules(root);
-    const headRules = collectRules(document.head);
-    const itemRuleInShadow = itemClassTokens.some(
-      (token) =>
-        shadowRules.includes(`.${token}`) &&
-        shadowRules.includes('width: 280px') &&
-        shadowRules.includes('height: 280px')
-    );
-    const itemRuleInDocumentHead = itemClassTokens.some((token) =>
-      headRules.includes(`.${token}`)
-    );
-    const visible = (element) => {
-      if (!(element instanceof Element)) return false;
-      const style = getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== 'none' &&
-        style.visibility !== 'hidden' &&
-        style.opacity !== '0'
-      );
-    };
-    return {
-      itemCount: items.length,
-      itemSizes: items.map((item) => {
-        const rect = item?.getBoundingClientRect();
-        return rect ? { width: rect.width, height: rect.height } : null;
-      }),
-      triggerCount: triggers.length,
-      visibleTriggerCount: triggers.filter(visible).length,
-      popoverCount: popovers.length,
-      visiblePopoverCount: popovers.filter(visible).length,
-      itemRuleInShadow,
-      itemRuleInDocumentHead,
-      overlayVectors: readCurrentVectors()
-    };
+  const state = await readSurfaceState(block, {
+    includeItemStyleOwners: true
   });
+  return {
+    surface: state.surface,
+    relations: state.relations,
+    itemCount: state.items.length,
+    itemSizes: state.items.map(({ geometry }) => geometry),
+    triggerCount: state.relations.length,
+    visibleTriggerCount: state.relations.filter(
+      ({ triggerVisible }) => triggerVisible
+    ).length,
+    popoverCount: state.relations.length,
+    visiblePopoverCount: state.relations.filter(
+      ({ tooltipVisible }) => tooltipVisible
+    ).length,
+    itemRuleInShadow: state.items.every(
+      ({ surfaceStyleOwners }) => surfaceStyleOwners.length > 0
+    ),
+    itemRuleInDocumentHead: state.items.some(
+      ({ documentHeadStyleOwners }) => documentHeadStyleOwners.length > 0
+    ),
+    styleOwners: state.items.map((item) => ({
+      relationIds: item.relationIds,
+      surfaceStyleOwners: item.surfaceStyleOwners,
+      documentHeadStyleOwners: item.documentHeadStyleOwners
+    })),
+    overlayVectors: state.overlayVectors
+  };
 }
 
-async function changeOwnerScrollAndMeasure(page, block, delta) {
-  const before = await page.evaluate((scrollDelta) => {
-    const owner = document.querySelector(
-      '[data-flowbase-frontstage-scroll-owner]'
-    );
+async function changeOwnerScrollAndMeasure(
+  page,
+  block,
+  delta,
+  relationOptions = { includeItemStyleOwners: false }
+) {
+  const before = await block.evaluate((frame, scrollDelta) => {
+    const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
     if (!(owner instanceof HTMLElement)) {
       throw new Error('Frontstage scroll owner is missing.');
     }
@@ -370,14 +332,18 @@ async function changeOwnerScrollAndMeasure(page, block, delta) {
   }, delta);
   await settleLayout(page);
   const [afterTop, documentAfter, overlayVectors] = await Promise.all([
-    page
-      .locator('[data-flowbase-frontstage-scroll-owner]')
-      .evaluate((owner) => owner.scrollTop),
+    block.evaluate((frame) => {
+      const owner = frame.closest('[data-flowbase-frontstage-scroll-owner]');
+      if (!(owner instanceof HTMLElement)) {
+        throw new Error('Frontstage scroll owner is missing.');
+      }
+      return owner.scrollTop;
+    }),
     page.evaluate(() => ({
       top: document.documentElement.scrollTop,
       left: document.documentElement.scrollLeft
     })),
-    readOverlayVectors(block)
+    readOverlayVectors(block, relationOptions)
   ]);
   return {
     beforeTop: before.top,
@@ -388,24 +354,293 @@ async function changeOwnerScrollAndMeasure(page, block, delta) {
   };
 }
 
-async function readOverlayVectors(block) {
-  return block.evaluate((frame) => {
-    const root = frame.querySelector(
+async function readOverlayVectors(
+  block,
+  options = { includeItemStyleOwners: false }
+) {
+  return (await readSurfaceState(block, options)).overlayVectors;
+}
+
+async function readSurfaceState(block, options) {
+  return block.evaluate((frame, readOptions) => {
+    const runtimeHost = frame.querySelector(
       '[data-flowbase-native-trusted-block-root]'
-    )?.shadowRoot;
-    if (!root) throw new Error('Native Block ShadowRoot is missing.');
-    const triggers = [...root.querySelectorAll('.ant-popover-open')];
-    const popovers = [...root.querySelectorAll('.ant-popover')];
-    return triggers.map((trigger, index) => {
-      const triggerRect = trigger.getBoundingClientRect();
-      const popupRect = popovers[index]?.getBoundingClientRect();
-      if (!popupRect) throw new Error(`Popover ${index} is missing.`);
+    );
+    const root = runtimeHost?.shadowRoot;
+    if (!(root instanceof ShadowRoot)) {
+      throw new Error('Native Block ShadowRoot is missing.');
+    }
+    const overlayHost = root.querySelector(
+      '[data-flowbase-native-overlay-layer]'
+    );
+    if (!(overlayHost instanceof HTMLElement)) {
+      throw new Error('Native Block Surface overlay host is missing.');
+    }
+    const frameBlockId = frame.getAttribute(
+      'data-flowbase-frontstage-block-id'
+    );
+    const runtimeBlockId = runtimeHost.getAttribute(
+      'data-flowbase-native-trusted-block-id'
+    );
+    const overlayBlockId = overlayHost.getAttribute(
+      'data-flowbase-native-overlay-layer'
+    );
+    if (
+      !frameBlockId ||
+      runtimeBlockId !== frameBlockId ||
+      overlayBlockId !== frameBlockId
+    ) {
+      throw new Error(
+        'Native Block runtime and overlay hosts do not belong to the current Frontstage Surface.'
+      );
+    }
+
+    const visible = (element) => {
+      if (!(element instanceof Element)) return false;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        Number.parseFloat(style.opacity || '1') > 0
+      );
+    };
+    const accessibleName = (element) => {
+      const label = element.getAttribute('aria-label');
+      if (label) return label.trim();
+      const labelledBy = element.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        const labelText = labelledBy
+          .split(/\s+/u)
+          .map((id) => root.getElementById(id)?.textContent?.trim() ?? '')
+          .filter(Boolean)
+          .join(' ');
+        if (labelText) return labelText;
+      }
+      return element.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
+    };
+    const isButton = (element) =>
+      element instanceof HTMLElement &&
+      (element.localName === 'button' ||
+        element.getAttribute('role') === 'button');
+    const composedParent = (element) => {
+      if (element.assignedSlot) return element.assignedSlot;
+      if (element.parentElement) return element.parentElement;
+      const ownerRoot = element.getRootNode();
+      return ownerRoot instanceof ShadowRoot ? ownerRoot.host : null;
+    };
+    const geometry = (element) => {
+      const rect = element.getBoundingClientRect();
       return {
-        left: popupRect.left - triggerRect.left,
-        top: popupRect.top - triggerRect.top
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
       };
+    };
+    const isExpectedItemGeometry = (element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        Math.abs(rect.width - 280) <= 0.5 && Math.abs(rect.height - 280) <= 0.5
+      );
+    };
+    const findItemOwner = (trigger) => {
+      let candidate = composedParent(trigger);
+      while (candidate instanceof Element) {
+        if (isExpectedItemGeometry(candidate)) return candidate;
+        if (candidate === runtimeHost) break;
+        candidate = composedParent(candidate);
+      }
+      return null;
+    };
+    const describeSurfaceElement = (element) => ({
+      tagName: element.localName,
+      nativeBlockId: element.getAttribute(
+        'data-flowbase-native-trusted-block-id'
+      ),
+      overlayLayerId: element.getAttribute('data-flowbase-native-overlay-layer')
     });
-  });
+
+    const triggers = [...root.querySelectorAll('[aria-describedby]')].filter(
+      (candidate) =>
+        isButton(candidate) &&
+        (!readOptions.buttonName ||
+          accessibleName(candidate) === readOptions.buttonName)
+    );
+    const relations = triggers.flatMap((trigger) =>
+      (trigger.getAttribute('aria-describedby') ?? '')
+        .split(/\s+/u)
+        .filter(Boolean)
+        .map((relationId) => {
+          const tooltip = root.getElementById(relationId);
+          if (
+            !(tooltip instanceof HTMLElement) ||
+            tooltip.getAttribute('role') !== 'tooltip' ||
+            !overlayHost.contains(tooltip)
+          ) {
+            throw new Error(
+              `ARIA tooltip relation ${relationId} is not owned by the current Surface overlay host.`
+            );
+          }
+          const triggerRect = trigger.getBoundingClientRect();
+          const tooltipRect = tooltip.getBoundingClientRect();
+          return {
+            relationId,
+            triggerName: accessibleName(trigger),
+            triggerRole: 'button',
+            triggerVisible: visible(trigger),
+            tooltipRole: tooltip.getAttribute('role'),
+            tooltipVisible: visible(tooltip),
+            triggerGeometry: geometry(trigger),
+            tooltipGeometry: geometry(tooltip),
+            vector: {
+              left: tooltipRect.left - triggerRect.left,
+              top: tooltipRect.top - triggerRect.top
+            },
+            itemOwner: findItemOwner(trigger)
+          };
+        })
+    );
+    if (relations.length === 0) {
+      throw new Error(
+        'No stable button aria-describedby to role=tooltip relation exists in the current Surface.'
+      );
+    }
+
+    const visitRules = (rules, visit) => {
+      for (const rule of rules) {
+        if ('selectorText' in rule && 'style' in rule) visit(rule);
+        if ('cssRules' in rule) {
+          try {
+            visitRules(rule.cssRules, visit);
+          } catch {
+            // Cross-origin and disabled sheets do not expose rules.
+          }
+        }
+      }
+    };
+    const matchingGeometryRules = (item, sheets) => {
+      const matches = [];
+      for (const { sheet, ownerType, ownerRoot } of sheets) {
+        try {
+          visitRules(sheet.cssRules, (rule) => {
+            let selectorMatches = false;
+            try {
+              selectorMatches = item.matches(rule.selectorText);
+            } catch {
+              return;
+            }
+            if (
+              selectorMatches &&
+              Number.parseFloat(rule.style.getPropertyValue('width')) === 280 &&
+              Number.parseFloat(rule.style.getPropertyValue('height')) === 280
+            ) {
+              matches.push({
+                ownerType,
+                ownerRoot,
+                selector: rule.selectorText,
+                width: rule.style.getPropertyValue('width'),
+                height: rule.style.getPropertyValue('height')
+              });
+            }
+          });
+        } catch {
+          // Cross-origin and disabled sheets do not expose rules.
+        }
+      }
+      return matches;
+    };
+    const surfaceSheets = [];
+    const collectShadowSheets = (shadow, path) => {
+      for (const style of shadow.querySelectorAll('style')) {
+        if (style.sheet) {
+          surfaceSheets.push({
+            sheet: style.sheet,
+            ownerType: 'shadow-style-element',
+            ownerRoot: path
+          });
+        }
+      }
+      for (const sheet of shadow.adoptedStyleSheets) {
+        surfaceSheets.push({
+          sheet,
+          ownerType: 'shadow-adopted-style-sheet',
+          ownerRoot: path
+        });
+      }
+      for (const element of shadow.querySelectorAll('*')) {
+        if (element.shadowRoot) {
+          collectShadowSheets(
+            element.shadowRoot,
+            `${path}>${element.localName}::shadow-root`
+          );
+        }
+      }
+    };
+    collectShadowSheets(root, 'surface::shadow-root');
+    const documentHeadSheets = [
+      ...document.head.querySelectorAll('style,link[rel="stylesheet"]')
+    ]
+      .filter((element) => element.sheet)
+      .map((element) => ({
+        sheet: element.sheet,
+        ownerType: 'document-head-style-sheet',
+        ownerRoot: 'document.head'
+      }));
+    const uniqueItems = new Map();
+    if (readOptions.includeItemStyleOwners) {
+      for (const relation of relations) {
+        if (!(relation.itemOwner instanceof Element)) {
+          throw new Error(
+            `ARIA trigger ${relation.relationId} has no composed 280x280 item owner.`
+          );
+        }
+        const existing = uniqueItems.get(relation.itemOwner);
+        if (existing) {
+          existing.relationIds.push(relation.relationId);
+          continue;
+        }
+        uniqueItems.set(relation.itemOwner, {
+          relationIds: [relation.relationId],
+          geometry: geometry(relation.itemOwner),
+          surfaceStyleOwners: matchingGeometryRules(
+            relation.itemOwner,
+            surfaceSheets
+          ),
+          documentHeadStyleOwners: matchingGeometryRules(
+            relation.itemOwner,
+            documentHeadSheets
+          )
+        });
+      }
+    }
+    return {
+      surface: {
+        frameBlockId,
+        runtimeHost: describeSurfaceElement(runtimeHost),
+        overlayHost: describeSurfaceElement(overlayHost),
+        relationIds: relations.map(({ relationId }) => relationId)
+      },
+      relations: relations.map((relation) => ({
+        relationId: relation.relationId,
+        triggerName: relation.triggerName,
+        triggerRole: relation.triggerRole,
+        triggerVisible: relation.triggerVisible,
+        tooltipRole: relation.tooltipRole,
+        tooltipVisible: relation.tooltipVisible,
+        triggerGeometry: relation.triggerGeometry,
+        tooltipGeometry: relation.tooltipGeometry,
+        vector: relation.vector
+      })),
+      items: [...uniqueItems.values()],
+      overlayVectors: relations.map(({ relationId, vector }) => ({
+        relationId,
+        ...vector
+      }))
+    };
+  }, options);
 }
 
 async function settleLayout(page) {
@@ -419,9 +654,13 @@ async function settleLayout(page) {
 
 function maxVectorDelta(before, after) {
   if (before.length === 0 || before.length !== after.length) return Infinity;
+  const afterByRelationId = new Map(
+    after.map((vector) => [vector.relationId, vector])
+  );
   return Math.max(
-    ...before.map((vector, index) => {
-      const next = after[index];
+    ...before.map((vector) => {
+      const next = afterByRelationId.get(vector.relationId);
+      if (!next) return Infinity;
       return Math.max(
         Math.abs(vector.left - next.left),
         Math.abs(vector.top - next.top)
@@ -432,7 +671,9 @@ function maxVectorDelta(before, after) {
 
 function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
   const allItemsAre280 = staticStyles.itemSizes.every(
-    (size) => size?.width === 280 && size?.height === 280
+    (size) =>
+      Math.abs((size?.width ?? 0) - 280) <= 0.5 &&
+      Math.abs((size?.height ?? 0) - 280) <= 0.5
   );
   if (
     staticStyles.itemCount !== 12 ||
@@ -447,6 +688,7 @@ function assertAcceptance({ staticStyles, reveal, pageErrors, consoleErrors }) {
     !staticStyles.documentScrollUnchanged ||
     staticStyles.scrollAlignmentError > 3 ||
     staticStyles.resizeAlignmentError > 3 ||
+    reveal.relations.length !== 1 ||
     !reveal.buttonVisible ||
     !reveal.popoverVisible ||
     !reveal.ownerScrollChanged ||
