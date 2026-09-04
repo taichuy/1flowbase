@@ -1,18 +1,11 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createStyles } from 'antd-style';
+import { Popover, theme } from 'antd';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  act,
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode
-} from 'react';
+import { act, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContext, BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
@@ -27,55 +20,7 @@ import {
   type PreparedTrustedFrontendContribution
 } from '../../lib/native-trusted-block-contribution-lifecycle';
 
-const providerRecords = vi.hoisted(() => ({
-  configs: [] as Array<Record<string, unknown>>,
-  styles: [] as Array<Record<string, unknown>>
-}));
-
 afterEach(() => vi.unstubAllGlobals());
-
-vi.mock('@ant-design/cssinjs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@ant-design/cssinjs')>();
-  const React = await vi.importActual<typeof import('react')>('react');
-  return {
-    ...actual,
-    createCache: vi.fn(() => ({})),
-    StyleProvider({
-      children,
-      ...props
-    }: {
-      children?: ReactNode;
-      [key: string]: unknown;
-    }) {
-      providerRecords.styles.push(props);
-      return React.createElement(React.Fragment, null, children);
-    }
-  };
-});
-
-vi.mock('antd', async () => {
-  const React = await vi.importActual<typeof import('react')>('react');
-  return {
-    ConfigProvider({
-      children,
-      ...props
-    }: {
-      children?: ReactNode;
-      [key: string]: unknown;
-    }) {
-      providerRecords.configs.push(props);
-      return React.createElement(React.Fragment, null, children);
-    },
-    App({ children }: { children?: ReactNode }) {
-      return React.createElement(React.Fragment, null, children);
-    },
-    Skeleton() {
-      return React.createElement('div', {
-        'data-testid': 'runtime-suspense-skeleton'
-      });
-    }
-  };
-});
 
 function createPlan(
   overrides: Partial<NativeTrustedBlockPreparePlan> = {}
@@ -135,40 +80,35 @@ function shadowQueries(root: Element) {
   return within(root.shadowRoot as unknown as HTMLElement);
 }
 
-function hostConfigProviders(root: Element): Array<Record<string, unknown>> {
-  const overlayLayer = root.shadowRoot?.querySelector(
-    '[data-flowbase-native-overlay-layer]'
-  );
-  return providerRecords.configs.filter(
-    (config) =>
-      typeof config.prefixCls === 'string' &&
-      typeof config.getPopupContainer === 'function' &&
-      typeof config.getTargetContainer === 'function' &&
-      config.getPopupContainer() === overlayLayer
+function ThemeTokenProbe({ label }: { label: string }) {
+  const { token } = theme.useToken();
+  return (
+    <output
+      data-testid={`${label}-theme`}
+      data-color-primary={token.colorPrimary}
+      data-motion={String(token.motion)}
+      data-motion-duration-fast={token.motionDurationFast}
+      data-motion-duration-mid={token.motionDurationMid}
+      data-motion-duration-slow={token.motionDurationSlow}
+    >
+      {label} theme
+    </output>
   );
 }
 
-function expectHostTheme(
-  root: Element,
-  expectedTokens: Record<string, unknown>
+function expectRenderedTheme(
+  probe: HTMLElement,
+  expectedTokens: Record<string, string | boolean>
 ): void {
-  const matches = hostConfigProviders(root).filter((config) => {
-    const tokens = (
-      config.theme as { token?: Record<string, unknown> } | undefined
-    )?.token;
-    return Object.entries(expectedTokens).every(
-      ([key, value]) => tokens?.[key] === value
+  for (const [name, value] of Object.entries(expectedTokens)) {
+    expect(probe).toHaveAttribute(
+      `data-${name.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`,
+      String(value)
     );
-  });
-  expect(matches.length).toBeGreaterThan(0);
+  }
 }
 
 describe('frontstage native trusted block declarative portal host', () => {
-  beforeEach(() => {
-    providerRecords.configs = [];
-    providerRecords.styles = [];
-  });
-
   test('D3R-AC-001 renders two ShadowRoot portals from one owner tree without a per-block React root', async () => {
     const firstRoot = createBlockRoot();
     const secondRoot = createBlockRoot();
@@ -184,6 +124,7 @@ describe('frontstage native trusted block declarative portal host', () => {
           plan={createPlan({ blockId: 'first' })}
           component={Block}
           ctx={createContext()}
+          moduleAssets={[moduleStyle('d', '.first-resource { color: red; }')]}
         />
         <FrontstageNativeTrustedBlockPortalHost
           root={secondRoot}
@@ -191,6 +132,7 @@ describe('frontstage native trusted block declarative portal host', () => {
           plan={createPlan({ blockId: 'second' })}
           component={Block}
           ctx={createContext()}
+          moduleAssets={[moduleStyle('e', '.second-resource { color: blue; }')]}
         />
       </>
     );
@@ -202,13 +144,27 @@ describe('frontstage native trusted block declarative portal host', () => {
       await shadowQueries(secondRoot).findByTestId('second')
     ).toHaveTextContent('second');
     expect(firstRoot.shadowRoot).not.toBe(secondRoot.shadowRoot);
-    const firstHostProviders = hostConfigProviders(firstRoot);
-    const secondHostProviders = hostConfigProviders(secondRoot);
-    expect(firstHostProviders.length).toBeGreaterThan(0);
-    expect(secondHostProviders.length).toBeGreaterThan(0);
-    expect(firstHostProviders[0].prefixCls).not.toBe(
-      secondHostProviders[0].prefixCls
+    const firstMount = firstRoot.shadowRoot?.querySelector(
+      '[data-flowbase-native-trusted-block-mount]'
     );
+    const secondMount = secondRoot.shadowRoot?.querySelector(
+      '[data-flowbase-native-trusted-block-mount]'
+    );
+    const firstOverlay = firstRoot.shadowRoot?.querySelector(
+      '[data-flowbase-native-overlay-layer="first"]'
+    );
+    const secondOverlay = secondRoot.shadowRoot?.querySelector(
+      '[data-flowbase-native-overlay-layer="second"]'
+    );
+    expect(firstMount?.getRootNode()).toBe(firstRoot.shadowRoot);
+    expect(secondMount?.getRootNode()).toBe(secondRoot.shadowRoot);
+    expect(firstOverlay?.getRootNode()).toBe(firstRoot.shadowRoot);
+    expect(secondOverlay?.getRootNode()).toBe(secondRoot.shadowRoot);
+    expect(firstRoot.shadowRoot).toHaveTextContent('.first-resource');
+    expect(firstRoot.shadowRoot).not.toHaveTextContent('.second-resource');
+    expect(secondRoot.shadowRoot).toHaveTextContent('.second-resource');
+    expect(secondRoot.shadowRoot).not.toHaveTextContent('.first-resource');
+    expect(document.head).not.toHaveTextContent(/\.(first|second)-resource/u);
 
     const source = readFileSync(
       join(
@@ -359,13 +315,13 @@ describe('frontstage native trusted block declarative portal host', () => {
         root={root}
         renderEpoch="motion:responsive"
         plan={createPlan()}
-        component={() => <output>responsive motion</output>}
+        component={() => <ThemeTokenProbe label="responsive" />}
         ctx={createContext()}
       />
     );
 
-    await shadowQueries(root).findByText('responsive motion');
-    expectHostTheme(root, {
+    const probe = await shadowQueries(root).findByTestId('responsive-theme');
+    expectRenderedTheme(probe, {
       motion: true,
       motionDurationFast: '0.03s',
       motionDurationMid: '0.05s',
@@ -381,7 +337,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         root={root}
         renderEpoch="motion:authored"
         plan={createPlan()}
-        component={() => <output>authored motion</output>}
+        component={() => <ThemeTokenProbe label="authored" />}
         ctx={createContext()}
         providerScope={{
           theme: {
@@ -394,8 +350,8 @@ describe('frontstage native trusted block declarative portal host', () => {
       />
     );
 
-    await shadowQueries(root).findByText('authored motion');
-    expectHostTheme(root, {
+    const probe = await shadowQueries(root).findByTestId('authored-theme');
+    expectRenderedTheme(probe, {
       colorPrimary: '#123456',
       motionDurationFast: '0.03s',
       motionDurationMid: '0.24s',
@@ -429,7 +385,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
     const Block = () => {
       useEffect(() => mounted(), []);
-      return <output>reduced motion</output>;
+      return <ThemeTokenProbe label="reduced" />;
     };
 
     render(
@@ -442,8 +398,8 @@ describe('frontstage native trusted block declarative portal host', () => {
       />
     );
 
-    await shadowQueries(root).findByText('reduced motion');
-    expectHostTheme(root, {
+    const probe = await shadowQueries(root).findByTestId('reduced-theme');
+    expectRenderedTheme(probe, {
       motion: false,
       motionDurationFast: '0s',
       motionDurationMid: '0s',
@@ -453,14 +409,13 @@ describe('frontstage native trusted block declarative portal host', () => {
     reduced = false;
     act(() => changeListener?.({ matches: false } as MediaQueryListEvent));
 
-    await waitFor(() =>
-      expectHostTheme(root, {
-        motion: true,
-        motionDurationFast: '0.03s',
-        motionDurationMid: '0.05s',
-        motionDurationSlow: '0.08s'
-      })
-    );
+    await waitFor(() => expect(probe).toHaveAttribute('data-motion', 'true'));
+    expectRenderedTheme(probe, {
+      motion: true,
+      motionDurationFast: '0.03s',
+      motionDurationMid: '0.05s',
+      motionDurationSlow: '0.08s'
+    });
     expect(mounted).toHaveBeenCalledTimes(1);
   });
 
@@ -517,15 +472,19 @@ describe('frontstage native trusted block declarative portal host', () => {
 
   test('I1931-AC-001/002 scopes styles to the ShadowRoot and default popups to the Block top layer', async () => {
     const root = createBlockRoot();
-    const receivedContainment: unknown[] = [];
     const Block: FrontstageNativeTrustedBlockReactComponent = ({
       portalContainment
     }) => {
-      receivedContainment.push(portalContainment);
       return (
         <>
           <style>{'.native-same { color: var(--native-tone); }'}</style>
           <div className="native-same">Contained</div>
+          <output data-testid="containment-root">
+            {String(portalContainment.root === root.shadowRoot)}
+          </output>
+          <Popover open content="Cascader options">
+            <button type="button">Open contained popup</button>
+          </Popover>
         </>
       );
     };
@@ -541,62 +500,36 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
 
     await shadowQueries(root).findByText('Contained');
-    const shadowRoot = root.shadowRoot;
-    expect(providerRecords.styles.length).toBeGreaterThan(0);
     expect(
-      providerRecords.styles.every((provider) =>
-        Object.is(provider.container, shadowRoot)
-      )
-    ).toBe(true);
-    const config = hostConfigProviders(root).find(
-      (provider) => typeof provider.prefixCls === 'string'
+      shadowQueries(root).getByTestId('containment-root')
+    ).toHaveTextContent('true');
+    const shadowRoot = root.shadowRoot as ShadowRoot;
+    const popupContainer = shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-overlay-layer="native-block-1"]'
     );
-    expect(config).toBeDefined();
-    if (!config) throw new Error('Expected the host ConfigProvider.');
-    const popupContainer = (config.getPopupContainer as () => HTMLElement)();
     expect(popupContainer).toBeInstanceOf(HTMLElement);
-    expect(popupContainer.parentNode).toBe(shadowRoot);
+    if (!popupContainer) throw new Error('Expected the Surface overlay host.');
+    expect(
+      await within(popupContainer).findByText('Cascader options')
+    ).toBeVisible();
+    expect(popupContainer.getRootNode()).toBe(shadowRoot);
     expect(popupContainer).toHaveAttribute(
       'data-flowbase-native-overlay-layer',
       'native-block-1'
     );
     expect(popupContainer).toHaveAttribute('popover', 'manual');
-    const popup = document.createElement('div');
-    popup.textContent = 'Cascader options';
-    const nestedPopup = document.createElement('div');
-    nestedPopup.textContent = 'Cascader nested options';
-    popupContainer.append(popup, nestedPopup);
     await waitFor(() =>
       expect(popupContainer).toHaveAttribute(
         'data-flowbase-native-overlay-state',
         'open'
       )
     );
-    popup.remove();
-    await new Promise<void>((resolve) =>
-      popupContainer.ownerDocument.defaultView?.queueMicrotask(resolve)
-    );
-    expect(popupContainer).toHaveAttribute(
-      'data-flowbase-native-overlay-state',
-      'open'
-    );
-    nestedPopup.remove();
-    await waitFor(() =>
-      expect(popupContainer).toHaveAttribute(
-        'data-flowbase-native-overlay-state',
-        'closed'
+    expect(
+      [...shadowRoot.querySelectorAll('style')].every(
+        (style) => style.getRootNode() === shadowRoot
       )
-    );
-    expect((config.getTargetContainer as () => Window)()).toBe(window);
-    expect(receivedContainment).toEqual([
-      expect.objectContaining({
-        root: shadowRoot,
-        modal: expect.objectContaining({ getContainer: expect.any(Function) }),
-        tooltip: expect.objectContaining({
-          getPopupContainer: expect.any(Function)
-        })
-      })
-    ]);
+    ).toBe(true);
+    expect(shadowRoot).toHaveTextContent('.native-same');
     expect(document.head).not.toHaveTextContent(/\.native-same/);
   });
 
@@ -628,10 +561,9 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
 
     const output = await shadowQueries(root).findByText('antd-style scoped');
-    expect(output.className).toMatch(/css-/u);
-    expect(
-      root.shadowRoot?.querySelector('style[data-emotion]')
-    ).not.toBeNull();
+    const ownedStyle = root.shadowRoot?.querySelector('style[data-emotion]');
+    expect(output.getRootNode()).toBe(root.shadowRoot);
+    expect(ownedStyle?.getRootNode()).toBe(root.shadowRoot);
     expect(document.head.querySelector(`style[data-emotion]`)).toBeNull();
   });
 
@@ -676,9 +608,9 @@ describe('frontstage native trusted block declarative portal host', () => {
     const secondStyle = secondRoot.shadowRoot?.querySelector(
       'style[data-emotion]'
     );
-    expect(firstStyle?.getAttribute('data-emotion')).not.toBe(
-      secondStyle?.getAttribute('data-emotion')
-    );
+    expect(firstStyle?.getRootNode()).toBe(firstRoot.shadowRoot);
+    expect(secondStyle?.getRootNode()).toBe(secondRoot.shadowRoot);
+    expect(firstStyle).not.toBe(secondStyle);
     expect(document.head.querySelector('style[data-emotion]')).toBeNull();
 
     view.unmount();

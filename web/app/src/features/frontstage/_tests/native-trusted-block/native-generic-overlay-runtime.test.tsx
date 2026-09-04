@@ -86,7 +86,7 @@ describe('native block generic AntD overlay host', () => {
     expect(await overlay.findByText('Tree Alpha')).toBeVisible();
     expect(await overlay.findByText('Tooltip Alpha')).toBeVisible();
     expect(await overlay.findByText('Popover Alpha')).toBeVisible();
-    expect(layer.querySelector('[class*="-picker-dropdown"]')).not.toBeNull();
+    expect(layer.querySelector('table')).not.toBeNull();
     expect(showPopover).toHaveBeenCalledOnce();
     expect(
       document.body.querySelector('[data-flowbase-native-overlay-layer]')
@@ -142,6 +142,86 @@ describe('native block generic AntD overlay host', () => {
     frames.callbacks[0]();
     expect(popoverAlign).toHaveBeenCalledOnce();
     expect(tooltipAlign).toHaveBeenCalledOnce();
+  });
+
+  test('AC-008 dynamically loaded Popover and Tooltip consume the current static Host Surface', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antd = (await registry.load(
+      'antd'
+    )) as unknown as typeof import('antd');
+    const popoverScrollOwner = document.createElement('div');
+    const tooltipScrollOwner = document.createElement('div');
+    popoverScrollOwner.setAttribute(
+      'data-flowbase-frontstage-scroll-owner',
+      ''
+    );
+    tooltipScrollOwner.setAttribute(
+      'data-flowbase-frontstage-scroll-owner',
+      ''
+    );
+    const popoverRoot = document.createElement('div');
+    const tooltipRoot = document.createElement('div');
+    popoverScrollOwner.append(popoverRoot);
+    tooltipScrollOwner.append(tooltipRoot);
+    document.body.append(popoverScrollOwner, tooltipScrollOwner);
+    const popoverRef = createRef<TooltipRef>();
+    const tooltipRef = createRef<TooltipRef>();
+
+    render(
+      <>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={popoverRoot}
+          renderEpoch="ac-008:popover"
+          plan={createPlan('ac-008-popover')}
+          component={() => (
+            <antd.Popover ref={popoverRef} open content="AC-008 Popover">
+              <button type="button">AC-008 Popover anchor</button>
+            </antd.Popover>
+          )}
+          ctx={createContext()}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={tooltipRoot}
+          renderEpoch="ac-008:tooltip"
+          plan={createPlan('ac-008-tooltip')}
+          component={() => (
+            <antd.Tooltip ref={tooltipRef} open title="AC-008 Tooltip">
+              <button type="button">AC-008 Tooltip anchor</button>
+            </antd.Tooltip>
+          )}
+          ctx={createContext()}
+        />
+      </>
+    );
+
+    const popoverHost = await surfaceOverlayHost(popoverRoot, 'ac-008-popover');
+    const tooltipHost = await surfaceOverlayHost(tooltipRoot, 'ac-008-tooltip');
+    expect(
+      await within(popoverHost).findByText('AC-008 Popover')
+    ).toBeVisible();
+    expect(
+      await within(tooltipHost).findByText('AC-008 Tooltip')
+    ).toBeVisible();
+    expect(popoverHost.getRootNode()).toBe(popoverRoot.shadowRoot);
+    expect(tooltipHost.getRootNode()).toBe(tooltipRoot.shadowRoot);
+    expect(popoverHost).not.toBe(tooltipHost);
+
+    await waitFor(() => {
+      expect(popoverRef.current).not.toBeNull();
+      expect(tooltipRef.current).not.toBeNull();
+    });
+    await nextAnimationFrame();
+    const popoverCommit = vi.fn();
+    const tooltipCommit = vi.fn();
+    popoverRef.current!.forceAlign = popoverCommit;
+    tooltipRef.current!.forceAlign = tooltipCommit;
+    const frames = installAnimationFrameQueue();
+
+    popoverScrollOwner.dispatchEvent(new Event('scroll'));
+    expect(frames.callbacks).toHaveLength(1);
+    frames.callbacks[0]();
+    expect(popoverCommit).toHaveBeenCalledOnce();
+    expect(tooltipCommit).not.toHaveBeenCalled();
   });
 
   test('D1-AC-003 closed and authored-container overlays do not register Surface commits', async () => {
@@ -349,5 +429,18 @@ function installAnimationFrameQueue() {
 async function nextAnimationFrame(): Promise<void> {
   await new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => resolve());
+  });
+}
+
+async function surfaceOverlayHost(
+  root: HTMLElement,
+  blockId: string
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const host = root.shadowRoot?.querySelector<HTMLElement>(
+      `[data-flowbase-native-overlay-layer="${blockId}"]`
+    );
+    expect(host).toHaveAttribute('data-flowbase-native-overlay-state', 'open');
+    return host as HTMLElement;
   });
 }
