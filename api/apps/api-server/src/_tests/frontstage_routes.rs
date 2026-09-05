@@ -26,6 +26,7 @@ fn frontstage_route_assembly_freezes_business_operations_and_authenticated_catal
     assert_eq!(
         routes,
         BTreeSet::from([
+            ("GET", "/api/console/frontstage/block-context-contract"),
             ("GET", "/api/console/frontstage/components",),
             ("GET", "/api/console/frontstage/components/:component_id",),
             (
@@ -195,6 +196,7 @@ fn frontstage_route_assembly_freezes_business_operations_and_authenticated_catal
     assert_eq!(
         authenticated_routes,
         BTreeSet::from([
+            ("GET", "/api/console/frontstage/block-context-contract"),
             ("GET", "/api/console/frontstage/interface-capabilities"),
             (
                 "GET",
@@ -423,6 +425,7 @@ async fn dispatch_capability(
 mod authoring;
 mod block_tree;
 mod content;
+mod context_contract;
 mod listing;
 mod placement;
 mod presentation;

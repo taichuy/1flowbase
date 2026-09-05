@@ -1889,8 +1889,12 @@
     "kind": "page",
     "title": "Sign In Page",
     "impactFiles": [
+      "web/app/index.html",
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/shared/i18n/app-i18n.ts",
+      "web/app/src/shared/ui/loading-state/LoadingState.tsx",
+      "web/app/src/shared/ui/loading-state/loading-state.css",
       "web/app/src/features/auth/pages/SignInPage.tsx",
       "web/app/src/features/auth/pages/sign-in-page.css",
       "web/app/src/features/auth/components/HeroAnimation.tsx",

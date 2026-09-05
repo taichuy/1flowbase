@@ -117,6 +117,37 @@ node scripts/node/reset-account-password.js --account alice --password '<new-pas
 
 脚本使用与后端一致的 Argon2id 参数，更新密码时同时递增 `session_version`。账号或数据表不存在时默认失败；`dev-up` 显式使用 `--if-missing skip`，把空库 root 创建交给 API bootstrap。生产环境禁止执行。
 
+## Container Images
+
+### `node scripts/node/build-local-deploy-images.js`
+
+将当前工作区的 Backend `api-server` 和前端源码构建为本机 Docker 镜像，供
+`deploy/docker` 下的本地部署使用：
+
+```bash
+node scripts/node/build-local-deploy-images.js
+```
+
+脚本遵循以下规则：
+
+- `deploy/docker/.env` 已存在时保持文件内容不变；缺失时从
+  `deploy/docker/.env.example` 复制生成。
+- 镜像 tag 读取 `.env` 中的 `FLOWBASE_API_SERVER_VERSION` 和
+  `FLOWBASE_WEB_VERSION`；字段缺失时使用 `latest`。
+- 构建当前仓库的 `docker/api-server.Dockerfile` 和 `docker/web.Dockerfile`，并显式使用
+  可本地编译的 `runtime` stage。
+- 优先使用 `docker buildx build --load`；buildx 不可用时回退到启用 BuildKit 的
+  `docker build`。
+- 只生成本机镜像，不执行 `docker-compose up`，也不创建、停止或替换容器。
+
+镜像构建完成后，由使用者在部署目录手动启动或替换服务。`--pull never` 用于避免远端
+同名 tag 覆盖刚构建的本机镜像：
+
+```bash
+cd deploy/docker
+docker-compose up -d --pull never --force-recreate api web
+```
+
 ## Test Scripts
 
 ### `node scripts/node/test.js <backend|contracts|frontend|scripts> [args]`

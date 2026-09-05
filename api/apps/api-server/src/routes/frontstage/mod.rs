@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+pub mod block_context_contract;
 pub mod block_tree;
 pub(crate) mod callable_interface_catalog;
 pub(crate) mod callable_interface_dispatch;
@@ -352,6 +353,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(
                 data_capabilities::list_frontstage_data_capabilities,
                 ConsoleOperation("frontstage.data_capabilities.view".to_string()),
+            ),
+        )
+        .route(
+            "/frontstage/block-context-contract",
+            console_get(
+                block_context_contract::get_frontstage_block_context_contract,
+                Authenticated,
             ),
         )
         .route(

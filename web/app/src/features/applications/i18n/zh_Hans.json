@@ -223,7 +223,6 @@
     "mode": "模式",
     "view_run_details": "查看运行详情",
     "create_tag": "创建标签",
-    "loading_public_api_status": "正在加载公开 API 状态",
     "create_api_key": "创建 API Key",
     "copy_failed": "复制失败",
     "operation": "操作",

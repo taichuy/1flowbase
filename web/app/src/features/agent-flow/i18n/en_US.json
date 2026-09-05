@@ -231,7 +231,6 @@
     "adjust_preview_width": "Adjust preview width",
     "save_failed": "Save failed",
     "displayed_run_form_still_used_variable": "Not displayed in the run form, but can still be used as a variable",
-    "loading_last_run": "Loading last run",
     "llm_missing_model": "LLM missing model",
     "description": "Description",
     "basic_information": "Basic information",

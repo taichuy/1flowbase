@@ -223,7 +223,6 @@
     "mode": "mode",
     "view_run_details": "View run details",
     "create_tag": "Create tags",
-    "loading_public_api_status": "Loading public API status",
     "create_api_key": "Create API Key",
     "copy_failed": "Copy failed",
     "operation": "Operation",

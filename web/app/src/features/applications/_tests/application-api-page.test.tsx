@@ -153,6 +153,20 @@ describe('ApplicationApiPage', () => {
     await appI18n.changeLanguage('en_US');
   });
 
+  test('AC-1993-004 uses the shared loading state for the initial API status request', () => {
+    publicApi.fetchApplicationApiPublication.mockImplementation(
+      () => new Promise(() => undefined)
+    );
+
+    renderWithProviders(<ApplicationApiPage application={application} />);
+
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+  });
+
   test('AC-005 draft state shows a single publish switch without a separate warning alert', async () => {
     renderWithProviders(<ApplicationApiPage application={application} />);
 

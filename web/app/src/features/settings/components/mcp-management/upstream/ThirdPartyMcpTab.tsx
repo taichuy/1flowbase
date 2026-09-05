@@ -36,6 +36,7 @@ import type {
 
 import { useAuthStore } from '../../../../../state/auth-store';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { LoadingState } from '../../../../../shared/ui/loading-state/LoadingState';
 import {
   createSettingsMcpUpstreamConnection,
   deleteSettingsMcpUpstreamConnection,
@@ -673,7 +674,7 @@ export function ThirdPartyMcpTab({
   ];
 
   if (connectionsQuery.isLoading) {
-    return <Spin />;
+    return <LoadingState compact />;
   }
   if (connectionsQuery.isError || !connectionsQuery.data) {
     return (

@@ -10,6 +10,7 @@ import {
 
 import type { BlockSourceExtraLib } from './extra-lib';
 import { loadMonacoEditorModule } from './monaco-runtime';
+import { LoadingState } from '../ui/loading-state/LoadingState';
 
 const Editor = lazy(loadMonacoEditorModule);
 
@@ -170,7 +171,7 @@ export function BlockSourceEditor({
       role="group"
       style={{ height }}
     >
-      <Suspense fallback={null}>
+      <Suspense fallback={<LoadingState compact />}>
         <Editor
           height="100%"
           language="typescript"

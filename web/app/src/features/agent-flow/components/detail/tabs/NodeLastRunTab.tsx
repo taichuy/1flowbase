@@ -4,6 +4,7 @@ import { Result } from 'antd';
 import type { CanvasNodeSchema } from '../../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import { SchemaRenderer } from '../../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
 import type { SchemaAdapter } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
+import { LoadingState } from '../../../../../shared/ui/loading-state/LoadingState';
 
 import {
   applicationRunNodeLastRunQueryKey,
@@ -19,9 +20,9 @@ import { NodeRunSummaryCard } from '../last-run/NodeRunSummaryCard';
 import { NodeRunEmptyState } from '../last-run/NodeRunEmptyState';
 import { i18nText } from '../../../../../shared/i18n/text';
 
-function isNodeLastRun(value: unknown): value is NonNullable<
-  Awaited<ReturnType<typeof fetchNodeLastRun>>
-> {
+function isNodeLastRun(
+  value: unknown
+): value is NonNullable<Awaited<ReturnType<typeof fetchNodeLastRun>>> {
   if (!value || typeof value !== 'object') {
     return false;
   }
@@ -30,10 +31,10 @@ function isNodeLastRun(value: unknown): value is NonNullable<
 
   return Boolean(
     candidate.flow_run &&
-      typeof candidate.flow_run === 'object' &&
-      candidate.node_run &&
-      typeof candidate.node_run === 'object' &&
-      Array.isArray(candidate.events)
+    typeof candidate.flow_run === 'object' &&
+    candidate.node_run &&
+    typeof candidate.node_run === 'object' &&
+    Array.isArray(candidate.events)
   );
 }
 
@@ -144,16 +145,21 @@ export function NodeLastRunTab({
     enabled: Boolean(applicationId && nodeId)
   });
   if (lastRunQuery.isPending) {
-    return <Result status="info" title={i18nText("agentFlow", "auto.loading_last_run")} />;
+    return <LoadingState compact />;
   }
 
   if (lastRunQuery.isError) {
-    return <Result status="error" title={i18nText("agentFlow", "auto.last_run_failed_load")} />;
+    return (
+      <Result
+        status="error"
+        title={i18nText('agentFlow', 'auto.last_run_failed_load')}
+      />
+    );
   }
 
   const emptyDescription = activeRunId
-    ? i18nText("agentFlow", "auto.record_node_run")
-    : i18nText("agentFlow", "auto.node_running_records_yet");
+    ? i18nText('agentFlow', 'auto.record_node_run')
+    : i18nText('agentFlow', 'auto.node_running_records_yet');
 
   if (!lastRunQuery.data) {
     return renderLastRunContent({
@@ -165,7 +171,12 @@ export function NodeLastRunTab({
   }
 
   if (!isNodeLastRun(lastRunQuery.data)) {
-    return <Result status="warning" title={i18nText("agentFlow", "auto.abnormal_data_last_run")} />;
+    return (
+      <Result
+        status="warning"
+        title={i18nText('agentFlow', 'auto.abnormal_data_last_run')}
+      />
+    );
   }
 
   const lastRun = lastRunQuery.data;

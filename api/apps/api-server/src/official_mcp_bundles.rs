@@ -27,7 +27,7 @@ const SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const BUNDLED_FRONTSTAGE_ORGANIZATION: &str = "1flowbase";
 pub(crate) const BUNDLED_FRONTSTAGE_BUNDLE_ID: &str = "frontstage_assistant";
-pub(crate) const BUNDLED_FRONTSTAGE_VERSION: &str = "1.1.0";
+pub(crate) const BUNDLED_FRONTSTAGE_VERSION: &str = "1.2.0";
 const BUNDLED_FRONTSTAGE_PACKAGE_BYTES: &[u8] =
     include_bytes!("../resources/mcp/frontstage-assistant.json");
 

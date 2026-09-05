@@ -6,15 +6,19 @@ const {
   fetchCurrentMe,
   fetchCurrentSession,
   fetchLoginEntries,
-  renderedBlocks
-} =
-  vi.hoisted(() => ({
-    navigateSpy: vi.fn(),
-    fetchCurrentMe: vi.fn(),
-    fetchCurrentSession: vi.fn(),
-    fetchLoginEntries: vi.fn(),
-    renderedBlocks: vi.fn()
-  }));
+  renderedBlocks,
+  publicAuthBlockControl
+} = vi.hoisted(() => ({
+  navigateSpy: vi.fn(),
+  fetchCurrentMe: vi.fn(),
+  fetchCurrentSession: vi.fn(),
+  fetchLoginEntries: vi.fn(),
+  renderedBlocks: vi.fn(),
+  publicAuthBlockControl: {
+    suspend: false,
+    pending: new Promise<never>(() => undefined)
+  }
+}));
 
 vi.mock('@tanstack/react-router', async () => {
   const actual = await vi.importActual<typeof import('@tanstack/react-router')>(
@@ -40,6 +44,9 @@ vi.mock('../components/PublicAuthBlock', () => ({
     }) => Promise<void>;
   }) => {
     renderedBlocks(props.instance, Boolean(props.loginEntrySelector));
+    if (publicAuthBlockControl.suspend) {
+      throw publicAuthBlockControl.pending;
+    }
     return (
       <>
         <button
@@ -91,6 +98,7 @@ describe('SignInPage', () => {
     fetchCurrentSession.mockReset();
     fetchLoginEntries.mockReset();
     renderedBlocks.mockReset();
+    publicAuthBlockControl.suspend = false;
     useAuthStore.getState().setAnonymous();
     fetchLoginEntries.mockResolvedValue({
       default_login_entry_id: passwordInstance.id,
@@ -127,6 +135,41 @@ describe('SignInPage', () => {
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });
+  });
+
+  test('AC-001 shows the shared loading state while login entries are pending', () => {
+    fetchLoginEntries.mockImplementation(() => new Promise(() => undefined));
+
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+    expect(screen.getByText('Powered by 1flowbase')).toBeVisible();
+  });
+
+  test('AC-002 keeps the shared loading state while the selected auth block suspends', async () => {
+    publicAuthBlockControl.suspend = true;
+
+    render(
+      <AppProviders>
+        <SignInPage />
+      </AppProviders>
+    );
+
+    await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+    expect(screen.getByText('Powered by 1flowbase')).toBeVisible();
   });
 
   test('mounts the only authenticator Block directly and accepts its session', async () => {

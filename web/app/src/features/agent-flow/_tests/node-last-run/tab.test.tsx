@@ -28,6 +28,43 @@ describe('NodeLastRunTab', () => {
     vi.clearAllMocks();
   });
 
+  test('AC-1993-004 uses the shared loading state before the first run value is available', () => {
+    vi.spyOn(runtimeApi, 'fetchNodeLastRun').mockImplementation(
+      () => new Promise(() => undefined)
+    );
+
+    render(
+      <AppProviders>
+        <NodeLastRunTab applicationId="app-1" nodeId="node-llm" />
+      </AppProviders>
+    );
+
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+  });
+
+  test('AC-1993-005 renders an empty state instead of loading after an empty result', async () => {
+    vi.spyOn(runtimeApi, 'fetchNodeLastRun').mockResolvedValue(null);
+
+    const { container } = render(
+      <AppProviders>
+        <NodeLastRunTab applicationId="app-1" nodeId="node-llm" />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.ant-empty')).toBeVisible();
+    });
+    expect(
+      screen.queryByRole('status', {
+        name: 'thinking'
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test('renders empty state when the selected node has not run yet', async () => {
     vi.spyOn(runtimeApi, 'fetchNodeLastRun').mockResolvedValue(null);
 
@@ -546,9 +583,7 @@ describe('NodeLastRunTab', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('旧问题')
     );
-    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent(
-      'read_file'
-    );
+    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('read_file');
     expect(
       screen.queryByRole('button', { name: '加载完整值' })
     ).not.toBeInTheDocument();

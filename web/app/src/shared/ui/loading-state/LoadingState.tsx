@@ -4,6 +4,9 @@ import Spin from 'antd/es/spin';
 
 import './loading-state.css';
 
+const LOADING_COLOR = '#1677ff';
+const LOADING_LABEL = 'thinking';
+
 export interface LoadingStateProps {
   fullscreen?: boolean;
   compact?: boolean;
@@ -29,13 +32,22 @@ export function LoadingState({
       className={classNames}
       role="status"
       aria-live="polite"
-      aria-label="thinking"
+      aria-label={LOADING_LABEL}
     >
       <Spin
         spinning
-        description="thinking"
-        indicator={<LoadingOutlined spin style={{ fontSize: 48 }} />}
+        description={LOADING_LABEL}
+        indicator={
+          <LoadingOutlined
+            spin
+            style={{ color: LOADING_COLOR, fontSize: 48 }}
+          />
+        }
         size={compact ? 'medium' : 'large'}
+        styles={{
+          description: { color: LOADING_COLOR },
+          indicator: { color: LOADING_COLOR }
+        }}
       >
         <div className="loading-state__surface" aria-hidden="true">
           <Skeleton

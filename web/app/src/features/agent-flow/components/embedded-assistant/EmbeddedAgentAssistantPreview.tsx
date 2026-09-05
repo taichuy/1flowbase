@@ -53,6 +53,7 @@ import {
   type AgentFlowDebugMessage
 } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { useClipboardCopy } from '../../../../shared/ui/clipboard/use-clipboard-copy';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
@@ -1162,7 +1163,7 @@ export function EmbeddedAgentAssistantPreview({
               className="embedded-agent-assistant-preview__conversation"
               hidden={(mobile || historyFullView) && sidePanelOpen}
             >
-              <Suspense fallback={null}>
+              <Suspense fallback={<LoadingState compact />}>
                 <AgentFlowDebugConsole
                   assistantMessageMainRender={renderAssistantMessageMain}
                   clearDisabled={!session.canEditCurrentConversation}

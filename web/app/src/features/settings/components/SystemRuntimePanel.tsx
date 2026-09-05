@@ -15,12 +15,12 @@ import {
   Progress,
   Segmented,
   Select,
-  Spin,
   Tag,
   Typography
 } from 'antd';
 
 import { i18nText } from '../../../shared/i18n/text';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import {
   fetchSettingsSystemRuntimeProfile,
   settingsSystemRuntimeQueryKey
@@ -296,9 +296,7 @@ export function SystemRuntimePanel() {
   if (runtimeQuery.isLoading) {
     return (
       <SettingsSectionSurface heightMode="fill">
-        <Flex justify="center" className="system-runtime-panel__loading">
-          <Spin />
-        </Flex>
+        <LoadingState compact />
       </SettingsSectionSurface>
     );
   }

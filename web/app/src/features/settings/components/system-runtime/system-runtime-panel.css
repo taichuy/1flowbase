@@ -6,10 +6,6 @@
   padding-bottom: 24px;
 }
 
-.system-runtime-panel__loading {
-  padding: 64px 0;
-}
-
 .system-runtime-panel__section {
   display: grid;
   gap: 16px;

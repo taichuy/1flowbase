@@ -1482,6 +1482,12 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-block-context-contract",
+            &["frontstage.block_context.view"],
+            &["api-server.console-frontstage-block-context-contract"],
+            crate::routes::frontstage::block_context_contract::compile_registry()?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-frontstage-components",
             &["frontstage.components.view"],
             &["api-server.console-frontstage-components"],

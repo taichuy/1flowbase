@@ -231,7 +231,6 @@
     "adjust_preview_width": "调整预览宽度",
     "save_failed": "保存失败",
     "displayed_run_form_still_used_variable": "运行表单中不展示，但仍可作为变量使用",
-    "loading_last_run": "正在加载上次运行",
     "llm_missing_model": "LLM 缺少模型",
     "description": "描述",
     "basic_information": "基础信息",

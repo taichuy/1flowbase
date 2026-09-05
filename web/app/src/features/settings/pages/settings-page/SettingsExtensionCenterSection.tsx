@@ -34,6 +34,7 @@ import '../../../../shared/ui/structured-list/structured-list.css';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -240,14 +241,14 @@ export function SettingsExtensionCenterSection(props: {
 }) {
   if (props.category === 'model-pricing') {
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<LoadingState compact />}>
         <PricingCatalogPanel />
       </Suspense>
     );
   }
   if (props.category === 'ui-components') {
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<LoadingState compact />}>
         <UiComponentCatalogPanel
           canManage={props.canManageUiComponents ?? false}
         />

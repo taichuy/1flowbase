@@ -1,0 +1,195 @@
+{
+  "schema_version": "1flowbase.block-context-contract/v1",
+  "contract_version": "1.0.0",
+  "block_sdk_version": "1.0.0",
+  "entries": [
+    {
+      "key": "root",
+      "kind": "object",
+      "nullable": false,
+      "type": "ShadowRoot",
+      "description": "Shadow DOM root owned by the current Block instance.",
+      "members": []
+    },
+    {
+      "key": "assets",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextAssets",
+      "description": "Host-controlled external asset loading bound to the current Block instance.",
+      "members": [
+        { "name": "importModule", "kind": "method", "type": "<TModule>(url: string) => Promise<TModule>", "description": "Imports an allowed JavaScript module." },
+        { "name": "loadStyle", "kind": "method", "type": "(url: string) => Promise<BlockExternalAssetHandle>", "description": "Loads a stylesheet and returns a disposable handle." },
+        { "name": "loadScript", "kind": "method", "type": "(url: string) => Promise<BlockExternalAssetHandle>", "description": "Loads a script and returns a disposable handle." },
+        { "name": "loadSvgSprite", "kind": "method", "type": "(url: string) => Promise<BlockExternalAssetHandle>", "description": "Loads an SVG sprite and returns a disposable handle." }
+      ]
+    },
+    {
+      "key": "currentUser",
+      "kind": "object",
+      "nullable": true,
+      "type": "BlockContextIdentity | null",
+      "description": "Identity of the signed-in user when one is available.",
+      "members": [
+        { "name": "id", "kind": "property", "type": "string", "description": "Stable user identifier." },
+        { "name": "displayName", "kind": "property", "type": "string | undefined", "description": "Optional user-facing display name." }
+      ]
+    },
+    {
+      "key": "workspace",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextEntity",
+      "description": "Workspace that owns the current page.",
+      "members": [
+        { "name": "id", "kind": "property", "type": "string", "description": "Stable workspace identifier." },
+        { "name": "name", "kind": "property", "type": "string | undefined", "description": "Optional workspace name." }
+      ]
+    },
+    {
+      "key": "application",
+      "kind": "object",
+      "nullable": true,
+      "type": "BlockContextEntity | null",
+      "description": "Application containing the page when the page belongs to an application.",
+      "members": [
+        { "name": "id", "kind": "property", "type": "string", "description": "Stable application identifier." },
+        { "name": "name", "kind": "property", "type": "string | undefined", "description": "Optional application name." }
+      ]
+    },
+    {
+      "key": "page",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextPage",
+      "description": "Page currently hosting the Block.",
+      "members": [
+        { "name": "id", "kind": "property", "type": "string", "description": "Stable page identifier." },
+        { "name": "route", "kind": "property", "type": "string", "description": "Current page route." },
+        { "name": "title", "kind": "property", "type": "string | undefined", "description": "Optional page title." }
+      ]
+    },
+    {
+      "key": "inputs",
+      "kind": "object",
+      "nullable": false,
+      "type": "Readonly<Record<string, unknown>>",
+      "description": "Resolved read-only input values supplied to the Block.",
+      "members": []
+    },
+    {
+      "key": "outputs",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextOutputs",
+      "description": "Output publication capability for the current Block instance.",
+      "members": [
+        { "name": "publish", "kind": "method", "type": "(values: Record<string, unknown>) => BlockContextOutputPublishResult | Promise<BlockContextOutputPublishResult>", "description": "Publishes output values and reports stale-instance rejection." }
+      ]
+    },
+    {
+      "key": "params",
+      "kind": "object",
+      "nullable": false,
+      "type": "Record<string, unknown>",
+      "description": "Resolved route and runtime parameters visible to the Block.",
+      "members": []
+    },
+    {
+      "key": "props",
+      "kind": "object",
+      "nullable": false,
+      "type": "Record<string, unknown>",
+      "description": "Host-provided presentation properties for the Block.",
+      "members": []
+    },
+    {
+      "key": "state",
+      "kind": "object",
+      "nullable": false,
+      "type": "Record<string, unknown>",
+      "description": "Current host-managed local state snapshot.",
+      "members": []
+    },
+    {
+      "key": "patch",
+      "kind": "function",
+      "nullable": false,
+      "type": "(patch: Record<string, unknown>) => void | Promise<void>",
+      "description": "Applies a partial update to host-managed local state.",
+      "members": []
+    },
+    {
+      "key": "api",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextApi",
+      "description": "Authenticated Host API capability constrained by the callable interface catalog.",
+      "members": [
+        { "name": "get", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed GET interface." },
+        { "name": "post", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed POST interface." },
+        { "name": "put", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed PUT interface." },
+        { "name": "patch", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed PATCH interface." },
+        { "name": "delete", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed DELETE interface." },
+        { "name": "head", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed HEAD interface." },
+        { "name": "options", "kind": "method", "type": "<TResponse>(path: string, request?: BlockApiRequest) => Promise<TResponse>", "description": "Calls an allowed OPTIONS interface." },
+        { "name": "stream", "kind": "method", "type": "<TEvent>(method: BlockApiMethod, path: string, request?: BlockApiRequest) => AsyncIterable<TEvent>", "description": "Opens an allowed streaming interface." }
+      ]
+    },
+    {
+      "key": "events",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextEvents",
+      "description": "Block-to-Host event publication capability.",
+      "members": [
+        { "name": "emit", "kind": "method", "type": "(event: string, payload?: Record<string, unknown>) => void", "description": "Emits a named event when the Host registered an event receiver." }
+      ]
+    },
+    {
+      "key": "navigation",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextNavigation",
+      "description": "Host-controlled Block navigation capability.",
+      "members": [
+        { "name": "openBlock", "kind": "method", "type": "(input: { blockId: string; inputs?: Readonly<Record<string, string>> }) => void | Promise<void>", "description": "Opens a target Block with optional string inputs." }
+      ]
+    },
+    {
+      "key": "theme",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextTheme",
+      "description": "Current Host theme mode and design tokens.",
+      "members": [
+        { "name": "mode", "kind": "property", "type": "'light' | 'dark'", "description": "Current color mode." },
+        { "name": "tokens", "kind": "property", "type": "Record<string, unknown>", "description": "Host-provided design tokens." }
+      ]
+    },
+    {
+      "key": "ui",
+      "kind": "object",
+      "nullable": false,
+      "type": "BlockContextUi",
+      "description": "Optional Host UI metadata and layout capabilities.",
+      "members": [
+        { "name": "locale", "kind": "property", "type": "string | undefined", "description": "Resolved UI locale." },
+        { "name": "density", "kind": "property", "type": "'compact' | 'comfortable' | undefined", "description": "Resolved UI density." },
+        { "name": "sizing", "kind": "property", "type": "BlockContextSizing | undefined", "description": "Available size and intrinsic-size reporting capability." },
+        { "name": "surface", "kind": "property", "type": "BlockContextSurface | undefined", "description": "Host surface reveal capability." }
+      ]
+    }
+  ],
+  "non_context_symbols": [
+    "React",
+    "antd",
+    "router",
+    "store",
+    "queryClient",
+    "window",
+    "document",
+    "fetch",
+    "storage"
+  ]
+}

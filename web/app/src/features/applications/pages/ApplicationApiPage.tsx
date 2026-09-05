@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Result } from 'antd';
-import { useTranslation } from 'react-i18next';
 
 import { i18nText } from '../../../shared/i18n/text';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   applicationDetailQueryKey,
@@ -26,7 +26,6 @@ export function ApplicationApiPage({
 }: {
   application: ApplicationDetail;
 }) {
-  const { t } = useTranslation('applications');
   const { modal } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
@@ -73,7 +72,7 @@ export function ApplicationApiPage({
   };
 
   if (!publication && publicationQuery.isLoading) {
-    return <Result status="info" title={t('auto.loading_public_api_status')} />;
+    return <LoadingState compact />;
   }
 
   return (

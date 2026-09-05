@@ -236,7 +236,7 @@ async fn call_mcp_instance(
 }
 
 #[tokio::test]
-async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() {
+async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state(state.clone());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -259,7 +259,7 @@ async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() 
                 category: domain::ExtensionCategory::Mcp,
                 organization: "1flowbase".into(),
                 artifact_id: "frontstage_assistant".into(),
-                version: "1.1.0".into(),
+                version: "1.2.0".into(),
             },
             node_id: "test-node".into(),
             source_kind: "builtin".into(),
@@ -437,6 +437,88 @@ async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() 
         patch["result"]["structuredContent"]["source_code"],
         json!("alpha\nchanged\ngamma"),
         "{patch}"
+    );
+
+    let contract_list = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":206,
+            "method":"tools/call",
+            "params":{"name":"mcp_list","arguments":{"path":"/frontstage","keywords":["ctx"],"path_regex":"","depth":1,"limit":20}}
+        }),
+    )
+    .await;
+    assert!(contract_list["result"]["structuredContent"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == json!("frontstage_get_block_context_contract")));
+
+    let contract_get = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":207,
+            "method":"tools/call",
+            "params":{"name":"mcp_get","arguments":{"tool_id":"frontstage_get_block_context_contract"}}
+        }),
+    )
+    .await;
+    assert_eq!(
+        contract_get["result"]["structuredContent"]["risk_level"],
+        json!("low")
+    );
+    assert_eq!(
+        contract_get["result"]["structuredContent"]["input_schema"],
+        json!({"type":"object","properties":{},"additionalProperties":false})
+    );
+
+    let contract_call = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":208,
+            "method":"tools/call",
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_get_block_context_contract","arguments":{},"max_inline_chars":16000}}
+        }),
+    )
+    .await;
+    assert_eq!(
+        contract_call["result"]["isError"],
+        json!(false),
+        "{contract_call}"
+    );
+    assert_eq!(
+        contract_call["result"]["structuredContent"]["entries"]
+            .as_array()
+            .unwrap()
+            .len(),
+        17
+    );
+
+    let invalid_contract_call = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":209,
+            "method":"tools/call",
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_get_block_context_contract","arguments":{},"max_inline_chars":16001}}
+        }),
+    )
+    .await;
+    assert_eq!(invalid_contract_call["error"]["code"], json!(-32602));
+    assert_eq!(
+        invalid_contract_call["error"]["message"],
+        json!("Invalid max_inline_chars")
     );
 }
 

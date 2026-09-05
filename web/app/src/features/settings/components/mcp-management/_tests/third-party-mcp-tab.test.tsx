@@ -117,6 +117,20 @@ describe('ThirdPartyMcpTab', () => {
     upstreamApi.importSettingsMcpUpstreamTools.mockResolvedValue([]);
   });
 
+  test('AC-1993-004 uses the shared loading state for the initial connection request', () => {
+    upstreamApi.fetchSettingsMcpUpstreamConnections.mockImplementation(
+      () => new Promise(() => undefined)
+    );
+
+    renderTab();
+
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+  });
+
   test('AC-004 keeps the connection list as the tab view and creates in a modal', async () => {
     renderTab();
 

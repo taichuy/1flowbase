@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime/source-contract';
 
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
@@ -42,9 +43,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
-  const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>(
-    []
-  );
+  const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
   const selectedLoginEntry = useMemo(
@@ -90,9 +89,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
 
   const loginEntrySelector = useMemo(
     () =>
-      loginEntries.length > 1
-        ? { request: requestLoginEntrySelector }
-        : null,
+      loginEntries.length > 1 ? { request: requestLoginEntrySelector } : null,
     [loginEntries.length, requestLoginEntrySelector]
   );
 
@@ -147,6 +144,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         }}
       >
         <div className="auth-sign-in-content">
+          {loading ? <LoadingState compact /> : null}
           {loginEntries.length > 1 && !selectedLoginEntry ? (
             <div className="auth-sign-in-selector">
               {loginEntries.map((instance) => (
@@ -178,7 +176,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           {!loading &&
           selectedLoginEntry &&
           !selectedInstanceUsesLegacyContract ? (
-            <Suspense fallback={null}>
+            <Suspense fallback={<LoadingState compact />}>
               <PublicAuthBlock
                 key={selectedLoginEntry.id}
                 instance={selectedLoginEntry}

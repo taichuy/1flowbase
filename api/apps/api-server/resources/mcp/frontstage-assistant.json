@@ -3,11 +3,11 @@
     "schema_version": "1flowbase.mcp.bundle/v2",
     "organization": "1flowbase",
     "bundle_id": "frontstage_assistant",
-    "bundle_version": "1.1.0",
+    "bundle_version": "1.2.0",
     "locale": "zh_Hans",
     "minimum_host_version": "0.3.6",
     "exported_from_system_version": "0.3.6",
-    "exported_at": "2026-08-17T02:00:00Z",
+    "exported_at": "2026-09-05T00:00:00Z",
     "files": []
   },
   "tools": [
@@ -138,6 +138,20 @@
       "permission_code_snapshot": null,
       "risk_level_snapshot": "high",
       "status": "enabled"
+    },
+    {
+      "tool_id": "frontstage_get_block_context_contract",
+      "name": "查询 Block ctx 契约",
+      "short_description": "返回前端 Block 可使用的全部 ctx.* 能力、类型和成员说明。",
+      "full_description": "",
+      "execution_target": { "kind": "interface_wrapper", "interface_id": "get_frontstage_block_context_contract" },
+      "parameter_schema_snapshot": { "type": "object", "properties": {}, "additionalProperties": false },
+      "result_schema_snapshot": { "type": "object" },
+      "input_mapping": {},
+      "output_mapping": {},
+      "permission_code_snapshot": null,
+      "risk_level_snapshot": "low",
+      "status": "enabled"
     }
   ],
   "instances": [
@@ -164,7 +178,8 @@
         { "group_path": "/frontstage", "tool_id": "frontstage_click_block_element", "display_alias": null, "visible": true, "sort_order": 4 },
         { "group_path": "/frontstage", "tool_id": "frontstage_recompile_block", "display_alias": null, "visible": true, "sort_order": 5 },
         { "group_path": "/frontstage", "tool_id": "frontstage_read_block_source_fragment", "display_alias": null, "visible": true, "sort_order": 6 },
-        { "group_path": "/frontstage", "tool_id": "frontstage_patch_block_source", "display_alias": null, "visible": true, "sort_order": 7 }
+        { "group_path": "/frontstage", "tool_id": "frontstage_patch_block_source", "display_alias": null, "visible": true, "sort_order": 7 },
+        { "group_path": "/frontstage", "tool_id": "frontstage_get_block_context_contract", "display_alias": null, "visible": true, "sort_order": 8 }
       ],
       "discovery_policy": {
         "list_default_limit": 20,

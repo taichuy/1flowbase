@@ -218,6 +218,20 @@ describe('SystemRuntimePanel', () => {
     vi.useRealTimers();
   });
 
+  test('AC-1993-004 uses the shared loading state for the initial runtime request', () => {
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockImplementation(
+      () => new Promise(() => undefined)
+    );
+
+    renderPanel();
+
+    expect(
+      screen.getByRole('status', {
+        name: 'thinking'
+      })
+    ).toBeVisible();
+  });
+
   test('ac_001 fills the settings viewport so the surface body owns scrolling', async () => {
     renderPanel();
 
@@ -368,6 +382,44 @@ describe('SystemRuntimePanel', () => {
     ).toHaveBeenCalledTimes(2);
   });
 
+  test('AC-1993-005 keeps available runtime content visible during a background refresh', async () => {
+    let resolveRefresh: ((profile: ReturnType<typeof runtimeProfile>) => void) |
+      undefined;
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+      .mockResolvedValueOnce(runtimeProfile())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+    const { queryClient } = renderPanel();
+
+    expect(await screen.findByText('12.5%')).toBeInTheDocument();
+
+    act(() => {
+      void queryClient.invalidateQueries({
+        queryKey: systemRuntimeApi.settingsSystemRuntimeQueryKey
+      });
+    });
+    await waitFor(() => {
+      expect(
+        systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+      ).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.getByText('12.5%')).toBeVisible();
+    expect(
+      screen.queryByRole('status', {
+        name: 'thinking'
+      })
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRefresh?.(runtimeProfile(1));
+    });
+  });
+
   test('ac_004 switches the live metrics target without merging same-host services', async () => {
     renderPanel();
 
@@ -484,7 +536,9 @@ describe('SystemRuntimePanel', () => {
     expect(screen.getByText('环境内存')).toBeInTheDocument();
     fireEvent.click(screen.getByText('进程内存'));
     expect(screen.getByText('API Server · 2 个进程')).toBeInTheDocument();
-    expect(screen.getByText('Runtime Extension Host · 3 个进程')).toBeInTheDocument();
+    expect(
+      screen.getByText('Runtime Extension Host · 3 个进程')
+    ).toBeInTheDocument();
     expect(screen.getByText('同宿主合计 · 5 个进程')).toBeInTheDocument();
 
     await waitFor(() => {
