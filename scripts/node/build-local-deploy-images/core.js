@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -99,18 +100,105 @@ function buildImage({
   image,
   repoRoot,
   runCommand,
+  targetArch,
+  targetOs,
   useBuildx,
 }) {
   const args = useBuildx
     ? ['buildx', 'build', '--load', '--target', 'runtime']
-    : ['build', '--target', 'runtime'];
+    : [
+      'build',
+      '--target',
+      'runtime',
+      '--build-arg',
+      `TARGETOS=${targetOs}`,
+      '--build-arg',
+      `TARGETARCH=${targetArch}`,
+    ];
   args.push('-f', dockerfile, '-t', image, '.');
 
   const result = runCommand('docker', args, {
     cwd: repoRoot,
-    env: { ...process.env, DOCKER_BUILDKIT: '1' },
+    env: { ...process.env, DOCKER_BUILDKIT: useBuildx ? '1' : '0' },
   });
   ensureCommandSuccess(`build ${image}`, result);
+}
+
+function localDockerTarget() {
+  const architectures = {
+    arm64: 'arm64',
+    x64: 'amd64',
+  };
+  const operatingSystems = {
+    darwin: 'linux',
+    linux: 'linux',
+    win32: 'linux',
+  };
+  const targetArch = architectures[process.arch];
+  const targetOs = operatingSystems[process.platform];
+
+  if (!targetArch || !targetOs) {
+    throw new Error(`Unsupported local Docker platform: ${process.platform}/${process.arch}`);
+  }
+  return { targetArch, targetOs };
+}
+
+function removeBuildKitRunMounts(source, sourcePath, { cargoJobs } = {}) {
+  const lines = source.split('\n');
+  const output = [];
+  let removingMountPrefix = false;
+
+  for (const line of lines) {
+    const firstMount = line.match(/^(\s*)RUN\s+--mount=\S+\s+\\\s*$/u);
+    if (firstMount) {
+      output.push(`${firstMount[1]}RUN \\`);
+      removingMountPrefix = true;
+      continue;
+    }
+    if (removingMountPrefix && /^\s+--mount=\S+\s+\\\s*$/u.test(line)) {
+      continue;
+    }
+    removingMountPrefix = false;
+    output.push(line);
+  }
+
+  let transformed = output.join('\n');
+  if (cargoJobs) {
+    transformed = transformed.replace(
+      /RUN \\\n(\s*)CARGO_TARGET_DIR=/u,
+      `RUN cargo fetch --locked\n\nRUN \\\n$1CARGO_BUILD_JOBS=${cargoJobs} CARGO_TARGET_DIR=`,
+    );
+  }
+  if (/(?:^|\s)--mount=/mu.test(transformed)) {
+    throw new Error(`Cannot create legacy-compatible Dockerfile from ${sourcePath}`);
+  }
+  return transformed;
+}
+
+function recommendedCargoJobs({ cpuCount = os.cpus().length, totalMemory = os.totalmem() } = {}) {
+  const memoryBoundJobs = Math.max(1, Math.floor(totalMemory / (6 * 1024 ** 3)));
+  return Math.max(1, Math.min(cpuCount, memoryBoundJobs));
+}
+
+function createLegacyDockerfiles(repoRoot) {
+  const tempRoot = path.join(repoRoot, 'tmp');
+  fs.mkdirSync(tempRoot, { recursive: true });
+  const tempDir = fs.mkdtempSync(path.join(tempRoot, 'local-deploy-images-'));
+  const dockerfiles = {};
+
+  for (const [component, filename] of Object.entries({
+    apiServer: 'api-server.Dockerfile',
+    web: 'web.Dockerfile',
+  })) {
+    const sourcePath = path.join(repoRoot, 'docker', filename);
+    const targetPath = path.join(tempDir, filename);
+    const source = fs.readFileSync(sourcePath, 'utf8');
+    const cargoJobs = component === 'apiServer' ? recommendedCargoJobs() : undefined;
+    fs.writeFileSync(targetPath, removeBuildKitRunMounts(source, sourcePath, { cargoJobs }));
+    dockerfiles[component] = targetPath;
+  }
+
+  return { dockerfiles, tempDir };
 }
 
 function runLocalDeployImageBuild({
@@ -139,25 +227,46 @@ function runLocalDeployImageBuild({
     env: process.env,
   });
   const useBuildx = !buildxResult.error && buildxResult.status === 0;
-  log(`builder: ${useBuildx ? 'docker buildx build --load' : 'docker build with BuildKit'}`, writeStdout);
+  log(
+    `builder: ${useBuildx ? 'docker buildx build --load' : 'local Docker legacy builder without cache mounts'}`,
+    writeStdout,
+  );
 
-  log(`building ${images.apiServer}`, writeStdout);
-  buildImage({
-    dockerfile: 'docker/api-server.Dockerfile',
-    image: images.apiServer,
-    repoRoot,
-    runCommand,
-    useBuildx,
-  });
+  const legacyFiles = useBuildx ? null : createLegacyDockerfiles(repoRoot);
+  const dockerfiles = legacyFiles?.dockerfiles || {
+    apiServer: 'docker/api-server.Dockerfile',
+    web: 'docker/web.Dockerfile',
+  };
+  const target = localDockerTarget();
+  if (!useBuildx) {
+    log(`legacy Cargo compile jobs: ${recommendedCargoJobs()}`, writeStdout);
+  }
 
-  log(`building ${images.web}`, writeStdout);
-  buildImage({
-    dockerfile: 'docker/web.Dockerfile',
-    image: images.web,
-    repoRoot,
-    runCommand,
-    useBuildx,
-  });
+  try {
+    log(`building ${images.apiServer}`, writeStdout);
+    buildImage({
+      dockerfile: dockerfiles.apiServer,
+      image: images.apiServer,
+      repoRoot,
+      runCommand,
+      ...target,
+      useBuildx,
+    });
+
+    log(`building ${images.web}`, writeStdout);
+    buildImage({
+      dockerfile: dockerfiles.web,
+      image: images.web,
+      repoRoot,
+      runCommand,
+      ...target,
+      useBuildx,
+    });
+  } finally {
+    if (legacyFiles) {
+      fs.rmSync(legacyFiles.tempDir, { force: true, recursive: true });
+    }
+  }
 
   log('images built; run docker-compose up manually when ready', writeStdout);
   return 0;
@@ -175,9 +284,12 @@ function main(argv = [], deps = {}) {
 }
 
 module.exports = {
+  createLegacyDockerfiles,
   ensureDeployEnv,
   main,
+  removeBuildKitRunMounts,
   readImageVersions,
+  recommendedCargoJobs,
   runLocalDeployImageBuild,
   usage,
 };

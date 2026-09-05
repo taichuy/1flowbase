@@ -11,9 +11,11 @@ coverage
 tmp
 docs
 uploads
+deploy
 
 docker/postgres/data/*
 !docker/postgres/data/.gitkeep
+docker/volumes
 docker/api/storage/*
 !docker/api/storage/.gitkeep
 docker/api/plugins/packages/*

@@ -136,8 +136,11 @@ node scripts/node/build-local-deploy-images.js
   `FLOWBASE_WEB_VERSION`；字段缺失时使用 `latest`。
 - 构建当前仓库的 `docker/api-server.Dockerfile` 和 `docker/web.Dockerfile`，并显式使用
   可本地编译的 `runtime` stage。
-- 优先使用 `docker buildx build --load`；buildx 不可用时回退到启用 BuildKit 的
-  `docker build`。
+- 优先使用 `docker buildx build --load`；buildx 不可用时，临时生成去掉 BuildKit cache
+  mount 的兼容 Dockerfile，并使用本机 legacy `docker build`。临时文件在构建结束后删除，
+  不安装或下载额外构建工具，也不修改仓库 Dockerfile。legacy API 构建会按本机内存限制
+  Cargo 编译并发，并将 `cargo fetch --locked` 保留为独立 Docker layer，避免失败重试时重复
+  下载全部 Rust 依赖。
 - 只生成本机镜像，不执行 `docker-compose up`，也不创建、停止或替换容器。
 
 镜像构建完成后，由使用者在部署目录手动启动或替换服务。`--pull never` 用于避免远端
