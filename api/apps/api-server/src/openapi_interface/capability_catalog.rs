@@ -3,7 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use control_plane::ports::ModelDefinitionRepository;
+use control_plane::{
+    application_public_api::published_workflow_operation::build_published_workflow_operations,
+    ports::{ApplicationPublicationRepository, ModelDefinitionRepository},
+};
 use serde_json::{json, Value};
 
 use crate::{
@@ -19,12 +22,15 @@ pub enum OpenApiCapabilitySource {
     ActivatedInterfaceOperation,
     BuiltinDataModelCrud,
     WorkspaceDataModelCrud,
+    PublishedWorkflow,
 }
 
 impl OpenApiCapabilitySource {
     pub fn adapter_id(self) -> &'static str {
         match self {
-            Self::StaticApiDocs | Self::ActivatedInterfaceOperation => "console_openapi",
+            Self::StaticApiDocs | Self::ActivatedInterfaceOperation | Self::PublishedWorkflow => {
+                "console_openapi"
+            }
             Self::BuiltinDataModelCrud | Self::WorkspaceDataModelCrud => "runtime_data_model",
         }
     }
@@ -276,6 +282,7 @@ async fn openapi_capability_catalog_summaries_with(
                 entry.source,
                 OpenApiCapabilitySource::BuiltinDataModelCrud
                     | OpenApiCapabilitySource::WorkspaceDataModelCrud
+                    | OpenApiCapabilitySource::PublishedWorkflow
             ) || static_operation_is_bindable(&entry.interface.path)
         })
         .map(|entry| OpenApiCapabilityCatalogSummary {
@@ -429,6 +436,52 @@ pub(crate) async fn build_openapi_capability_catalog_with(
             risk_level: operation_risk_level(&interface.method),
             interface,
             source,
+            bindable: true,
+            disabled_reason: None,
+            activated_operation: None,
+        });
+    }
+
+    let publications = dependencies
+        .store
+        .list_enabled_extension_publications()
+        .await?;
+    let operations = build_published_workflow_operations(publications)
+        .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
+    for operation in operations
+        .into_iter()
+        .filter(|operation| operation.workspace_id == workspace_id)
+    {
+        let path = operation.public_path();
+        let method = operation.method.as_str().to_string();
+        let docs_operation = DocsCatalogOperation {
+            id: operation.interface_id.clone(),
+            method: method.clone(),
+            path: path.clone(),
+            summary: Some(format!(
+                "Invoke published workflow {}",
+                operation.application_id
+            )),
+            description: Some("Invoke the active publication of a Workflow application".into()),
+            tags: vec!["Workflow Extensions".into()],
+            group: "workflow_extensions".into(),
+            deprecated: false,
+        };
+        let spec = serde_json::json!({
+            "openapi": "3.1.0",
+            "paths": {
+                (path): {
+                    (method.to_ascii_lowercase()): crate::openapi::workflow_extension_operation(&operation)
+                }
+            }
+        });
+        let interface = catalog_entry_from_operation(&docs_operation, &spec).ok_or(
+            control_plane::errors::ControlPlaneError::Conflict("workflow_interface_contract"),
+        )?;
+        entries.push(OpenApiCapabilityCatalogEntry {
+            risk_level: operation_risk_level(&interface.method),
+            interface,
+            source: OpenApiCapabilitySource::PublishedWorkflow,
             bindable: true,
             disabled_reason: None,
             activated_operation: None,

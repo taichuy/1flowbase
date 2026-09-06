@@ -21,6 +21,8 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+use crate::openapi_docs::DocsCatalogOperation;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
@@ -35,10 +37,6 @@ use control_plane::mcp_management::{
     UpdateMcpInstanceDiscoveryPolicyCommand, UpdateMcpProxyToolCommand,
     UpdateMcpToolBindingCommand, UpdateMcpToolCommand, UpsertMcpGroupCommand,
 };
-use control_plane::{
-    application_public_api::published_workflow_operation::build_published_workflow_operations,
-    ports::ApplicationPublicationRepository,
-};
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,7 +46,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    openapi_docs::DocsCatalogOperation,
     openapi_interface::{OpenApiCapabilityCatalogEntry, OpenApiParameterLocation},
     response::ApiSuccess,
     routes::console_route_assembly::{

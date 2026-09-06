@@ -66,7 +66,7 @@ pub(crate) async fn mcp_interface_catalog_entries_with(
     dependencies: &McpInterfaceCatalogDependencies,
     actor: &domain::ActorContext,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
-    let mut entries = crate::openapi_interface::build_openapi_capability_catalog_with(
+    let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
         &dependencies.openapi,
         actor.current_workspace_id,
     )
@@ -74,43 +74,6 @@ pub(crate) async fn mcp_interface_catalog_entries_with(
     .into_iter()
     .map(mcp_interface_entry_from_capability)
     .collect::<Vec<_>>();
-    let publications = dependencies
-        .store
-        .list_enabled_extension_publications()
-        .await?;
-    let operations = build_published_workflow_operations(publications)
-        .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
-    for operation in operations
-        .into_iter()
-        .filter(|operation| operation.workspace_id == actor.current_workspace_id)
-    {
-        let path = operation.public_path();
-        let method = operation.method.as_str().to_string();
-        let docs_operation = DocsCatalogOperation {
-            id: operation.interface_id.clone(),
-            method: method.clone(),
-            path: path.clone(),
-            summary: Some(format!(
-                "Invoke published workflow {}",
-                operation.application_id
-            )),
-            description: Some("Invoke the active publication of a Workflow application".into()),
-            tags: vec!["Workflow Extensions".into()],
-            group: "workflow_extensions".into(),
-            deprecated: false,
-        };
-        let spec = serde_json::json!({
-            "openapi": "3.1.0",
-            "paths": {
-                (path): {
-                    (method.to_ascii_lowercase()): crate::openapi::workflow_extension_operation(&operation)
-                }
-            }
-        });
-        if let Some(entry) = mcp_interface_entry_from_operation(&docs_operation, &spec) {
-            entries.push(entry);
-        }
-    }
     Ok(entries)
 }
 
@@ -127,6 +90,9 @@ pub(crate) fn mcp_interface_entry_from_capability(
         }
         OpenApiCapabilitySource::WorkspaceDataModelCrud => {
             domain::McpInterfaceCatalogSource::WorkspaceDataModelCrud
+        }
+        OpenApiCapabilitySource::PublishedWorkflow => {
+            domain::McpInterfaceCatalogSource::PublishedWorkflow
         }
     };
     let permission_code = if entry.activated_operation.is_some() {
@@ -231,54 +197,22 @@ pub(super) fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> S
     format!("{} {}", entry.method, entry.path)
 }
 
+#[cfg(test)]
 pub(super) fn mcp_interface_entry_from_operation(
-    operation: &DocsCatalogOperation,
+    operation: &crate::openapi_docs::DocsCatalogOperation,
     spec: &Value,
 ) -> Option<domain::McpInterfaceCatalogEntry> {
     let interface = crate::openapi_interface::catalog_entry_from_operation(operation, spec)?;
-
-    Some(domain::McpInterfaceCatalogEntry {
-        interface_id: interface.operation_id,
-        source: domain::McpInterfaceCatalogSource::PublishedWorkflow,
-        method: interface.method,
-        path: interface.path,
-        name: interface.name,
-        short_description: interface.description,
-        parameter_descriptors: interface
-            .parameter_descriptors
-            .into_iter()
-            .filter_map(|descriptor| {
-                use crate::openapi_interface::OpenApiParameterLocation;
-                let parameter_type = match descriptor.location {
-                    OpenApiParameterLocation::Path | OpenApiParameterLocation::Query => {
-                        McpParameterType::Url
-                    }
-                    OpenApiParameterLocation::JsonBody => McpParameterType::JsonBody,
-                    OpenApiParameterLocation::FormBody => McpParameterType::Form,
-                    OpenApiParameterLocation::Header => return None,
-                };
-                Some(McpParameterDescriptor {
-                    name: descriptor.name,
-                    field_type: descriptor.field_type,
-                    parameter_type,
-                    description: descriptor.description,
-                    required: descriptor.required,
-                    schema: descriptor.schema,
-                })
-            })
-            .collect(),
-        parameter_schema: interface.request_schema,
-        result_schema: interface.response_schema,
-        permission_code: operation_permission_code(&operation.method, &operation.path),
-        security: interface.security,
-        risk_level: operation_risk_level(&operation.method),
-        bindable: true,
-        disabled_reason: None,
-    })
-}
-
-pub(super) fn operation_risk_level(method: &str) -> domain::McpRiskLevel {
-    mcp_risk_level(crate::openapi_interface::operation_risk_level(method))
+    Some(mcp_interface_entry_from_capability(
+        OpenApiCapabilityCatalogEntry {
+            risk_level: crate::openapi_interface::operation_risk_level(&interface.method),
+            interface,
+            source: OpenApiCapabilitySource::PublishedWorkflow,
+            bindable: true,
+            disabled_reason: None,
+            activated_operation: None,
+        },
+    ))
 }
 
 pub(super) fn mcp_risk_level(risk_level: &str) -> domain::McpRiskLevel {

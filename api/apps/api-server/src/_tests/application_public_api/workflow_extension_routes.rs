@@ -1268,3 +1268,6 @@ async fn workflow_extension_openapi_and_settings_docs_exclude_schedule_trigger_a
         .iter()
         .all(|category| category["id"] != json!("workflow_extensions")));
 }
+
+#[path = "workflow_extension_routes/callable_catalog.rs"]
+mod callable_catalog;

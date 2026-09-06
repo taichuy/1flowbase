@@ -212,7 +212,8 @@ fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallab
             host_injected_parameters(&entry.interface)
         }
         OpenApiCapabilitySource::BuiltinDataModelCrud
-        | OpenApiCapabilitySource::WorkspaceDataModelCrud => Vec::new(),
+        | OpenApiCapabilitySource::WorkspaceDataModelCrud
+        | OpenApiCapabilitySource::PublishedWorkflow => Vec::new(),
     };
     RegisteredCallable {
         interface: entry.interface,
@@ -223,7 +224,8 @@ fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallab
         scope: "frontstage_page_tab",
         authorization: match entry.source {
             OpenApiCapabilitySource::StaticApiDocs
-            | OpenApiCapabilitySource::ActivatedInterfaceOperation => "target_api_route_policy",
+            | OpenApiCapabilitySource::ActivatedInterfaceOperation
+            | OpenApiCapabilitySource::PublishedWorkflow => "target_api_route_policy",
             OpenApiCapabilitySource::BuiltinDataModelCrud
             | OpenApiCapabilitySource::WorkspaceDataModelCrud => {
                 "runtime_scope_grant_and_page_tab_access"
