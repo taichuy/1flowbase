@@ -39,6 +39,7 @@ use control_plane::mcp_management::{
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

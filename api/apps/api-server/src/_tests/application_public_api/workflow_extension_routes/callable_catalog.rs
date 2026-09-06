@@ -145,6 +145,48 @@ async fn workflow_callable_catalog_tracks_publication_and_dispatch_lifecycle() {
         .unwrap();
     assert_catalog_contract(&app, &cookie, interface_id, "ticket_id").await;
 
+    // Boot also consumes the dynamic OpenAPI document when publications already exist.
+    let (status, document) = request(&app, "GET", "/openapi.json", &cookie, "", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .interface_registry()
+        .unwrap()
+        .snapshot();
+    let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        Some(registry.as_ref()),
+    );
+    let _restarted = crate::app_with_state_and_config_and_console_route_assembly(
+        Arc::clone(&state),
+        &test_config(),
+        assembly,
+        &document,
+    );
+    // The existing state's boot snapshot is immutable; inspect a fresh compilation.
+    let mut compiler = crate::external_endpoint_catalog::ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute_openapi_document("published-workflow-openapi", &document)
+        .unwrap();
+    compiler
+        .absorb_registry("registry", registry.as_ref())
+        .unwrap();
+    compiler.contribute_approved_controls(true).unwrap();
+    let catalog = compiler.compile_complete(registry.as_ref()).unwrap();
+    let row = catalog
+        .row(
+            &crate::external_endpoint_catalog::ExternalEndpointIdentity::http(
+                "POST",
+                "/api/ex/callable-ticket",
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        row.binding_id(),
+        Some(crate::routes::application_public_api::workflow_extension_interface::BINDING_ID)
+    );
+
     for (path, body) in [
         (
             "/api/console/mcp/instances",

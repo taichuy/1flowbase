@@ -520,3 +520,32 @@ async fn eil_f14_production_assembly_has_no_unclassified_endpoint() {
     assert_eq!(unclassified, 0);
     assert_eq!(total, business + protocol + operational);
 }
+
+#[test]
+fn workflow_descriptor_requires_a_registered_frozen_binding() {
+    let registry = compiled_fixture_registry("/api/console/fixture");
+    for (path, operation) in [
+        (
+            "/api/ex/report",
+            serde_json::json!({"operationId":"published_workflow_operation:00000000-0000-0000-0000-000000000001"}),
+        ),
+        ("/api/ex/unknown", serde_json::json!({})),
+    ] {
+        let mut compiler = ExternalEndpointCatalogCompiler::default();
+        compiler
+            .contribute_openapi_document(
+                "workflow-openapi",
+                &serde_json::json!({
+                    "paths": { (path): {"get": operation} }
+                }),
+            )
+            .unwrap();
+        compiler
+            .absorb_registry("registry", registry.as_ref())
+            .unwrap();
+        assert!(matches!(
+            compiler.compile_complete(registry.as_ref()),
+            Err(ExternalEndpointCatalogError::UnclassifiedRows { .. })
+        ));
+    }
+}

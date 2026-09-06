@@ -346,7 +346,7 @@ impl ExternalEndpointCatalogCompiler {
                     ),
                     _ => ExternalEndpointIdentity::http(method, path),
                 };
-                let required_frozen_binding = runtime_model_frozen_binding(method, path, operation);
+                let required_frozen_binding = descriptor_frozen_binding(method, path, operation);
                 self.contribute(ExternalEndpointContribution {
                     identity: identity.clone(),
                     source: source.to_string(),
@@ -456,7 +456,7 @@ impl ExternalEndpointCatalogCompiler {
                 for identity in concrete_identities {
                     self.contribute(ExternalEndpointContribution {
                         identity,
-                        source: format!("{source}.runtime-model-descriptor-projection"),
+                        source: format!("{source}.descriptor-projection"),
                         classification: ExternalEndpointClassification::CanonicalBusinessInterface,
                         binding_id: Some(binding_id.clone()),
                     })?;
@@ -574,7 +574,7 @@ impl ExternalEndpointCatalogCompiler {
     }
 }
 
-fn runtime_model_frozen_binding(
+fn descriptor_frozen_binding(
     method: &str,
     path: &str,
     operation: &serde_json::Value,
@@ -583,9 +583,21 @@ fn runtime_model_frozen_binding(
         .get("x-data-model-templates")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|templates| !templates.is_empty());
-    (is_descriptor_operation && path.starts_with("/api/runtime/models/{model_code}/")).then(|| {
-        ExternalEndpointIdentity::http(method, "/api/runtime/models/:model_code/*operation_path")
-    })
+    if is_descriptor_operation && path.starts_with("/api/runtime/models/{model_code}/") {
+        return Some(ExternalEndpointIdentity::http(
+            method,
+            "/api/runtime/models/:model_code/*operation_path",
+        ));
+    }
+    let is_published_workflow = operation
+        .get("operationId")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|id| id.strip_prefix("published_workflow_operation:"))
+        .is_some_and(|application_id| uuid::Uuid::parse_str(application_id).is_ok());
+    // Concrete publications are descriptors of the existing wildcard invocation binding.
+    // Classification still requires that binding to exist in the compiled registry.
+    (is_published_workflow && path.starts_with("/api/ex/"))
+        .then(|| ExternalEndpointIdentity::http("ANY", "/api/ex/*slug"))
 }
 
 pub(crate) struct ExternalEndpointCatalog {
