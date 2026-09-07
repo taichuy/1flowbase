@@ -214,6 +214,7 @@ where
         &self.bindings
     }
 
+    #[cfg(test)]
     pub(crate) fn external_endpoint_contributions(
         &self,
     ) -> impl Iterator<Item = crate::external_endpoint_catalog::ExternalEndpointContribution> + '_

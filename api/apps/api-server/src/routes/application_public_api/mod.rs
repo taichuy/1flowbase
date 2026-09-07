@@ -17,43 +17,93 @@ pub(crate) mod workflow_extension_interface;
 
 use std::sync::Arc;
 
-use axum::{
-    routing::{get, post},
-    Router,
-};
+use axum::Router;
 
 use crate::app_state::ApiState;
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/models", get(native::list_native_models))
-        .route("/runs", post(native::create_native_run))
-        .route("/runs/websocket", get(native_websocket::upgrade))
-        .route("/runs/:run_id", axum::routing::get(native::get_native_run))
-        .route("/runs/:run_id/cancel", post(native::cancel_native_run))
-        .route("/runs/:run_id/resume", post(native::resume_native_run))
-        .route("/files", post(native::upload_native_file))
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new()
+        .route(
+            "/models",
+            crate::external_route_assembly::get(native::list_native_models),
+        )
+        .route(
+            "/runs",
+            crate::external_route_assembly::post(native::create_native_run),
+        )
+        .route(
+            "/runs/websocket",
+            crate::external_route_assembly::get(native_websocket::upgrade),
+        )
+        .route(
+            "/runs/:run_id",
+            crate::external_route_assembly::get(native::get_native_run),
+        )
+        .route(
+            "/runs/:run_id/cancel",
+            crate::external_route_assembly::post(native::cancel_native_run),
+        )
+        .route(
+            "/runs/:run_id/resume",
+            crate::external_route_assembly::post(native::resume_native_run),
+        )
+        .route(
+            "/files",
+            crate::external_route_assembly::post(native::upload_native_file),
+        )
 }
 
 pub fn compatible_router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/models", get(openai::list_models))
-        .route("/chat/completions", post(openai::create_chat_completion))
-        .route("/responses", post(openai::create_response))
-        .route("/v1/models", get(openai::list_models))
-        .route("/v1/chat/completions", post(openai::create_chat_completion))
+    compatible_route_assembly().into_router()
+}
+
+pub(crate) fn compatible_route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new()
+        .route(
+            "/models",
+            crate::external_route_assembly::get(openai::list_models),
+        )
+        .route(
+            "/chat/completions",
+            crate::external_route_assembly::post(openai::create_chat_completion),
+        )
+        .route(
+            "/responses",
+            crate::external_route_assembly::post(openai::create_response),
+        )
+        .route(
+            "/v1/models",
+            crate::external_route_assembly::get(openai::list_models),
+        )
+        .route(
+            "/v1/chat/completions",
+            crate::external_route_assembly::post(openai::create_chat_completion),
+        )
         .route(
             "/v1/responses",
-            get(responses_websocket::upgrade).post(openai::create_response),
+            crate::external_route_assembly::get(responses_websocket::upgrade)
+                .post(openai::create_response),
         )
         .route(
             "/v1/responses/compact",
-            post(openai::create_response_compact),
+            crate::external_route_assembly::post(openai::create_response_compact),
         )
-        .route("/v1/chat/completions/models", get(openai::list_models))
+        .route(
+            "/v1/chat/completions/models",
+            crate::external_route_assembly::get(openai::list_models),
+        )
         .route(
             "/v1/messages/count_tokens",
-            post(anthropic::count_message_tokens),
+            crate::external_route_assembly::post(anthropic::count_message_tokens),
         )
-        .route("/v1/messages", post(anthropic::create_message))
+        .route(
+            "/v1/messages",
+            crate::external_route_assembly::post(anthropic::create_message),
+        )
 }

@@ -34,7 +34,7 @@ function fixture(overrides = {}) {
     [sources[7]]: 'struct NativeAdapter { execution: Arc<dyn NativeExecutionService> }',
     [sources[8]]: 'struct CompatibilityAdapter { execution: Arc<dyn CompatibilityExecutionService> }',
     [sources[9]]: 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }',
-    [sources[10]]: 'publish_external_endpoint_catalog(); contribute_openapi_document();',
+    [sources[10]]: 'publish_external_endpoint_catalog(); contribute_openapi_document(); fn console_router_with_assembly() { ExternalRouteAssembly::new(); router.contributions(); router.into_router(); }',
     [sources[11]]: 'fn compile_complete() {} enum Error { UnclassifiedRows }',
   };
   for (const source of sources) {
@@ -96,4 +96,22 @@ test('rejects a Composition Root without complete catalog publication', () => {
   });
   const violations = inspectInterfaceLifecycleBoundary(root);
   assert.ok(violations.some((value) => value.includes('complete external endpoint catalog')));
+});
+
+// Root AC-001: mutate the real production mount, not a synthetic catalog row.
+test('root_1998 rejects a bare production mount after inventory extraction', () => {
+  const { inspectExternalRouteAssemblyBoundary } = require('../core');
+  const production = fs.readFileSync(path.resolve(__dirname, '../../../../api/apps/api-server/src/lib.rs'), 'utf8');
+  assert.deepEqual(inspectExternalRouteAssemblyBoundary(production), []);
+  const mutated = production.replace(/router\s*\.into_router\(\)/u, 'router.into_router().merge(axum::Router::new().route("/rogue", axum::routing::get(rogue)))');
+  assert.notEqual(mutated, production);
+  assert.ok(inspectExternalRouteAssemblyBoundary(mutated).some((value) => value.includes('bare external mount')));
+});
+
+test('root_1998 rejects a bare mount at the final application root', () => {
+  const { inspectExternalRouteAssemblyBoundary } = require('../core');
+  const production = fs.readFileSync(path.resolve(__dirname, '../../../../api/apps/api-server/src/lib.rs'), 'utf8');
+  const mutated = production.replace('.layer(cors_layer(config))', '.merge(rogue_router()).layer(cors_layer(config))');
+  assert.notEqual(mutated, production);
+  assert.ok(inspectExternalRouteAssemblyBoundary(mutated).some((value) => value.includes('bare external mount')));
 });

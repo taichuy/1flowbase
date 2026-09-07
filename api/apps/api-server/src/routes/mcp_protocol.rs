@@ -6,7 +6,6 @@ use axum::{
         header::{AUTHORIZATION, COOKIE},
         HeaderMap, StatusCode,
     },
-    routing::post,
     Json, Router,
 };
 use control_plane::mcp_management::McpManagementService;
@@ -81,7 +80,15 @@ struct JsonRpcResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/mcp/:instance_id", post(handle_mcp_request))
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new().route(
+        "/mcp/:instance_id",
+        crate::external_route_assembly::post(handle_mcp_request),
+    )
 }
 
 async fn handle_mcp_request(

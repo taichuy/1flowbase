@@ -34,6 +34,44 @@ function rustSourcesUnder(repoRoot, relativeRoot) {
   return result;
 }
 
+// This narrow source gate protects the final unwrapping boundary, where Axum must
+// regain ownership for middleware and serving. Inner merges are type checked.
+function rustFunctionBody(source, name) {
+  const declaration = new RegExp(`\\bfn\\s+${name}\\s*\\(`, 'u').exec(source);
+  if (!declaration) return '';
+  const start = source.indexOf('{', declaration.index);
+  let depth = 1;
+  let end = start + 1;
+  while (end < source.length && depth) {
+    if (source[end] === '{') depth += 1;
+    if (source[end] === '}') depth -= 1;
+    end += 1;
+  }
+  return source.slice(start + 1, end - 1);
+}
+
+function inspectExternalRouteAssemblyBoundary(apiServer) {
+  const violations = [];
+  const assembly = rustFunctionBody(apiServer, 'console_router_with_assembly');
+  if (!assembly.includes('ExternalRouteAssembly::new()')
+      || !assembly.includes('router.contributions()')
+      || !/router\s*\.into_router\(\)/u.test(assembly)) {
+    violations.push('production router must retain the executable external route inventory');
+  }
+  const terminal = assembly.slice(assembly.search(/router\s*\.into_router\(\)/u));
+  if (/\bRouter\s*::\s*new\s*\(/u.test(assembly)
+      || /\.(?:route|route_service|nest|nest_service|merge|fallback|fallback_service)\s*\(/u.test(terminal)) {
+    violations.push('production router contains a bare external mount after or outside controlled assembly');
+  }
+  for (const name of ['app_with_state', 'app_with_state_and_config_and_console_route_assembly']) {
+    const body = rustFunctionBody(apiServer, name);
+    if (/\.(?:route|route_service|nest|nest_service|merge|fallback|fallback_service)\s*\(/u.test(body)) {
+      violations.push(`${name} contains a bare external mount outside controlled assembly`);
+    }
+  }
+  return violations;
+}
+
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
   const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
@@ -48,7 +86,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const apiServer = read(repoRoot, 'api/apps/api-server/src/lib.rs');
   const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/external_endpoint_catalog.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
-  const violations = [];
+  const violations = inspectExternalRouteAssemblyBoundary(apiServer);
 
   for (const symbol of LEGACY_COMPATIBILITY_SYMBOLS) {
     if (protocolSources.includes(symbol)) {
@@ -130,4 +168,4 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   return violations;
 }
 
-module.exports = { LEGACY_COMPATIBILITY_SYMBOLS, inspectInterfaceLifecycleBoundary };
+module.exports = { LEGACY_COMPATIBILITY_SYMBOLS, inspectInterfaceLifecycleBoundary, inspectExternalRouteAssemblyBoundary };

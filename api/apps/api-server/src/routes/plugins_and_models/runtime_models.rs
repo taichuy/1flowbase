@@ -9,7 +9,6 @@ use axum::{
     extract::{OriginalUri, Path, State},
     http::{HeaderMap, Method},
     response::Response,
-    routing::any,
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -326,9 +325,14 @@ async fn enrich_application_run_count_tokens_results(
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route(
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/models/:model_code/*operation_path",
-        any(dispatch_runtime_operation),
+        crate::external_route_assembly::any(dispatch_runtime_operation),
     )
 }
 

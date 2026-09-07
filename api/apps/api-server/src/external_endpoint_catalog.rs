@@ -163,7 +163,6 @@ pub(crate) enum ExternalEndpointCatalogError {
         second: String,
     },
     #[error("external endpoint is not an approved control: {identity:?}")]
-    #[cfg(test)]
     UnknownControl { identity: ExternalEndpointIdentity },
     #[error("external endpoint catalog contains unclassified rows: {identities:?}")]
     UnclassifiedRows {
@@ -183,6 +182,7 @@ pub(crate) enum ApprovedExternalControl {
     Health,
     ConsoleHealth,
     Docs,
+    DocsAssets,
     OpenApi,
     McpInitialize,
     McpInitializedNotification,
@@ -194,10 +194,11 @@ pub(crate) enum ApprovedExternalControl {
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::Health,
         Self::ConsoleHealth,
         Self::Docs,
+        Self::DocsAssets,
         Self::OpenApi,
         Self::McpInitialize,
         Self::McpInitializedNotification,
@@ -224,6 +225,11 @@ impl ApprovedExternalControl {
                 "swagger-protocol-control",
                 "GET",
                 "/docs",
+            ),
+            Self::DocsAssets => ExternalEndpointContribution::protocol_control_http(
+                "swagger-protocol-control",
+                "GET",
+                "/docs/*rest",
             ),
             Self::OpenApi => ExternalEndpointContribution::protocol_control_http(
                 "openapi-protocol-control",
@@ -307,6 +313,64 @@ pub(crate) struct ExternalEndpointCatalogCompiler {
 }
 
 impl ExternalEndpointCatalogCompiler {
+    /// Reconcile the inventory emitted by the executable mount, after compiling binding
+    /// and descriptor projections. A registry or OpenAPI-only inventory cannot supply it.
+    pub(crate) fn contribute_mounted_routes(
+        &mut self,
+        mounted: &[ExternalEndpointContribution],
+    ) -> Result<(), ExternalEndpointCatalogError> {
+        let mut seen = BTreeSet::new();
+        for contribution in mounted {
+            if !seen.insert(contribution.identity.clone()) {
+                return Err(ExternalEndpointCatalogError::DuplicateContribution {
+                    origin: contribution.source.clone(),
+                    identity: contribution.identity.clone(),
+                });
+            }
+            let ExternalEndpointIdentity::Http {
+                method,
+                route_template,
+                ..
+            } = &contribution.identity
+            else {
+                continue;
+            };
+            // An Axum any handler is a dispatch surface: its frozen per-method bindings
+            // (or a single ANY binding) own the accepted operations, including rejection.
+            let identities = self
+                .rows
+                .values()
+                .filter(|row| match &row.identity {
+                    ExternalEndpointIdentity::Http {
+                        method: candidate,
+                        route_template: path,
+                        ..
+                    } => {
+                        path == route_template
+                            && ((method == "ANY" && row.binding_id.is_some())
+                                || candidate == method
+                                || candidate == "ANY")
+                    }
+                    _ => false,
+                })
+                .map(|row| row.identity.clone())
+                .collect::<Vec<_>>();
+            if identities.is_empty() {
+                self.contribute(contribution.clone())?;
+            } else {
+                for identity in identities {
+                    self.contribute(ExternalEndpointContribution {
+                        identity,
+                        source: contribution.source.clone(),
+                        classification: ExternalEndpointClassification::Unclassified,
+                        binding_id: None,
+                    })?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn contribute_openapi_document(
         &mut self,
         source: &str,
@@ -389,6 +453,30 @@ impl ExternalEndpointCatalogCompiler {
         &mut self,
         contribution: ExternalEndpointContribution,
     ) -> Result<(), ExternalEndpointCatalogError> {
+        if matches!(
+            contribution.classification,
+            ExternalEndpointClassification::ProtocolControl
+                | ExternalEndpointClassification::OperationalControl
+        ) {
+            let approved = ApprovedExternalControl::ALL
+                .into_iter()
+                .map(ApprovedExternalControl::contribution)
+                .any(|control| {
+                    control.identity == contribution.identity
+                        && control.classification == contribution.classification
+                });
+            let derived = matches!((&contribution.identity, contribution.source.as_str()),
+                (ExternalEndpointIdentity::Http { method, variant: Some(variant), .. }, "tower-http.cors")
+                    if method == "OPTIONS" && variant == "cors-preflight")
+                || matches!((&contribution.identity, contribution.source.as_str()),
+                    (ExternalEndpointIdentity::Http { method, variant: Some(variant), .. }, "axum.auto-head")
+                        if method == "HEAD" && variant == "get-mirror");
+            if !approved && !derived {
+                return Err(ExternalEndpointCatalogError::UnknownControl {
+                    identity: contribution.identity,
+                });
+            }
+        }
         let ExternalEndpointContribution {
             identity,
             source,
@@ -471,7 +559,12 @@ impl ExternalEndpointCatalogCompiler {
         include_docs: bool,
     ) -> Result<(), ExternalEndpointCatalogError> {
         for control in ApprovedExternalControl::ALL {
-            if !include_docs && matches!(control, ApprovedExternalControl::Docs) {
+            if !include_docs
+                && matches!(
+                    control,
+                    ApprovedExternalControl::Docs | ApprovedExternalControl::DocsAssets
+                )
+            {
                 continue;
             }
             self.contribute(control.contribution())?;
@@ -654,5 +747,24 @@ fn merge_classification(
         (ExternalEndpointClassification::Unclassified, classified)
         | (classified, ExternalEndpointClassification::Unclassified) => Ok(classified),
         _ => Err(ExternalEndpointCatalogError::ConflictingClassification { identity }),
+    }
+}
+
+#[cfg(test)]
+mod construction_controls {
+    use super::*;
+
+    #[test]
+    fn root_1998_fake_business_control_is_rejected_during_contribution() {
+        let mut compiler = ExternalEndpointCatalogCompiler::default();
+        let result = compiler.contribute(ExternalEndpointContribution::protocol_control_http(
+            "fake-protocol-owner",
+            "POST",
+            "/business/write",
+        ));
+        assert!(matches!(
+            result,
+            Err(ExternalEndpointCatalogError::UnknownControl { .. })
+        ));
     }
 }

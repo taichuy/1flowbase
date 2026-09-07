@@ -12,6 +12,7 @@ pub mod error_response;
 pub mod extension_bootstrap;
 pub mod extension_bus;
 pub(crate) mod external_endpoint_catalog;
+pub(crate) mod external_route_assembly;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;
@@ -242,6 +243,7 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn root_external_endpoint_contributions(
     include_docs: bool,
 ) -> Vec<external_endpoint_catalog::ExternalEndpointContribution> {
@@ -271,7 +273,7 @@ pub(crate) fn root_external_endpoint_contributions(
 
 fn publish_external_endpoint_catalog(
     state: &Arc<ApiState>,
-    console_route_assembly: &routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+    mounted: &[external_endpoint_catalog::ExternalEndpointContribution],
     include_docs: bool,
     openapi_document: &serde_json::Value,
 ) -> Result<()> {
@@ -284,16 +286,11 @@ fn publish_external_endpoint_catalog(
         .ok_or_else(|| anyhow!("compiled interface registry is unavailable"))?
         .snapshot();
     let mut compiler = external_endpoint_catalog::ExternalEndpointCatalogCompiler::default();
-    for contribution in root_external_endpoint_contributions(include_docs) {
-        compiler.contribute(contribution)?;
-    }
-    for contribution in console_route_assembly.external_endpoint_contributions() {
-        compiler.contribute(contribution)?;
-    }
     compiler.contribute_openapi_document("api-server.openapi", openapi_document)?;
     compiler.absorb_registry("compiled-interface-registry", registry.as_ref())?;
     compiler.contribute_mcp_protocol_surface(routes::mcp_protocol::MCP_INVOCATION_BINDING_ID)?;
     compiler.contribute_approved_controls(include_docs)?;
+    compiler.contribute_mounted_routes(mounted)?;
     let catalog = compiler.compile_complete(registry.as_ref())?;
     tracing::info!(
         total = catalog.rows().len(),
@@ -337,10 +334,10 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
     );
     let openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
         .expect("static OpenAPI document must serialize");
-    publish_external_endpoint_catalog(&state, &assembly, true, &openapi_document)
+    let (router, mounted) = console_router_with_assembly(state.clone(), true, assembly);
+    publish_external_endpoint_catalog(&state, &mounted, true, &openapi_document)
         .expect("external endpoint catalog must publish before router construction");
-    base_router(true, false)
-        .merge(console_router_with_assembly(state, true, assembly))
+    router
         .layer(development_cors_layer())
         .layer(TraceLayer::new_for_http())
 }
@@ -354,35 +351,55 @@ fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
         interface_snapshot.as_deref(),
     );
-    console_router_with_assembly(state, include_openapi, assembly)
+    console_router_with_assembly(state, include_openapi, assembly).0
 }
 
 fn console_router_with_assembly(
     state: Arc<ApiState>,
     include_openapi: bool,
     console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
-) -> Router {
+) -> (
+    Router,
+    Vec<external_endpoint_catalog::ExternalEndpointContribution>,
+) {
     let maintenance_classifier =
         middleware::system_maintenance::SystemMaintenanceRequestClassifier::new(
             console_route_assembly.maintenance_control_routes().to_vec(),
         );
-    let router = Router::new()
-        .merge(routes::application_public_api::compatible_router())
-        .nest("/api/agent/v1", routes::application_public_api::router())
-        .nest("/api/ex", routes::application_public_api::ex::router())
-        .nest("/api", routes::mcp_protocol::router())
-        .nest("/api", routes::webmcp::router())
-        .nest("/api/console", console_route_assembly.into_router())
-        .nest("/api/runtime", routes::runtime_models::router())
-        .nest("/api/public/auth", routes::auth::router());
+    let router = external_route_assembly::ExternalRouteAssembly::new()
+        .route("/health", external_route_assembly::get(health))
+        .merge(routes::application_public_api::compatible_route_assembly())
+        .nest(
+            "/api/agent/v1",
+            routes::application_public_api::route_assembly(),
+        )
+        .nest(
+            "/api/ex",
+            routes::application_public_api::ex::route_assembly(),
+        )
+        .nest("/api", routes::mcp_protocol::route_assembly())
+        .nest("/api", routes::webmcp::route_assembly())
+        .nest(
+            "/api/console",
+            external_route_assembly::ExternalRouteAssembly::console(console_route_assembly),
+        )
+        .nest("/api/runtime", routes::runtime_models::route_assembly())
+        .nest("/api/public/auth", routes::auth::route_assembly());
 
     let router = if include_openapi {
-        router.route("/openapi.json", get(openapi::dynamic_openapi))
+        router
+            .route(
+                "/openapi.json",
+                external_route_assembly::get(openapi::dynamic_openapi),
+            )
+            .merge(external_route_assembly::ExternalRouteAssembly::docs())
     } else {
         router
     };
 
-    router
+    let mounted = router.contributions();
+    let router = router
+        .into_router()
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_settings_feature_permission::require_settings_feature_permission,
@@ -395,7 +412,8 @@ fn console_router_with_assembly(
             maintenance_classifier,
             middleware::system_maintenance::classify_system_maintenance_request,
         ))
-        .with_state(state)
+        .with_state(state);
+    (router, mounted)
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
@@ -425,19 +443,11 @@ fn app_with_state_and_config_and_console_route_assembly(
     openapi_document: &serde_json::Value,
 ) -> Router {
     let include_docs = config.env != ApiEnvironment::Production;
-    publish_external_endpoint_catalog(
-        &state,
-        &console_route_assembly,
-        include_docs,
-        openapi_document,
-    )
-    .expect("external endpoint catalog must publish before router construction");
-    base_router(include_docs, false)
-        .merge(console_router_with_assembly(
-            state,
-            include_docs,
-            console_route_assembly,
-        ))
+    let (router, mounted) =
+        console_router_with_assembly(state.clone(), include_docs, console_route_assembly);
+    publish_external_endpoint_catalog(&state, &mounted, include_docs, openapi_document)
+        .expect("external endpoint catalog must publish before router construction");
+    router
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http())
 }

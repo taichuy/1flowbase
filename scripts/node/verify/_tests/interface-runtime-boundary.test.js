@@ -175,9 +175,9 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
 test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {
   const handlers = [
     [
-      'api/apps/api-server/src/routes/identity/login_instances_interface.rs',
-      'PublicLoginInstancesHandler',
-      'PublicLoginInstancesAuthorization',
+      'api/apps/api-server/src/routes/identity/login_entries_interface.rs',
+      'PublicLoginEntriesHandler',
+      'PublicLoginEntriesAuthorization',
     ],
     [
       'api/apps/api-server/src/routes/application_public_api/native_interface.rs',

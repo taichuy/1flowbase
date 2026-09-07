@@ -45,7 +45,15 @@ struct WorkflowExtensionAcceptedResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new().route("/*slug", axum::routing::any(invoke_workflow_extension))
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new().route(
+        "/*slug",
+        crate::external_route_assembly::any(invoke_workflow_extension),
+    )
 }
 
 pub async fn invoke_workflow_extension(

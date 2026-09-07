@@ -1,11 +1,6 @@
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    routing::{get, post},
-    Json, Router,
-};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use control_plane::auth::{
     AuthKernel, AuthenticatorRegistry, LoginCommand, SessionIssuer, SignUpCommand,
@@ -85,11 +80,22 @@ pub struct LoginResponse {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/providers", get(list_providers))
-        .route("/login-entries", get(list_login_entries))
-        .route("/sign-in", post(sign_in))
-        .route("/sign-up", post(sign_up))
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new()
+        .route(
+            "/providers",
+            crate::external_route_assembly::get(list_providers),
+        )
+        .route(
+            "/login-entries",
+            crate::external_route_assembly::get(list_login_entries),
+        )
+        .route("/sign-in", crate::external_route_assembly::post(sign_in))
+        .route("/sign-up", crate::external_route_assembly::post(sign_up))
 }
 
 fn public_login_entry_description(options: &Value) -> Option<String> {

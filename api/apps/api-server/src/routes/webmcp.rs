@@ -3,7 +3,6 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::{header::AUTHORIZATION, HeaderMap},
-    routing::{get, post},
     Json, Router,
 };
 use control_plane::mcp_management::{
@@ -63,9 +62,20 @@ fn empty_arguments() -> Value {
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/webmcp/registrations", get(list_registrations))
-        .route("/webmcp/:instance_id/tools/:operation", post(invoke_tool))
+    route_assembly().into_router()
+}
+
+pub(crate) fn route_assembly(
+) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+    crate::external_route_assembly::ExternalRouteAssembly::new()
+        .route(
+            "/webmcp/registrations",
+            crate::external_route_assembly::get(list_registrations),
+        )
+        .route(
+            "/webmcp/:instance_id/tools/:operation",
+            crate::external_route_assembly::post(invoke_tool),
+        )
 }
 
 async fn list_registrations(

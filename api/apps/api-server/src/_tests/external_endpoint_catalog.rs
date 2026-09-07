@@ -549,3 +549,6 @@ fn workflow_descriptor_requires_a_registered_frozen_binding() {
         ));
     }
 }
+
+#[path = "external_route_assembly.rs"]
+mod external_route_assembly;
