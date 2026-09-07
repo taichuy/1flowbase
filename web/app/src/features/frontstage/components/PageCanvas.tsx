@@ -73,7 +73,10 @@ import {
   resolveFrontstageAutoHeightScrollDelta
 } from '../lib/page-canvas/auto-height-layout';
 import type { FrontstageIntrinsicMeasurementContext } from '../lib/page-canvas/auto-height-layout';
-import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
+import type {
+  FrontstageNativePreparationSnapshot,
+  FrontstageNativePreparationSource
+} from '../lib/page-canvas/native-runtime-preparation';
 import {
   frontstageNativeInstanceRenderKey,
   useFrontstageNativeBlockInstance
@@ -83,6 +86,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../lib/native-trusted-block-react-adapter';
+import { applyFrontstageLayoutCompensation } from '../lib/native-modules/surface/scroll-intent-arbiter';
 import {
   createFrontstagePageSignalSession,
   FrontstageSignalRuntimeCoordinator
@@ -114,7 +118,7 @@ type PageCanvasProps = {
   selectedBlockId?: string | null;
   onSelectBlock?: (blockId: string | null) => void;
   onRetry?: () => void;
-  runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
+  runtimePreparations?: FrontstageNativePreparationSource | null;
   isolatedRuntimePreparations?:
     | readonly PreparedFrontstageIsolatedContribution[]
     | null;
@@ -211,7 +215,7 @@ function formatPageTitle(content: FrontstagePageContent): string {
 
 type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
-  runtimePreparation?: FrontstageNativePreparationSnapshot | null;
+  runtimePreparations?: FrontstageNativePreparationSource | null;
   isolatedPreparation?: PreparedFrontstageIsolatedContribution | null;
   isolatedPreparationError?: Error | null;
   isolatedCapabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
@@ -675,7 +679,7 @@ function FrontstageNativeRuntimeInstance({
 
 const RenderPlanSlot = memo(function RenderPlanSlot({
   item,
-  runtimePreparation,
+  runtimePreparations,
   isolatedPreparation,
   isolatedPreparationError,
   isolatedCapabilityHandlers,
@@ -696,6 +700,20 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
   onRuntimeRetry,
   onRuntimeRefresh
 }: RenderPlanSlotProps) {
+  const subscribePreparation = useCallback(
+    (listener: () => void) =>
+      runtimePreparations?.subscribeBlock(item.blockId, listener) ?? (() => {}),
+    [item.blockId, runtimePreparations]
+  );
+  const getPreparationSnapshot = useCallback(
+    () => runtimePreparations?.getBlockSnapshot(item.blockId) ?? null,
+    [item.blockId, runtimePreparations]
+  );
+  const runtimePreparation = useSyncExternalStore(
+    subscribePreparation,
+    getPreparationSnapshot,
+    getPreparationSnapshot
+  );
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const intrinsicContentRef = useRef<HTMLDivElement>(null);
@@ -977,8 +995,8 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
             })
           : undefined
       }
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={isDesignMode ? () => setIsHovered(true) : undefined}
+      onMouseLeave={isDesignMode ? () => setIsHovered(false) : undefined}
       onClick={handleSelect}
       role={isDesignMode ? 'button' : undefined}
       tabIndex={isDesignMode ? 0 : -1}
@@ -1240,13 +1258,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
     pendingScrollAnchorRef.current = null;
-    if (
-      !anchor ||
-      Math.abs(anchor.scrollOwner.scrollTop - anchor.scrollTop) > 0.5
-    ) {
-      return;
-    }
-    anchor.scrollOwner.scrollTop += anchor.layoutDeltaPx;
+    if (!anchor) return;
+    applyFrontstageLayoutCompensation(
+      anchor.scrollOwner,
+      anchor.scrollTop,
+      anchor.layoutDeltaPx
+    );
   }, [autoRows]);
   const latestLayouts = useRef(layouts);
   const dragCommittedLayout = useRef<Layout | null>(null);
@@ -1567,11 +1584,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
               <div key={item.blockId}>
                 <RenderPlanSlot
                   item={item}
-                  runtimePreparation={
-                    runtimePreparations?.find(
-                      (preparation) => preparation.blockId === item.blockId
-                    ) ?? null
-                  }
+                  runtimePreparations={runtimePreparations}
                   isolatedPreparation={
                     isolatedRuntimePreparations?.find(
                       (preparation) =>

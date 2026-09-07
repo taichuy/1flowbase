@@ -1,3 +1,6 @@
+import { i18nText } from '../../../../shared/i18n/text';
+import { FrontstageNativePreparationScheduler } from '../../lib/page-canvas/native-runtime-preparation';
+import { createNativePreparationSource } from './fixtures/native-preparation-source';
 import {
   act,
   fireEvent,
@@ -29,13 +32,150 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  test('I2005-AC-004 runtime hover does not re-render a ready Block for design-only feedback', async () => {
+    let renders = 0;
+    const Block = () => {
+      renders += 1;
+      return <button>runtime control</button>;
+    };
+    const block = {
+      ...runtimeBlock('Hover'),
+      presentation: { heightMode: 'fixed' as const, height: 240 }
+    };
+    render(
+      <PageCanvas
+        content={pageContentWithBlocks([block])}
+        runtimeBlocks={[block]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('hover', 1, Block)
+        ])}
+      />
+    );
+    const host = await screen.findByTestId(
+      'frontstage-native-block-root-block-1'
+    );
+    await within(host.shadowRoot as unknown as HTMLElement).findByRole(
+      'button',
+      { name: 'runtime control' }
+    );
+    const before = renders;
+    const slot = screen.getByTestId('block-slot-block-1');
+    fireEvent.mouseEnter(slot);
+    fireEvent.mouseLeave(slot);
+    expect(renders).toBe(before);
+  });
+
+  test('I2005-AC-001/002 publishes one Block through the live canvas without disturbing another instance', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(2);
+    let releaseFirst!: () => void;
+    const firstFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstAttempt = 0;
+    let secondRenders = 0;
+    const First = () => <div>first ready</div>;
+    const Second = () => {
+      secondRenders += 1;
+      const [count, setCount] = useState(0);
+      return (
+        <button onClick={() => setCount(count + 1)}>second:{count}</button>
+      );
+    };
+    const first = preparation('first', 1, First);
+    const second = preparation('second', 1, Second, true, {}, 'block-2', 1);
+    const blocks = [
+      runtimeBlock('First'),
+      runtimeBlock('Second', 'block-2', 1)
+    ].map((block) => ({
+      ...block,
+      presentation: { heightMode: 'fixed' as const, height: 240 }
+    }));
+    scheduler.reconcile(
+      [
+        {
+          blockId: 'block-1',
+          slotIndex: 0,
+          identity: 'first',
+          prepare: async () => {
+            if (firstAttempt++ === 0) await firstFlight;
+            else if (firstAttempt === 2)
+              throw new Error('first preparation failed');
+            return first.prepared;
+          }
+        },
+        {
+          blockId: 'block-2',
+          slotIndex: 1,
+          identity: 'second',
+          prepare: async () => second.prepared
+        }
+      ],
+      { 'block-1': 1, 'block-2': 1 }
+    );
+    const view = render(
+      <PageCanvas
+        content={pageContentWithBlocks(blocks)}
+        runtimeBlocks={blocks}
+        runtimePreparations={scheduler}
+        onRuntimeRetry={(id) => scheduler.retry(id)}
+      />
+    );
+    try {
+      const secondRoot = await screen.findByTestId(
+        'frontstage-native-block-root-block-2'
+      );
+      const secondQueries = within(
+        secondRoot.shadowRoot as unknown as HTMLElement
+      );
+      fireEvent.click(
+        await secondQueries.findByRole('button', { name: 'second:0' })
+      );
+      await secondQueries.findByRole('button', { name: 'second:1' });
+      const before = secondRenders;
+      const stableSnapshot = scheduler.getBlockSnapshot('block-2');
+      act(() => releaseFirst());
+      const firstSlot = screen.getByTestId('block-slot-block-1');
+      await waitFor(() =>
+        expect(firstSlot).toHaveAttribute(
+          'data-flowbase-frontstage-render-status',
+          'ready'
+        )
+      );
+      act(() => scheduler.retry('block-1'));
+      await waitFor(() =>
+        expect(firstSlot).toHaveTextContent('first preparation failed')
+      );
+      fireEvent.click(within(firstSlot).getByRole('button'));
+      await waitFor(() =>
+        expect(firstSlot).toHaveAttribute(
+          'data-flowbase-frontstage-render-status',
+          'ready'
+        )
+      );
+      expect(firstSlot).toHaveAttribute(
+        'data-flowbase-frontstage-generation',
+        '2'
+      );
+      expect(
+        secondQueries.getByRole('button', { name: 'second:1' })
+      ).toBeInTheDocument();
+      expect(scheduler.getBlockSnapshot('block-2')).toBe(stableSnapshot);
+      expect(secondRenders).toBe(before);
+    } finally {
+      view.unmount();
+      scheduler.dispose();
+    }
+  });
+
   test('AC-001/AC-006 gives internal input an interaction lease while preserving browser offscreen containment', async () => {
     const noteInteraction = vi.fn();
     render(
       <PageCanvas
         content={pageContent('Interaction')}
         runtimeBlocks={[runtimeBlock('Interaction')]}
-        runtimePreparations={[preparation('source-a', 1, () => null)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-a', 1, () => null)
+        ])}
         onRuntimeInteraction={noteInteraction}
       />
     );
@@ -72,10 +212,10 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       <PageCanvas
         content={pageContentWithBlocks(blocks)}
         runtimeBlocks={blocks}
-        runtimePreparations={[
+        runtimePreparations={createNativePreparationSource([
           preparation('source-a', 1, FirstBlock),
           preparation('source-b', 1, SecondBlock, true, {}, 'block-2', 1)
-        ]}
+        ])}
       />
     );
 
@@ -103,7 +243,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       <PageCanvas
         content={pageContent('Route input')}
         runtimeBlocks={[runtimeBlock('Route input')]}
-        runtimePreparations={[preparation('source-a', 1, InputBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-a', 1, InputBlock)
+        ])}
         runtimeInputsByBlockId={{
           'block-1': { record_id: 'record-1' }
         }}
@@ -149,7 +291,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Initial')}
         runtimeBlocks={[runtimeBlock('Initial')]}
         runtimeContext={runtimeContext('light')}
-        runtimePreparations={[initialPreparation]}
+        runtimePreparations={createNativePreparationSource([
+          initialPreparation
+        ])}
       />
     );
     const firstRoot = await nativeRoot();
@@ -164,7 +308,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Changed')}
         runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[initialPreparation]}
+        runtimePreparations={createNativePreparationSource([
+          initialPreparation
+        ])}
       />
     );
     await waitFor(() => expect(stateful).toHaveTextContent('1:1:Changed:dark'));
@@ -176,7 +322,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Changed')}
         runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[preparation('source-b', 1, StatefulBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-b', 1, StatefulBlock)
+        ])}
       />
     );
     const remountedRoot = await nativeRoot();
@@ -193,11 +341,11 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Changed')}
         runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[
+        runtimePreparations={createNativePreparationSource([
           preparation('source-b', 1, StatefulBlock, true, {
             runtimeAbi: 'runtime-b'
           })
-        ]}
+        ])}
       />
     );
     await waitFor(() => expect(mounts).toBe(3));
@@ -208,12 +356,12 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Changed')}
         runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[
+        runtimePreparations={createNativePreparationSource([
           preparation('source-b', 1, StatefulBlock, true, {
             runtimeAbi: 'runtime-b',
             compilerAbi: 'compiler-b'
           })
-        ]}
+        ])}
       />
     );
     await waitFor(() => expect(mounts).toBe(4));
@@ -239,7 +387,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       <PageCanvas
         content={pageContent('Demand')}
         runtimeBlocks={[runtimeBlock('Demand')]}
-        runtimePreparations={[preparation('source-a', 0, LifecycleBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-a', 0, LifecycleBlock)
+        ])}
       />
     );
     const root = await nativeRoot();
@@ -255,7 +405,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       <PageCanvas
         content={pageContent('Demand')}
         runtimeBlocks={[runtimeBlock('Demand')]}
-        runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-a', 1, LifecycleBlock)
+        ])}
       />
     );
     expect(mounts).toBe(1);
@@ -265,9 +417,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         <PageCanvas
           content={pageContent('Demand')}
           runtimeBlocks={[runtimeBlock('Demand')]}
-          runtimePreparations={[
+          runtimePreparations={createNativePreparationSource([
             preparation('source-a', priority, LifecycleBlock)
-          ]}
+          ])}
         />
       );
       expect(
@@ -309,7 +461,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Context state')}
         runtimeBlocks={[runtimeBlock('Context state')]}
         runtimeContext={runtimeContext('light')}
-        runtimePreparations={[ready]}
+        runtimePreparations={createNativePreparationSource([ready])}
       />
     );
     const root = await nativeRoot();
@@ -324,7 +476,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Context state')}
         runtimeBlocks={[runtimeBlock('Context state')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[ready]}
+        runtimePreparations={createNativePreparationSource([ready])}
       />
     );
 
@@ -356,7 +508,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Sizing')}
         runtimeBlocks={[runtimeBlock('Sizing')]}
         runtimeContext={runtimeContext('light')}
-        runtimePreparations={[ready]}
+        runtimePreparations={createNativePreparationSource([ready])}
       />
     );
 
@@ -388,7 +540,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Sizing')}
         runtimeBlocks={[runtimeBlock('Sizing')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[ready]}
+        runtimePreparations={createNativePreparationSource([ready])}
       />
     );
 
@@ -404,7 +556,9 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Plain')}
         runtimeBlocks={[runtimeBlock('Plain')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[preparation('source-b', 1, PlainBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('source-b', 1, PlainBlock)
+        ])}
       />
     );
     await within(root.shadow).findByTestId('plain-native-block');
@@ -445,11 +599,15 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         <PageCanvas
           content={pageContent('Retry')}
           runtimeBlocks={[runtimeBlock('Retry')]}
-          runtimePreparations={[preparation('source-a', 1, RecoveringBlock)]}
+          runtimePreparations={createNativePreparationSource([
+            preparation('source-a', 1, RecoveringBlock)
+          ])}
         />
       );
       const firstPublish = contexts.at(-1)!.outputs.publish;
-      const retry = await screen.findByRole('button', { name: /重\s*试/ });
+      const retry = await screen.findByRole('button', {
+        name: i18nText('frontstage', 'auto.retry')
+      });
       shouldThrow = false;
       fireEvent.click(retry);
 

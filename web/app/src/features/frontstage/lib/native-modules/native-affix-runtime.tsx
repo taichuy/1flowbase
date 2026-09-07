@@ -1,7 +1,14 @@
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
-import { Affix as AntdAffix, type AffixProps, type AffixRef } from 'antd';
+import {
+  Affix as AntdAffix,
+  ConfigProvider,
+  type AffixProps,
+  type AffixRef
+} from 'antd';
 import {
   forwardRef,
+  useContext,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -34,6 +41,11 @@ export const NativeBlockAffix = forwardRef<AffixRef, AffixProps>(
     const surface = useNativeBlockSurface();
     const surfaceScrollOwner = surface?.scrollOwner;
     const targetRoot = surface?.targetRoot;
+    const { getPrefixCls } = useContext(ConfigProvider.ConfigContext);
+    const affixInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+    // Each Affix owns a ShadowRoot, so equal cssinjs paths must not deduplicate
+    // across sibling roots during the same render batch.
+    const affixStyleScope = `${getPrefixCls()}-affix-${affixInstanceId}`;
     const sentinelRef = useRef<HTMLSpanElement | null>(null);
     const placeholderRef = useRef<HTMLDivElement | null>(null);
     const onChangeRef = useRef(onChange);
@@ -138,9 +150,11 @@ export const NativeBlockAffix = forwardRef<AffixRef, AffixProps>(
         {portal
           ? createPortal(
               <StyleProvider cache={styleCache} container={portal.shadowRoot}>
-                <div className={mergedClassName || undefined} style={style}>
-                  {children}
-                </div>
+                <ConfigProvider prefixCls={affixStyleScope}>
+                  <div className={mergedClassName || undefined} style={style}>
+                    {children}
+                  </div>
+                </ConfigProvider>
               </StyleProvider>,
               portal.mountElement
             )

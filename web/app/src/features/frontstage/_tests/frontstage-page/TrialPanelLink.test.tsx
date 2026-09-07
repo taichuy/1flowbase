@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,
   fireEvent,
@@ -28,7 +29,7 @@ const blockCodeHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
-    preparations: [],
+    preparations: createNativePreparationSource([]),
     retryBlock: vi.fn()
   }))
 }));

@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,
   fireEvent,
@@ -16,9 +17,7 @@ import {
   resetFrontstageDesignModeStore,
   useFrontstageDesignModeStore
 } from '../../../../state/frontstage-design-mode-store';
-import type {
-  FrontstagePageContent
-} from '../../api/page-content';
+import type { FrontstagePageContent } from '../../api/page-content';
 import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
@@ -38,7 +37,7 @@ const blockCodeHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
-    preparations: [],
+    preparations: createNativePreparationSource([]),
     retryBlock: vi.fn()
   }))
 }));
@@ -456,10 +455,7 @@ describe('FrontStagePage block arrange actions', () => {
             }
           ]}
           pageContent={createPageContent()}
-          blockRoots={[
-            createBlockRoot('hero', 0),
-            createBlockRoot('cta', 1)
-          ]}
+          blockRoots={[createBlockRoot('hero', 0), createBlockRoot('cta', 1)]}
         />
       </AppProviders>
     );

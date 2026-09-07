@@ -25,7 +25,7 @@ import {
 import {
   FrontstageNativePreparationScheduler,
   prepareFrontstageNativeContribution,
-  type FrontstageNativePreparationSnapshot,
+  type FrontstageNativePreparationSource,
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
 import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
@@ -72,7 +72,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 }
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
-  preparations: FrontstageNativePreparationSnapshot[];
+  preparations: FrontstageNativePreparationSource;
   noteInteraction(): void;
   retryBlock(blockId: string): void;
   refreshBlock(blockId: string): void;
@@ -94,20 +94,12 @@ export function useFrontstagePageCanvasNativePreparations({
     () => new FrontstageNativePreparationScheduler(maxConcurrent),
     [maxConcurrent]
   );
-  const [preparations, setPreparations] = useState<
-    FrontstageNativePreparationSnapshot[]
-  >([]);
   const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
     useState<Record<string, number>>({});
   const componentFactoryFlights = useMemo(
     () => new Map<string, Promise<NativeComponentFlight>>(),
     []
   );
-  useEffect(
-    () => scheduler.subscribe(() => setPreparations(scheduler.getSnapshots())),
-    [scheduler]
-  );
-
   const tasks = useMemo<FrontstageNativePreparationTask[]>(() => {
     if (
       !actorId ||
@@ -335,7 +327,7 @@ export function useFrontstagePageCanvasNativePreparations({
     },
     [readPlan]
   );
-  return { preparations, noteInteraction, retryBlock, refreshBlock };
+  return { preparations: scheduler, noteInteraction, retryBlock, refreshBlock };
 }
 
 async function defaultFetchSource(

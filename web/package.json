@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "preinstall": "node scripts/verify-react-grid-layout-patch.mjs",
+    "preinstall": "node scripts/verify-react-grid-layout-patch.mjs && node scripts/verify-rc-drawer-motion-patch.mjs",
     "dev": "turbo run dev --parallel --filter=@1flowbase/web",
     "dev:app": "pnpm --filter @1flowbase/web dev",
     "build": "turbo run build",

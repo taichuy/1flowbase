@@ -7,6 +7,7 @@ import {
   addConsoleNetworkEgressProviderToPool,
   deleteConsoleNetworkEgressPool,
   deleteConsoleNetworkEgressPoolMember,
+  deleteConsoleNetworkEgressPoolMembers,
   createConsoleNetworkEgressRoute,
   deleteConsoleNetworkEgressRoute,
   listConsoleNetworkEgressProviders,
@@ -38,6 +39,7 @@ import {
   type CreateConsoleNetworkEgressProxyInput,
   type UpdateConsoleNetworkEgressPoolInput,
   type UpdateConsoleNetworkEgressPoolMemberInput,
+  type DeleteConsoleNetworkEgressPoolMembersInput,
   type UpdateConsoleNetworkEgressRouteInput,
   type UpdateConsoleNetworkEgressProviderLifecycleInput,
   switchConsoleNetworkEgressPluginVersion,
@@ -69,6 +71,8 @@ export type AddSettingsNetworkEgressProviderToPoolInput =
   AddConsoleNetworkEgressProviderToPoolInput;
 export type UpdateSettingsNetworkEgressPoolMemberInput =
   UpdateConsoleNetworkEgressPoolMemberInput;
+export type DeleteSettingsNetworkEgressPoolMembersInput =
+  DeleteConsoleNetworkEgressPoolMembersInput;
 export type SettingsNetworkEgressRoute = ConsoleNetworkEgressRoute;
 export type CreateSettingsNetworkEgressRouteInput =
   CreateConsoleNetworkEgressRouteInput;
@@ -295,4 +299,12 @@ export function deleteSettingsNetworkEgressPoolMember(
   csrfToken: string
 ) {
   return deleteConsoleNetworkEgressPoolMember(poolId, memberId, csrfToken);
+}
+
+export function deleteSettingsNetworkEgressPoolMembers(
+  poolId: string,
+  input: DeleteSettingsNetworkEgressPoolMembersInput,
+  csrfToken: string
+) {
+  return deleteConsoleNetworkEgressPoolMembers(poolId, input, csrfToken);
 }

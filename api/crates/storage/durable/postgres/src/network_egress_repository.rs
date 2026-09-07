@@ -709,6 +709,74 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         }
         Ok(())
     }
+
+    async fn delete_network_egress_pool_members(
+        &self,
+        pool_id: Uuid,
+        member_ids: &[Uuid],
+    ) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+        let existing_ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+                select id from network_egress_pool_members
+                where pool_id = $1 and id = any($2)
+                for update
+            "#,
+        )
+        .bind(pool_id)
+        .bind(member_ids)
+        .fetch_all(&mut *transaction)
+        .await?;
+        if existing_ids.len() != member_ids.len() {
+            return Err(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_pool_member",
+                )
+                .into(),
+            );
+        }
+        sqlx::query("delete from network_egress_pool_members where pool_id = $1 and id = any($2)")
+            .bind(pool_id)
+            .bind(member_ids)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| match &error {
+                sqlx::Error::Database(database_error)
+                    if database_error.constraint()
+                        == Some("network_egress_route_pool_members_member_fk") =>
+                {
+                    anyhow::Error::new(
+                        control_plane_contracts::ControlPlaneContractError::Conflict(
+                            "network_egress_pool_member_in_use",
+                        ),
+                    )
+                }
+                _ => error.into(),
+            })?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    async fn delete_all_network_egress_pool_members(&self, pool_id: Uuid) -> Result<()> {
+        sqlx::query("delete from network_egress_pool_members where pool_id = $1")
+            .bind(pool_id)
+            .execute(self.pool())
+            .await
+            .map_err(|error| match &error {
+                sqlx::Error::Database(database_error)
+                    if database_error.constraint()
+                        == Some("network_egress_route_pool_members_member_fk") =>
+                {
+                    anyhow::Error::new(
+                        control_plane_contracts::ControlPlaneContractError::Conflict(
+                            "network_egress_pool_member_in_use",
+                        ),
+                    )
+                }
+                _ => error.into(),
+            })?;
+        Ok(())
+    }
 }
 
 #[async_trait]

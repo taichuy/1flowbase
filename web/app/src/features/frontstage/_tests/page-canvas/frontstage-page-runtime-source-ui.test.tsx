@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from './fixtures/native-preparation-source';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -165,7 +166,7 @@ function mockNativePreparations(
 ) {
   nativePreparationsHook.useFrontstagePageCanvasNativePreparations.mockReturnValue(
     {
-      preparations,
+      preparations: createNativePreparationSource(preparations),
       retryBlock: vi.fn()
     }
   );
@@ -301,9 +302,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
     await waitFor(() => {
       expect(
         nativePreparationsHook.useFrontstagePageCanvasNativePreparations
-      ).toHaveBeenCalledWith(
-        expect.any(Object)
-      );
+      ).toHaveBeenCalledWith(expect.any(Object));
     });
   });
 

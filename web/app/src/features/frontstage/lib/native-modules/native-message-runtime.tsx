@@ -1,11 +1,5 @@
 import { message as AntdMessage } from 'antd';
-import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useNativeBlockSurface } from './native-block-surface-context';
 import {
@@ -22,7 +16,6 @@ function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
   const surface = useNativeBlockSurface();
   const [layer, setLayer] = useState<NativeOverlayLayer | null>(null);
   const activeNotices = useRef(new Set<symbol>());
-  const previousLayoutEpoch = useRef(surface?.layoutEpoch);
   const targetRoot = surface?.targetRoot;
   const configuredContainer = config?.getContainer;
   const usesNativeLayer = !!targetRoot && !configuredContainer;
@@ -33,9 +26,8 @@ function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
       return;
     }
     const blockId =
-      targetRoot.host.getAttribute(
-        'data-flowbase-native-trusted-block-id'
-      ) ?? 'native-message';
+      targetRoot.host.getAttribute('data-flowbase-native-trusted-block-id') ??
+      'native-message';
     const nextLayer = createNativeOverlayLayer({ blockId, targetRoot });
     nextLayer.container.dataset.flowbaseNativeMessageLayer = '';
     setLayer(nextLayer);
@@ -98,23 +90,23 @@ function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
     [messageApi, trackNotice]
   );
 
-  useLayoutEffect(() => {
-    const nextLayoutEpoch = surface?.layoutEpoch;
-    if (previousLayoutEpoch.current === nextLayoutEpoch) return;
-    previousLayoutEpoch.current = nextLayoutEpoch;
+  const reset = useCallback(() => {
     activeNotices.current.clear();
     messageApi.destroy();
     layer?.deactivate();
-  }, [layer, messageApi, surface?.layoutEpoch]);
+  }, [layer, messageApi]);
 
-  useLayoutEffect(
-    () => () => {
-      activeNotices.current.clear();
-      messageApi.destroy();
-      layer?.deactivate();
-    },
-    [layer, messageApi]
-  );
+  useLayoutEffect(() => {
+    if (!surface) return;
+    const unregister = surface.registerEffectResource({
+      invalidate: reset,
+      dispose: reset
+    });
+    return () => {
+      unregister();
+      reset();
+    };
+  }, [reset, surface]);
 
   return [nativeMessageApi, contextHolder];
 }

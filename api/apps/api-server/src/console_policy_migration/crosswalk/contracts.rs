@@ -332,6 +332,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "network_egress_plugins.families.uninstall",
             "network_egress_pool_members.create",
             "network_egress_pool_members.delete",
+            "network_egress_pool_members.batch_delete",
             "network_egress_pool_members.test_connection",
             "network_egress_pool_members.update",
             "network_egress_pools.create",

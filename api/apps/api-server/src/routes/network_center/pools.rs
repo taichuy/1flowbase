@@ -72,6 +72,13 @@ pub struct UpdateNetworkEgressPoolMemberBody {
     pub sequence: i32,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(tag = "selection", rename_all = "snake_case")]
+pub enum DeleteNetworkEgressPoolMembersBody {
+    Selected { member_ids: Vec<String> },
+    All,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NetworkEgressPoolMemberResponse {
     pub id: String,
@@ -156,6 +163,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(
                 add_provider_egresses_to_pool,
                 ConsoleOperation("network_egress_pool_members.create".to_string()),
+            ),
+        )
+        .route(
+            "/network-center/pools/:pool_id/members/batch",
+            crate::routes::console_route_assembly::console_delete(
+                delete_network_egress_pool_members,
+                ConsoleOperation("network_egress_pool_members.batch_delete".to_string()),
             ),
         )
         .route(
@@ -529,6 +543,33 @@ pub async fn delete_network_egress_pool_member(
     .await?;
     let super::pools_interface::NetworkPoolsOutput::Deleted = output else {
         unreachable!("network pool member delete binding returned a different output")
+    };
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/network-center/pools/{pool_id}/members/batch",
+    operation_id = "network_egress_pool_members_batch_delete",
+    params(("pool_id" = String, Path, description = "Network egress pool id")),
+    request_body = DeleteNetworkEgressPoolMembersBody,
+    responses((status = 204), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn delete_network_egress_pool_members(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(pool_id): Path<String>,
+    Json(body): Json<DeleteNetworkEgressPoolMembersBody>,
+) -> Result<StatusCode, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.batch-delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::DeleteMembers { pool_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Deleted = output else {
+        unreachable!("network pool member batch delete binding returned a different output")
     };
     Ok(StatusCode::NO_CONTENT)
 }

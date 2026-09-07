@@ -433,6 +433,15 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
                     availability: "available".to_string(),
                     synced_at,
                 },
+                domain::NetworkEgressProjectionRecord {
+                    provider_id,
+                    provider_egress_key: "unreferenced-third".to_string(),
+                    display_name: "Unreferenced third".to_string(),
+                    region: Some("test-c".to_string()),
+                    tags: vec!["fixture".to_string()],
+                    availability: "available".to_string(),
+                    synced_at,
+                },
             ],
         },
     )
@@ -467,6 +476,17 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         })
         .await
         .expect("current available descriptor should join the pool");
+    let unreferenced = NetworkEgressPoolService::new(store.clone())
+        .add_member(CreateNetworkEgressPoolMemberCommand {
+            actor_user_id: actor.id,
+            pool_id,
+            provider_id,
+            provider_egress_key: "unreferenced-third".to_string(),
+            enabled: true,
+            sequence: 20,
+        })
+        .await
+        .expect("unreferenced member should join the pool");
     assert_eq!(unavailable.health.as_str(), "unhealthy");
     assert_eq!(available.health.as_str(), "not_tested");
 
@@ -537,6 +557,39 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
         .to_string()
         .contains("network_egress_pool_member_in_use"));
 
+    let delete_selected = NetworkEgressPoolService::new(store.clone())
+        .delete_members(
+            actor.id,
+            pool_id,
+            vec![available.member.id, unreferenced.member.id],
+        )
+        .await
+        .expect_err("AC-003 selected deletion must be atomic when one member is referenced");
+    assert!(delete_selected
+        .to_string()
+        .contains("network_egress_pool_member_in_use"));
+    let members_after_selected_failure =
+        NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
+            .await
+            .expect("members should remain readable after rejected selected deletion");
+    assert_eq!(members_after_selected_failure.len(), 3);
+    assert!(members_after_selected_failure
+        .iter()
+        .any(|member| member.id == unreferenced.member.id));
+
+    let delete_all = NetworkEgressPoolService::new(store.clone())
+        .delete_all_members(actor.id, pool_id)
+        .await
+        .expect_err("AC-003 delete all must be atomic when one member is referenced");
+    assert!(delete_all
+        .to_string()
+        .contains("network_egress_pool_member_in_use"));
+    let members_after_delete_all_failure =
+        NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
+            .await
+            .expect("all members should remain after rejected delete all");
+    assert_eq!(members_after_delete_all_failure.len(), 3);
+
     NetworkEgressRepository::replace_network_egress_projection(
         &store,
         &ReplaceNetworkEgressProjectionInput {
@@ -579,6 +632,35 @@ async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_
     assert_eq!(
         stopped.lifecycle,
         domain::NetworkEgressProviderLifecycle::Disabled
+    );
+
+    NetworkEgressRouteService::new(store.clone())
+        .delete(actor.id, workspace_id, route.id)
+        .await
+        .expect("route deletion should release its proxy member references");
+    NetworkEgressPoolService::new(store.clone())
+        .delete_members(
+            actor.id,
+            pool_id,
+            vec![available.member.id, unreferenced.member.id],
+        )
+        .await
+        .expect("AC-001 selected deletion should remove every requested member");
+    let members_after_selected_delete =
+        NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
+            .await
+            .expect("remaining members should stay readable");
+    assert_eq!(members_after_selected_delete.len(), 1);
+    assert_eq!(members_after_selected_delete[0].id, unavailable.member.id);
+    NetworkEgressPoolService::new(store.clone())
+        .delete_all_members(actor.id, pool_id)
+        .await
+        .expect("AC-002 delete all should empty the pool after references are released");
+    assert!(
+        NetworkEgressPoolRepository::list_network_egress_pool_members(&store, pool_id)
+            .await
+            .expect("the empty pool should remain readable")
+            .is_empty()
     );
 
     let columns = sqlx::query_scalar::<_, String>(

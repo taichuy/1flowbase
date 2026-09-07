@@ -1177,6 +1177,7 @@ pub(crate) fn production_interface_contributions(
                 "network_egress_pool_members.add_provider_egresses",
                 "network_egress_pool_members.update",
                 "network_egress_pool_members.delete",
+                "network_egress_pool_members.batch_delete",
             ],
             &["api-server.console-network-pools"],
             crate::routes::network_center::pools_interface::compile_registry(

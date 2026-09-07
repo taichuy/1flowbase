@@ -113,6 +113,12 @@ export type FrontstageNativePreparationSnapshot =
     })
   | (FrontstageNativePreparationSnapshotBase & { status: 'disposed' });
 
+/** Read-only per-Block view; ordering and task control remain with the scheduler. */
+export interface FrontstageNativePreparationSource {
+  getBlockSnapshot(blockId: string): FrontstageNativePreparationSnapshot | null;
+  subscribeBlock(blockId: string, listener: () => void): () => void;
+}
+
 export interface FrontstageNativePreparationTask {
   blockId: string;
   slotIndex: number;
@@ -147,9 +153,10 @@ export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
 export const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
-export class FrontstageNativePreparationScheduler {
+export class FrontstageNativePreparationScheduler implements FrontstageNativePreparationSource {
   private readonly scheduled = new Map<string, ScheduledPreparation>();
   private readonly listeners = new Set<() => void>();
+  private readonly blockListeners = new Map<string, Set<() => void>>();
   private visible = true;
   private interactionLeaseUntilMs = 0;
 
@@ -166,6 +173,25 @@ export class FrontstageNativePreparationScheduler {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  getBlockSnapshot(
+    blockId: string
+  ): FrontstageNativePreparationSnapshot | null {
+    return this.scheduled.get(blockId)?.snapshot ?? null;
+  }
+
+  subscribeBlock(blockId: string, listener: () => void): () => void {
+    let listeners = this.blockListeners.get(blockId);
+    if (!listeners) {
+      listeners = new Set();
+      this.blockListeners.set(blockId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.blockListeners.delete(blockId);
+    };
   }
 
   /** Gives browser input and ready-instance updates priority over new heavy stages. */
@@ -190,7 +216,7 @@ export class FrontstageNativePreparationScheduler {
     tasks: readonly FrontstageNativePreparationTask[],
     demands: FrontstageRuntimeDemandByBlockId | undefined
   ): void {
-    let snapshotsChanged = false;
+    const changedBlockIds = new Set<string>();
     const nextBlockIds = new Set(tasks.map(({ blockId }) => blockId));
     for (const [blockId, current] of this.scheduled) {
       if (!nextBlockIds.has(blockId)) {
@@ -198,7 +224,7 @@ export class FrontstageNativePreparationScheduler {
         current.generation += 1;
         current.snapshot = this.snapshot(current, 'disposed');
         this.scheduled.delete(blockId);
-        snapshotsChanged = true;
+        changedBlockIds.add(blockId);
       }
     }
 
@@ -222,7 +248,7 @@ export class FrontstageNativePreparationScheduler {
           observedAtMs: 0
         };
         this.scheduled.set(task.blockId, current);
-        snapshotsChanged = true;
+        changedBlockIds.add(task.blockId);
       } else if (current.task.identity !== task.identity) {
         current.abortController?.abort();
         current.task = task;
@@ -230,7 +256,7 @@ export class FrontstageNativePreparationScheduler {
         current.generation += 1;
         current.abortController = null;
         current.snapshot = this.snapshot(current, 'idle');
-        snapshotsChanged = true;
+        changedBlockIds.add(task.blockId);
       } else {
         const placementChanged =
           current.priority !== priority ||
@@ -247,13 +273,13 @@ export class FrontstageNativePreparationScheduler {
             current.snapshot.prepared,
             current.snapshot.mountIntent
           );
-          snapshotsChanged = true;
+          changedBlockIds.add(task.blockId);
         } else if (placementChanged) {
           current.snapshot = {
             ...current.snapshot,
             ...this.baseSnapshot(current)
           };
-          snapshotsChanged = true;
+          changedBlockIds.add(task.blockId);
         }
       }
 
@@ -262,18 +288,18 @@ export class FrontstageNativePreparationScheduler {
           current.abortController.abort();
           current.abortController = null;
           current.generation += 1;
-          snapshotsChanged = true;
+          changedBlockIds.add(task.blockId);
         }
         if (
           current.snapshot.status !== 'ready' &&
           current.snapshot.status !== 'idle'
         ) {
           current.snapshot = this.snapshot(current, 'idle');
-          snapshotsChanged = true;
+          changedBlockIds.add(task.blockId);
         }
       }
     }
-    if (snapshotsChanged) this.emit();
+    if (changedBlockIds.size > 0) this.emit(changedBlockIds);
     this.pump();
   }
 
@@ -290,7 +316,7 @@ export class FrontstageNativePreparationScheduler {
     current.abortController = null;
     current.generation += 1;
     current.snapshot = this.snapshot(current, 'idle');
-    this.emit();
+    this.emit([current.task.blockId]);
     this.pump();
   }
 
@@ -301,8 +327,9 @@ export class FrontstageNativePreparationScheduler {
       current.generation += 1;
       current.snapshot = this.snapshot(current, 'disposed');
     }
-    this.emit();
+    const blockIds = [...this.scheduled.keys()];
     this.scheduled.clear();
+    this.emit(blockIds);
   }
 
   private pump(): void {
@@ -342,7 +369,7 @@ export class FrontstageNativePreparationScheduler {
     current.snapshot = this.snapshot(current, 'source_fetch');
     current.observedAtMs = Date.now();
     this.observe(current, generation, 'source_fetch', 'network');
-    this.emit();
+    this.emit([current.task.blockId]);
 
     const enterStage = async (
       stage: FrontstageNativePreparationActiveStage,
@@ -356,20 +383,16 @@ export class FrontstageNativePreparationScheduler {
       }
       current.snapshot = this.snapshot(current, stage);
       this.observe(current, generation, stage, cacheTier);
-      this.emit();
+      this.emit([current.task.blockId]);
     };
     void current.task
       .prepare(abortController.signal, enterStage)
       .then(async (prepared) => {
-        await this.admitMainThreadStage(
-          current,
-          generation,
-          abortController
-        );
+        await this.admitMainThreadStage(current, generation, abortController);
         if (!this.isCurrent(current, generation, abortController)) return;
         current.abortController = null;
         current.snapshot = this.readySnapshot(current, prepared);
-        this.emit();
+        this.emit([current.task.blockId]);
         this.pump();
       })
       .catch((error: unknown) => {
@@ -388,7 +411,7 @@ export class FrontstageNativePreparationScheduler {
           failedStage,
           error: toError(error)
         };
-        this.emit();
+        this.emit([current.task.blockId]);
         this.pump();
       });
   }
@@ -481,7 +504,11 @@ export class FrontstageNativePreparationScheduler {
     };
   }
 
-  private emit(): void {
+  private emit(blockIds: Iterable<string>): void {
+    // Reconcile completes the whole batch before consumers read any changed snapshot.
+    for (const blockId of blockIds) {
+      for (const listener of this.blockListeners.get(blockId) ?? []) listener();
+    }
     for (const listener of this.listeners) listener();
   }
 }
@@ -519,7 +546,10 @@ async function schedulePreparationTurn(
       scheduler?: {
         postTask(
           callback: () => void,
-          options: { priority: FrontstageBrowserTaskPriority; signal: AbortSignal }
+          options: {
+            priority: FrontstageBrowserTaskPriority;
+            signal: AbortSignal;
+          }
         ): Promise<void>;
       };
     }

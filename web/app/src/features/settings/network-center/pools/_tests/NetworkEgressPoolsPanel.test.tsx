@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const networkCenterApi = vi.hoisted(() => ({
   settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'] as const,
@@ -12,12 +12,14 @@ const networkCenterApi = vi.hoisted(() => ({
   createSettingsNetworkEgressProxy: vi.fn(),
   testSettingsNetworkEgressPoolMember: vi.fn(),
   updateSettingsNetworkEgressPoolMember: vi.fn(),
-  deleteSettingsNetworkEgressPoolMember: vi.fn()
+  deleteSettingsNetworkEgressPoolMember: vi.fn(),
+  deleteSettingsNetworkEgressPoolMembers: vi.fn()
 }));
 
 vi.mock('../../../api/network-center', () => networkCenterApi);
 
 import { AppI18nProvider } from '../../../../../app/AppI18nProvider';
+import { loadApplicationI18nResources } from '../../../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { NetworkEgressPoolsPanel } from '../NetworkEgressPoolsPanel';
 
@@ -67,6 +69,10 @@ function proxyPoolMember(index: number) {
 }
 
 describe('NetworkEgressPoolsPanel', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useAuthStore.setState({ csrfToken: 'csrf-123' });
@@ -465,7 +471,9 @@ describe('NetworkEgressPoolsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
 
     await waitFor(() => expect(networkCenterApi.updateSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', { enabled: true, sequence: 2 }, 'csrf-123'));
-    expect(screen.getByRole('button', { name: /删除|Delete/ })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: /^(删\s*除|Delete)$/ }).length
+    ).toBeGreaterThan(0);
   });
 
   test('AC-OP04 exposes a successful HTTP egress and failed HTTPS CONNECT separately', async () => {
@@ -504,5 +512,81 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(screen.getByText('HTTPS 不可用')).toBeInTheDocument();
     expect(screen.getByText('HTTPS CONNECT 被拒绝')).toBeInTheDocument();
     expect(screen.getByText('California')).toBeInTheDocument();
+  });
+
+  test('AC-001 deletes selected members with a concise toolbar label and count in confirmation', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      {
+        id: 'global-pool',
+        display_name: 'Global proxy pool',
+        selection_strategy: 'healthy_first',
+        members: Array.from({ length: 21 }, (_, index) =>
+          proxyPoolMember(index + 1)
+        )
+      }
+    ]);
+    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(undefined);
+    renderPanel();
+
+    await screen.findByText('Proxy 1');
+    const toolbar = document.querySelector('.data-table__toolbar');
+    expect(toolbar).not.toBeNull();
+    const deleteButton = within(toolbar as HTMLElement).getByRole('button', {
+      name: /^(删\s*除|Delete)$/
+    });
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByTitle(/下一页|Next Page/));
+    await screen.findByText('Proxy 21');
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(deleteButton).toBeEnabled();
+    fireEvent.click(deleteButton);
+
+    expect(await screen.findByText(/删除选中的 2 个代理|Delete 2 selected proxies/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    await waitFor(() =>
+      expect(networkCenterApi.deleteSettingsNetworkEgressPoolMembers).toHaveBeenCalledWith(
+        'global-pool',
+        { selection: 'selected', member_ids: ['member-1', 'member-21'] },
+        'csrf-123'
+      )
+    );
+  });
+
+  test('AC-002 deletes every pool member regardless of the current filter', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      {
+        id: 'global-pool',
+        display_name: 'Global proxy pool',
+        selection_strategy: 'healthy_first',
+        members: [proxyPoolMember(1), proxyPoolMember(2), proxyPoolMember(3)]
+      }
+    ]);
+    networkCenterApi.deleteSettingsNetworkEgressPoolMembers.mockResolvedValue(undefined);
+    renderPanel();
+
+    await screen.findByText('Proxy 1');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Proxy 1' } });
+    const filterForm = screen.getByRole('form', { name: /搜索代理|Search proxies/ });
+    fireEvent.submit(filterForm);
+    await waitFor(() => expect(screen.queryByText('Proxy 2')).not.toBeInTheDocument());
+
+    const toolbar = document.querySelector('.data-table__toolbar');
+    expect(toolbar).not.toBeNull();
+    fireEvent.click(
+      within(toolbar as HTMLElement).getByRole('button', {
+        name: /全部删除|Delete all/
+      })
+    );
+    expect(await screen.findByText(/删除代理池中的全部 3 个代理|Delete all 3 proxies in the pool/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    await waitFor(() =>
+      expect(networkCenterApi.deleteSettingsNetworkEgressPoolMembers).toHaveBeenCalledWith(
+        'global-pool',
+        { selection: 'all' },
+        'csrf-123'
+      )
+    );
   });
 });

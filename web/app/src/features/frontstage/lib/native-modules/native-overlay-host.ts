@@ -59,13 +59,36 @@ function isVisibleOverlayElement(
   element: Element,
   ownerWindow: Window | null
 ): boolean {
-  if (
-    element.hasAttribute('hidden') ||
-    element.getAttribute('aria-hidden') === 'true' ||
-    /(?:^|\s)[^\s]*-hidden(?:\s|$)/u.test(element.className)
-  ) {
+  if (!isVisibleThroughOverlayRoot(element, element, ownerWindow)) {
     return false;
   }
-  const style = ownerWindow?.getComputedStyle(element);
-  return style?.display !== 'none' && style?.visibility !== 'hidden';
+  const descendants = element.querySelectorAll('*');
+  if (descendants.length === 0) return true;
+  return Array.from(descendants).some((candidate) =>
+    isVisibleThroughOverlayRoot(candidate, element, ownerWindow)
+  );
+}
+
+function isVisibleThroughOverlayRoot(
+  element: Element,
+  overlayRoot: Element,
+  ownerWindow: Window | null
+): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (
+      current.hasAttribute('hidden') ||
+      current.getAttribute('aria-hidden') === 'true' ||
+      /(?:^|\s)[^\s]*-hidden(?:\s|$)/u.test(current.className)
+    ) {
+      return false;
+    }
+    const style = ownerWindow?.getComputedStyle(current);
+    if (style?.display === 'none' || style?.visibility === 'hidden') {
+      return false;
+    }
+    if (current === overlayRoot) return true;
+    current = current.parentElement;
+  }
+  return false;
 }

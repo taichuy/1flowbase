@@ -2,6 +2,7 @@ import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
+  resolveFrontendBlockRuntimeSurfacePolicy,
   type FrontendBlockContextPrimitive,
   type FrontendBlockRuntime,
   type FrontendBlockUiCapability
@@ -162,13 +163,19 @@ export function normalizeFrontstageBlockCatalog(
 export function isFrontstageBlockNativeRuntime(
   entry: NormalizedFrontstageBlockCatalogEntry | FrontstageBlockRuntimeKind
 ): boolean {
-  return getRuntimeKind(entry) === 'native_react';
+  return (
+    resolveFrontendBlockRuntimeSurfacePolicy(getRuntimeKind(entry))
+      ?.positioningOwner === 'surface'
+  );
 }
 
 export function isFrontstageBlockIsolatedRuntime(
   entry: NormalizedFrontstageBlockCatalogEntry | FrontstageBlockRuntimeKind
 ): boolean {
-  return getRuntimeKind(entry) === 'isolated_iframe';
+  return (
+    resolveFrontendBlockRuntimeSurfacePolicy(getRuntimeKind(entry))
+      ?.positioningOwner === 'realm_viewport'
+  );
 }
 
 export function supportsFrontstageBlockCapability(

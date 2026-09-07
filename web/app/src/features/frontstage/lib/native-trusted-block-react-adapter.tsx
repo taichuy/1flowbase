@@ -52,6 +52,7 @@ import {
 } from './native-modules/native-block-surface-context';
 import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
 import { createNativeOverlayHost } from './native-modules/native-overlay-host';
+import { NativeBlockAntdEffectScope } from './native-modules/native-notification-runtime';
 import {
   createNativeBlockSurfaceRuntime,
   type NativeBlockSurfaceRuntime
@@ -568,7 +569,9 @@ function wrapWithHostProviders(
         theme={providerScope?.theme}
       >
         <NativeBlockSurfaceProvider scope={surfaceRuntime}>
-          <AntdApp>{children}</AntdApp>
+          <AntdApp>
+            <NativeBlockAntdEffectScope>{children}</NativeBlockAntdEffectScope>
+          </AntdApp>
         </NativeBlockSurfaceProvider>
       </ConfigProvider>
     </StyleProvider>
