@@ -103,3 +103,120 @@ fn root_1998_any_business_mount_cannot_claim_a_get_control() {
         matches!(compiler.compile_complete(&registry), Err(ExternalEndpointCatalogError::UnclassifiedRows { identities }) if identities.contains(&ExternalEndpointIdentity::http("ANY", "/health")))
     );
 }
+
+#[tokio::test]
+async fn root_1998_registry_only_http_cannot_claim_an_unmounted_endpoint() {
+    let registry = super::compiled_fixture_registry("/registry-only");
+    for with_openapi in [false, true] {
+        let assembly = ExternalRouteAssembly::<()>::new();
+        let mut compiler = ExternalEndpointCatalogCompiler::default();
+        if with_openapi {
+            compiler
+                .contribute_openapi_document(
+                    "registry-only-openapi",
+                    &serde_json::json!({"paths":{"/registry-only":{"get":{}}}}),
+                )
+                .unwrap();
+        }
+        compiler
+            .absorb_registry("registry-only", &registry)
+            .unwrap();
+        compiler
+            .contribute_mounted_routes(&assembly.contributions())
+            .unwrap();
+        assert!(matches!(compiler.compile_complete(&registry),
+            Err(ExternalEndpointCatalogError::UnmountedHttpRows { identities })
+                if identities == vec![ExternalEndpointIdentity::http("GET", "/registry-only")]
+        ));
+        let response = assembly
+            .into_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/registry-only")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
+
+#[test]
+fn root_1998_complete_catalog_requires_actual_mount_evidence() {
+    let registry = super::compiled_fixture_registry("/registry-only");
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .absorb_registry("registry-only", &registry)
+        .unwrap();
+    assert!(matches!(compiler.compile_complete(&registry),
+        Err(ExternalEndpointCatalogError::UnmountedHttpRows { identities })
+            if identities == vec![ExternalEndpointIdentity::http("GET", "/registry-only")]
+    ));
+}
+
+#[tokio::test]
+async fn root_1998_production_docs_disabled_has_no_phantom_openapi_inventory() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut config = crate::_tests::support::test_config();
+    config.env = crate::config::ApiEnvironment::Production;
+    let router = crate::app_with_state_and_config(std::sync::Arc::clone(&state), &config);
+    let catalog = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .external_endpoint_catalog()
+        .expect("production must publish the mounted catalog");
+    for path in ["/openapi.json", "/docs", "/docs/*rest"] {
+        assert!(catalog
+            .row(&ExternalEndpointIdentity::http("GET", path))
+            .is_none());
+        assert!(catalog
+            .row(&ExternalEndpointIdentity::http_variant(
+                "HEAD",
+                path,
+                "get-mirror"
+            ))
+            .is_none());
+        assert!(catalog
+            .row(&ExternalEndpointIdentity::http_variant(
+                "OPTIONS",
+                path,
+                "cors-preflight"
+            ))
+            .is_none());
+    }
+    for path in ["/openapi.json", "/docs", "/docs/swagger-ui.css"] {
+        let response = router
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    // Derived protocol rows remain valid when their real HTTP owner is mounted.
+    assert!(catalog
+        .row(&ExternalEndpointIdentity::http_variant(
+            "HEAD",
+            "/health",
+            "get-mirror"
+        ))
+        .is_some());
+    assert!(catalog
+        .row(&ExternalEndpointIdentity::http_variant(
+            "OPTIONS",
+            "/health",
+            "cors-preflight"
+        ))
+        .is_some());
+    let health = router
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+}

@@ -168,6 +168,12 @@ pub(crate) enum ExternalEndpointCatalogError {
     UnclassifiedRows {
         identities: Vec<ExternalEndpointIdentity>,
     },
+    #[error(
+        "external endpoint catalog contains HTTP rows without an executable mount: {identities:?}"
+    )]
+    UnmountedHttpRows {
+        identities: Vec<ExternalEndpointIdentity>,
+    },
     #[error("external endpoint {identity:?} references unknown binding `{binding_id}`")]
     UnknownBinding {
         identity: ExternalEndpointIdentity,
@@ -310,6 +316,7 @@ pub(crate) fn is_approved_external_control_http(method: &str, route_template: &s
 pub(crate) struct ExternalEndpointCatalogCompiler {
     rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
     required_frozen_bindings: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
+    mounted_routes: BTreeSet<ExternalEndpointIdentity>,
 }
 
 impl ExternalEndpointCatalogCompiler {
@@ -319,9 +326,8 @@ impl ExternalEndpointCatalogCompiler {
         &mut self,
         mounted: &[ExternalEndpointContribution],
     ) -> Result<(), ExternalEndpointCatalogError> {
-        let mut seen = BTreeSet::new();
         for contribution in mounted {
-            if !seen.insert(contribution.identity.clone()) {
+            if !self.mounted_routes.insert(contribution.identity.clone()) {
                 return Err(ExternalEndpointCatalogError::DuplicateContribution {
                     origin: contribution.source.clone(),
                     identity: contribution.identity.clone(),
@@ -562,7 +568,9 @@ impl ExternalEndpointCatalogCompiler {
             if !include_docs
                 && matches!(
                     control,
-                    ApprovedExternalControl::Docs | ApprovedExternalControl::DocsAssets
+                    ApprovedExternalControl::Docs
+                        | ApprovedExternalControl::DocsAssets
+                        | ApprovedExternalControl::OpenApi
                 )
             {
                 continue;
@@ -621,6 +629,40 @@ impl ExternalEndpointCatalogCompiler {
         Ok(())
     }
 
+    fn http_endpoint_is_mounted(&self, identity: &ExternalEndpointIdentity) -> bool {
+        if let Some(required) = self.required_frozen_bindings.get(identity) {
+            // Descriptor paths are projections of an explicitly registered wildcard binding.
+            // They are not additional Axum routes, but that binding must itself be mounted.
+            if required != identity {
+                return self.http_endpoint_is_mounted(required);
+            }
+        }
+        let ExternalEndpointIdentity::Http {
+            method,
+            route_template,
+            variant,
+        } = identity
+        else {
+            // MCP protocol methods are semantic projections of the transport, not HTTP routes.
+            return true;
+        };
+        match (method.as_str(), variant.as_deref()) {
+            ("HEAD", Some("get-mirror")) => self.http_endpoint_is_mounted(
+                &ExternalEndpointIdentity::http("GET", route_template),
+            ),
+            ("OPTIONS", Some("cors-preflight")) => self.rows.keys().any(|candidate| {
+                matches!(candidate, ExternalEndpointIdentity::Http {
+                    route_template: path, variant: None, ..
+                } if path == route_template) && self.http_endpoint_is_mounted(candidate)
+            }),
+            _ => self.mounted_routes.iter().any(|mounted| {
+                matches!(mounted, ExternalEndpointIdentity::Http {
+                    method: mounted_method, route_template: mounted_path, variant: None
+                } if mounted_path == route_template && (mounted_method == method || mounted_method == "ANY"))
+            }),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn reject_unapproved_control(
         &self,
@@ -662,6 +704,17 @@ impl ExternalEndpointCatalogCompiler {
                     });
                 }
             }
+        }
+        let unmounted = self
+            .rows
+            .keys()
+            .filter(|identity| !self.http_endpoint_is_mounted(identity))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unmounted.is_empty() {
+            return Err(ExternalEndpointCatalogError::UnmountedHttpRows {
+                identities: unmounted,
+            });
         }
         Ok(ExternalEndpointCatalog { rows: self.rows })
     }

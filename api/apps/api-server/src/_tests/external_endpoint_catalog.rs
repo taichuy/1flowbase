@@ -426,6 +426,13 @@ fn eil_f15_runtime_model_descriptor_routes_use_method_specific_frozen_bindings()
     compiler
         .absorb_registry("compiled-interface-registry", registry.as_ref())
         .unwrap();
+    let mounted = crate::external_route_assembly::ExternalRouteAssembly::new().nest(
+        "/api/runtime",
+        crate::routes::runtime_models::route_assembly(),
+    );
+    compiler
+        .contribute_mounted_routes(&mounted.contributions())
+        .unwrap();
     let catalog = compiler.compile_complete(registry.as_ref()).unwrap();
 
     let paths = document["paths"]
