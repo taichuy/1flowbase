@@ -126,6 +126,8 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   fs.writeFileSync(staleArtifact, 'stale secret from a prior cycle');
   const calls = [];
   const result = await runWorkflowContract(inputs, {
+    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(8).fill({ verdict: 'PASS' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
     createMockUpstream() {
       calls.push('mock:create');
       return {
@@ -237,6 +239,8 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
   const inputs = fixtureInputs();
   const calls = [];
   const result = await runWorkflowContract(inputs, {
+    async runGatewayWebSocketLifecycle() { return { verdict: 'FAIL', rows: Array(8).fill({ verdict: 'FAIL' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'FAIL', rows: Array(20).fill({ verdict: 'FAIL' }) }; },
     createMockUpstream() {
       return {
         async start() { return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },
@@ -259,13 +263,15 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
   assert.deepEqual(calls, ['fixture:close', 'mock:stop']);
   assert.equal(result.error.message.includes('anthropic-application-key-2'), false);
   assert.match(result.error.message, /<redacted>/u);
-  assert.deepEqual(result.protocol_conformance.failures.map((failure) => failure.name), ['wire-audit', 'characterize']);
+  assert.deepEqual(result.protocol_conformance.failures.map((failure) => failure.name), ['wire-audit', 'gateway-websocket-lifecycle', 'gateway-error-matrix', 'characterize']);
 });
 
 test('AC service logs: cleanup persistence failure makes the workflow and cleanup fail', async () => {
   const inputs = fixtureInputs();
   const calls = [];
   const result = await runWorkflowContract(inputs, {
+    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(8).fill({ verdict: 'PASS' }) }; },
+    async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
     createMockUpstream() {
       return {
         async start() { return { httpBaseUrl: 'http://127.0.0.1:4000', websocketBaseUrl: 'ws://127.0.0.1:4000' }; },

@@ -10,12 +10,12 @@ const { queryDurableRun } = require('../responses-websocket-acceptance/durable')
 const { createGatewayTarget } = require('../responses-websocket-acceptance/target');
 const { createWireAudit } = require('../responses-websocket-acceptance/wire-audit');
 
-function clientFrame(payload) {
+function clientFrame(payload, opcode = 0x1) {
   const body = Buffer.from(payload);
   if (body.length > 0xffff) throw new Error('Gateway WebSocket request exceeds 65535 bytes');
   const mask = crypto.randomBytes(4);
   const header = Buffer.alloc(body.length < 126 ? 2 : 4);
-  header[0] = 0x81;
+  header[0] = 0x80 | opcode;
   if (body.length < 126) header[1] = 0x80 | body.length;
   else {
     header[1] = 0x80 | 126;
@@ -48,7 +48,7 @@ function consumeServerFrames(buffer, onFrame) {
   return buffer.subarray(offset);
 }
 
-function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, inputText } = {}) {
+function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, inputText, requestFields = {}, probe } = {}) {
   const url = new URL(target.url);
   if (url.protocol !== 'ws:') throw new Error('quality gate Gateway WebSocket must use loopback ws:');
   return new Promise((resolve, reject) => {
@@ -86,13 +86,29 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, input
       socket.on('data', (chunk) => {
         try {
           buffered = consumeServerFrames(Buffer.concat([buffered, chunk]), (opcode, payload) => {
-            if (opcode === 0x8) return;
+            if (opcode === 0x8) {
+              frames.close_code = payload.length >= 2 ? payload.readUInt16BE(0) : null;
+              if (probe?.closeCode !== undefined) {
+                if (frames.close_code !== probe.closeCode) throw new Error(`expected close ${probe.closeCode}, received ${frames.close_code}`);
+                finish();
+              }
+              return;
+            }
+            if (opcode === 0x9) { socket.write(clientFrame(payload, 0xa)); return; }
             if (opcode !== 0x1) throw new Error(`unsupported Gateway WebSocket opcode ${opcode}`);
             frames.push([payload]);
             const text = payload.toString('utf8');
             const event = JSON.parse(text);
+            if (event.type === 'response.output_text.delta' && probe?.afterDelta) {
+              frames.after_delta = true;
+              if (probe.afterDelta === 'disconnect') { finish(); return; }
+              if (!frames.second_create_sent) {
+                frames.second_create_sent = true;
+                socket.write(clientFrame(JSON.stringify({ type: 'response.create', model: target.model, input: 'second active request' })));
+              }
+            }
             if (event.type === 'response.completed' || event.type === 'response.failed') finish();
-            else if (event.type === 'error') finish(new Error(`Gateway WebSocket returned ${event.error?.message ?? 'an error'}`));
+            else if (event.type === 'error' && probe?.closeCode === undefined) finish(new Error(`Gateway WebSocket returned ${event.error?.message ?? 'an error'}`));
           });
         } catch (error) {
           finish(error);
@@ -102,7 +118,9 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, input
       socket.once('close', () => {
         if (!settled) finish(new Error('Gateway WebSocket closed before response.completed'));
       });
+      if (probe?.payload !== undefined) { socket.write(clientFrame(probe.payload, probe.opcode ?? 1)); return; }
       socket.write(clientFrame(JSON.stringify({
+        ...requestFields,
         type: 'response.create',
         model: target.model,
         stream: true,

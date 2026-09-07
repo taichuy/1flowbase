@@ -39,7 +39,7 @@ async function queryDurableRun(target, trace, fetchImpl = globalThis.fetch) {
   const template = target.durable?.query_run;
   const url = template?.url_template?.replace('{run_id}', encodeURIComponent(trace.run_id));
   if (!url || url === template.url_template) throw new Error('Gateway durable query endpoint omitted {run_id}');
-  const response = await fetchImpl(url, { method: template.method ?? 'GET', headers: template.headers ?? {} });
+  const response = await fetchImpl(url, { method: template.method ?? 'GET', headers: template.headers ?? {}, signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error(`Responses WebSocket durable query returned HTTP ${response.status}`);
   const run = sanitizeDurableRun(await response.json());
   if (run.id !== trace.run_id) throw new Error('Responses WebSocket protocol/durable run id mismatch');

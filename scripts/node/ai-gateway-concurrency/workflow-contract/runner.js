@@ -21,6 +21,8 @@ const {
   PROTOCOL_TRANSPORT_ORACLES,
 } = require('../protocol-oracle/oracle-matrix');
 const { runGatewayWebSocketAcceptance } = require('./gateway-websocket');
+const { runGatewayWebSocketLifecycle } = require('../responses-websocket-acceptance/lifecycle');
+const { runGatewayErrorMatrix } = require('../responses-websocket-acceptance/error-matrix');
 const { normalizeRunInputs } = require('./inputs');
 const { PROVENANCE_FIDELITY_ORACLE } = require('./provenance');
 const { verifyRuntimeProvenance } = require('./runtime-provenance');
@@ -244,6 +246,8 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
   let ready = null;
   let wireAudit = null;
   let gatewayWebSocket = null;
+  let gatewayWebSocketLifecycle = null;
+  let gatewayErrorMatrix = null;
   let characterizeResult = null;
   let runtimeProvenance = null;
   let requestFidelity = null;
@@ -330,6 +334,16 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         });
         writeJson(path.join(paths.root, 'responses-websocket.json'), gatewayWebSocket);
       }],
+      ['gateway-websocket-lifecycle', async () => {
+        gatewayWebSocketLifecycle = await (dependencies.runGatewayWebSocketLifecycle ?? runGatewayWebSocketLifecycle)({ ready, mockSnapshot: mock.snapshot });
+        writeJson(path.join(paths.root, 'gateway-websocket-lifecycle.json'), gatewayWebSocketLifecycle);
+        if (gatewayWebSocketLifecycle.verdict !== 'PASS' || gatewayWebSocketLifecycle.rows.length !== 8 || gatewayWebSocketLifecycle.rows.some((row) => row.verdict !== 'PASS')) throw new Error('Gateway WebSocket lifecycle matrix failed');
+      }],
+      ['gateway-error-matrix', async () => {
+        gatewayErrorMatrix = await (dependencies.runGatewayErrorMatrix ?? runGatewayErrorMatrix)({ ready, mockSnapshot: mock.snapshot });
+        writeJson(path.join(paths.root, 'gateway-error-matrix.json'), gatewayErrorMatrix);
+        if (gatewayErrorMatrix.verdict !== 'PASS' || gatewayErrorMatrix.rows.length !== 20 || gatewayErrorMatrix.rows.some((row) => row.verdict !== 'PASS')) throw new Error('Gateway live error matrix failed');
+      }],
       ['characterize', async () => {
         characterizeResult = await characterize(characterizeOptions({
           repoRoot: inputs.repoRoot,
@@ -383,6 +397,8 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       oracle: protocolOracleInventory(),
       wire_audit: wireAudit,
       responses_websocket: gatewayWebSocket,
+      gateway_websocket_lifecycle: gatewayWebSocketLifecycle,
+      gateway_error_matrix: gatewayErrorMatrix,
       runtime_provenance: runtimeProvenance,
       request_fidelity: requestFidelity,
       protocol_context_profiles: protocolContextProfiles,
