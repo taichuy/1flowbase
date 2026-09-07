@@ -7,6 +7,13 @@ use crate::official_i18n_catalog_seed::{
 #[test]
 fn ac_002_decodes_digest_verified_build_time_official_seed() {
     let seed = decode_catalog_seed(OFFICIAL_SEED_BYTES, OFFICIAL_SEED_SOURCE_BYTES).unwrap();
+    // The embedded artifact is the immutable release at the pinned official commit.
+    // Renaming backend metadata must not rewrite this asset, even with refreshed digests.
+    use sha2::{Digest, Sha256};
+    assert_eq!(
+        format!("{:x}", Sha256::digest(OFFICIAL_SEED_BYTES)),
+        "c489ef1b7c86e71e961bd687511e1576c058535db3a78c1df6859ae768a63e04"
+    );
     let release = seed.bind_to_workspace(uuid::Uuid::now_v7()).unwrap();
     assert!(release.messages().iter().all(|message| {
         !message.identity().key().is_empty()

@@ -97,10 +97,18 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         // must remain visible verbatim until that catalog publishes matching translations.
         let backend_owned_extension_uninstall = interface.summary
             == "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data";
+        // Login-entry metadata was renamed after the pinned 2.0.9 catalog release.
+        // Keep the current backend contract; new translations require an official release,
+        // not edits to the immutable embedded artifact. These five operations stay explicit.
         let pending_official_catalog_release = matches!(
             interface.authorization_operation_id.as_deref(),
             Some(
-                "model_providers.instances.authenticate"
+                "auth_center.login_entries.delete"
+                    | "auth_center.login_entries.create"
+                    | "auth_center.login_entries.copy"
+                    | "auth_center.login_entries.order"
+                    | "auth_center.login_entries.enabled.update"
+                    | "model_providers.instances.authenticate"
                     | "model_providers.instances.reset_credits.view"
                     | "model_providers.instances.usage.view"
                     | "model_providers.instances.reset_credits.consume"
