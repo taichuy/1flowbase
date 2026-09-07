@@ -13,8 +13,8 @@ keywords:
   - issue 1997
   - Least Sufficient Realm
 created_at: 2026-09-05 01
-updated_at: 2026-09-07 17
-last_verified_at: 2026-09-07 17
+updated_at: 2026-09-07 22
+last_verified_at: 2026-09-07 22
 decision_policy: verify_before_decision
 status: user-acceptance
 scope:
@@ -57,3 +57,10 @@ scope:
 - 根因是 overlay host 只检查顶层 portal root；Ant Design Drawer 关闭后会保留可见 root，但内部 content wrapper 已进入 `*-hidden` 状态，宿主因此误判浮层仍打开。
 - 修复把可见性判定收敛到完整祖先链：root 或内部候选节点出现 `hidden`、`aria-hidden=true`、`*-hidden`、`display:none`、`visibility:hidden` 时不再持有 Top Layer；打开态的 fixed `100vw × 100vh`、`aria-modal=true` 与标准遮罩不变。
 - QA：Drawer AC 定向测试验证打开、关闭释放、同一触发器再次打开；Dropdown、Menu、Message、Notification 共享浮层回归共 5 files / 23 tests 通过，App TypeScript 与 Prettier 通过。真实浏览器运行态尚未取得，不据单元测试宣称页面实测通过。
+
+## 2026-09-07 Drawer Motion Ref 收敛
+
+- 用户确认用 Event-driven Finite-State Machine + watchdog + generation fence 解释并修复 Drawer 延迟；实现采用最小 dependency patch，不缩短 `motionDeadline`，不修改 Block、Overlay Host 或 motion token。
+- Ant Design 6.6.2 依赖的 `@rc-component/drawer` 1.4.2 把 `motionRef` 绑定到内部 dialog，但 motion class / transition 位于外层 content wrapper，真实 `transitionend` 因节点 identity 不一致被 `@rc-component/motion` 忽略，正常开关被迫等待 500ms watchdog。上游同根因 PR 为 `react-component/drawer#591`，截至 2026-09-07 尚未合并或发布。
+- 本地 patch 用稳定 ref callback 把 resize `wrapperRef` 与 `motionRef` 合并到 content wrapper，并以 preinstall receipt 约束 AntD / rc-drawer 版本、patch 注册和关键标记；上游发布后应删除 patch 与 receipt，再重跑同一浏览器 fixture。
+- QA：补丁前 Playwright 记录 `transitionend → hidden` 约 533ms；补丁后为相邻两帧（第 4 帧 → 第 5 帧），Top Layer 与 hidden 同时释放，快速 close→open 保持 open。全屏 fixed `1440×900`、`aria-modal=true`、物理点击重新打开、page/console error 0；Native Overlay 5 files / 23 tests、Resizable Drawer 2 files / 6 tests、TypeScript、Prettier、frozen lockfile 与 patch receipt 通过。三个历史 Drawer 套件的 30 个 i18n 文案/key 断言失败与本 patch 无因果关系，不作为本次 blocker。

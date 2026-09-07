@@ -20,6 +20,7 @@ overrides:
   ws: 8.21.2
 
 patchedDependencies:
+  '@rc-component/drawer@1.4.2': 9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f
   react-grid-layout@2.2.3: e738f000027de32e8a2677dbe6e8944408c727abf8ef223bb1620ec6693466df
 
 importers:
@@ -4966,7 +4967,7 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
-  '@rc-component/drawer@1.4.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@rc-component/drawer@1.4.2(patch_hash=9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@rc-component/motion': 1.3.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/portal': 2.2.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -6334,7 +6335,7 @@ snapshots:
       '@rc-component/collapse': 1.2.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/color-picker': 3.1.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/dialog': 1.10.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@rc-component/drawer': 1.4.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@rc-component/drawer': 1.4.2(patch_hash=9b511c2be2aba74bf206d1b1da275bda10e5fa921f91601f8a282f2d1370483f)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/dropdown': 1.0.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/form': 1.8.6(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@rc-component/image': 1.10.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

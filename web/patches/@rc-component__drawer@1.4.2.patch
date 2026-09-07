@@ -1,0 +1,81 @@
+diff --git a/es/DrawerPopup.js b/es/DrawerPopup.js
+index 536d8c5..ca4dc06 100644
+--- a/es/DrawerPopup.js
++++ b/es/DrawerPopup.js
+@@ -6,7 +6,7 @@ import DrawerContext from "./context";
+ import DrawerPanel from "./DrawerPanel";
+ import useDrag from "./hooks/useDrag";
+ import { parseWidthHeight } from "./util";
+-import { useEvent } from '@rc-component/util';
++import { fillRef, useEvent } from '@rc-component/util';
+ import useFocusable from "./hooks/useFocusable";
+ const DrawerPopup = (props, ref) => {
+   const {
+@@ -186,6 +186,11 @@ const DrawerPopup = (props, ref) => {
+     onResizeStart: resizeConfig.onResizeStart,
+     onResizeEnd: resizeConfig.onResizeEnd
+   });
++  const motionRefCache = React.useRef(null);
++  const mergedWrapperRef = useEvent(node => {
++    wrapperRef.current = node;
++    fillRef(motionRefCache.current, node);
++  });
+ 
+   // =========================== Events ===========================
+   const eventHandlers = {
+@@ -214,9 +219,9 @@ const DrawerPopup = (props, ref) => {
+     className: motionClassName,
+     style: motionStyle
+   }, motionRef) => {
++    motionRefCache.current = motionRef;
+     const content = /*#__PURE__*/React.createElement(DrawerPanel, _extends({
+       id: id,
+-      containerRef: motionRef,
+       prefixCls: prefixCls,
+       className: clsx(className, drawerClassNames?.section),
+       style: {
+@@ -227,7 +232,7 @@ const DrawerPopup = (props, ref) => {
+       aria: true
+     }), eventHandlers), children);
+     return /*#__PURE__*/React.createElement("div", _extends({
+-      ref: wrapperRef,
++      ref: mergedWrapperRef,
+       className: clsx(`${prefixCls}-content-wrapper`, isDragging && `${prefixCls}-content-wrapper-dragging`, drawerClassNames?.wrapper, !isDragging && motionClassName),
+       style: {
+         ...motionStyle,
+diff --git a/lib/DrawerPopup.js b/lib/DrawerPopup.js
+index 3d4eb48..7266ac5 100644
+--- a/lib/DrawerPopup.js
++++ b/lib/DrawerPopup.js
+@@ -195,6 +195,11 @@ const DrawerPopup = (props, ref) => {
+     onResizeStart: resizeConfig.onResizeStart,
+     onResizeEnd: resizeConfig.onResizeEnd
+   });
++  const motionRefCache = React.useRef(null);
++  const mergedWrapperRef = (0, _util2.useEvent)(node => {
++    wrapperRef.current = node;
++    (0, _util2.fillRef)(motionRefCache.current, node);
++  });
+ 
+   // =========================== Events ===========================
+   const eventHandlers = {
+@@ -223,9 +228,9 @@ const DrawerPopup = (props, ref) => {
+     className: motionClassName,
+     style: motionStyle
+   }, motionRef) => {
++    motionRefCache.current = motionRef;
+     const content = /*#__PURE__*/React.createElement(_DrawerPanel.default, _extends({
+       id: id,
+-      containerRef: motionRef,
+       prefixCls: prefixCls,
+       className: (0, _clsx.clsx)(className, drawerClassNames?.section),
+       style: {
+@@ -236,7 +241,7 @@ const DrawerPopup = (props, ref) => {
+       aria: true
+     }), eventHandlers), children);
+     return /*#__PURE__*/React.createElement("div", _extends({
+-      ref: wrapperRef,
++      ref: mergedWrapperRef,
+       className: (0, _clsx.clsx)(`${prefixCls}-content-wrapper`, isDragging && `${prefixCls}-content-wrapper-dragging`, drawerClassNames?.wrapper, !isDragging && motionClassName),
+       style: {
+         ...motionStyle,
