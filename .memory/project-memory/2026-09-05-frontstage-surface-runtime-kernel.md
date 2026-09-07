@@ -13,8 +13,8 @@ keywords:
   - issue 1997
   - Least Sufficient Realm
 created_at: 2026-09-05 01
-updated_at: 2026-09-07 15
-last_verified_at: 2026-09-07 15
+updated_at: 2026-09-07 17
+last_verified_at: 2026-09-07 17
 decision_policy: verify_before_decision
 status: user-acceptance
 scope:
@@ -50,3 +50,10 @@ scope:
 - Frontstage 由 Block Surface 统一持有 Notification / Message Effect Resource，在 `layoutEpoch` 变化时失效、卸载时反向回收；单个资源失败不阻断其余资源清理，完成清理后聚合报告错误。
 - 动机是把副作用生命周期与 Block Surface 的 generation/epoch fence 对齐，避免全局 holder、跨布局残留和变量名误判；不新增私有 `ctx.ui.notification`，本轮即时完成并进入用户验收。
 - QA：Page Runtime 16 files / 171 tests、Native Block 12 files / 101 tests、App TypeScript 与 diff check 通过；真实 Block `01a07765-88b5-7370-aa22-26d4c3831413` 经 MCP 确认为 `const { notification } = AntdApp.useApp()` 场景。
+
+## 2026-09-07 Drawer 关闭后释放 Top Layer
+
+- 用户纠正并确认 Drawer 语义：Native Trusted Block 中的 Ant Design Drawer 打开时仍是全局、全高、标准模态；只修复关闭动画结束后全屏 Top Layer 仍拦截页面点击的问题，不把 Drawer 限制到 Block 几何内，也不改 Block 源码。
+- 根因是 overlay host 只检查顶层 portal root；Ant Design Drawer 关闭后会保留可见 root，但内部 content wrapper 已进入 `*-hidden` 状态，宿主因此误判浮层仍打开。
+- 修复把可见性判定收敛到完整祖先链：root 或内部候选节点出现 `hidden`、`aria-hidden=true`、`*-hidden`、`display:none`、`visibility:hidden` 时不再持有 Top Layer；打开态的 fixed `100vw × 100vh`、`aria-modal=true` 与标准遮罩不变。
+- QA：Drawer AC 定向测试验证打开、关闭释放、同一触发器再次打开；Dropdown、Menu、Message、Notification 共享浮层回归共 5 files / 23 tests 通过，App TypeScript 与 Prettier 通过。真实浏览器运行态尚未取得，不据单元测试宣称页面实测通过。

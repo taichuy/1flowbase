@@ -1,5 +1,5 @@
-import { render, waitFor, within } from '@testing-library/react';
-import { createRef } from 'react';
+import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { createRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
@@ -91,6 +91,88 @@ describe('native block generic AntD overlay host', () => {
     expect(
       document.body.querySelector('[data-flowbase-native-overlay-layer]')
     ).toBeNull();
+  });
+
+  test('Drawer-AC-001 releases the full-page Top Layer after the close motion finishes', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antd = (await registry.load(
+      'antd'
+    )) as unknown as typeof import('antd');
+    const root = document.createElement('div');
+    document.body.append(root);
+
+    const Block = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open Drawer
+          </button>
+          <antd.Drawer
+            open={open}
+            title="Full-page Drawer"
+            closable={{ 'aria-label': 'Close Drawer' }}
+            onClose={() => setOpen(false)}
+          >
+            Drawer content
+          </antd.Drawer>
+        </>
+      );
+    };
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="drawer:release-top-layer"
+        plan={createPlan('drawer-release-top-layer')}
+        component={Block}
+        ctx={createContext()}
+      />
+    );
+
+    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+    const queries = within(shadowRoot as unknown as HTMLElement);
+    const layer = shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-overlay-layer="drawer-release-top-layer"]'
+    )!;
+
+    fireEvent.click(queries.getByRole('button', { name: 'Open Drawer' }));
+    await waitFor(() => {
+      expect(layer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'open'
+      );
+    });
+    const dialog = queries.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Drawer content');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
+    expect(layer).toHaveStyle({
+      position: 'fixed',
+      width: '100vw',
+      height: '100vh'
+    });
+
+    fireEvent.click(queries.getByRole('button', { name: 'Close Drawer' }));
+    await waitFor(
+      () => {
+        expect(layer).toHaveAttribute(
+          'data-flowbase-native-overlay-state',
+          'closed'
+        );
+      },
+      { timeout: 1500 }
+    );
+    expect(hidePopover).toHaveBeenCalledOnce();
+
+    fireEvent.click(queries.getByRole('button', { name: 'Open Drawer' }));
+    await waitFor(() => {
+      expect(layer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'open'
+      );
+    });
+    expect(showPopover).toHaveBeenCalledTimes(2);
   });
 
   test('D1-AC-003 open Popover and Tooltip coalesce outer scroll into one Surface frame', async () => {
