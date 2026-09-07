@@ -257,6 +257,8 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
         'run',
         '--package',
         'storage-durable-postgres',
+        '--package',
+        'control-plane-postgres-tests',
         '--partition',
         'hash:3/4',
         '--test-threads',
@@ -496,4 +498,22 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
   const warningLogPath = path.join(warningOutputDir, 'verify-backend.warnings.log');
   assert.equal(fs.existsSync(warningLogPath), true);
   assert.match(fs.readFileSync(warningLogPath, 'utf8'), /warning: backend advisory/u);
+});
+
+
+test('root_1998_ac_007_cross_layer_postgres_host_enters_all_four_ci_partitions', () => {
+  const { BACKEND_CI_TEST_SHARDS } = require('../../verify/backend-targets.js');
+  const shards = BACKEND_CI_TEST_SHARDS.filter((shard) => shard.key.startsWith('storage-postgres-'));
+  assert.equal(shards.length, 4);
+  for (const [index, shard] of shards.entries()) {
+    assert.equal(shard.key, `storage-postgres-${index + 1}-of-4`);
+    assert.equal(shard.nextestPartition, `hash:${index + 1}/4`);
+    assert.deepEqual(shard.packages, ['storage-durable-postgres', 'control-plane-postgres-tests']);
+    const commands = buildCommands({ cargoJobs: 4, cargoTestThreads: 2, repoRoot: '/repo-root', env: {}, target: 'test', shard: shard.key });
+    assert.equal(commands.length, 1);
+    assert.deepEqual(commands[0].args, [
+      'nextest', 'run', '--package', 'storage-durable-postgres', '--package', 'control-plane-postgres-tests',
+      '--partition', `hash:${index + 1}/4`, '--test-threads', '2', '--no-fail-fast', '--no-tests=fail',
+    ]);
+  }
 });

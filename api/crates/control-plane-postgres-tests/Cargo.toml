@@ -53,6 +53,10 @@ path = "tests/dependency_boundaries.rs"
 name = "external_identity_binding"
 path = "tests/external_identity_binding.rs"
 
+[[test]]
+name = "interface_lifecycle_acceptance"
+path = "tests/interface_lifecycle_acceptance/mod.rs"
+
 [dev-dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
@@ -61,6 +65,7 @@ control-plane-contracts = { path = "../control-plane-contracts" }
 control-plane-test-support = { path = "../control-plane-test-support" }
 domain = { path = "../domain" }
 extension-contracts = { path = "../extension-contracts" }
+interface-runtime = { path = "../interface-runtime" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true
 sqlx.workspace = true

@@ -43,7 +43,7 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `storage-postgres-${index + 1}-of-4`,
-    packages: ['storage-durable-postgres'],
+    packages: ['storage-durable-postgres', 'control-plane-postgres-tests'],
     nextestPartition: `hash:${index + 1}/4`,
   })),
 ];

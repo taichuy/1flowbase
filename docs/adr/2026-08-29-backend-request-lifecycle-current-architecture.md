@@ -20,6 +20,14 @@ Accepted architecture；implemented candidate on `beta` for #1944、#1958 与 #1
 - 最新治理证据：`beta@3a141c0e38c9c656ac0fd5b2df4fddb63a625586`；QA-7 产品行通过，但两个证据治理 blocker 触发 `NEEDS_REFRAME`
 - 最终结算方式：固定 main/beta SHA，在 GitHub Actions 分别执行完整 `quality gate(scope=ci)`；共同 scope 比较与 RuntimeExtensionHost 拓扑差异分开判定
 
+## 2026-09-07 第一阶段验收补充（Root #1998）
+
+本轮先完成接口生命周期管理，再审计三级插件的时空组合性开放。合法空扩展计划可以完成核心调用；Kernel 对受控非空计划的证明不等于生产 manifest/loader 已接通每个业务接口。原 create 插件开放 P6a 已撤下，没有新增插件契约。
+
+Invocation 终态、事务 commit/rollback 与响应交付/subscriber ack 分别归各自 owner。新增验收用真实 service+PostgreSQL、COMMIT 延迟故障、取消后的已提交业务及受控 BrokenPipe writer 区分这些事实；不把 Completion 当 ack，也不声明网络 exactly-once。
+
+有限矩阵与限制见 [`1998-interface-lifecycle-acceptance.md`](../architecture/1998-interface-lifecycle-acceptance.md)。当前仅 fixture/candidate 状态，等待 Root 的冻结候选集中 QA 与同 SHA CI；本补充不把既有历史状态或本次机械编译视作验收通过。
+
 ## Context
 
 1flowbase 已有 HTTP、SSE、MCP、内部调用、后台任务、Domain Event、Lifecycle Outbox 和 Runtime Worker 等入口。在 #1944 之前，认证、`ActorContext`、权限、Handler、事务、Runtime 与响应投影分散在 middleware、Route、Control Plane 和 Runtime adapter 中，只有少量生产接口进入 `InterfaceInvocationKernel`。

@@ -1039,6 +1039,7 @@ dependencies = [
  "control-plane-test-support",
  "domain",
  "extension-contracts",
+ "interface-runtime",
  "postgres-test-support",
  "serde_json",
  "sqlx",
