@@ -62,7 +62,10 @@ pub use stream::{
 
 #[cfg(test)]
 mod _tests;
-pub use authentication::ActivatedAuthenticationAdapter;
+pub use authentication::{
+    ActivatedAuthenticationAdapter, InterfaceAuthenticationAttempt,
+    InterfaceAuthenticationRejectionClass, InterfaceAuthenticationRejectionReceipt,
+};
 pub use contribution::{
     ContributedProtocolBinding, DefinitionContributionBindingError,
     TypedInterfaceDefinitionContribution, TypedInterfaceStreamDefinitionContribution,

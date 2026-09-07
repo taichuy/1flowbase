@@ -196,6 +196,13 @@ impl AuthenticationAdapterFactoryRegistry {
         Ok(())
     }
 
+    pub(crate) fn validate_activation(
+        &self,
+        activation: &ActivatedAuthenticationAdapter,
+    ) -> Result<()> {
+        self.factory(activation).map(|_| ())
+    }
+
     pub(crate) async fn authenticate<C, P>(
         &self,
         activation: &ActivatedAuthenticationAdapter,

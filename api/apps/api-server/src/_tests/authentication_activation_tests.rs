@@ -317,3 +317,6 @@ async fn rr14_factory_without_compiled_registration_fails_catalog_publish() {
         .to_string()
         .contains("authentication factory has no compiled registration"));
 }
+
+#[path = "authentication_rejection_tests.rs"]
+mod authentication_rejection_tests;

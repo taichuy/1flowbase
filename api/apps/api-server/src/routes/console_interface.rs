@@ -468,29 +468,19 @@ where
             "interface_operation",
         ))?;
     let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
-    let activated = snapshot.authentication(&binding_id).cloned().ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
-    )?;
     let (credential, admission) = credential.defer_protocol_admission();
-    let principal: UserPrincipal = boot_snapshot
-        .authenticate(&activated, credential)
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
         .await
         .map_err(ApiError::from)?;
     let kernel = console_invocation_kernel(&state, admission);
     match kernel
-        .invoke::<I, O, ConsoleInterfaceTargetError>(
-            snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
-        )
+        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, authenticated.into_envelope(input))
         .await
     {
         Ok(outcome) => {
@@ -575,12 +565,14 @@ where
             "interface_operation",
         ))?;
     let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
-    let activated = snapshot.authentication(&binding_id).cloned().ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
-    )?;
     let (credential, admission) = credential.defer_protocol_admission();
-    let principal: UserPrincipal = boot_snapshot
-        .authenticate(&activated, credential)
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
         .await
         .map_err(ApiError::from)?;
     let plan = snapshot
@@ -593,16 +585,7 @@ where
     console_invocation_kernel(&state, admission)
         .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
             snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
+            authenticated.into_envelope(input),
             target,
         )
         .await

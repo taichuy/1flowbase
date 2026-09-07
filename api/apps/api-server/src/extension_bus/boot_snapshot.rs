@@ -284,6 +284,22 @@ impl ExtensionBootSnapshot {
         Ok(())
     }
 
+    pub(crate) async fn authenticate_invocation<C, P>(
+        &self,
+        snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
+        binding: &interface_runtime::BindingId,
+        protocol: interface_runtime::InterfaceProtocol,
+        credential: C,
+    ) -> anyhow::Result<super::AuthenticatedInvocation<P>>
+    where
+        C: std::any::Any + Send + 'static,
+        P: interface_runtime::InvocationPrincipal,
+    {
+        self.authentication_factories
+            .authenticate_invocation(snapshot, binding, protocol, credential)
+            .await
+    }
+
     pub(crate) async fn authenticate<C, P>(
         &self,
         activation: &interface_runtime::ActivatedAuthenticationAdapter,

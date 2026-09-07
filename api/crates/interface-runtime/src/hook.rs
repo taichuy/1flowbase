@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct InterfaceHookContext {
-    principal: PrincipalSummary,
+    principal: Option<PrincipalSummary>,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
@@ -25,15 +25,28 @@ impl InterfaceHookContext {
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
         Self {
-            principal,
+            principal: Some(principal),
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
         }
     }
 
-    pub fn principal(&self) -> &PrincipalSummary {
-        &self.principal
+    pub(crate) fn unestablished(
+        invocation_id: InvocationId,
+        graph_fingerprint: GraphFingerprint,
+        registry_fingerprint: RegistryFingerprint,
+    ) -> Self {
+        Self {
+            principal: None,
+            invocation_id,
+            graph_fingerprint,
+            registry_fingerprint,
+        }
+    }
+
+    pub fn principal(&self) -> Option<&PrincipalSummary> {
+        self.principal.as_ref()
     }
 
     pub fn invocation_id(&self) -> InvocationId {

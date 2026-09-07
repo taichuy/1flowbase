@@ -440,3 +440,109 @@ async fn root_1998_resolved_plan_early_returns_finalize_once_without_typed_io() 
         );
     }
 }
+
+// Root #1998 A4: no principal or typed I/O may be invented for authentication failure.
+#[tokio::test]
+async fn root_1998_authentication_rejection_uses_frozen_plan_and_absent_principal() {
+    let seen = Arc::new(Mutex::new(None));
+    let mut compiler = compiler();
+    let definition = definition("review.finalization", InterfaceExecutionMode::Unary);
+    compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.finalization.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/finalization").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            definition.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    let plugin = PluginIdentity::new("review.rejection-observer").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Completion,
+                InterfaceExtensionPermission::ObserveCompletion,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::Terminal],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_hook_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceHookPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind_completion(plugin, Arc::new(UnestablishedCompletion(seen.clone()))),
+            ),
+        )
+        .unwrap();
+    let snapshot = compiler.compile().unwrap();
+    let lineage = InvocationLineage::root(InvocationId::now_v7());
+    let attempt = crate::InterfaceAuthenticationAttempt::resolve(
+        snapshot.clone(),
+        &BindingId::new("http.review.finalization.v1").unwrap(),
+        InterfaceProtocol::Http,
+        lineage.clone(),
+    )
+    .unwrap();
+    let receipt = attempt
+        .reject(crate::InterfaceAuthenticationRejectionClass::CredentialRejected)
+        .await;
+    assert_eq!(receipt.invocation_id(), lineage.invocation_id());
+    assert_eq!(*seen.lock().unwrap(), Some(lineage.invocation_id()));
+    assert!(receipt.principal().is_none());
+    assert_eq!(receipt.terminal(), InterfaceInvocationTerminal::Rejected);
+    assert_eq!(receipt.graph_fingerprint(), snapshot.graph_fingerprint());
+    assert_eq!(receipt.registry_fingerprint(), snapshot.fingerprint());
+    assert_eq!(receipt.binding_id().as_str(), "http.review.finalization.v1");
+    assert_eq!(
+        receipt.activation().activation().as_str(),
+        "review.authn.activation.v1"
+    );
+    assert_eq!(
+        receipt.observer_records()[0].status(),
+        InterfaceObserverStatus::Executed
+    );
+    assert!(crate::InterfaceAuthenticationAttempt::resolve(
+        snapshot,
+        &BindingId::new("unknown.binding").unwrap(),
+        InterfaceProtocol::Http,
+        lineage
+    )
+    .is_none());
+}
+
+struct UnestablishedCompletion(Arc<Mutex<Option<InvocationId>>>);
+impl InterfaceCompletionHook for UnestablishedCompletion {
+    fn completed(
+        &self,
+        context: InterfaceHookContext,
+        terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'_> {
+        Box::pin(async move {
+            assert!(context.principal().is_none());
+            assert_eq!(terminal, InterfaceInvocationTerminal::Rejected);
+            assert_eq!(context.graph_fingerprint().as_str(), "graph:review");
+            *self.0.lock().unwrap() = Some(context.invocation_id());
+        })
+    }
+}

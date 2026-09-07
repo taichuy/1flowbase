@@ -1,4 +1,6 @@
 mod authentication_activation;
+mod authentication_invocation;
+pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;
 #[cfg(test)]
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
