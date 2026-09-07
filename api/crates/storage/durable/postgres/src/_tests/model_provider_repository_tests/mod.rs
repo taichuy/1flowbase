@@ -49,6 +49,11 @@ const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
     include_str!(
         "../../../migrations/20260630115000_normalize_password_local_authenticator_id.sql"
     ),
+    // The current auth repository needs the real login-entry split, while the provider
+    // tables must remain before MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL for these tests.
+    include_str!("../../../migrations/20260714230000_create_role_console_policies.sql"),
+    include_str!("../../../migrations/20260724090000_add_authenticator_public_ui_block.sql"),
+    include_str!("../../../migrations/20260903010000_separate_login_entries_from_authentication_connections.sql"),
 ];
 
 const MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL: &str = include_str!(
@@ -185,13 +190,20 @@ async fn seed_store_before_main_instance_aggregation() -> (
             add column if not exists scope_id uuid not null
             default '00000000-0000-0000-0000-000000000000'::uuid;
         alter table plugin_installations add column if not exists updated_by uuid;
-        alter table login_entries
-            add column if not exists public_ui_block text not null default '';
         "#,
     )
     .execute(&pool)
     .await
     .unwrap();
+
+    // AC009 fixture authenticity: do not accidentally apply the migration under test.
+    let aggregation_absent: bool = sqlx::query_scalar(
+        "select to_regclass(current_schema() || '.model_provider_main_instances') is null",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(aggregation_absent);
 
     let store = PgControlPlaneStore::new(pool);
     let tenant = store.upsert_root_tenant().await.unwrap();

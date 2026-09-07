@@ -382,6 +382,24 @@ async function runBackend(argv = [], deps = {}) {
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
     writeStderr: deps.writeStderr,
+    ...(options.target === 'official-i18n-seed' ? {
+      runCommandSequenceImpl: (sequenceOptions) => {
+        let emptySelection = false;
+        const status = runCommandSequence({
+          ...sequenceOptions,
+          onCommandComplete({ command, result }) {
+            const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
+            if (result.status === 0 && !(counts.passedCount > 0)) {
+              emptySelection = true;
+              (deps.writeStderr || process.stderr.write.bind(process.stderr))(
+                `${command.label}: no executed passing tests; refusing empty Seed gate\n`,
+              );
+            }
+          },
+        });
+        return status || (emptySelection ? 1 : 0);
+      },
+    } : {}),
   });
 }
 

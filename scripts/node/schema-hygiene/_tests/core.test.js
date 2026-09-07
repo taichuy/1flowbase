@@ -846,7 +846,8 @@ test('default schema hygiene config declares issue 1082 root and auth reference 
     ['tenants', 'routing_root_reference'],
     ['workspaces', 'workspace_routing_root'],
     ['users', 'global_identity_reference'],
-    ['authenticators', 'system_reference_table'],
+    ['authentication_connections', 'system_reference_table'],
+    ['login_entries', 'system_reference_table'],
     ['user_auth_identities', 'global_identity_reference'],
   ]) {
     const table = report.tables.find((candidate) => candidate.name === tableName);
@@ -1056,7 +1057,7 @@ test('default schema hygiene config declares issue 1075 system global scoped rea
     assert.equal(table.platformReadiness.recommendedActions.includes('needs_owner_review'), false);
   }
 
-  assert.equal(report.tables.some((table) => ['authenticators', 'tenants', 'users', 'workspaces'].includes(table.name)
+  assert.equal(report.tables.some((table) => ['authentication_connections', 'login_entries', 'tenants', 'users', 'workspaces'].includes(table.name)
     && table.findings.some((finding) => finding.rule === 'managed-table-needs-owner-review')), false);
 });
 
@@ -1159,4 +1160,29 @@ test('main writes JSON and Markdown reports under tmp/test-governance and exits 
   assert.equal(typeof report.findings[0].reason, 'string');
   assert.equal(typeof report.findings[0].action, 'string');
   assert.match(fs.readFileSync(markdownPath, 'utf8'), /Suggested action/u);
+});
+
+// Root #1998: the auth split updates bounded classifications, not the generic scope rule.
+test('auth split scope exemptions do not exempt unrelated business tables', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const config = loadConfig(repoRoot);
+  assert.equal(Object.hasOwn(config.exemptions, 'authenticators'), false);
+  for (const name of ['authentication_connections', 'login_entries']) {
+    assert.deepEqual(config.exemptions[name].skip,
+      ['managed-table-scope-column', 'managed-table-scope-time-index']);
+  }
+  const fixtureRoot = createRepoWithMigration(`
+    create table customer_records (
+      id uuid primary key, created_by uuid, updated_by uuid,
+      created_at timestamptz not null, updated_at timestamptz not null
+    );
+  `);
+  try {
+    const report = evaluateSchemaHygiene({ inventory: collectSchemaInventory({ repoRoot: fixtureRoot }), config });
+    for (const rule of ['managed-table-scope-column', 'managed-table-scope-time-index']) {
+      assert.ok(report.findings.some((finding) => finding.table === 'customer_records' && finding.rule === rule));
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });

@@ -771,9 +771,14 @@
         "managed-table-scope-time-index"
       ]
     },
-    "authenticators": {
+    "authentication_connections": {
       "kind": "system_reference_table",
-      "reason": "system authenticator reference table is configured globally and is not routed by workspace scope",
+      "reason": "authentication connections define global identity namespaces shared by login entries and user identities, not workspace-owned data",
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "login_entries": {
+      "kind": "system_reference_table",
+      "reason": "system login entry configuration selects a global authentication connection before workspace routing",
       "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "i18n_catalog_release_files": {

@@ -399,7 +399,7 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           'api-server',
           '--jobs',
           '4',
-          'ac_001_ac_002_ac_006_ac_010_ac_012_official_seed_covers_frozen_consumers',
+          '_tests::dynamic_backend_consumer_inventory::',
           '--',
           '--test-threads=2',
         ],
@@ -515,5 +515,30 @@ test('root_1998_ac_007_cross_layer_postgres_host_enters_all_four_ci_partitions',
       'nextest', 'run', '--package', 'storage-durable-postgres', '--package', 'control-plane-postgres-tests',
       '--partition', `hash:${index + 1}/4`, '--test-threads', '2', '--no-fail-fast', '--no-tests=fail',
     ]);
+  }
+});
+
+// AC009: a renamed filter must not turn the Seed gate into a successful no-op.
+test('official Seed gate rejects zero or absent executed-test summaries', async () => {
+  for (const stdout of [
+    'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out;\n',
+    '',
+    'test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out;\n',
+  ]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-execution-'));
+    try {
+      const status = await main(['official-i18n-seed'], {
+        repoRoot, env: {},
+        runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 2 } },
+        writeStdout() {}, writeStderr() {},
+        managedRunnerImpl(options) {
+          return options.runCommandSequenceImpl({
+            ...options,
+            spawnSyncImpl() { return { status: 0, stdout, stderr: '' }; },
+          });
+        },
+      });
+      assert.equal(status, stdout.includes('4 passed') ? 0 : 1);
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
   }
 });

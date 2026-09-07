@@ -162,7 +162,14 @@ function command(root, artifactRoot, name, command, args, options = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`${name} failed with exit code ${result.status}`);
+  if (command === "cargo" && args[0] === "test") assertExecutedCargoTests(output, name);
   return (result.stdout || "").trim();
+}
+
+function assertExecutedCargoTests(output, name) {
+  const passed = [...output.matchAll(/test result: ok\. (\d+) passed;/gu)]
+    .reduce((total, match) => total + Number(match[1]), 0);
+  if (passed === 0) throw new Error(`${name}: no executed passing tests`);
 }
 
 function testFiles(repoRoot) {
@@ -216,6 +223,12 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     ],
   });
   return [
+    // Root #1998: execute the strengthened behavior fixtures on the same candidate
+    // and isolated database as the online protocol evidence.
+    invocation("api-server-interface-lifecycle-acceptance", "api-server", "root_1998"),
+    invocation("api-server-compact-compatibility", "api-server", "_tests::application_public_api::compat_routes::compact::"),
+    invocation("api-server-official-seed-consumer-inventory", "api-server", "_tests::dynamic_backend_consumer_inventory::"),
+    invocation("storage-postgres-legacy-provider-upgrades", "storage-durable-postgres", "model_provider_repository_backfills_"),
     invocation(
       "plugin-framework-count-tokens-estimator-total-corpus",
       "plugin-framework",
@@ -614,6 +627,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertExecutedCargoTests,
   conversationTestInvocations,
   artifactBytes,
   boundedCommandLog,

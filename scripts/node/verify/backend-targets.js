@@ -198,7 +198,7 @@ const OFFICIAL_I18N_SEED_GATE_TARGETS = [
   {
     label: 'cargo-test-official-i18n-seed-consumer-provenance',
     packageName: 'api-server',
-    filter: 'ac_001_ac_002_ac_006_ac_010_ac_012_official_seed_covers_frozen_consumers',
+    filter: '_tests::dynamic_backend_consumer_inventory::',
   },
 ];
 

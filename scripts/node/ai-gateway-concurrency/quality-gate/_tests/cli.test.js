@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  assertExecutedCargoTests,
   artifactBytes,
   boundedCommandLog,
   conversationTestInvocations,
@@ -109,6 +110,10 @@ test("quality gate limits conversation Cargo probes to one owned database and de
   assert.deepEqual(
     invocations.map(({ name, args }) => [name, args.at(-1)]),
     [
+      ["api-server-interface-lifecycle-acceptance", "root_1998"],
+      ["api-server-compact-compatibility", "_tests::application_public_api::compat_routes::compact::"],
+      ["api-server-official-seed-consumer-inventory", "_tests::dynamic_backend_consumer_inventory::"],
+      ["storage-postgres-legacy-provider-upgrades", "model_provider_repository_backfills_"],
       [
         "plugin-framework-count-tokens-estimator-total-corpus",
         "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
@@ -342,4 +347,21 @@ test("quality gate derives one owned temporary database from the loopback Docker
       ),
     /exactly one/u,
   );
+});
+
+
+test("AC009 refuses successful Cargo commands with no actual passing tests", () => {
+  assert.throws(() => assertExecutedCargoTests("test result: ok. 0 passed; 0 failed;", "empty"), /no executed/);
+  assert.throws(() => assertExecutedCargoTests("Finished test profile", "missing"), /no executed/);
+  assert.doesNotThrow(() => assertExecutedCargoTests("test result: ok. 2 passed; 0 failed;\ntest result: ok. 0 passed; 0 failed;", "actual"));
+});
+
+test("AC009 schedules strengthened interface and legacy upgrade fixtures on the online candidate", () => {
+  const invocations = conversationTestInvocations("/repo", "postgres://fixture");
+  for (const filter of ["root_1998", "_tests::application_public_api::compat_routes::compact::",
+    "_tests::dynamic_backend_consumer_inventory::", "model_provider_repository_backfills_"]) {
+    const matching = invocations.filter((entry) => entry.args.at(-1) === filter);
+    assert.equal(matching.length, 1, filter);
+    assert.equal(matching[0].options.env.DATABASE_URL, "postgres://fixture");
+  }
 });
