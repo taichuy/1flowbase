@@ -41,7 +41,7 @@ impl InterfaceContract for McpCoreInput {
 pub(crate) enum McpCoreOutput {
     Credential(McpClientCredentialResponse),
     Instances(Vec<McpInstanceResponse>),
-    Instance(McpInstanceResponse),
+    Instance(Box<McpInstanceResponse>),
     Group(McpGroupResponse),
     Binding(McpToolBindingResponse),
     DiscoveryPolicy(McpInstanceDiscoveryPolicyResponse),
@@ -111,7 +111,9 @@ impl McpCoreAdapter {
                 let record = service
                     .create_instance_for_actor(actor, to_instance_command(actor.user_id, body)?)
                     .await?;
-                Ok(McpCoreOutput::Instance(to_instance_response(record)))
+                Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
+                    record,
+                ))))
             }
             McpCoreInput::CopyInstance(source_instance_id, body) => {
                 let record = service
@@ -125,14 +127,18 @@ impl McpCoreAdapter {
                         },
                     )
                     .await?;
-                Ok(McpCoreOutput::Instance(to_instance_response(record)))
+                Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
+                    record,
+                ))))
             }
             McpCoreInput::UpdateInstance(instance_id, mut body) => {
                 body.instance_id = instance_id;
                 let record = service
                     .update_instance_for_actor(actor, to_instance_command(actor.user_id, body)?)
                     .await?;
-                Ok(McpCoreOutput::Instance(to_instance_response(record)))
+                Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
+                    record,
+                ))))
             }
             McpCoreInput::DeleteInstance(instance_id) => {
                 service

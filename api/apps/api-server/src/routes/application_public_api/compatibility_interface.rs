@@ -725,7 +725,7 @@ fn register_authentication(
 pub(crate) enum ApplicationInvocationAuthentication {
     Authenticated {
         snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
-        authenticated: crate::extension_bus::AuthenticatedInvocation<ApplicationPrincipal>,
+        authenticated: Box<crate::extension_bus::AuthenticatedInvocation<ApplicationPrincipal>>,
     },
     Established(ApplicationPrincipal),
 }
@@ -760,7 +760,7 @@ impl ApplicationInvocationAuthentication {
         input: CompatibilityBlockingInput,
     ) -> InvocationEnvelope<CompatibilityBlockingInput, ApplicationPrincipal> {
         match self {
-            Self::Authenticated { authenticated, .. } => authenticated.into_envelope(input),
+            Self::Authenticated { authenticated, .. } => (*authenticated).into_envelope(input),
             Self::Established(principal) => InvocationEnvelope::with_principal(
                 InvocationLineage::root(InvocationId::now_v7()),
                 binding,
@@ -815,7 +815,7 @@ pub(crate) async fn authenticate_application_principal(
             },
         )
         .await
-        .map(|authenticated| ApplicationInvocationAuthentication::Authenticated { snapshot, authenticated })
+        .map(|authenticated| ApplicationInvocationAuthentication::Authenticated { snapshot, authenticated: Box::new(authenticated) })
         .map_err(|_| {
             native::native_error(
                 control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,

@@ -462,7 +462,7 @@ pub async fn create_mcp_instance(
     else {
         unreachable!()
     };
-    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(*value))))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/copy", request_body = CopyMcpInstanceBody, responses((status = 201, body = McpInstanceResponse)))]
@@ -483,7 +483,7 @@ pub async fn copy_mcp_instance(
     else {
         unreachable!()
     };
-    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(*value))))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/instances/{instance_id}", request_body = CreateMcpInstanceBody, responses((status = 200, body = McpInstanceResponse)))]
@@ -504,7 +504,7 @@ pub async fn update_mcp_instance(
     else {
         unreachable!()
     };
-    Ok(Json(ApiSuccess::new(value)))
+    Ok(Json(ApiSuccess::new(*value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/instances/{instance_id}", responses((status = 204)))]
