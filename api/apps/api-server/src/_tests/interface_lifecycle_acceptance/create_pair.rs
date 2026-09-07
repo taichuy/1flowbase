@@ -111,7 +111,23 @@ fn normalized_model(mut model: Value, workspace: uuid::Uuid) -> Value {
     model["id"] = json!("<model-id>");
     model["scope_id"] = json!("<workspace-id>");
     let fields = model["fields"].as_array_mut().unwrap();
-    fields.sort_by_key(|field| field["code"].as_str().unwrap().to_string());
+    // 6824b2c17: model_definition_repository::platform_runtime_field_records
+    // returns these six fields in this order; general adds no ordered-tree fields.
+    // The create route maps the returned Vec directly. Never sort the wire array.
+    assert_eq!(
+        fields
+            .iter()
+            .map(|field| field["code"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "id",
+            "scope_id",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at"
+        ]
+    );
     for field in fields {
         uuid::Uuid::parse_str(field["id"].as_str().unwrap()).unwrap();
         field["id"] = json!(format!("<field:{}>", field["code"].as_str().unwrap()));
@@ -119,11 +135,137 @@ fn normalized_model(mut model: Value, workspace: uuid::Uuid) -> Value {
     model
 }
 async fn persisted(pool: &sqlx::PgPool) -> Value {
-    // Counts detect denial writes. Full target rows retain business columns; only generated
-    // IDs, schema-local scope/actor IDs and audit timestamps are normalized away.
-    sqlx::query_scalar::<_, Value>("select jsonb_build_object('models', (select count(*) from model_definitions), 'fields', (select count(*) from model_fields), 'grants', (select count(*) from scope_data_model_grants), 'unchanged_rows', (select md5(jsonb_build_array((select jsonb_agg(to_jsonb(m) order by m.id) from model_definitions m), (select jsonb_agg(to_jsonb(f) order by f.id) from model_fields f), (select jsonb_agg(to_jsonb(g) order by g.id) from scope_data_model_grants g))::text)), 'target', (select to_jsonb(m) - array['id','scope_id','created_by','updated_by','created_at','updated_at'] from model_definitions m where code=$1), 'target_fields', (select coalesce(jsonb_agg(to_jsonb(f) - array['id','data_model_id','created_by','updated_by','created_at','updated_at'] order by f.code), '[]'::jsonb) from model_fields f join model_definitions m on m.id=f.data_model_id where m.code=$1))")
-        .bind(CODE)
-        .fetch_one(pool).await.unwrap()
+    sqlx::query_scalar::<_, Value>(r#"
+        select jsonb_build_object(
+            'models', (select count(*) from model_definitions),
+            'fields', (select count(*) from model_fields),
+            'grants', (select count(*) from scope_data_model_grants),
+            'unchanged_rows', jsonb_build_array(
+                (select jsonb_agg(to_jsonb(m) order by m.id) from model_definitions m where m.code <> $1),
+                (select jsonb_agg(to_jsonb(f) order by f.id) from model_fields f where not exists
+                    (select 1 from model_definitions m where m.id=f.data_model_id and m.code=$1)),
+                (select jsonb_agg(to_jsonb(g) order by g.id) from scope_data_model_grants g where not exists
+                    (select 1 from model_definitions m where m.id=g.data_model_id and m.code=$1))),
+            'target', (select to_jsonb(m) from model_definitions m where code=$1),
+            'target_fields', (select coalesce(jsonb_agg(to_jsonb(f) order by f.sort_order, f.created_at), '[]'::jsonb)
+                from model_fields f join model_definitions m on m.id=f.data_model_id where m.code=$1),
+            'target_grants', (select coalesce(jsonb_agg(to_jsonb(g) order by g.id), '[]'::jsonb)
+                from scope_data_model_grants g join model_definitions m on m.id=g.data_model_id where m.code=$1),
+            'target_audits', (select coalesce(jsonb_agg(to_jsonb(a) order by a.event_code), '[]'::jsonb)
+                from audit_logs a join model_definitions m on m.id=a.target_id where m.code=$1))
+    "#).bind(CODE).fetch_one(pool).await.unwrap()
+}
+
+async fn assert_persisted_create(
+    pool: &sqlx::PgPool,
+    response: &Value,
+    persisted: &mut Value,
+    workspace: uuid::Uuid,
+    started: time::OffsetDateTime,
+) {
+    let finished: time::OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    let actor: uuid::Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    let model_id = &response["id"];
+    assert_eq!(
+        &persisted["target"]["id"], model_id,
+        "response model ID must identify the committed row"
+    );
+    let response_fields = response["fields"].as_array().unwrap();
+    let stored_fields = persisted["target_fields"].as_array().unwrap();
+    assert_eq!(stored_fields.len(), 6);
+    assert_eq!(response_fields.len(), stored_fields.len());
+    for (wire, row) in response_fields.iter().zip(stored_fields) {
+        assert_eq!(
+            wire["id"], row["id"],
+            "response field ID must identify its committed row"
+        );
+        assert_eq!(wire["code"], row["code"]);
+        assert_eq!(&row["data_model_id"], model_id);
+    }
+    let grants = persisted["target_grants"].as_array().unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(&grants[0]["data_model_id"], model_id);
+    assert_eq!(grants[0]["scope_kind"], "workspace");
+    assert_eq!(grants[0]["enabled"], true);
+    assert_eq!(grants[0]["permission_profile"], "scope_all");
+    let audits = persisted["target_audits"].as_array().unwrap();
+    assert_eq!(audits.len(), 2);
+    assert_eq!(audits[0]["event_code"], "state_model.created");
+    assert_eq!(audits[0]["payload"], json!({"code":CODE}));
+    assert_eq!(audits[1]["event_code"], "state_model.scope_grant_created");
+    assert_eq!(
+        audits[1]["payload"],
+        json!({"scope_kind":"workspace", "scope_id":workspace,
+        "enabled":true, "permission_profile":"scope_all"})
+    );
+    for audit in audits {
+        assert_eq!(&audit["target_id"], model_id);
+        assert_eq!(audit["target_type"], "state_model");
+        assert_eq!(audit["workspace_id"], workspace.to_string());
+        assert_eq!(audit["actor_user_id"], actor.to_string());
+    }
+    // Validate every generated identity/actor/time before normalizing isolated-schema values.
+    // PostgreSQL parses its own timestamp JSON, avoiding locale/format assumptions in Rust.
+    for key in ["target", "target_fields", "target_grants", "target_audits"] {
+        let rows: Vec<&mut Value> = if key == "target" {
+            vec![&mut persisted[key]]
+        } else {
+            persisted[key].as_array_mut().unwrap().iter_mut().collect()
+        };
+        for row in rows {
+            uuid::Uuid::parse_str(row["id"].as_str().unwrap()).unwrap();
+            assert_eq!(row["scope_id"], workspace.to_string(), "{key} scope");
+            assert_eq!(row["created_by"], actor.to_string(), "{key} creator");
+            if key == "target_grants" {
+                // Baseline grant insertion writes created_by only; updated_by stays null.
+                assert_eq!(row["updated_by"], Value::Null);
+            } else {
+                assert_eq!(row["updated_by"], actor.to_string(), "{key} updater");
+            }
+            let valid_times: bool = sqlx::query_scalar(
+                "select ($1::jsonb->>'created_at')::timestamptz between $2 and $3 and ($1::jsonb->>'updated_at')::timestamptz between ($1::jsonb->>'created_at')::timestamptz and $3")
+                .bind(&*row).bind(started).bind(finished).fetch_one(pool).await.unwrap();
+            assert!(
+                valid_times,
+                "{key} audit timestamps must fall within the invocation: {row}"
+            );
+            let object = row.as_object_mut().unwrap();
+            for column in [
+                "id",
+                "scope_id",
+                "created_by",
+                "updated_by",
+                "created_at",
+                "updated_at",
+                "data_model_id",
+                "workspace_id",
+                "actor_user_id",
+                "target_id",
+            ] {
+                if object.get(column).is_some_and(|value| !value.is_null()) {
+                    object.insert(column.to_string(), json!(format!("<{column}>")));
+                }
+            }
+            if key == "target_audits" && row["event_code"] == "state_model.scope_grant_created" {
+                row["payload"]["scope_id"] = json!("<scope_id>");
+            }
+        }
+    }
+    assert_eq!(
+        persisted["target_grants"],
+        json!([{
+            "id":"<id>", "scope_kind":"workspace", "scope_id":"<scope_id>",
+            "data_model_id":"<data_model_id>", "enabled":true, "permission_profile":"scope_all",
+            "created_by":"<created_by>", "updated_by":null,
+            "created_at":"<created_at>", "updated_at":"<updated_at>"
+        }])
+    );
 }
 
 #[tokio::test]
@@ -199,23 +341,28 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
             let token = create_api_key(&app, &cookie, &csrf).await;
             let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
             let before = persisted(&pool).await;
+            let started: time::OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             let output = if use_mcp {
                 let response = call_mcp(&app, &token, mcp_request(input())).await;
                 assert_eq!(response["jsonrpc"], "2.0");
                 assert_eq!(response["id"], 1998);
                 if denied {
-                    assert_eq!(response["error"]["code"], -32603, "{response}");
+                    assert_eq!(
+                        response,
+                        json!({"jsonrpc":"2.0", "id":1998, "error":{
+                        "code":-32603, "message":"Tool execution failed", "data":{
+                            "category":"target_authorization", "target_code":"console_operation_permission_denied",
+                            "http_status":403, "outcome":"failed", "retry_original":false}}})
+                    );
                     let error = &response["error"]["data"];
-                    assert_eq!(error["category"], "target_authorization");
-                    assert_eq!(error["target_code"], "console_operation_permission_denied");
-                    assert_eq!(error["http_status"], 403);
-                    assert_eq!(error["outcome"], "failed");
-                    assert_eq!(error["retry_original"], false);
                     json!({"status":error["http_status"], "code":error["target_code"]})
                 } else {
                     assert!(response.get("error").is_none(), "{response}");
                     assert_ne!(response["result"]["isError"], true);
-                    normalized_model(response["result"]["structuredContent"].clone(), workspace)
+                    response["result"]["structuredContent"].clone()
                 }
             } else {
                 let response = http(&app, &cookie, &csrf, input()).await;
@@ -229,9 +376,12 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                 );
                 let response = response_json(response).await;
                 if denied {
-                    assert_eq!(response["status"], 403);
-                    assert_eq!(response["code"], "console_operation_permission_denied");
-                    assert!(response["message"].is_string());
+                    assert_eq!(
+                        response,
+                        json!({"status":403,
+                        "code":"console_operation_permission_denied",
+                        "message":"permission denied: console_operation_permission_denied"})
+                    );
                     json!({"status":response["status"], "code":response["code"]})
                 } else {
                     assert_eq!(
@@ -244,10 +394,10 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                         ["data", "meta"]
                     );
                     assert_eq!(response["meta"], Value::Null);
-                    normalized_model(response["data"].clone(), workspace)
+                    response["data"].clone()
                 }
             };
-            let after = persisted(&pool).await;
+            let mut after = persisted(&pool).await;
             if denied {
                 assert_eq!(
                     before, after,
@@ -258,20 +408,11 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                     after["models"].as_i64().unwrap(),
                     before["models"].as_i64().unwrap() + 1
                 );
-                let row: (uuid::Uuid, String, String, String) = sqlx::query_as("select scope_id, code, title, template_code from model_definitions where code = $1")
-                    .bind(CODE).fetch_one(&pool).await.unwrap();
                 assert_eq!(
-                    row,
-                    (
-                        workspace,
-                        CODE.into(),
-                        "Delegated model".into(),
-                        "general".into()
-                    )
+                    before["unchanged_rows"], after["unchanged_rows"],
+                    "successful create must preserve all non-target models, fields and grants"
                 );
-                let actor_matches: bool = sqlx::query_scalar("select m.created_by = u.id and m.updated_by = u.id from model_definitions m cross join users u where m.code=$1 and u.account='root'")
-                    .bind(CODE).fetch_one(&pool).await.unwrap();
-                assert!(actor_matches);
+                assert_persisted_create(&pool, &output, &mut after, workspace, started).await;
             }
             deltas.push(json!({"models":after["models"].as_i64().unwrap()-before["models"].as_i64().unwrap(),
                 "fields":after["fields"].as_i64().unwrap()-before["fields"].as_i64().unwrap(),
@@ -281,7 +422,9 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                 "request must not replace frozen registry"
             );
             results.push(
-                json!({"response":output, "row":after["target"], "fields":after["target_fields"]}),
+                json!({"response":if denied { output } else { normalized_model(output, workspace) },
+                    "row":after["target"], "fields":after["target_fields"],
+                    "grants":after["target_grants"], "audits":after["target_audits"]}),
             );
             pool.close().await;
         }
@@ -306,6 +449,10 @@ async fn root_1998_ac_005_required_input_preserves_http_and_mcp_ingress_contract
     let response = http(&app, &cookie, &csrf, body.clone()).await;
     // Baseline required String DTO + Axum Json rejection (not a business error envelope).
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response.headers()["content-type"],
+        "text/plain; charset=utf-8"
+    );
     let text = String::from_utf8(
         to_bytes(response.into_body(), 16_384)
             .await
@@ -313,14 +460,22 @@ async fn root_1998_ac_005_required_input_preserves_http_and_mcp_ingress_contract
             .to_vec(),
     )
     .unwrap();
-    assert!(text.contains("missing field `scope_kind`"), "{text}");
+    assert_eq!(
+        text,
+        format!(
+            "Failed to deserialize the JSON body into the target type: missing field `scope_kind` at line 1 column {}",
+            body.to_string().len()
+        )
+    );
     let response = call_mcp(&app, &token, mcp_request(body)).await;
     // Baseline debug_execute::build_interface_arguments rejects missing required mapping
     // with mcp_arguments; virtual_ui::interface_error preserves that field.
-    assert_eq!(response["error"]["code"], -32602, "{response}");
     assert_eq!(
-        response["error"]["data"],
-        json!({"category":"invalid_tool_arguments", "field":"mcp_arguments", "outcome":"not_started", "retry_original":false})
+        response,
+        json!({"jsonrpc":"2.0", "id":1998, "error":{
+        "code":-32602, "message":"Tool execution failed", "data":{
+            "category":"invalid_tool_arguments", "field":"mcp_arguments",
+            "outcome":"not_started", "retry_original":false}}})
     );
     assert_eq!(before, persisted(&pool).await);
     pool.close().await;

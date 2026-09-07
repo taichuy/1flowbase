@@ -440,7 +440,7 @@ async fn create_compact_provider_instance(
         "application-public-api-compact-provider-{}",
         Uuid::now_v7()
     ));
-    write_compact_provider_fixture(&package_root);
+    write_compact_provider_fixture(&package_root, mode);
 
     let install = app
         .clone()
@@ -654,7 +654,7 @@ async fn publish_compact_application(
     assert_eq!(publish.status(), StatusCode::CREATED);
 }
 
-fn write_compact_provider_fixture(root: &std::path::Path) {
+fn write_compact_provider_fixture(root: &std::path::Path, mode: CompactFixtureMode) {
     fs::create_dir_all(root.join("provider")).expect("Compact fixture provider dir should exist");
     fs::create_dir_all(root.join("bin")).expect("Compact fixture binary dir should exist");
     fs::create_dir_all(root.join("models/llm")).expect("Compact fixture models dir should exist");
@@ -715,7 +715,7 @@ switch (request.method) {
       display_name: 'Fixture Compact',
       source: 'dynamic',
       supports_streaming: false,
-      supports_tool_call: true,
+      supports_tool_call: __SUPPORTS_TOOL_CALL__,
       supports_multimodal: false,
       provider_metadata: {}
     }];
@@ -796,7 +796,15 @@ switch (request.method) {
 }
 
 process.stdout.write(JSON.stringify({ ok: true, result }));
-"#,
+"#.replace(
+            "__SUPPORTS_TOOL_CALL__",
+            // Baseline 6824b2c17 Compact fixtures deliberately have no tool-call
+            // capability. Only the live Generate callback fixture needs it.
+            match mode {
+                CompactFixtureMode::LiveCallback => "true",
+                CompactFixtureMode::Success | CompactFixtureMode::ProviderFailure => "false",
+            },
+        ),
     )
     .expect("Compact fixture runtime should be writable");
     #[cfg(unix)]
