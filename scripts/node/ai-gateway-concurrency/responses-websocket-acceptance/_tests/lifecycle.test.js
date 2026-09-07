@@ -81,4 +81,3 @@ test('Root #1998 F1: explicit Native cancel requires both cancelled business sta
   const missing = heldEvidence('cancelled'); missing.wire.events = [];
   assert.throws(() => assertBarrierOrdering(missing, 'cancelled'), /unique failed\/cancelled/u);
 });
-
