@@ -198,6 +198,10 @@ export interface UpdateConsoleNetworkEgressPoolMemberInput {
   sequence: number;
 }
 
+export type DeleteConsoleNetworkEgressPoolMembersInput =
+  | { selection: 'selected'; member_ids: string[] }
+  | { selection: 'all' };
+
 export interface ConsoleNetworkEgressRoute {
   id: string;
   consumer_kind: string;
@@ -515,6 +519,21 @@ export function deleteConsoleNetworkEgressPoolMember(
   return apiFetchVoid({
     path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/${encodeURIComponent(memberId)}`,
     method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleNetworkEgressPoolMembers(
+  poolId: string,
+  input: DeleteConsoleNetworkEgressPoolMembersInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/batch`,
+    method: 'DELETE',
+    body: input,
     csrfToken,
     baseUrl
   });

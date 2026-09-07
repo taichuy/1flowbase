@@ -166,6 +166,7 @@ use utoipa::OpenApi;
         crate::routes::network_center::pools::create_network_egress_pool_member,
         crate::routes::network_center::pools::update_network_egress_pool_member,
         crate::routes::network_center::pools::delete_network_egress_pool_member,
+        crate::routes::network_center::pools::delete_network_egress_pool_members,
         crate::routes::network_center::list_network_egress_routes,
         crate::routes::network_center::create_network_egress_route,
         crate::routes::network_center::update_network_egress_route,

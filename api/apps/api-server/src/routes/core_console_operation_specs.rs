@@ -530,6 +530,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "system.network-center",
     ),
     settings(
+        "network_egress_pool_members.batch_delete",
+        "system.network-center",
+    ),
+    settings(
         "network_egress_pool_members.update",
         "system.network-center",
     ),

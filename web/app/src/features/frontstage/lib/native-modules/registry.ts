@@ -49,6 +49,7 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     { NativeBlockAnchor },
     { NativeBlockDropdown },
     { NativeBlockMessage },
+    { NativeBlockNotification },
     { NativeBlockMenu },
     {
       NativeBlockCascader,
@@ -63,6 +64,7 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     import('./native-anchor-runtime'),
     import('./native-dropdown-runtime'),
     import('./native-message-runtime'),
+    import('./native-notification-runtime'),
     import('./menu/native-menu-runtime'),
     import('./overlay/native-generic-overlay-runtime'),
     import('./overlay/native-tooltip-popover-runtime')
@@ -79,7 +81,8 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     Select: NativeBlockSelect,
     Tooltip: NativeBlockTooltip,
     TreeSelect: NativeBlockTreeSelect,
-    message: NativeBlockMessage
+    message: NativeBlockMessage,
+    notification: NativeBlockNotification
   };
 }
 

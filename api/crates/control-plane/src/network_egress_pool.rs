@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -372,6 +372,42 @@ where
             .await?;
         self.audit(actor_user_id, pool_id, "network_egress_pool.member_deleted")
             .await
+    }
+
+    pub async fn delete_members(
+        &self,
+        actor_user_id: Uuid,
+        pool_id: Uuid,
+        member_ids: Vec<Uuid>,
+    ) -> Result<()> {
+        self.require_global_pool(pool_id).await?;
+        if member_ids.is_empty()
+            || member_ids.iter().copied().collect::<HashSet<_>>().len() != member_ids.len()
+        {
+            return Err(ControlPlaneError::InvalidInput("member_ids").into());
+        }
+        self.repository
+            .delete_network_egress_pool_members(pool_id, &member_ids)
+            .await?;
+        self.audit(
+            actor_user_id,
+            pool_id,
+            "network_egress_pool.members_deleted",
+        )
+        .await
+    }
+
+    pub async fn delete_all_members(&self, actor_user_id: Uuid, pool_id: Uuid) -> Result<()> {
+        self.require_global_pool(pool_id).await?;
+        self.repository
+            .delete_all_network_egress_pool_members(pool_id)
+            .await?;
+        self.audit(
+            actor_user_id,
+            pool_id,
+            "network_egress_pool.all_members_deleted",
+        )
+        .await
     }
 
     pub async fn record_probe(

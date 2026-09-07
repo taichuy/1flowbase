@@ -339,6 +339,50 @@ describe('native block surface runtime kernel', () => {
     fixture.runtime.dispose();
   });
 
+  test('AC-003 invalidates and disposes every registered Block effect resource', () => {
+    const fixture = createSurfaceFixture('preview');
+    const active = { invalidate: vi.fn(), dispose: vi.fn() };
+    const removed = { invalidate: vi.fn(), dispose: vi.fn() };
+    fixture.runtime.registerEffectResource(active);
+    const unregisterRemoved = fixture.runtime.registerEffectResource(removed);
+
+    fixture.runtime.advanceLayoutEpoch('preview');
+    expect(active.invalidate).not.toHaveBeenCalled();
+
+    fixture.runtime.advanceLayoutEpoch('design');
+    expect(active.invalidate).toHaveBeenCalledOnce();
+    expect(removed.invalidate).toHaveBeenCalledOnce();
+
+    unregisterRemoved();
+    fixture.runtime.dispose();
+    expect(active.dispose).toHaveBeenCalledOnce();
+    expect(removed.dispose).not.toHaveBeenCalled();
+  });
+
+  test('AC-003 continues effect cleanup when one resource throws', () => {
+    const fixture = createSurfaceFixture('preview');
+    const failing = {
+      invalidate: vi.fn(() => {
+        throw new Error('invalidate failed');
+      }),
+      dispose: vi.fn(() => {
+        throw new Error('dispose failed');
+      })
+    };
+    const healthy = { invalidate: vi.fn(), dispose: vi.fn() };
+    fixture.runtime.registerEffectResource(failing);
+    fixture.runtime.registerEffectResource(healthy);
+
+    expect(() => fixture.runtime.advanceLayoutEpoch('design')).toThrow(
+      AggregateError
+    );
+    expect(healthy.invalidate).toHaveBeenCalledOnce();
+
+    expect(() => fixture.runtime.dispose()).toThrow(AggregateError);
+    expect(healthy.dispose).toHaveBeenCalledOnce();
+    expect(() => fixture.runtime.dispose()).not.toThrow();
+  });
+
   test('D1-AC-006 unregister and dispose clear listeners, observers, dirty work, and queued commits', () => {
     const frames = installAnimationFrameQueue();
     const observers = installObserverHarnesses();

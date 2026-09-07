@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
-import type { AffixProps } from 'antd';
+import type { AffixProps, ButtonProps } from 'antd';
 
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
@@ -134,6 +134,137 @@ describe('native block Affix runtime adapter', () => {
     second.view.unmount();
     expect(secondLayer.isConnected).toBe(false);
     expect(scrollOwner).toHaveStyle({ position: 'static' });
+  });
+
+  test('I1997-AC-001 gives top and bottom Affix siblings independent surface layers', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antdModule = await registry.load('antd');
+    const Affix = antdModule.Affix as ComponentType<AffixProps>;
+    const Button = antdModule.Button as ComponentType<ButtonProps>;
+    const scrollOwner = document.createElement('div');
+    scrollOwner.style.overflowY = 'auto';
+    const root = document.createElement('div');
+    scrollOwner.append(root);
+    document.body.append(scrollOwner);
+    const plan = createPlan('native-affix-pair');
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="affix-pair:1"
+        plan={plan}
+        component={() => (
+          <div style={{ minHeight: 280 }}>
+            <Affix offsetTop={16}>
+              <Button type="primary">Top toolbar</Button>
+            </Affix>
+            <Affix offsetBottom={16}>
+              <Button type="primary">Bottom toolbar</Button>
+            </Affix>
+          </div>
+        )}
+        ctx={createContext()}
+      />
+    );
+
+    const layers = await waitFor(() => {
+      const matches = Array.from(
+        scrollOwner.querySelectorAll<HTMLElement>(
+          `[data-flowbase-native-affix-layer="${plan.blockId}"]`
+        )
+      );
+      expect(matches).toHaveLength(2);
+      return matches;
+    });
+    const topLayer = layers.find((layer) =>
+      layer.shadowRoot?.textContent?.includes('Top toolbar')
+    );
+    const bottomLayer = layers.find((layer) =>
+      layer.shadowRoot?.textContent?.includes('Bottom toolbar')
+    );
+    const topMount = topLayer?.shadowRoot?.querySelector<HTMLElement>(
+      '[data-flowbase-native-affix-mount]'
+    );
+    const bottomMount = bottomLayer?.shadowRoot?.querySelector<HTMLElement>(
+      '[data-flowbase-native-affix-mount]'
+    );
+
+    expect(
+      root.shadowRoot?.querySelectorAll(
+        '[data-flowbase-native-affix-placeholder]'
+      )
+    ).toHaveLength(2);
+    expect(topMount).toHaveStyle({ position: 'sticky', top: '16px' });
+    expect(topMount?.style.bottom).toBe('');
+    expect(bottomMount).toHaveStyle({ position: 'absolute' });
+    expect(bottomMount?.style.bottom).toBe('');
+    expect(
+      topLayer?.shadowRoot?.querySelectorAll('style').length
+    ).toBeGreaterThan(0);
+    expect(
+      bottomLayer?.shadowRoot?.querySelectorAll('style').length
+    ).toBeGreaterThan(0);
+
+    view.unmount();
+    expect(
+      scrollOwner.querySelectorAll('[data-flowbase-native-affix-layer]')
+    ).toHaveLength(0);
+  });
+
+  test('I1997-AC-001 pins a bottom Affix to the local owner without relying on sticky flow geometry', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antdModule = await registry.load('antd');
+    const Affix = antdModule.Affix as ComponentType<AffixProps>;
+    const scrollOwner = document.createElement('div');
+    scrollOwner.style.overflowY = 'auto';
+    const root = document.createElement('div');
+    scrollOwner.append(root);
+    document.body.append(scrollOwner);
+    const plan = createPlan('native-affix-bottom');
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="affix-bottom:1"
+        plan={plan}
+        component={() => <Affix offsetBottom={16}>Bottom toolbar</Affix>}
+        ctx={createContext()}
+      />
+    );
+    const layer = await waitFor(() => {
+      const candidate = scrollOwner.querySelector<HTMLElement>(
+        `[data-flowbase-native-affix-layer="${plan.blockId}"]`
+      );
+      expect(candidate).not.toBeNull();
+      return candidate as HTMLElement;
+    });
+    const placeholder = root.shadowRoot?.querySelector<HTMLElement>(
+      '[data-flowbase-native-affix-placeholder]'
+    );
+    const sentinel = root.shadowRoot?.querySelector<HTMLElement>(
+      '[data-flowbase-native-affix-sentinel]'
+    );
+    const mount = layer.shadowRoot?.querySelector<HTMLElement>(
+      '[data-flowbase-native-affix-mount]'
+    );
+    if (!placeholder || !sentinel || !mount) {
+      throw new Error('Missing bottom Affix geometry nodes.');
+    }
+    scrollOwner.getBoundingClientRect = () =>
+      domRect({ top: 100, left: 0, width: 720, height: 280 });
+    root.getBoundingClientRect = () =>
+      domRect({ top: 100, left: 0, width: 720, height: 280 });
+    placeholder.getBoundingClientRect = () =>
+      domRect({ top: 700, left: 16, width: 160, height: 32 });
+    sentinel.getBoundingClientRect = placeholder.getBoundingClientRect;
+    mount.getBoundingClientRect = () =>
+      domRect({ top: 0, left: 0, width: 160, height: 32 });
+
+    fireEvent.scroll(scrollOwner);
+    await nextAnimationFrame();
+
+    expect(layer).toHaveAttribute('data-flowbase-native-affix-state', 'pinned');
+    expect(mount).toHaveStyle({ position: 'absolute', top: '232px', bottom: '' });
+
+    view.unmount();
   });
 });
 

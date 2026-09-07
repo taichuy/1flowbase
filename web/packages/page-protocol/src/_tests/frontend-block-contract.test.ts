@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
   FRONTEND_BLOCK_PACKAGE_BOUNDARIES,
+  FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
   ISOLATED_FRONTEND_BLOCK_CAPABILITIES,
@@ -16,6 +17,7 @@ import {
   normalizeFrontendBlockContextPrimitive,
   normalizeFrontendBlockContextPrimitives,
   normalizeFrontendBlockRuntime,
+  resolveFrontendBlockRuntimeSurfacePolicy,
   normalizeFrontendBlockUiCapabilities,
   normalizeFrontendBlockUiCapability
 } from '../index';
@@ -71,6 +73,29 @@ describe('frontend block contract vocabulary', () => {
       'frontend-block-runtime'
     );
     expect(FRONTEND_BLOCK_PACKAGE_BOUNDARIES).not.toContain('ui-schema');
+  });
+
+  test('I1997-AC-003 assigns each runtime one least-sufficient surface policy', () => {
+    expect(FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES).toEqual({
+      native_react: {
+        isolationRequirement: 'trusted_host_realm',
+        positioningOwner: 'surface',
+        sizingOwner: 'content'
+      },
+      isolated_iframe: {
+        isolationRequirement: 'independent_realm',
+        positioningOwner: 'realm_viewport',
+        sizingOwner: 'host'
+      }
+    });
+    expect(resolveFrontendBlockRuntimeSurfacePolicy('native_react')).toEqual(
+      FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES.native_react
+    );
+    expect(resolveFrontendBlockRuntimeSurfacePolicy('isolated_iframe')).toEqual(
+      FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES.isolated_iframe
+    );
+    expect(resolveFrontendBlockRuntimeSurfacePolicy('iframe')).toBeNull();
+    expect(resolveFrontendBlockRuntimeSurfacePolicy(null)).toBeNull();
   });
 
   test('guards runtime, context primitives, ui capabilities, and package boundaries', () => {

@@ -223,7 +223,18 @@ const label = "unterminated;
   });
 
   test.each([
-    ['notification global API', "notification.open({ message: 'done' });"],
+    [
+      'notification global API',
+      "import { notification } from 'antd'; notification.open({ message: 'done' });"
+    ],
+    [
+      'notification global API import alias',
+      "import { notification as notificationApi } from 'antd'; notificationApi.info({ message: 'done' });"
+    ],
+    [
+      'notification global API local alias',
+      "import { notification } from 'antd'; const notificationApi = notification; notificationApi.success({ message: 'done' });"
+    ],
     ['Modal static method', 'Modal.confirm({ title: "Confirm" });'],
     ['computed Modal static method', "Modal['info']({ title: 'Info' });"]
   ])('rejects AntD global or privileged API: %s', (_label, source) => {
@@ -237,9 +248,26 @@ const label = "unterminated;
 
   test.each([
     [
-      'static API',
-      "import { message } from 'antd'; message.success('done');"
+      'App context instance',
+      "import { App } from 'antd'; const { notification } = App.useApp(); notification.open({ message: 'done' });"
     ],
+    [
+      'App context instance alias',
+      "import { App } from 'antd'; const { notification: notificationApi } = App.useApp(); notificationApi.open({ message: 'done' });"
+    ],
+    [
+      'notification Hook',
+      "import { notification } from 'antd'; const [api] = notification.useNotification(); api.open({ message: 'done' });"
+    ]
+  ])('AC-001 allows Block-scoped AntD notification %s', (_label, source) => {
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      errors: []
+    });
+  });
+
+  test.each([
+    ['static API', "import { message } from 'antd'; message.success('done');"],
     [
       'instance Hook',
       "import { message } from 'antd'; const [api] = message.useMessage(); api.info('done');"

@@ -245,6 +245,12 @@ pub trait NetworkEgressPoolRepository: Send + Sync {
         pool_id: Uuid,
         member_id: Uuid,
     ) -> anyhow::Result<()>;
+    async fn delete_network_egress_pool_members(
+        &self,
+        pool_id: Uuid,
+        member_ids: &[Uuid],
+    ) -> anyhow::Result<()>;
+    async fn delete_all_network_egress_pool_members(&self, pool_id: Uuid) -> anyhow::Result<()>;
 }
 
 #[async_trait]

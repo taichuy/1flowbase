@@ -2,7 +2,7 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 import {
   allowedImports,
-  deniedAntdGlobalIdentifiers,
+  deniedAntdStaticNotificationMethods,
   deniedAntdStaticModalMethods,
   deniedCallForwarders,
   deniedCallIdentifiers,
@@ -640,6 +640,10 @@ function validateDeniedCapabilities(
 ): BlockProtocolError[] {
   const errors: BlockProtocolError[] = [];
   const antdModalAliases = collectAntdModalAliases(source, tokens);
+  const antdNotificationAliases = collectAntdNotificationAliases(
+    source,
+    tokens
+  );
   const addError = (error: BlockProtocolError): void => {
     const alreadyAdded = errors.some(
       (current) => current.code === error.code && current.path === error.path
@@ -670,19 +674,6 @@ function validateDeniedCapabilities(
       return;
     }
 
-    if (
-      deniedAntdGlobalIdentifiers.has(token.value) &&
-      isIdentifierReference(source, token)
-    ) {
-      addError(
-        capabilityError(
-          token.value,
-          `AntD global API '${token.value}' is not allowed in native trusted block source.`
-        )
-      );
-      return;
-    }
-
     if (deniedEscapeIdentifiers.has(token.value)) {
       addError(
         capabilityError(
@@ -696,7 +687,8 @@ function validateDeniedCapabilities(
     const deniedPropertyAccess = readDeniedPropertyAccess(
       source,
       token,
-      antdModalAliases
+      antdModalAliases,
+      antdNotificationAliases
     );
     if (deniedPropertyAccess) {
       addError(
@@ -727,26 +719,6 @@ function validateDeniedCapabilities(
   return errors;
 }
 
-function isIdentifierReference(source: string, token: SourceToken): boolean {
-  for (let index = token.start - 1; index >= 0; index -= 1) {
-    if (isWhitespace(source[index])) continue;
-    if (source[index] === '.') return false;
-    break;
-  }
-  for (let index = token.end; index < source.length; index += 1) {
-    if (isWhitespace(source[index])) continue;
-    if (source[index] === ':' || source[index] === '=') return false;
-    if (source[index] === '?') {
-      for (index += 1; index < source.length; index += 1) {
-        if (isWhitespace(source[index])) continue;
-        return source[index] !== ':';
-      }
-    }
-    break;
-  }
-  return true;
-}
-
 function collectAntdModalAliases(
   source: string,
   tokens: SourceToken[]
@@ -771,6 +743,55 @@ function collectAntdModalAliases(
         aliases,
         antdModuleAliases
       );
+  }
+
+  return aliases;
+}
+
+function collectAntdNotificationAliases(
+  source: string,
+  tokens: SourceToken[]
+): Set<string> {
+  const aliases = new Set<string>();
+
+  tokens.forEach((token, tokenIndex) => {
+    if (token.value !== 'import') return;
+    const importSource = readStaticImportSource(source, tokens, tokenIndex);
+    if (!importSource || importSource.value !== 'antd') return;
+
+    for (
+      let index = tokenIndex + 1;
+      index < importSource.fromTokenIndex;
+      index += 1
+    ) {
+      if (tokens[index].value !== 'notification') continue;
+      const maybeAsToken = tokens[index + 1];
+      const maybeAliasToken = tokens[index + 2];
+      aliases.add(
+        maybeAsToken?.value === 'as' &&
+          maybeAliasToken &&
+          index + 2 < importSource.fromTokenIndex
+          ? maybeAliasToken.value
+          : 'notification'
+      );
+    }
+  });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    tokens.forEach((aliasToken, tokenIndex) => {
+      if (!isVariableDeclarationName(source, tokens, tokenIndex)) return;
+      const targetToken = tokens[tokenIndex + 1];
+      if (!targetToken) return;
+      const assignmentSegment = source.slice(aliasToken.end, targetToken.start);
+      if (
+        isSimpleAssignmentSegment(assignmentSegment) &&
+        aliases.has(targetToken.value)
+      ) {
+        changed = addAlias(aliases, aliasToken.value) || changed;
+      }
+    });
   }
 
   return aliases;
@@ -1017,7 +1038,8 @@ function capabilityError(
 function readDeniedPropertyAccess(
   source: string,
   token: SourceToken,
-  antdModalAliases: Set<string>
+  antdModalAliases: Set<string>,
+  antdNotificationAliases: Set<string>
 ):
   | {
       identifier: string;
@@ -1062,6 +1084,17 @@ function readDeniedPropertyAccess(
     };
   }
 
+  if (
+    antdNotificationAliases.has(token.value) &&
+    deniedAntdStaticNotificationMethods.has(access.property)
+  ) {
+    return {
+      identifier: access.property,
+      code: 'transform_failed',
+      message: `AntD Notification static method '${access.property}' is not allowed in native trusted block source.`
+    };
+  }
+
   if (!isDeniedPropertyInvocation(source, access.end)) {
     return undefined;
   }
@@ -1082,7 +1115,8 @@ function isDeniedComputedProperty(property: string): boolean {
   return (
     deniedEscapeIdentifiers.has(property) ||
     deniedCallIdentifiers.has(property) ||
-    deniedAntdStaticModalMethods.has(property)
+    deniedAntdStaticModalMethods.has(property) ||
+    deniedAntdStaticNotificationMethods.has(property)
   );
 }
 

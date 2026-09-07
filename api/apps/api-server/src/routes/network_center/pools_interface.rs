@@ -60,6 +60,10 @@ pub(crate) enum NetworkPoolsInput {
         pool_id: String,
         member_id: String,
     },
+    DeleteMembers {
+        pool_id: String,
+        body: DeleteNetworkEgressPoolMembersBody,
+    },
 }
 
 impl InterfaceContract for NetworkPoolsInput {
@@ -266,6 +270,24 @@ impl NetworkPoolsAdapter {
                     .await?;
                 Ok(NetworkPoolsOutput::Deleted)
             }
+            NetworkPoolsInput::DeleteMembers { pool_id, body } => {
+                let pool_id = parse_uuid(&pool_id, "pool_id")?;
+                match body {
+                    DeleteNetworkEgressPoolMembersBody::Selected { member_ids } => {
+                        let member_ids = member_ids
+                            .iter()
+                            .map(|member_id| parse_uuid(member_id, "member_ids"))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        self.service()
+                            .delete_members(user_id, pool_id, member_ids)
+                            .await?;
+                    }
+                    DeleteNetworkEgressPoolMembersBody::All => {
+                        self.service().delete_all_members(user_id, pool_id).await?;
+                    }
+                }
+                Ok(NetworkPoolsOutput::Deleted)
+            }
         }
     }
 }
@@ -360,6 +382,13 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.network-egress-pool-members.delete.v1",
         method: "DELETE",
         path: "/api/console/network-center/pools/:pool_id/members/:member_id",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "network_egress_pool_members.batch_delete",
+        binding_id: "http.console.network-egress-pool-members.batch-delete.v1",
+        method: "DELETE",
+        path: "/api/console/network-center/pools/:pool_id/members/batch",
         mutating: true,
     },
 ];

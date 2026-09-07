@@ -8,6 +8,7 @@ import {
   createConsoleNetworkEgressPoolMember,
   deleteConsoleNetworkEgressPool,
   deleteConsoleNetworkEgressPoolMember,
+  deleteConsoleNetworkEgressPoolMembers,
   listConsoleNetworkEgressPools,
   listConsoleNetworkEgressOfficialPluginCatalog,
   syncConsoleNetworkEgressProvider,
@@ -206,6 +207,32 @@ describe('console network egress pools client', () => {
     expect(transport.apiFetchVoid).toHaveBeenCalledWith({
       path: '/api/console/network-center/pools/pool-1/members/member-1',
       method: 'DELETE',
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test('AC-001 and AC-002 express selected and all member deletion explicitly', async () => {
+    await deleteConsoleNetworkEgressPoolMembers(
+      'pool-1',
+      { selection: 'selected', member_ids: ['member-1', 'member-2'] },
+      'csrf-123'
+    );
+    expect(transport.apiFetchVoid).toHaveBeenCalledWith({
+      path: '/api/console/network-center/pools/pool-1/members/batch',
+      method: 'DELETE',
+      body: { selection: 'selected', member_ids: ['member-1', 'member-2'] },
+      csrfToken: 'csrf-123'
+    });
+
+    await deleteConsoleNetworkEgressPoolMembers(
+      'pool-1',
+      { selection: 'all' },
+      'csrf-123'
+    );
+    expect(transport.apiFetchVoid).toHaveBeenCalledWith({
+      path: '/api/console/network-center/pools/pool-1/members/batch',
+      method: 'DELETE',
+      body: { selection: 'all' },
       csrfToken: 'csrf-123'
     });
   });

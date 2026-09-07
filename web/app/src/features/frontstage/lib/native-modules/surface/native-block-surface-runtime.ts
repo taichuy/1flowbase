@@ -10,6 +10,11 @@ export interface NativeBlockSurfaceAnchor<TMeasurement> {
   commit(measurement: TMeasurement): void;
 }
 
+export interface NativeBlockEffectResource {
+  invalidate(): void;
+  dispose(): void;
+}
+
 interface RegisteredAnchor {
   target(): Element | null;
   measure(): unknown;
@@ -31,6 +36,7 @@ export interface NativeBlockSurfaceRuntime {
   registerAnchor<TMeasurement>(
     anchor: NativeBlockSurfaceAnchor<TMeasurement>
   ): () => void;
+  registerEffectResource(resource: NativeBlockEffectResource): () => void;
   scheduleAnchors(): void;
   dispose(): void;
 }
@@ -52,6 +58,7 @@ export function createNativeBlockSurfaceRuntime({
     ownerWindow
   );
   const anchors = new Set<RegisteredAnchor>();
+  const effectResources = new Set<NativeBlockEffectResource>();
   const dirtyAnchors = new Set<RegisteredAnchor>();
   const scrollMembers = new Map<EventTarget, Set<RegisteredAnchor>>();
   const resizeMembers = new Map<Element, Set<RegisteredAnchor>>();
@@ -289,11 +296,16 @@ export function createNativeBlockSurfaceRuntime({
       }
       currentLayoutEpoch = nextLayoutEpoch;
       currentGeneration += 1;
+      const effectErrors = collectEffectResourceErrors(
+        effectResources,
+        'invalidate'
+      );
       if (scheduledFrame !== null) {
         ownerWindow.cancelAnimationFrame(scheduledFrame);
         scheduledFrame = null;
       }
       scheduleAnchors();
+      throwEffectResourceErrors(effectErrors, 'invalidate');
       return currentGeneration;
     },
     registerAnchor<TMeasurement>(
@@ -339,6 +351,19 @@ export function createNativeBlockSurfaceRuntime({
         }
       };
     },
+    registerEffectResource(resource) {
+      if (disposed) {
+        resource.dispose();
+        return () => undefined;
+      }
+      effectResources.add(resource);
+      let unregistered = false;
+      return () => {
+        if (unregistered) return;
+        unregistered = true;
+        effectResources.delete(resource);
+      };
+    },
     scheduleAnchors,
     dispose() {
       if (disposed) return;
@@ -357,16 +382,48 @@ export function createNativeBlockSurfaceRuntime({
       }
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
+      const effectErrors = collectEffectResourceErrors(
+        [...effectResources].reverse(),
+        'dispose'
+      );
+      effectResources.clear();
       anchors.clear();
       dirtyAnchors.clear();
       scrollMembers.clear();
       resizeMembers.clear();
       mutationMembers.clear();
       slotMembers.clear();
+      throwEffectResourceErrors(effectErrors, 'dispose');
     }
   };
 
   return runtime;
+}
+
+function collectEffectResourceErrors(
+  resources: Iterable<NativeBlockEffectResource>,
+  method: 'invalidate' | 'dispose'
+): unknown[] {
+  const errors: unknown[] = [];
+  for (const resource of resources) {
+    try {
+      resource[method]();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  return errors;
+}
+
+function throwEffectResourceErrors(
+  errors: unknown[],
+  method: 'invalidate' | 'dispose'
+): void {
+  if (errors.length === 0) return;
+  throw new AggregateError(
+    errors,
+    `Native Block effect resource ${method} failed.`
+  );
 }
 
 function replaceMembership<T extends EventTarget>(

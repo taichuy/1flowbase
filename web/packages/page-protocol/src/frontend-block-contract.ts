@@ -3,6 +3,19 @@ export const FRONTEND_BLOCK_RUNTIMES = [
   'isolated_iframe'
 ] as const;
 
+export const FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES = {
+  native_react: {
+    isolationRequirement: 'trusted_host_realm',
+    positioningOwner: 'surface',
+    sizingOwner: 'content'
+  },
+  isolated_iframe: {
+    isolationRequirement: 'independent_realm',
+    positioningOwner: 'realm_viewport',
+    sizingOwner: 'host'
+  }
+} as const;
+
 export const FRONTEND_BLOCK_CONTEXT_PRIMITIVES = [
   'text',
   'image',
@@ -27,6 +40,8 @@ export const FRONTEND_BLOCK_PACKAGE_BOUNDARIES = [
 ] as const;
 
 export type FrontendBlockRuntime = (typeof FRONTEND_BLOCK_RUNTIMES)[number];
+export type FrontendBlockRuntimeSurfacePolicy =
+  (typeof FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES)[FrontendBlockRuntime];
 export type FrontendBlockContextPrimitive =
   (typeof FRONTEND_BLOCK_CONTEXT_PRIMITIVES)[number];
 export type FrontendBlockUiCapability =
@@ -139,6 +154,15 @@ export function normalizeFrontendBlockRuntime(
   value: unknown
 ): FrontendBlockRuntime | null {
   return isFrontendBlockRuntime(value) ? value : null;
+}
+
+export function resolveFrontendBlockRuntimeSurfacePolicy(
+  runtime: unknown
+): FrontendBlockRuntimeSurfacePolicy | null {
+  const normalizedRuntime = normalizeFrontendBlockRuntime(runtime);
+  return normalizedRuntime
+    ? FRONTEND_BLOCK_RUNTIME_SURFACE_POLICIES[normalizedRuntime]
+    : null;
 }
 
 export function normalizeFrontendBlockContextPrimitive(

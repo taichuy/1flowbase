@@ -24,7 +24,15 @@ export const deniedPortalIdentifiers = new Set([
   'hydrateRoot'
 ]);
 
-export const deniedAntdGlobalIdentifiers = new Set(['notification']);
+export const deniedAntdStaticNotificationMethods = new Set([
+  'config',
+  'destroy',
+  'error',
+  'info',
+  'open',
+  'success',
+  'warning'
+]);
 
 export const deniedAntdStaticModalMethods = new Set([
   'confirm',

@@ -12,6 +12,7 @@ const apiClient = vi.hoisted(() => ({
   createConsoleNetworkEgressPoolMember: vi.fn(),
   updateConsoleNetworkEgressPoolMember: vi.fn(),
   deleteConsoleNetworkEgressPoolMember: vi.fn(),
+  deleteConsoleNetworkEgressPoolMembers: vi.fn(),
   listConsoleNetworkEgressRoutes: vi.fn(),
   createConsoleNetworkEgressRoute: vi.fn(),
   updateConsoleNetworkEgressRoute: vi.fn(),
@@ -26,6 +27,7 @@ import {
   createSettingsNetworkEgressPoolMember,
   deleteSettingsNetworkEgressPool,
   deleteSettingsNetworkEgressPoolMember,
+  deleteSettingsNetworkEgressPoolMembers,
   fetchSettingsNetworkEgressPools,
   fetchSettingsNetworkEgressProviders,
   fetchSettingsNetworkEgressRoutes,
@@ -110,6 +112,11 @@ describe('settings network egress pools API', () => {
       'csrf-123'
     );
     deleteSettingsNetworkEgressPoolMember('pool-1', 'member-1', 'csrf-123');
+    deleteSettingsNetworkEgressPoolMembers(
+      'pool-1',
+      { selection: 'selected', member_ids: ['member-1'] },
+      'csrf-123'
+    );
 
     expect(apiClient.createConsoleNetworkEgressPool).toHaveBeenCalledWith(
       pool,
@@ -138,6 +145,11 @@ describe('settings network egress pools API', () => {
     expect(apiClient.deleteConsoleNetworkEgressPoolMember).toHaveBeenCalledWith(
       'pool-1',
       'member-1',
+      'csrf-123'
+    );
+    expect(apiClient.deleteConsoleNetworkEgressPoolMembers).toHaveBeenCalledWith(
+      'pool-1',
+      { selection: 'selected', member_ids: ['member-1'] },
       'csrf-123'
     );
   });

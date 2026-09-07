@@ -95,25 +95,25 @@ export function attachNativeAffixLayer({
     if (disposed || !surfaceHost.isConnected || !placeholder.isConnected) {
       return;
     }
+    const nextState = resolveAffixState({
+      current: state,
+      mountElement,
+      options: options(),
+      placeholder,
+      scrollOwner,
+      sentinel,
+      surfaceHost
+    });
     syncGeometry({
       host,
       mountElement,
       options: options(),
       placeholder,
       scrollOwner,
+      state: nextState,
       surfaceHost
     });
-    publishState(
-      resolveAffixState({
-        current: state,
-        mountElement,
-        options: options(),
-        placeholder,
-        scrollOwner,
-        sentinel,
-        surfaceHost
-      })
-    );
+    publishState(nextState);
   };
 
   const scheduleRefresh = () => {
@@ -160,6 +160,7 @@ function syncGeometry({
   options,
   placeholder,
   scrollOwner,
+  state,
   surfaceHost
 }: {
   host: HTMLElement;
@@ -167,6 +168,7 @@ function syncGeometry({
   options: NativeAffixLayerOptions;
   placeholder: HTMLElement;
   scrollOwner: HTMLElement | Window;
+  state: NativeAffixState;
   surfaceHost: HTMLElement;
 }): void {
   const ownerRect = getOwnerRect(scrollOwner);
@@ -186,12 +188,25 @@ function syncGeometry({
   host.style.top = `${relativeTop}px`;
   host.style.width = `${placeholderRect.width}px`;
   host.style.height = `${Math.max(surfaceRect.height, localTop + placeholderRect.height)}px`;
+
+  if (options.placement === 'bottom') {
+    const mountHeight =
+      mountElement.getBoundingClientRect().height || placeholderRect.height;
+    const maximumTop = Math.max(0, surfaceRect.height - mountHeight);
+    const pinnedTop =
+      ownerRect.bottom - options.offset - mountHeight - surfaceRect.top;
+    const nextTop = state === 'pinned' ? pinnedTop : localTop;
+    mountElement.style.marginTop = '0';
+    mountElement.style.position = 'absolute';
+    mountElement.style.top = `${Math.min(maximumTop, Math.max(0, nextTop))}px`;
+    mountElement.style.bottom = '';
+    return;
+  }
+
   mountElement.style.marginTop = `${localTop}px`;
   mountElement.style.position = 'sticky';
-  mountElement.style.top =
-    options.placement === 'top' ? `${options.offset}px` : '';
-  mountElement.style.bottom =
-    options.placement === 'bottom' ? `${options.offset}px` : '';
+  mountElement.style.top = `${options.offset}px`;
+  mountElement.style.bottom = '';
 }
 
 function resolveAffixState({
