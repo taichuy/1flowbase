@@ -33,7 +33,7 @@
 
 如果涉及插件、runtime 或动态建模，必须额外确认：
 
-- `public / control / runtime` 三平面归属
+- 区分public/console/runtime入口分区与Protocol/Canonical Interface/Business/Execution责任平面；命中接口生命周期时读取[专项验收](interface-lifecycle-gate.md)
 - `HostExtension / RuntimeExtension / CapabilityPlugin` 边界
 - `Resource Action Kernel` 是否仍由宿主托管
 - HostExtension 是否只通过 manifest contribution 注册 resource、action、hook、route、worker、migration 和 infrastructure provider
@@ -50,6 +50,8 @@
 - 如果涉及文件管理，`file_storages` 是否仍归 `root/system` 管理，文件记录是否仍保存实际 `storage_id` 快照
 
 ## Step 2: Run Backend Verification
+
+以下Cargo命令按变更风险选择，重型Rust/PG验证在CI/beta执行；纯文档/skill变更使用源码、链接和语义核对，不因修改crate下文档自动跑Cargo。
 
 优先运行与当前风险直接对应的后端验证脚本；Dev Acceptance Gate 默认复用 TDD 红绿结果，只补一个主验证命令和必要 smoke。PR / Project Health Gate 才默认考虑仓库级后端验证。
 同一工作区内的 `cargo` 验证命令默认串行执行，不要并发启动多条 `cargo test / check / clippy`，否则容易卡在 `package cache` 或 `artifact directory` 锁上，拿不到稳定 QA 证据。
@@ -90,11 +92,11 @@ cargo test -p <crate-name>
 至少抽查每个被改动或被影响平面中的关键路由。QA 只读取已确认的验收预期、OpenAPI、DTO、测试或现有 contract；缺少预期时标为 `未验证`，不要在 QA 阶段临时发明接口语义。
 
 - 预期来源：method / path / plane、认证方式、CSRF 要求、请求 DTO、预期 status、response DTO / error shape、状态副作用、审计或事件
-- 认证态：in-process route integration 优先复用项目测试 support 的登录 / session / CSRF helper；运行态请求先调用 `/api/public/auth/providers/password-local/sign-in` 获取 session cookie 和 `data.csrf_token`，mutating console request 带 `cookie` 与 `x-csrf-token`
+- 认证态：in-process route integration 优先复用项目测试 support 的登录 / session / CSRF helper；运行态使用下述api-debug管理认证态；不在临时脚本手写sign-in，定制流程复用项目session owner并回收
 - 运行态取证：仅当需要真实服务、认证链、环境配置、线上 / 本地差异或手工复现证据时，使用 `node scripts/node/tooling.js api-debug [METHOD] <api-path-or-url> --expect-status <code>`；同一 route contract 已被 integration test 覆盖时，不默认重复运行。该工具从 api-server `.env` 读取 root 账号密码，自动登录并为任意 API 请求带认证态
 - evidence 记录：保留请求摘要、status、脱敏 headers、response body 关键字段、执行命令或测试名；原始 artifact 放 `tmp/test-governance/`，不得记录 cookie、token、secret 或密码
 - 路径是否仍放在正确平面
-- 是否保持 `ApiSuccess` / `204 No Content` / 统一错误结构
+- 是否符合该Binding的协议契约：HTTP业务包装、204、OpenAI/Anthropic、SSE/WebSocket和MCP分别核对，不强制所有协议使用ApiSuccess
 - 认证、ACL、审计和 OpenAPI 暴露是否仍由宿主管理
 - 公共 API 契约变化后，调用方和相关回归是否同步成立
 - Project Health Gate 场景使用 mock / fixture / 受控数据跑接口质量门禁，检查状态是否正常、返回结构是否稳定、值是否正确、过期 / 禁用 / 缺失状态是否符合已确认预期
@@ -105,7 +107,7 @@ cargo test -p <crate-name>
 至少抽查关键状态写入口，确认：
 
 - 状态修改是否仍通过命名明确的 service action / command
-- route 没有绕过 service 直接改状态
+- 协议适配器通过已注册Binding/Plan进入Kernel，typed Handler后调用service/action；没有绕过Kernel或service直接改状态
 - HostExtension route / worker 没有绕过 `Resource Action Kernel` 直接改 Core 真值
 - repository 没有偷偷承担事务意图、权限判定或状态流转
 - 关键副作用、审计、幂等仍由 service 编排

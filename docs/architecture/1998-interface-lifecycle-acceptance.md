@@ -1,5 +1,7 @@
 # Root #1998 第一阶段接口生命周期验收矩阵
 
+> 历史fixture装配记录，以下状态保留当时语境。当前架构说明从[本地系列](interface-lifecycle/README.md)阅读；最终验收以对应候选报告为准，本文不随文档迁移改写为通过。
+
 状态：**fixture 已装配，等待冻结候选、集中 QA 与同 SHA CI；没有 AC 在本文标为通过。**
 
 本次只验收接口生命周期管理。目标规范为 Wiki `Request-Architecture-and-Invocation-Lifecycle-CN@207ec12`；原接口行为基线为 `6824b2c1701eacc5cd06f155b5536b6442b54220`。P1–P5 输入 `2b21a094f15b79d1e36ded2a05efe113e5c82c1c`，P6 fixture 提交 `c4f9cd5963ac6a4205dab044947eef1cc713f776`；最终候选 SHA 由 Root 在 P7 提交后冻结，本文不预写未知 commit 或测试结果。

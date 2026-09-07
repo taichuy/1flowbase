@@ -24,7 +24,7 @@
 | API 契约 | 请求输入是否清楚、短、平、单动作，调用方是否仍成立；前端字段名是否沿用后端 DTO / 领域语义，是否存在未标记字段别名 | 接口定义、调用样例、OpenAPI / DTO、api-client 类型、日志 |
 | 状态与数据一致性 | 状态集合、流转、展示和存储是否一致 | 状态字段、页面结果、日志、数据库样例 |
 | 架构边界 | 核心规则、适配层、状态入口、插件边界是否被污染 | 代码结构、写路径、接口边界 |
-| 后端三平面 | `public / control / runtime` 是否仍分离，接口和资源是否按正确平面归属 | 路由结构、service 调用链、OpenAPI |
+| 后端入口与责任平面 | 入口分区与Protocol/Canonical Interface/Business/Execution职责是否清楚；统一生命周期是否被绕过 | [专项验收](../backend/interface-lifecycle-gate.md)、真实装配、Registry与调用链 |
 | Resource Action Kernel / Dynamic Modeling | `Resource Action Kernel` 是否仍由宿主托管，`dynamic modeling` 是否仍是元数据系统而不是 runtime 数据本身 | resource/action registry、hook pipeline、descriptor、模型发布流程、runtime engine |
 | 插件消费分类 | `HostExtension / RuntimeExtension / CapabilityPlugin` 是否仍按各自注册权、绑定方式和消费方式工作 | plugin-framework、runtime-core、host contribution、分配/绑定逻辑、provider/node/datasource/publish 配置 |
 | HostExtension 启动面 | HostExtension manifest contribution、load plan、pre-state infra provider、route/worker/migration namespace 是否仍受宿主管理 | host-extension.yaml、loader、host infrastructure registry、route/worker/migration registry、PostgreSQL extension migration tracking |

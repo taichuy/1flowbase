@@ -100,7 +100,8 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 评估范围命中前端 `i18n/`、插件 `i18n/`、语言切换或 UI 文案抽取时，必须运行或读取 `node scripts/node/tooling.js i18n-hygiene`
 - 没有运行时证据时，前端样式结论默认降级为受限结论
 - 只要评估范围涉及后端 API、状态入口、插件边界、runtime、`Resource Action Kernel`、HostExtension registry 或 `route / service / repository / domain / mapper` 分层，就必须加载后端专项检查
-- 后端任务必查：已确认验收预期、三平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
+- 接口装配、认证、Kernel、流式收尾或协议等价验收：读取 [references/backend/interface-lifecycle-gate.md](references/backend/interface-lifecycle-gate.md)，按风险选择有限矩阵并引用本地架构主题；不将清单数量、零测试或直连 mock 当作真实接口证据。
+- 后端任务必查：已确认验收预期、入口分区与四个责任平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
 - 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/backend/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
 - 后端范围命中后台设置注册、Settings API、角色设置授权、HostExtension console surface、注册 CLI 或 route inventory 时，必须加载 `references/backend/console-settings-registration-gate.md`；不能用前端隐藏、源码 regex 或中间件已挂载替代 compiled route ownership 与授权正反例证据。
 - Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
@@ -126,6 +127,7 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - Full-project checks: `references/governance/project-evaluation-checklist.md`
 - Frontend quality gates: `references/frontend/frontend-quality-gates.md`
 - Route-scoped runtime evidence: `node scripts/node/page-debug.js snapshot|open ...`
+- Interface lifecycle and equivalence: [references/backend/interface-lifecycle-gate.md](references/backend/interface-lifecycle-gate.md)
 - Backend regression and API evidence steps: `references/backend/backend-regression-steps.md`
 - Builtin data model contract QA gate: `references/backend/builtin-data-model-contract-gate.md`
 - Console settings registration QA gate: `references/backend/console-settings-registration-gate.md`

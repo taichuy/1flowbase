@@ -9,6 +9,10 @@
 | 外部返回结构转换 | No | Yes |
 | 业务规则判定 | Yes | No |
 
+## Interface Plane
+
+协议适配与业务核心之间有 Canonical Interface Plane：它执行冻结的身份、授权/准入 ports、Hook和终态契约，不拥有业务策略或事务。按改动读取[接口生命周期实现](interface-lifecycle.md)，不要把该层与Runtime执行层混为一谈。
+
 ## Working Rule
 
 - 核心层回答“该不该做”

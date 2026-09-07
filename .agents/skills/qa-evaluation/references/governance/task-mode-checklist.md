@@ -50,7 +50,7 @@
 
 | 检查项 | 要回答的问题 | 常见证据 |
 | --- | --- | --- |
-| 三平面 | 当前改动是否仍明确区分 `public / control / runtime`，有没有把公开协议、控制面资源和 runtime 数据写混 | 路由路径、模块结构、调用链 |
+| 入口与责任平面 | 区分public/console/runtime入口分区与Protocol/Canonical Interface/Business/Execution责任；不以路径分区代替生命周期核对 | [专项验收](../backend/interface-lifecycle-gate.md)、路由装配与调用链 |
 | 宿主托管边界 | `Resource Action Kernel` 是否仍由宿主托管，`dynamic modeling` 是否仍是元数据系统而不是 runtime 数据本身 | resource/action registry、descriptor/registry、模型发布流程、runtime engine |
 | 接口包装 | 是否仍遵守 `ApiSuccess`、`204 No Content`、统一错误结构和分页 `meta` | 路由返回、OpenAPI、测试断言 |
 | 状态入口 | 是否仍由命名明确的 service command/action 修改关键状态，route、worker 或 HostExtension route 是否绕过了 `Resource Action Kernel` | route 代码、worker、service 写入口、action dispatch、审计触发点 |

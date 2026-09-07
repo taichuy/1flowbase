@@ -2,7 +2,7 @@
 
 ## When / Then Rules
 
-- When 新增或修改 HTTP route，then route 只做协议适配；状态变化进入 service command 或 `Resource Action Kernel` action。
+- When 新增或修改 HTTP route，then 协议适配器通过冻结 Binding/Plan 进入 Kernel，typed Handler 后的状态变化进入 service command 或 `Resource Action Kernel` action；装配与证据见 [interface-lifecycle.md](interface-lifecycle.md)。
 - When 修改 middleware，then middleware 只处理请求链路约束；不写业务状态。
 - When 新增关键写动作，then 同步设计 service/action 入口、权限、审计、幂等和回归测试。
 - When 修改成员、角色、权限、模型或会话关键动作，then 写审计日志。
