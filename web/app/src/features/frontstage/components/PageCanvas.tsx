@@ -83,6 +83,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../lib/native-trusted-block-react-adapter';
+import { applyFrontstageLayoutCompensation } from '../lib/native-modules/surface/scroll-intent-arbiter';
 import {
   createFrontstagePageSignalSession,
   FrontstageSignalRuntimeCoordinator
@@ -1240,13 +1241,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
     pendingScrollAnchorRef.current = null;
-    if (
-      !anchor ||
-      Math.abs(anchor.scrollOwner.scrollTop - anchor.scrollTop) > 0.5
-    ) {
-      return;
-    }
-    anchor.scrollOwner.scrollTop += anchor.layoutDeltaPx;
+    if (!anchor) return;
+    applyFrontstageLayoutCompensation(
+      anchor.scrollOwner,
+      anchor.scrollTop,
+      anchor.layoutDeltaPx
+    );
   }, [autoRows]);
   const latestLayouts = useRef(layouts);
   const dragCommittedLayout = useRef<Layout | null>(null);

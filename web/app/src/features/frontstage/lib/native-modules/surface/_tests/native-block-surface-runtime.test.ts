@@ -6,6 +6,7 @@ import { createNativeBlockSurfaceRuntime } from '../native-block-surface-runtime
 const restoreObserverHarnesses: Array<() => void> = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const restore of restoreObserverHarnesses.splice(0).reverse()) restore();
   document.body.replaceChildren();
   vi.unstubAllGlobals();
@@ -47,6 +48,33 @@ describe('native block surface runtime kernel', () => {
     );
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(document.documentElement.scrollTop).toBe(documentScrollTop);
+
+    fixture.runtime.dispose();
+  });
+
+  test('AC-001 keeps an active user scroll authoritative over reveal', () => {
+    vi.useFakeTimers();
+    const fixture = createSurfaceFixture();
+    const target = document.createElement('div');
+    fixture.targetRoot.append(target);
+    fixture.scrollOwner.getBoundingClientRect = () =>
+      domRect({ top: 100, bottom: 300 });
+    target.getBoundingClientRect = () => domRect({ top: 330, bottom: 350 });
+    const scrollTo = vi.fn();
+    Object.defineProperty(fixture.scrollOwner, 'scrollTo', {
+      configurable: true,
+      value: scrollTo
+    });
+
+    fixture.scrollOwner.scrollTop = 120;
+    fixture.scrollOwner.dispatchEvent(new Event('scroll'));
+
+    expect(fixture.runtime.blockContextSurface.reveal(target)).toBe(false);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(150);
+    expect(fixture.runtime.blockContextSurface.reveal(target)).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 170, behavior: 'auto' });
 
     fixture.runtime.dispose();
   });
@@ -359,6 +387,10 @@ describe('native block surface runtime kernel', () => {
 
 function createSurfaceFixture(layoutEpoch = 'preview') {
   const scrollOwner = document.createElement('div');
+  Object.defineProperties(scrollOwner, {
+    clientHeight: { configurable: true, value: 200 },
+    scrollHeight: { configurable: true, value: 1_000 }
+  });
   const host = document.createElement('div');
   scrollOwner.append(host);
   document.body.append(scrollOwner);

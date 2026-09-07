@@ -2,6 +2,8 @@ import type { BlockContextSurface } from '@1flowbase/page-protocol';
 
 import type { NativeOverlayHost } from '../native-overlay-host';
 
+import { acquireFrontstageScrollIntentArbiter } from './scroll-intent-arbiter';
+
 export interface NativeBlockSurfaceAnchor<TMeasurement> {
   target(): Element | null;
   measure(): TMeasurement;
@@ -45,6 +47,10 @@ export function createNativeBlockSurfaceRuntime({
   targetRoot: ShadowRoot;
 }): NativeBlockSurfaceRuntime {
   const ownerWindow = targetRoot.ownerDocument.defaultView ?? window;
+  const scrollIntentLease = acquireFrontstageScrollIntentArbiter(
+    scrollOwner,
+    ownerWindow
+  );
   const anchors = new Set<RegisteredAnchor>();
   const dirtyAnchors = new Set<RegisteredAnchor>();
   const scrollMembers = new Map<EventTarget, Set<RegisteredAnchor>>();
@@ -255,7 +261,14 @@ export function createNativeBlockSurfaceRuntime({
   const blockContextSurface: BlockContextSurface = Object.freeze({
     reveal(target: Element): boolean {
       if (disposed || target.getRootNode() !== targetRoot) return false;
-      return revealWithinScrollOwner(target, scrollOwner, ownerWindow);
+      return revealWithinScrollOwner(
+        target,
+        scrollOwner,
+        ownerWindow,
+        scrollIntentLease.arbiter.applyProgrammaticScroll.bind(
+          scrollIntentLease.arbiter
+        )
+      );
     }
   });
 
@@ -330,6 +343,7 @@ export function createNativeBlockSurfaceRuntime({
     dispose() {
       if (disposed) return;
       disposed = true;
+      scrollIntentLease.release();
       currentGeneration += 1;
       if (scheduledFrame !== null) {
         ownerWindow.cancelAnimationFrame(scheduledFrame);
@@ -411,7 +425,8 @@ function isOverflowAncestor(element: Element, ownerWindow: Window): boolean {
 function revealWithinScrollOwner(
   target: Element,
   scrollOwner: HTMLElement | Window,
-  ownerWindow: Window
+  ownerWindow: Window,
+  applyProgrammaticScroll: (targetTop: number) => boolean
 ): boolean {
   const targetRect = target.getBoundingClientRect();
   const ownerRect =
@@ -424,11 +439,7 @@ function revealWithinScrollOwner(
     scrollOwner instanceof HTMLElement
       ? scrollOwner.scrollTop
       : ownerWindow.scrollY;
-  scrollOwner.scrollTo({
-    top: currentTop + displacement,
-    behavior: 'auto'
-  });
-  return true;
+  return applyProgrammaticScroll(currentTop + displacement);
 }
 
 function nearestVerticalDisplacement(
