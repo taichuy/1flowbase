@@ -8,7 +8,10 @@ use crate::_tests::{
     mcp_protocol_routes::{
         call_mcp, create_api_key, create_mcp_instance, create_model_probe_tool, response_json,
     },
-    support::{create_member, login_and_capture_cookie, test_api_state_with_database_url},
+    support::{
+        create_member, create_role, login_and_capture_cookie, replace_member_roles,
+        replace_role_permissions, test_api_state_with_database_url,
+    },
 };
 use axum::{
     body::{to_bytes, Body},
@@ -167,7 +170,20 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
             create_mcp_instance(&app, &root_cookie, &root_csrf).await;
             create_model_probe_tool(&app, &root_cookie, &root_csrf).await;
             let (cookie, csrf) = if denied {
-                create_member(
+                // Reuse auth_routes' legal member API-key prerequisite. This feature
+                // projects only user_api_keys.manage; neither the role nor the token
+                // grants model_definitions.create. Both protocol cases get this same role.
+                let role = "root_1998_key_only";
+                create_role(&app, &root_cookie, &root_csrf, role).await;
+                replace_role_permissions(
+                    &app,
+                    &root_cookie,
+                    &root_csrf,
+                    role,
+                    &["settings_feature.access.system.api-key-authentication"],
+                )
+                .await;
+                let member_id = create_member(
                     &app,
                     &root_cookie,
                     &root_csrf,
@@ -175,6 +191,7 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                     "temp-pass",
                 )
                 .await;
+                replace_member_roles(&app, &root_cookie, &root_csrf, &member_id, &[role]).await;
                 login_and_capture_cookie(&app, "root-1998-member", "temp-pass").await
             } else {
                 (root_cookie, root_csrf)
