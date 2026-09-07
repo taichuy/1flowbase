@@ -210,7 +210,7 @@ async fn root_1998_mcp_identity_native_webmcp_http_rejections_publish_correlated
     for (method, path, body, binding) in [
         (
             "POST",
-            "/mcp/root-1998",
+            "/api/mcp/root-1998",
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
             "mcp.user-api-key.invoke.v1",
         ),

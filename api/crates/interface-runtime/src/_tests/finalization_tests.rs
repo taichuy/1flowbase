@@ -247,7 +247,7 @@ async fn invoke(
     } else {
         let invocation = kernel
             .invoke_server_stream_with_dispatch_target::<Input, StreamEvent, Output, TargetError>(
-                snapshot,
+                Arc::clone(&snapshot),
                 envelope,
                 ExecutionTargetPin::BuiltIn {
                     handler: HandlerReference::new("review.finalization.handler").unwrap(),
@@ -256,7 +256,11 @@ async fn invoke(
             )
             .await?;
         let (_, completion) = invocation.into_parts();
-        let outcome = completion.complete().await?;
+        // Target owns the pending publisher; keep its registry alive until cancellation
+        // or deadline settles completion, rather than closing the terminal channel early.
+        let outcome = completion.complete().await;
+        drop(snapshot);
+        let outcome = outcome?;
         assert_eq!(
             outcome.terminal(),
             &InterfaceStreamTerminal::Completed(Output(42))
