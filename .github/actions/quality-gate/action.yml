@@ -47,6 +47,12 @@ outputs:
 runs:
   using: composite
   steps:
+    - id: quality-gate-metadata-dependencies
+      if: ${{ startsWith(inputs.scope, 'repo-backend-test-storage-postgres-') }}
+      shell: bash
+      # Cross-layer dependency tests resolve the entire locked workspace offline,
+      # including packages that the selected native test build does not download.
+      run: cargo fetch --locked --manifest-path api/Cargo.toml
     - id: quality-gate-postgres
       if: ${{ inputs.start_postgres == 'true' }}
       shell: bash

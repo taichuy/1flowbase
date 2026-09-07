@@ -68,6 +68,22 @@ function readMiddlewareCompose() {
   );
 }
 
+test("root_1998_pg_shards_prepare_locked_metadata_before_offline_dependency_tests", () => {
+  const action = readQualityGateAction();
+  const preparation = action.indexOf("- id: quality-gate-metadata-dependencies");
+  const gate = action.indexOf("- id: quality-gate\n");
+  assert.ok(preparation >= 0 && preparation < gate);
+  assert.match(
+    action.slice(preparation, action.indexOf("- id: quality-gate-postgres")),
+    /if: \$\{\{ startsWith\(inputs\.scope, 'repo-backend-test-storage-postgres-'\) \}\}[\s\S]*run: cargo fetch --locked --manifest-path api\/Cargo\.toml/u,
+  );
+  const dependencyTest = fs.readFileSync(
+    path.join(repoRoot, "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs"),
+    "utf8",
+  );
+  assert.match(dependencyTest, /"metadata",\s*"--locked",\s*"--offline"/u);
+});
+
 function readGitHubAutomationDocs() {
   return fs.readFileSync(
     path.join(repoRoot, ".github", "GITHUB_AUTOMATION.md"),
