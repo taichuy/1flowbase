@@ -76,6 +76,16 @@ impl interface_runtime::InterfaceHandler<FixtureInput, FixtureOutput, FixtureErr
 fn compiled_fixture_registry(
     route_path: &str,
 ) -> Arc<interface_runtime::CompiledInterfaceRegistry> {
+    compiled_fixture_registry_with_binding(
+        ProtocolProjection::http(RouteIdentity::new("GET", route_path).unwrap()),
+        "fixture.external-endpoint.http",
+    )
+}
+
+fn compiled_fixture_registry_with_binding(
+    projection: ProtocolProjection,
+    binding_id: &str,
+) -> Arc<interface_runtime::CompiledInterfaceRegistry> {
     let interface_id = interface_runtime::InterfaceId::new("fixture.external-endpoint").unwrap();
     let version = InterfaceVersion::new("1").unwrap();
     let identity = InterfaceIdentity::new(interface_id.clone(), version.clone());
@@ -106,10 +116,10 @@ fn compiled_fixture_registry(
         owner.clone(),
     );
     let binding = ProtocolBinding::new(
-        BindingId::new("fixture.external-endpoint.http").unwrap(),
+        BindingId::new(binding_id).unwrap(),
         identity,
         contracts,
-        ProtocolProjection::http(RouteIdentity::new("GET", route_path).unwrap()),
+        projection,
     );
     let mut compiler = RegistryCompiler::new(
         GraphFingerprint::new("fixture-graph").unwrap(),

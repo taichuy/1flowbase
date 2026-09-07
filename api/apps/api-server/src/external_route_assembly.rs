@@ -5,7 +5,7 @@ use crate::external_endpoint_catalog::ExternalEndpointContribution;
 
 pub(crate) struct ExternalMethodRouter<S> {
     router: MethodRouter<S>,
-    methods: Vec<&'static str>,
+    methods: Vec<(&'static str, Option<&'static str>)>,
 }
 
 macro_rules! method {
@@ -18,7 +18,7 @@ macro_rules! method {
         {
             ExternalMethodRouter {
                 router: axum::routing::$name(handler),
-                methods: vec![$verb],
+                methods: vec![($verb, None)],
             }
         }
     };
@@ -27,6 +27,19 @@ method!(get, "GET");
 method!(post, "POST");
 method!(any, "ANY");
 
+/// A JSON-RPC POST carrier retains the canonical MCP invocation binding as it is nested.
+pub(crate) fn mcp_post<H, T, S>(handler: H, binding_id: &'static str) -> ExternalMethodRouter<S>
+where
+    H: Handler<T, S>,
+    T: 'static,
+    S: Clone + Send + Sync + 'static,
+{
+    ExternalMethodRouter {
+        router: axum::routing::post(handler),
+        methods: vec![("POST", Some(binding_id))],
+    }
+}
+
 impl<S: Clone + Send + Sync + 'static> ExternalMethodRouter<S> {
     pub(crate) fn post<H, T>(mut self, handler: H) -> Self
     where
@@ -34,14 +47,14 @@ impl<S: Clone + Send + Sync + 'static> ExternalMethodRouter<S> {
         T: 'static,
     {
         self.router = self.router.post(handler);
-        self.methods.push("POST");
+        self.methods.push(("POST", None));
         self
     }
 }
 
 pub(crate) struct ExternalRouteAssembly<S> {
     router: Router<S>,
-    routes: Vec<(String, String)>,
+    routes: Vec<(String, String, Option<&'static str>)>,
 }
 
 impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
@@ -57,7 +70,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
             methods
                 .methods
                 .into_iter()
-                .map(|method| (method.to_string(), path.to_string())),
+                .map(|(method, binding)| (method.to_string(), path.to_string(), binding)),
         );
         self.router = self.router.route(path, methods.router);
         self
@@ -70,12 +83,14 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     }
 
     pub(crate) fn nest(mut self, prefix: &str, other: Self) -> Self {
-        self.routes.extend(
-            other
-                .routes
-                .into_iter()
-                .map(|(method, path)| (method, format!("{}{path}", prefix.trim_end_matches('/')))),
-        );
+        self.routes
+            .extend(other.routes.into_iter().map(|(method, path, binding)| {
+                (
+                    method,
+                    format!("{}{path}", prefix.trim_end_matches('/')),
+                    binding,
+                )
+            }));
         self.router = self.router.nest(prefix, other.router);
         self
     }
@@ -96,6 +111,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
                         .strip_prefix("/api/console")
                         .expect("console assembly owns its prefix")
                         .to_string(),
+                    None,
                 )
             })
             .collect();
@@ -113,7 +129,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
                 .into(),
             routes: ["/docs", "/docs/*rest"]
                 .into_iter()
-                .map(|path| ("GET".to_string(), path.to_string()))
+                .map(|path| ("GET".to_string(), path.to_string(), None))
                 .collect(),
         }
     }
@@ -121,7 +137,15 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     pub(crate) fn contributions(&self) -> Vec<ExternalEndpointContribution> {
         self.routes
             .iter()
-            .map(|(method, path)| {
+            .map(|(method, path, binding)| {
+                if let Some(binding) = binding {
+                    return ExternalEndpointContribution::mcp_http_carrier(
+                        "external-route-assembly",
+                        method,
+                        path,
+                        binding,
+                    );
+                }
                 ExternalEndpointContribution::unclassified_http(
                     "external-route-assembly",
                     method,

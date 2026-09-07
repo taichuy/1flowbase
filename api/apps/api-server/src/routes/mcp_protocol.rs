@@ -84,7 +84,7 @@ pub(crate) fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/mcp/:instance_id",
-        crate::external_route_assembly::post(handle_mcp_request),
+        crate::external_route_assembly::mcp_post(handle_mcp_request, MCP_INVOCATION_BINDING_ID),
     )
 }
 

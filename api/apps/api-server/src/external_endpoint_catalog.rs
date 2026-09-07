@@ -63,6 +63,7 @@ pub(crate) struct ExternalEndpointContribution {
     source: String,
     classification: ExternalEndpointClassification,
     binding_id: Option<String>,
+    carrier_projection: Option<ExternalEndpointIdentity>,
 }
 
 impl ExternalEndpointContribution {
@@ -70,8 +71,24 @@ impl ExternalEndpointContribution {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
+            carrier_projection: None,
             classification: ExternalEndpointClassification::Unclassified,
             binding_id: None,
+        }
+    }
+
+    pub(crate) fn mcp_http_carrier(
+        source: &str,
+        method: &str,
+        path: &str,
+        binding_id: &str,
+    ) -> Self {
+        Self {
+            identity: ExternalEndpointIdentity::http(method, path),
+            source: source.to_string(),
+            classification: ExternalEndpointClassification::CanonicalBusinessInterface,
+            binding_id: Some(binding_id.to_string()),
+            carrier_projection: Some(ExternalEndpointIdentity::mcp("mcp.json-rpc")),
         }
     }
 
@@ -79,6 +96,7 @@ impl ExternalEndpointContribution {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
+            carrier_projection: None,
             classification: ExternalEndpointClassification::ProtocolControl,
             binding_id: None,
         }
@@ -88,6 +106,7 @@ impl ExternalEndpointContribution {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
+            carrier_projection: None,
             classification: ExternalEndpointClassification::OperationalControl,
             binding_id: None,
         }
@@ -97,6 +116,7 @@ impl ExternalEndpointContribution {
         Self {
             identity,
             source: source.to_string(),
+            carrier_projection: None,
             classification: ExternalEndpointClassification::ProtocolControl,
             binding_id: None,
         }
@@ -116,6 +136,7 @@ impl ExternalEndpointContribution {
         Some(Self {
             identity,
             source: source.to_string(),
+            carrier_projection: None,
             classification: ExternalEndpointClassification::CanonicalBusinessInterface,
             binding_id: Some(binding.binding_id().as_str().to_string()),
         })
@@ -178,6 +199,13 @@ pub(crate) enum ExternalEndpointCatalogError {
     UnknownBinding {
         identity: ExternalEndpointIdentity,
         binding_id: String,
+    },
+    #[error(
+        "HTTP carrier {identity:?} is not owned by the expected protocol binding {projection:?}"
+    )]
+    InvalidCarrierBinding {
+        identity: ExternalEndpointIdentity,
+        projection: ExternalEndpointIdentity,
     },
     #[error("OpenAPI endpoint inventory is invalid: {0}")]
     InvalidOpenApi(String),
@@ -317,6 +345,7 @@ pub(crate) struct ExternalEndpointCatalogCompiler {
     rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
     required_frozen_bindings: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
     mounted_routes: BTreeSet<ExternalEndpointIdentity>,
+    carrier_projections: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
 }
 
 impl ExternalEndpointCatalogCompiler {
@@ -341,6 +370,23 @@ impl ExternalEndpointCatalogCompiler {
             else {
                 continue;
             };
+            if contribution.carrier_projection.is_some() {
+                self.contribute(contribution.clone())?;
+                // The transport first becomes an HTTP row at its actual mount. Its CORS
+                // projection has the same owner as every other mounted HTTP surface.
+                let preflight = ExternalEndpointContribution::protocol_control_identity(
+                    "tower-http.cors",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "OPTIONS",
+                        route_template,
+                        "cors-preflight",
+                    ),
+                );
+                if !self.rows.contains_key(&preflight.identity) {
+                    self.contribute(preflight)?;
+                }
+                continue;
+            }
             // An Axum any handler is a dispatch surface: its frozen per-method bindings
             // (or a single ANY binding) own the accepted operations, including rejection.
             let identities = self
@@ -368,6 +414,7 @@ impl ExternalEndpointCatalogCompiler {
                     self.contribute(ExternalEndpointContribution {
                         identity,
                         source: contribution.source.clone(),
+                        carrier_projection: None,
                         classification: ExternalEndpointClassification::Unclassified,
                         binding_id: None,
                     })?;
@@ -420,6 +467,7 @@ impl ExternalEndpointCatalogCompiler {
                 self.contribute(ExternalEndpointContribution {
                     identity: identity.clone(),
                     source: source.to_string(),
+                    carrier_projection: None,
                     classification: ExternalEndpointClassification::Unclassified,
                     binding_id: None,
                 })?;
@@ -440,6 +488,7 @@ impl ExternalEndpointCatalogCompiler {
             self.contribute(ExternalEndpointContribution {
                 identity: ExternalEndpointIdentity::mcp(method),
                 source: "api-server.mcp-router".to_string(),
+                carrier_projection: None,
                 classification: ExternalEndpointClassification::Unclassified,
                 binding_id: None,
             })?;
@@ -448,6 +497,7 @@ impl ExternalEndpointCatalogCompiler {
             self.contribute(ExternalEndpointContribution {
                 identity: ExternalEndpointIdentity::mcp(method),
                 source: "api-server.mcp-router".to_string(),
+                carrier_projection: None,
                 classification: ExternalEndpointClassification::CanonicalBusinessInterface,
                 binding_id: Some(binding_id.to_string()),
             })?;
@@ -488,7 +538,12 @@ impl ExternalEndpointCatalogCompiler {
             source,
             classification,
             binding_id,
+            carrier_projection,
         } = contribution;
+        if let Some(projection) = carrier_projection {
+            self.carrier_projections
+                .insert(identity.clone(), projection);
+        }
         match self.rows.get_mut(&identity) {
             None => {
                 self.rows.insert(
@@ -551,6 +606,7 @@ impl ExternalEndpointCatalogCompiler {
                     self.contribute(ExternalEndpointContribution {
                         identity,
                         source: format!("{source}.descriptor-projection"),
+                        carrier_projection: None,
                         classification: ExternalEndpointClassification::CanonicalBusinessInterface,
                         binding_id: Some(binding_id.clone()),
                     })?;
@@ -703,6 +759,20 @@ impl ExternalEndpointCatalogCompiler {
                         binding_id: binding_id.clone(),
                     });
                 }
+            }
+        }
+        for (identity, projection) in &self.carrier_projections {
+            let row = &self.rows[identity];
+            let owns_carrier = registry.bindings().any(|binding| {
+                row.binding_id.as_deref() == Some(binding.binding_id().as_str())
+                    && ExternalEndpointContribution::from_binding("carrier-validation", binding)
+                        .is_some_and(|contribution| &contribution.identity == projection)
+            });
+            if !owns_carrier {
+                return Err(ExternalEndpointCatalogError::InvalidCarrierBinding {
+                    identity: identity.clone(),
+                    projection: projection.clone(),
+                });
             }
         }
         let unmounted = self
