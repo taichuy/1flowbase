@@ -152,10 +152,9 @@ describe('FrontstageNativePreparationScheduler', () => {
     try {
       const scheduler = new FrontstageNativePreparationScheduler(1);
       const flight = deferred<FrontstageNativePreparedRuntime>();
-      scheduler.reconcile(
-        [task('nearby', 0, async () => flight.promise)],
-        { nearby: 1 }
-      );
+      scheduler.reconcile([task('nearby', 0, async () => flight.promise)], {
+        nearby: 1
+      });
       scheduler.noteInteraction();
       flight.resolve(prepared('nearby'));
       await tick();
@@ -170,6 +169,40 @@ describe('FrontstageNativePreparationScheduler', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('I2005-AC-001/002 notifies only changed Block subscribers and publishes removals atomically', () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    const tasks = [
+      task('first', 0, async () => prepared('first')),
+      task('second', 1, async () => prepared('second'))
+    ];
+    scheduler.reconcile(tasks, { first: 3, second: 3 });
+    const first = vi.fn();
+    const second = vi.fn();
+    const stop = scheduler.subscribeBlock('first', first);
+    scheduler.subscribeBlock('second', second);
+    const unchanged = scheduler.getBlockSnapshot('second');
+    scheduler.retry('first');
+    expect(scheduler.getBlockSnapshot('first')).toMatchObject({
+      status: 'idle',
+      generation: 1
+    });
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).not.toHaveBeenCalled();
+    expect(scheduler.getBlockSnapshot('second')).toBe(unchanged);
+    stop();
+    scheduler.reconcile([tasks[1]], { second: 3 });
+    expect(scheduler.getBlockSnapshot('first')).toBeNull();
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).not.toHaveBeenCalled();
+    const removed: unknown[] = [];
+    scheduler.subscribeBlock('second', () =>
+      removed.push(scheduler.getBlockSnapshot('second'))
+    );
+    scheduler.dispose();
+    expect(removed).toEqual([null]);
+    expect(second).toHaveBeenCalledOnce();
   });
 
   test('does not emit again when reconcile receives semantically unchanged tasks and demands', () => {

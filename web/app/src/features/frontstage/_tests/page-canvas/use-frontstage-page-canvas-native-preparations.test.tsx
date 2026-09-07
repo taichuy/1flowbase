@@ -34,6 +34,45 @@ const SOURCE = 'export default function Block() { return null; }';
 describe('useFrontstagePageCanvasNativePreparations', () => {
   beforeEach(() => nativeRuntime.evaluate.mockClear());
 
+  test('I2005-AC-001 prepares a block without re-rendering its page owner', async () => {
+    const ownerRender = vi.fn();
+    const plan = readPlan();
+    const artifact = createArtifact();
+    const fetchSource = vi.fn(async () => ({
+      block_id: 'block-1',
+      page_id: 'page-1',
+      source_code: SOURCE,
+      source_sha256: null
+    }));
+    const artifactCache = {
+      get: vi.fn(async () => ({ status: 'hit' as const, artifact })),
+      put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+    };
+    const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+      definitions: [],
+      load: vi.fn(async () => ({})),
+      resolveModuleMap: vi.fn(async () => ({})),
+      resolveModuleAssets: vi.fn(async () => [])
+    });
+    const { result } = renderHook(() => {
+      ownerRender();
+      return useFrontstagePageCanvasNativePreparations({
+        actorId: 'actor-1',
+        actorWorkspaceId: 'workspace-1',
+        readPlan: plan,
+        fetchSource,
+        artifactCache,
+        moduleRegistryFactory
+      });
+    });
+    await waitFor(() =>
+      expect(
+        result.current.preparations.getBlockSnapshot('block-1')
+      ).toMatchObject({ status: 'ready' })
+    );
+    expect(ownerRender).toHaveBeenCalledOnce();
+  });
+
   test('AC-002 and AC-003 re-fetches and compiles only the refreshed block without reading its artifact cache', async () => {
     const artifact = createArtifact();
     const fetchSource = vi.fn(
@@ -72,7 +111,9 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     );
 
     await waitFor(() =>
-      expect(result.current.preparations[0]).toMatchObject({ status: 'ready' })
+      expect(
+        result.current.preparations.getBlockSnapshot('block-1')
+      ).toMatchObject({ status: 'ready' })
     );
     expect(fetchSource).toHaveBeenCalledOnce();
     expect(compile).not.toHaveBeenCalled();
@@ -84,7 +125,9 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
     await waitFor(() => expect(compile).toHaveBeenCalledOnce());
     expect(artifactCache.get).toHaveBeenCalledOnce();
     await waitFor(() =>
-      expect(result.current.preparations[0]).toMatchObject({
+      expect(
+        result.current.preparations.getBlockSnapshot('block-1')
+      ).toMatchObject({
         status: 'ready',
         generation: 1
       })
@@ -132,19 +175,27 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
       })
     );
 
-    await waitFor(() => expect(result.current.preparations).toHaveLength(2));
     await waitFor(() =>
       expect(
-        result.current.preparations.every(
-          (preparation) => preparation.status === 'ready'
-        )
+        result.current.preparations.getBlockSnapshot('block-2')
+      ).not.toBeNull()
+    );
+    await waitFor(() =>
+      expect(
+        ['block-1', 'block-2']
+          .map((id) => result.current.preparations.getBlockSnapshot(id))
+          .every((preparation) => preparation?.status === 'ready')
       ).toBe(true)
     );
     expect(nativeRuntime.evaluate).toHaveBeenCalledTimes(1);
     expect(moduleRegistryFactory).toHaveBeenCalledTimes(1);
     expect(resolveModuleAssets).toHaveBeenCalledOnce();
     expect(resolveModuleAssets).toHaveBeenCalledWith(['antd-style']);
-    expect(result.current.preparations).toEqual(
+    expect(
+      ['block-1', 'block-2'].map((id) =>
+        result.current.preparations.getBlockSnapshot(id)
+      )
+    ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           prepared: expect.objectContaining({ moduleAssets: [asset] })

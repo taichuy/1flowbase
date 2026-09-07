@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import { Avatar, Badge, Button, ConfigProvider, Select } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { EChart } from '@1flowbase/charts';
@@ -765,7 +766,9 @@ function NativeReactTrialFixture() {
             <InstrumentedPageCanvas
               content={content}
               runtimeBlocks={runtimeBlocks}
-              runtimePreparations={hidden ? [] : preparations}
+              runtimePreparations={createNativePreparationSource(
+                hidden ? [] : preparations
+              )}
               isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
               isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
               runtimeContext={{

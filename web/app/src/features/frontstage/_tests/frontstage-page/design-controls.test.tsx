@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,
   fireEvent,
@@ -50,7 +51,7 @@ const dataCapabilitiesHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
-    preparations: [],
+    preparations: createNativePreparationSource([]),
     retryBlock: vi.fn()
   }))
 }));
@@ -783,10 +784,10 @@ describe('FrontStagePage - design controls', () => {
       })
     );
 
+    expect(await screen.findByText('正在刷新当前页面……')).toBeInTheDocument();
     expect(
-      await screen.findByText('正在刷新当前页面……')
+      screen.getByRole('heading', { name: '页面 page-1' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '页面 page-1' })).toBeInTheDocument();
 
     fireEvent.click(configurePage);
     expect(
@@ -799,11 +800,11 @@ describe('FrontStagePage - design controls', () => {
       rejectRefresh(new Error('refresh unavailable'));
     });
 
-    expect(
-      await screen.findByText('刷新当前页面失败')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('刷新当前页面失败')).toBeInTheDocument();
     expect(screen.getByText('refresh unavailable')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '页面 page-1' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '页面 page-1' })
+    ).toBeInTheDocument();
   });
 
   test('#1975 AC-004 ignores a stale refresh failure after the page scope changes', async () => {
@@ -831,9 +832,7 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
-    fireEvent.click(
-      await screen.findByRole('menuitem', { name: /刷新/ })
-    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: /刷新/ }));
     expect(await screen.findByText('正在刷新当前页面……')).toBeInTheDocument();
 
     view.rerender(
@@ -850,7 +849,9 @@ describe('FrontStagePage - design controls', () => {
         />
       </AppProviders>
     );
-    expect(await screen.findByRole('heading', { name: '页面 page-2' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '页面 page-2' })
+    ).toBeInTheDocument();
 
     await act(async () => {
       rejectRefresh(new Error('stale refresh failure'));
@@ -858,7 +859,9 @@ describe('FrontStagePage - design controls', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('刷新当前页面失败')).not.toBeInTheDocument();
-      expect(screen.queryByText('stale refresh failure')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('stale refresh failure')
+      ).not.toBeInTheDocument();
     });
   });
 

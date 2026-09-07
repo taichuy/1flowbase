@@ -1,3 +1,4 @@
+import { createNativePreparationSource } from '../fixtures/native-preparation-source';
 import {
   act,
   fireEvent,
@@ -70,7 +71,7 @@ describe('PageCanvas Native Signal context', () => {
         content={content}
         runtimeContext={runtimeContext}
         runtimeBlocks={blocks}
-        runtimePreparations={mountedPreparations}
+        runtimePreparations={createNativePreparationSource(mountedPreparations)}
       />
     );
     const producerRoot = await nativeRoot('producer');
@@ -118,11 +119,11 @@ describe('PageCanvas Native Signal context', () => {
         content={content}
         runtimeContext={runtimeContext}
         runtimeBlocks={blocks}
-        runtimePreparations={[
+        runtimePreparations={createNativePreparationSource([
           { ...mountedPreparations[0], mountIntent: null },
           mountedPreparations[1],
           mountedPreparations[2]
-        ]}
+        ])}
       />
     );
     await waitFor(() =>
@@ -138,7 +139,7 @@ describe('PageCanvas Native Signal context', () => {
         content={content}
         runtimeContext={runtimeContext}
         runtimeBlocks={blocks}
-        runtimePreparations={mountedPreparations}
+        runtimePreparations={createNativePreparationSource(mountedPreparations)}
       />
     );
     await waitFor(() =>
@@ -204,7 +205,9 @@ describe('PageCanvas Native Signal context', () => {
       <PageCanvas
         content={pageContent()}
         runtimeBlocks={runtimeBlocks()}
-        runtimePreparations={[preparation('producer', 0, ApiBlock)]}
+        runtimePreparations={createNativePreparationSource([
+          preparation('producer', 0, ApiBlock)
+        ])}
         nativeContextHost={host}
       />
     );
@@ -367,7 +370,11 @@ function runtimeBlocks(): FrontstageBlockInstance[] {
     presentation: { heightMode: 'auto', height: null },
     layout: { order, region: 'main' },
     order,
-    runtime: { kind: 'native_react', entry: `blocks/${id}.js`, hint: 'native_react' }
+    runtime: {
+      kind: 'native_react',
+      entry: `blocks/${id}.js`,
+      hint: 'native_react'
+    }
   });
 
   return [

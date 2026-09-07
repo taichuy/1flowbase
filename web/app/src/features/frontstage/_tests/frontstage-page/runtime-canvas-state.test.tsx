@@ -1,3 +1,6 @@
+import { i18nText } from '../../../../shared/i18n/text';
+import type { FrontstageNativePreparedRuntime } from '../../lib/page-canvas/native-runtime-preparation';
+import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
@@ -34,16 +37,14 @@ const blockCatalogHook = vi.hoisted(() => ({
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn((_input?: unknown) => ({
-    preparations: [],
+    preparations: createNativePreparationSource([]),
     retryBlock: vi.fn()
   }))
 }));
 const runtimeAssemblyHook = vi.hoisted(() => ({
   useFrontstageRuntimeAssembly: vi.fn(
-    (_input?: {
-      assembly?: { layers: Array<{ block_id: string }> };
-    }) => ({
-      preparations: [] as unknown[],
+    (_input?: { assembly?: { layers: Array<{ block_id: string }> } }) => ({
+      preparations: createNativePreparationSource([]),
       retryBlock: vi.fn(),
       refreshBlock: vi.fn()
     })
@@ -465,35 +466,40 @@ describe('FrontStagePage - runtime canvas state', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
-      () => ({ preparations: [], retryBlock: vi.fn() })
+      () => ({
+        preparations: createNativePreparationSource([]),
+        retryBlock: vi.fn()
+      })
     );
     runtimeAssemblyHook.useFrontstageRuntimeAssembly.mockImplementation(
       ({
         assembly
       }: { assembly?: { layers: Array<{ block_id: string }> } } = {}) => ({
-        preparations: (assembly?.layers ?? []).map((layer, slotIndex) => {
-          const identityInput = {
-            sourceSha256: `digest:${layer.block_id}`,
-            compilerAbi: 'test-compiler',
-            runtimeAbi: 'test-runtime'
-          };
-          return {
-            blockId: layer.block_id,
-            slotIndex,
-            priority: 0,
-            generation: 1,
-            status: 'ready' as const,
-            prepared: {
-              artifact: {},
-              component: () => <h1>{`source:${layer.block_id}`}</h1>,
-              artifactCacheTier: 'miss' as const,
-              moduleAssets: [],
-              moduleSources: [],
-              identityInput
-            },
-            mountIntent: { blockId: layer.block_id, slotIndex, identityInput }
-          };
-        }),
+        preparations: createNativePreparationSource(
+          (assembly?.layers ?? []).map((layer, slotIndex) => {
+            const identityInput = {
+              sourceSha256: `digest:${layer.block_id}`,
+              compilerAbi: 'test-compiler',
+              runtimeAbi: 'test-runtime'
+            };
+            return {
+              blockId: layer.block_id,
+              slotIndex,
+              priority: 0,
+              generation: 1,
+              status: 'ready' as const,
+              prepared: {
+                artifact: {} as FrontstageNativePreparedRuntime['artifact'],
+                component: () => <h1>{`source:${layer.block_id}`}</h1>,
+                artifactCacheTier: 'miss' as const,
+                moduleAssets: [],
+                moduleSources: [],
+                identityInput
+              },
+              mountIntent: { blockId: layer.block_id, slotIndex, identityInput }
+            };
+          })
+        ),
         retryBlock: vi.fn(),
         refreshBlock: vi.fn()
       })
@@ -582,17 +588,23 @@ describe('FrontStagePage - runtime canvas state', () => {
       'block-slot-assembly-content'
     );
     fireEvent.click(assemblyContentSlot);
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('frontstage', 'auto.edit_block')
+      })
+    );
     expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
       'studio:assembly-content'
     );
     fireEvent.click(
       within(assemblyContentSlot).getByRole('button', {
-        name: '更多区块操作'
+        name: i18nText('frontstage', 'auto.more_block_operations')
       })
     );
     expect(
-      await screen.findByRole('menuitem', { name: /刷新/ })
+      await screen.findByRole('menuitem', {
+        name: (name) => name.includes(i18nText('frontstage', 'auto.refresh'))
+      })
     ).toBeInTheDocument();
   });
 
@@ -791,7 +803,9 @@ describe('FrontStagePage - runtime canvas state', () => {
       }
     ]);
 
-    expect(screen.getAllByText('未命名页面').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(i18nText('frontstage', 'auto.unnamed_page')).length
+    ).toBeGreaterThan(0);
   });
 
   test('uses tree page title as current page label and page header title', () => {
@@ -821,8 +835,14 @@ describe('FrontStagePage - runtime canvas state', () => {
       </AppProviders>
     );
 
-    expect(screen.getByText('页面树加载中…')).toBeInTheDocument();
-    expect(screen.getByText('正在加载页面树，请稍后...')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        i18nText('frontstage', 'auto.page_tree_loading_ellipsis')
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(i18nText('frontstage', 'auto.page_tree_loading_wait'))
+    ).toBeInTheDocument();
   });
 
   test('shows error state with retry when page tree load fails before any cached tree is available', () => {
@@ -840,14 +860,18 @@ describe('FrontStagePage - runtime canvas state', () => {
       </AppProviders>
     );
 
-    expect(screen.getByText('页面树加载失败')).toBeInTheDocument();
+    expect(
+      screen.getByText(i18nText('frontstage', 'auto.page_tree_load_failed'))
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
-        '页面树加载失败，请检查网络后重试。点击“重试”按钮重新发起加载。'
+        i18nText('frontstage', 'auto.page_tree_load_failed_retry')
       )
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: i18nText('frontstage', 'auto.retry') })
+    );
     expect(onRetryLoadPageTree).toHaveBeenCalledTimes(1);
   });
 
@@ -874,17 +898,21 @@ describe('FrontStagePage - runtime canvas state', () => {
       </AppProviders>
     );
 
-    expect(screen.getByText('页面树加载失败')).toBeInTheDocument();
+    expect(
+      screen.getByText(i18nText('frontstage', 'auto.page_tree_load_failed'))
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
-        '页面树加载失败，当前页面树仍可查看；请点击“重试”恢复最新数据。'
+        i18nText('frontstage', 'auto.page_tree_load_failed_recover')
       )
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: '页面 内页' })
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: i18nText('frontstage', 'auto.retry') })
+    );
     expect(onRetryLoadPageTree).toHaveBeenCalledTimes(1);
   });
 });
