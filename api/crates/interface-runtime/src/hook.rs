@@ -1,5 +1,6 @@
 use std::{any::Any, future::Future, pin::Pin, sync::Arc};
 
+use crate::finalization::InvocationFinalization;
 use thiserror::Error;
 
 use crate::{
@@ -235,25 +236,71 @@ where
         Ok(())
     }
 
-    pub(crate) async fn run_after(&self, context: &InterfaceHookContext, output: &O) {
-        for hook in self.after.iter().rev() {
-            hook.after(context.clone(), output).await;
+    pub(crate) async fn run_after(
+        &self,
+        budget: &mut InvocationFinalization,
+        context: &InterfaceHookContext,
+        output: &O,
+    ) {
+        for (plugin, hook) in self
+            .observer_plugins(InterfaceExtensionPoint::After)
+            .into_iter()
+            .zip(&self.after)
+            .rev()
+        {
+            budget
+                .observe(plugin, InterfaceExtensionPoint::After, || {
+                    hook.after(context.clone(), output)
+                })
+                .await;
         }
     }
 
-    pub(crate) async fn run_failure(&self, context: &InterfaceHookContext, classification: &str) {
-        for hook in self.failure.iter().rev() {
-            hook.failed(context.clone(), classification).await;
+    pub(crate) async fn run_failure(
+        &self,
+        budget: &mut InvocationFinalization,
+        context: &InterfaceHookContext,
+        classification: &str,
+    ) {
+        for (plugin, hook) in self
+            .observer_plugins(InterfaceExtensionPoint::Failure)
+            .into_iter()
+            .zip(&self.failure)
+            .rev()
+        {
+            budget
+                .observe(plugin, InterfaceExtensionPoint::Failure, || {
+                    hook.failed(context.clone(), classification)
+                })
+                .await;
         }
+    }
+
+    fn observer_plugins(&self, point: InterfaceExtensionPoint) -> Vec<&PluginIdentity> {
+        self.bindings
+            .iter()
+            .filter(|(_, p)| *p == point)
+            .map(|(plugin, _)| plugin)
+            .collect()
     }
 
     pub(crate) async fn run_completion(
         &self,
+        budget: &mut InvocationFinalization,
         context: &InterfaceHookContext,
         terminal: InterfaceInvocationTerminal,
     ) {
-        for hook in self.completion.iter().rev() {
-            hook.completed(context.clone(), terminal).await;
+        for (plugin, hook) in self
+            .observer_plugins(InterfaceExtensionPoint::Completion)
+            .into_iter()
+            .zip(&self.completion)
+            .rev()
+        {
+            budget
+                .observe(plugin, InterfaceExtensionPoint::Completion, || {
+                    hook.completed(context.clone(), terminal)
+                })
+                .await;
         }
     }
 }
@@ -263,6 +310,12 @@ pub(crate) trait ErasedInterfaceHookPlan: Send + Sync {
     fn input_contract(&self) -> &ContractIdentity;
     fn output_contract(&self) -> &ContractIdentity;
     fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)];
+    fn run_completion<'a>(
+        &'a self,
+        budget: &'a mut InvocationFinalization,
+        context: &'a InterfaceHookContext,
+        terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'a>;
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -285,6 +338,15 @@ where
 
     fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)] {
         self.bindings()
+    }
+
+    fn run_completion<'a>(
+        &'a self,
+        budget: &'a mut InvocationFinalization,
+        context: &'a InterfaceHookContext,
+        terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'a> {
+        Box::pin(self.run_completion(budget, context, terminal))
     }
 
     fn as_any(&self) -> &dyn Any {

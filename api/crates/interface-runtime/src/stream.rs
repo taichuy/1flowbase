@@ -141,6 +141,9 @@ where
     }
 }
 
+/// The invocation supervisor must await `complete`, including after signalling cancellation.
+/// Dropping this owner drops finalization; no receipt or observer execution is claimed.
+#[must_use = "the invocation supervisor must await complete() to finalize the stream"]
 pub struct InterfaceStreamCompletion<O, E>
 where
     O: InterfaceContract,

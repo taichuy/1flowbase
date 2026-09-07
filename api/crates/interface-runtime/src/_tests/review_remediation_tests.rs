@@ -1727,3 +1727,6 @@ fn rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_misma
         ))
     ));
 }
+
+#[path = "finalization_tests.rs"]
+mod finalization_tests;

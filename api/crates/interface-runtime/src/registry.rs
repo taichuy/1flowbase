@@ -617,6 +617,10 @@ impl CompiledInvocationPlan {
         self.executable_extensions.is_some()
     }
 
+    pub(crate) fn erased_hook_plan(&self) -> Option<&dyn ErasedInterfaceHookPlan> {
+        self.executable_extensions.as_deref()
+    }
+
     pub(crate) fn hook_plan<I, O>(&self) -> Option<&TypedInterfaceHookPlan<I, O>>
     where
         I: InterfaceContract,

@@ -1,3 +1,4 @@
+use crate::finalization::InvocationFinalization;
 use std::{
     future::Future,
     pin::Pin,
@@ -693,9 +694,14 @@ pub struct InterfaceInvocationReceipt {
     idempotency_key: Option<IdempotencyKey>,
     terminal: InterfaceInvocationTerminal,
     terminal_at: SystemTime,
+    observers: Vec<crate::InterfaceObserverRecord>,
 }
 
 impl InterfaceInvocationReceipt {
+    pub fn observer_records(&self) -> &[crate::InterfaceObserverRecord] {
+        &self.observers
+    }
+
     pub fn invocation_id(&self) -> InvocationId {
         self.invocation_id
     }
@@ -1096,6 +1102,9 @@ where
             principal.summary(),
             &controls,
         );
+        if let Some(plan) = snapshot.plan(&binding_id) {
+            receipt.resolve(plan);
+        }
         let interruption = if controls.cancellation.is_cancelled() {
             Some(InvocationInterruption::Cancelled)
         } else if controls
@@ -1107,25 +1116,31 @@ where
             None
         };
         if let Some(interruption) = interruption {
-            return Err(receipt.fail(
-                interruption_error(interruption),
-                InterfaceInvocationTerminal::Cancelled,
-            ));
+            return Err(receipt
+                .fail(
+                    interruption_error(interruption),
+                    InterfaceInvocationTerminal::Cancelled,
+                )
+                .await);
         }
         let Some(plan) = snapshot.plan(&binding_id).cloned() else {
-            return Err(receipt.fail(
-                InterfaceInvocationError::UnknownBinding,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::UnknownBinding,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         };
         let definition = plan.definition().clone();
         let binding = plan.binding().clone();
         let hook_plan = plan.hook_plan::<I, O>().cloned();
         if plan.has_executable_extensions() && hook_plan.is_none() {
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         let hook_context = InterfaceHookContext::new(
             principal.summary(),
@@ -1136,44 +1151,56 @@ where
         receipt.resolve(&plan);
         receipt.stage(InterfaceInvocationStage::Resolved);
         if binding.projection().protocol() != protocol {
-            return Err(receipt.fail(
-                InterfaceInvocationError::ProtocolBindingMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ProtocolBindingMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.adapter_plan().authentication() != &authentication_adapter {
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthenticationAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthenticationAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.authentication().activation() != &authentication_activation {
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthenticationActivationMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthenticationActivationMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthorizationAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthorizationAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         let admission_reference = self
             .target_admission
             .as_ref()
             .map(|admission| admission.adapter_reference());
         if plan.adapter_plan().admission() != admission_reference.as_ref() {
-            return Err(receipt.fail(
-                InterfaceInvocationError::AdmissionAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AdmissionAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if definition.principal_profile() != P::PROFILE {
-            return Err(receipt.fail(
-                InterfaceInvocationError::PrincipalProfileMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::PrincipalProfileMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
         if definition.input_contract() != &contract_identity::<I>()
@@ -1181,10 +1208,12 @@ where
             || definition.output_contract() != &contract_identity::<O>()
             || definition.target_error_contract() != &contract_identity::<E>()
         {
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         let authorization = await_in_flight(
             &controls,
@@ -1199,37 +1228,27 @@ where
         .await;
         match authorization {
             Err(interruption) => {
-                run_completion_hooks(
-                    &controls,
-                    hook_plan.as_ref(),
-                    &hook_context,
-                    InterfaceInvocationTerminal::Cancelled,
-                )
-                .await;
-                return Err(receipt.fail(
-                    interruption_error(interruption),
-                    InterfaceInvocationTerminal::Cancelled,
-                ));
+                return Err(receipt
+                    .fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await);
             }
             Ok(Err(error)) => {
                 run_failure_hooks(
-                    &controls,
+                    &mut receipt.finalization,
                     hook_plan.as_ref(),
                     &hook_context,
                     error.classification(),
                 )
                 .await;
-                run_completion_hooks(
-                    &controls,
-                    hook_plan.as_ref(),
-                    &hook_context,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await;
-                return Err(receipt.fail(
-                    InterfaceInvocationError::AuthorizationRejected(error),
-                    InterfaceInvocationTerminal::Rejected,
-                ));
+                return Err(receipt
+                    .fail(
+                        InterfaceInvocationError::AuthorizationRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await);
             }
             Ok(Ok(())) => {}
         }
@@ -1246,30 +1265,27 @@ where
             .await
             {
                 Err(interruption) => {
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         hook_plan.as_ref(),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::AuthorizationContributionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::AuthorizationContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1289,37 +1305,27 @@ where
             .await;
             match admission {
                 Err(interruption) => {
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         hook_plan.as_ref(),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::AdmissionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::AdmissionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1338,30 +1344,27 @@ where
             .await
             {
                 Err(interruption) => {
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         hook_plan.as_ref(),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::AdmissionContributionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::AdmissionContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1370,37 +1373,27 @@ where
         if let Some(hooks) = hook_plan.as_ref() {
             match await_in_flight(&controls, hooks.run_before(&hook_context, &mut input)).await {
                 Err(interruption) => {
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         hook_plan.as_ref(),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan.as_ref(),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::BeforeHookRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::BeforeHookRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1408,10 +1401,12 @@ where
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.stream_handler::<I, S, O, E, P>(definition.interface_id())
         else {
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         };
         let attempt = ExecutionAttempt::first(target);
         receipt.dispatch(attempt.clone());
@@ -1425,34 +1420,24 @@ where
         );
         let stream = match await_in_flight(&controls, handler.invoke_stream(context, input)).await {
             Err(interruption) => {
-                run_completion_hooks(
-                    &controls,
-                    hook_plan.as_ref(),
-                    &hook_context,
-                    InterfaceInvocationTerminal::Cancelled,
-                )
-                .await;
-                return Err(receipt.fail(
-                    interruption_error(interruption),
-                    InterfaceInvocationTerminal::Cancelled,
-                ));
+                return Err(receipt
+                    .fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await);
             }
             Ok(Err(error)) => {
                 run_failure_hooks(
-                    &controls,
+                    &mut receipt.finalization,
                     hook_plan.as_ref(),
                     &hook_context,
                     error.classification(),
                 )
                 .await;
-                run_completion_hooks(
-                    &controls,
-                    hook_plan.as_ref(),
-                    &hook_context,
-                    InterfaceInvocationTerminal::Failed,
-                )
-                .await;
-                return Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed));
+                return Err(receipt
+                    .fail(target_error(error), InterfaceInvocationTerminal::Failed)
+                    .await);
             }
             Ok(Ok(stream)) => stream,
         };
@@ -1460,127 +1445,80 @@ where
             completion: Box::pin(async move {
                 let terminal = match await_in_flight(&controls, stream.terminal).await {
                     Err(interruption) => {
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await;
-                        return Err(receipt.fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        ));
+                        return Err(receipt
+                            .fail(
+                                interruption_error(interruption),
+                                InterfaceInvocationTerminal::Cancelled,
+                            )
+                            .await);
                     }
                     Ok(Err(_)) => {
                         run_failure_hooks(
-                            &controls,
+                            &mut receipt.finalization,
                             hook_plan.as_ref(),
                             &hook_context,
                             "stream-terminal-missing",
                         )
                         .await;
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Failed,
-                        )
-                        .await;
-                        return Err(receipt.fail(
-                            InterfaceInvocationError::TargetFailed(
-                                InterfaceTargetError::classified("stream-terminal-missing"),
-                            ),
-                            InterfaceInvocationTerminal::Failed,
-                        ));
+                        return Err(receipt
+                            .fail(
+                                InterfaceInvocationError::TargetFailed(
+                                    InterfaceTargetError::classified("stream-terminal-missing"),
+                                ),
+                                InterfaceInvocationTerminal::Failed,
+                            )
+                            .await);
                     }
                     Ok(Ok(terminal)) => terminal,
                 };
                 match terminal {
                     InterfaceStreamTerminal::Completed(ref output) => {
                         if let Some(hooks) = hook_plan.as_ref() {
-                            if let Err(interruption) =
-                                await_in_flight(&controls, hooks.run_after(&hook_context, output))
-                                    .await
-                            {
-                                run_completion_hooks(
-                                    &controls,
-                                    hook_plan.as_ref(),
-                                    &hook_context,
-                                    InterfaceInvocationTerminal::Cancelled,
-                                )
+                            hooks
+                                .run_after(&mut receipt.finalization, &hook_context, output)
                                 .await;
-                                return Err(receipt.fail(
-                                    interruption_error(interruption),
-                                    InterfaceInvocationTerminal::Cancelled,
-                                ));
-                            }
                         }
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Completed,
-                        )
-                        .await;
                         receipt.stage(InterfaceInvocationStage::PostProcessed);
                         Ok(InterfaceStreamTerminalOutcome {
                             terminal,
-                            receipt: receipt.complete(),
+                            receipt: receipt.complete().await,
                         })
                     }
                     InterfaceStreamTerminal::Failed(error) => {
                         run_failure_hooks(
-                            &controls,
+                            &mut receipt.finalization,
                             hook_plan.as_ref(),
                             &hook_context,
                             error.classification(),
                         )
                         .await;
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Failed,
-                        )
-                        .await;
-                        Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed))
+                        Err(receipt
+                            .fail(target_error(error), InterfaceInvocationTerminal::Failed)
+                            .await)
                     }
                     InterfaceStreamTerminal::Rejected { ref classification } => {
                         run_failure_hooks(
-                            &controls,
+                            &mut receipt.finalization,
                             hook_plan.as_ref(),
                             &hook_context,
                             classification,
                         )
                         .await;
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await;
-                        Err(receipt.fail(
-                            InterfaceInvocationError::AuthorizationRejected(
-                                InterfaceAuthorizationError::classified(classification),
-                            ),
-                            InterfaceInvocationTerminal::Rejected,
-                        ))
+                        Err(receipt
+                            .fail(
+                                InterfaceInvocationError::AuthorizationRejected(
+                                    InterfaceAuthorizationError::classified(classification),
+                                ),
+                                InterfaceInvocationTerminal::Rejected,
+                            )
+                            .await)
                     }
-                    InterfaceStreamTerminal::Cancelled => {
-                        run_completion_hooks(
-                            &controls,
-                            hook_plan.as_ref(),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await;
-                        Err(receipt.fail(
+                    InterfaceStreamTerminal::Cancelled => Err(receipt
+                        .fail(
                             InterfaceInvocationError::Cancelled,
                             InterfaceInvocationTerminal::Cancelled,
-                        ))
-                    }
+                        )
+                        .await),
                 }
             }),
         };
@@ -1625,7 +1563,9 @@ where
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
-        let hook_plan: Option<&TypedInterfaceHookPlan<I, O>> = None;
+        if let Some(plan) = snapshot.plan(&binding_id) {
+            receipt.resolve(plan);
+        }
         let initial_interruption = if controls.cancellation.is_cancelled() {
             Some(InvocationInterruption::Cancelled)
         } else if controls
@@ -1637,140 +1577,97 @@ where
             None
         };
         if let Some(interruption) = initial_interruption {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Cancelled,
-            )
-            .await;
-            return Err(receipt.fail(
-                interruption_error(interruption),
-                InterfaceInvocationTerminal::Cancelled,
-            ));
+            return Err(receipt
+                .fail(
+                    interruption_error(interruption),
+                    InterfaceInvocationTerminal::Cancelled,
+                )
+                .await);
         }
         let Some(plan) = snapshot.plan(&binding_id).cloned() else {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::UnknownBinding,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::UnknownBinding,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         };
         let definition = plan.definition().clone();
         let binding = plan.binding().clone();
         let hook_plan = plan.hook_plan::<I, O>();
         if plan.has_executable_extensions() && hook_plan.is_none() {
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         receipt.resolve(&plan);
         receipt.stage(InterfaceInvocationStage::Resolved);
         if binding.projection().protocol() != protocol {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::ProtocolBindingMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ProtocolBindingMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.adapter_plan().authentication() != &authentication_adapter {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthenticationAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthenticationAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.authentication().activation() != &authentication_activation {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthenticationActivationMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthenticationActivationMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthorizationAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthorizationAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         let admission_reference = self
             .target_admission
             .as_ref()
             .map(|admission| admission.adapter_reference());
         if plan.adapter_plan().admission() != admission_reference.as_ref() {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::AdmissionAdapterMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AdmissionAdapterMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if definition.principal_profile() != P::PROFILE {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::PrincipalProfileMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::PrincipalProfileMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
         if definition.input_contract() != &contract_identity::<I>()
             || definition.output_contract() != &contract_identity::<O>()
             || definition.target_error_contract() != &contract_identity::<E>()
         {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         let authorization = await_in_flight(
             &controls,
@@ -1786,32 +1683,28 @@ where
         let authorization = match authorization {
             Ok(authorization) => authorization,
             Err(interruption) => {
-                run_completion_hooks(
-                    &controls,
-                    hook_plan,
-                    &hook_context,
-                    InterfaceInvocationTerminal::Cancelled,
-                )
-                .await;
-                return Err(receipt.fail(
-                    interruption_error(interruption),
-                    InterfaceInvocationTerminal::Cancelled,
-                ));
+                return Err(receipt
+                    .fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await);
             }
         };
         if let Err(error) = authorization {
-            run_failure_hooks(&controls, hook_plan, &hook_context, error.classification()).await;
-            run_completion_hooks(
-                &controls,
+            run_failure_hooks(
+                &mut receipt.finalization,
                 hook_plan,
                 &hook_context,
-                InterfaceInvocationTerminal::Rejected,
+                error.classification(),
             )
             .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::AuthorizationRejected(error),
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::AuthorizationRejected(error),
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         }
         if let Some(extensions) = plan.authorization_plan::<I, O>() {
             let authorization = await_in_flight(
@@ -1826,25 +1719,27 @@ where
             .await;
             match authorization {
                 Err(interruption) => {
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
-                    run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
-                        .await;
-                    run_completion_hooks(
-                        &controls,
+                    run_failure_hooks(
+                        &mut receipt.finalization,
                         hook_plan,
                         &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
+                        error.classification(),
                     )
                     .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::AuthorizationContributionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::AuthorizationContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1865,33 +1760,28 @@ where
             let admission = match admission {
                 Ok(admission) => admission,
                 Err(interruption) => {
-                    run_completion_hooks(
-                        &controls,
-                        hook_plan,
-                        &hook_context,
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
             };
             if let Err(error) = admission {
-                run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
-                    .await;
-                run_completion_hooks(
-                    &controls,
+                run_failure_hooks(
+                    &mut receipt.finalization,
                     hook_plan,
                     &hook_context,
-                    InterfaceInvocationTerminal::Rejected,
+                    error.classification(),
                 )
                 .await;
-                return Err(receipt.fail(
-                    InterfaceInvocationError::AdmissionRejected(error),
-                    InterfaceInvocationTerminal::Rejected,
-                ));
+                return Err(receipt
+                    .fail(
+                        InterfaceInvocationError::AdmissionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await);
             }
         }
         if let Some(extensions) = plan.admission_plan::<I, O>() {
@@ -1908,25 +1798,27 @@ where
             .await;
             match admission {
                 Err(interruption) => {
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
-                    run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
-                        .await;
-                    run_completion_hooks(
-                        &controls,
+                    run_failure_hooks(
+                        &mut receipt.finalization,
                         hook_plan,
                         &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
+                        error.classification(),
                     )
                     .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::AdmissionContributionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::AdmissionContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
@@ -1937,54 +1829,39 @@ where
                 await_in_flight(&controls, hook_plan.run_before(&hook_context, &mut input)).await;
             match before {
                 Err(interruption) => {
-                    run_completion_hooks(
-                        &controls,
-                        Some(hook_plan),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
                 }
                 Ok(Err(error)) => {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         Some(hook_plan),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        Some(hook_plan),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await;
-                    return Err(receipt.fail(
-                        InterfaceInvocationError::BeforeHookRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    ));
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::BeforeHookRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
                 }
                 Ok(Ok(())) => {}
             }
         }
         receipt.stage(InterfaceInvocationStage::Prepared);
         let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
-            run_completion_hooks(
-                &controls,
-                hook_plan,
-                &hook_context,
-                InterfaceInvocationTerminal::Rejected,
-            )
-            .await;
-            return Err(receipt.fail(
-                InterfaceInvocationError::ContractMismatch,
-                InterfaceInvocationTerminal::Rejected,
-            ));
+            return Err(receipt
+                .fail(
+                    InterfaceInvocationError::ContractMismatch,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await);
         };
         let attempt = ExecutionAttempt::first(dispatch_target.unwrap_or_else(|| {
             if plan.effective_handler().plugin().as_str() == "builtin.interface-handler" {
@@ -2013,76 +1890,47 @@ where
         let target = match target {
             Ok(target) => target,
             Err(interruption) => {
-                run_completion_hooks(
-                    &controls,
-                    hook_plan,
-                    &hook_context,
-                    InterfaceInvocationTerminal::Cancelled,
-                )
-                .await;
-                return Err(receipt.fail(
-                    interruption_error(interruption),
-                    InterfaceInvocationTerminal::Cancelled,
-                ));
+                return Err(receipt
+                    .fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await);
             }
         };
         match target {
             Ok(value) => {
                 if let Some(hook_plan) = hook_plan {
-                    if let Err(interruption) =
-                        await_in_flight(&controls, hook_plan.run_after(&hook_context, &value)).await
-                    {
-                        run_completion_hooks(
-                            &controls,
-                            Some(hook_plan),
-                            &hook_context,
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
+                    hook_plan
+                        .run_after(&mut receipt.finalization, &hook_context, &value)
                         .await;
-                        return Err(receipt.fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        ));
-                    }
-                    run_completion_hooks(
-                        &controls,
-                        Some(hook_plan),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Completed,
-                    )
-                    .await;
                 }
                 receipt.stage(InterfaceInvocationStage::PostProcessed);
                 Ok(InterfaceInvocationOutcome {
                     value,
-                    receipt: receipt.complete(),
+                    receipt: receipt.complete().await,
                 })
             }
             Err(error) => {
                 if let Some(hook_plan) = hook_plan {
                     run_failure_hooks(
-                        &controls,
+                        &mut receipt.finalization,
                         Some(hook_plan),
                         &hook_context,
                         error.classification(),
                     )
                     .await;
-                    run_completion_hooks(
-                        &controls,
-                        Some(hook_plan),
-                        &hook_context,
-                        InterfaceInvocationTerminal::Failed,
-                    )
-                    .await;
                 }
-                Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed))
+                Err(receipt
+                    .fail(target_error(error), InterfaceInvocationTerminal::Failed)
+                    .await)
             }
         }
     }
 }
 
 async fn run_failure_hooks<I, O>(
-    controls: &InvocationControls,
+    budget: &mut InvocationFinalization,
     hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
     context: &InterfaceHookContext,
     classification: &str,
@@ -2091,25 +1939,13 @@ async fn run_failure_hooks<I, O>(
     O: InterfaceContract,
 {
     if let Some(hook_plan) = hook_plan {
-        let _ = await_in_flight(controls, hook_plan.run_failure(context, classification)).await;
-    }
-}
-
-async fn run_completion_hooks<I, O>(
-    controls: &InvocationControls,
-    hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
-    context: &InterfaceHookContext,
-    terminal: InterfaceInvocationTerminal,
-) where
-    I: InterfaceContract,
-    O: InterfaceContract,
-{
-    if let Some(hook_plan) = hook_plan {
-        let _ = await_in_flight(controls, hook_plan.run_completion(context, terminal)).await;
+        hook_plan.run_failure(budget, context, classification).await;
     }
 }
 
 struct ReceiptBuilder {
+    finalization: InvocationFinalization,
+    frozen_plan: Option<crate::CompiledInvocationPlan>,
     invocation_id: InvocationId,
     parent_invocation_id: Option<InvocationId>,
     interface_id: Option<InterfaceId>,
@@ -2134,6 +1970,8 @@ impl ReceiptBuilder {
         controls: &InvocationControls,
     ) -> Self {
         Self {
+            finalization: InvocationFinalization::default(),
+            frozen_plan: None,
             invocation_id,
             parent_invocation_id,
             interface_id: None,
@@ -2165,6 +2003,7 @@ impl ReceiptBuilder {
     }
 
     fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
+        self.frozen_plan = Some(plan.clone());
         self.interface_id = Some(plan.definition().interface_id().clone());
         self.resolved = Some(ResolvedInvocationPin {
             interface_version: plan.definition().version().clone(),
@@ -2179,18 +2018,38 @@ impl ReceiptBuilder {
         self.stage(InterfaceInvocationStage::Dispatched);
     }
 
-    fn complete(self) -> InterfaceInvocationReceipt {
+    async fn complete(mut self) -> InterfaceInvocationReceipt {
+        self.finalize(InterfaceInvocationTerminal::Completed).await;
         self.receipt(InterfaceInvocationTerminal::Completed)
     }
 
-    fn fail(
-        self,
+    async fn fail(
+        mut self,
         error: InterfaceInvocationError,
         terminal: InterfaceInvocationTerminal,
     ) -> InterfaceInvocationFailure {
+        self.finalize(terminal).await;
         InterfaceInvocationFailure {
             error: Box::new(error),
             receipt: Box::new(self.receipt(terminal)),
+        }
+    }
+
+    async fn finalize(&mut self, terminal: InterfaceInvocationTerminal) {
+        if let Some(hooks) = self
+            .frozen_plan
+            .as_ref()
+            .and_then(|plan| plan.erased_hook_plan())
+        {
+            let context = InterfaceHookContext::new(
+                self.principal.clone(),
+                self.invocation_id,
+                self.graph_fingerprint.clone(),
+                self.registry_fingerprint.clone(),
+            );
+            hooks
+                .run_completion(&mut self.finalization, &context, terminal)
+                .await;
         }
     }
 
@@ -2210,6 +2069,7 @@ impl ReceiptBuilder {
             idempotency_key: self.idempotency_key,
             terminal,
             terminal_at: SystemTime::now(),
+            observers: self.finalization.records,
         }
     }
 }
