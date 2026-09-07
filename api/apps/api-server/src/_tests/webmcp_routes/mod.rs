@@ -36,7 +36,7 @@ async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str) -> String 
 }
 
 #[tokio::test]
-async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances() {
+async fn root_1998_cookie_csrf_enabled_and_exposure_boundaries() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -66,9 +66,10 @@ async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances
         .unwrap();
     assert_eq!(invalid_exposure.status(), StatusCode::BAD_REQUEST);
 
-    for (instance_id, webmcp_exposure) in [
-        ("browser_visible", "authenticated_session"),
-        ("browser_hidden", "disabled"),
+    for (instance_id, webmcp_exposure, status) in [
+        ("browser_visible", "authenticated_session", "enabled"),
+        ("browser_hidden", "disabled", "enabled"),
+        ("browser_disabled", "authenticated_session", "disabled"),
     ] {
         let response = app
             .clone()
@@ -84,7 +85,7 @@ async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances
                             "instance_id": instance_id,
                             "name": instance_id,
                             "description_short": null,
-                            "status": "enabled",
+                            "status": status,
                             "default_entry_path": "/",
                             "webmcp_exposure": webmcp_exposure
                         })
@@ -147,6 +148,39 @@ async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances
         .await
         .unwrap();
     assert_eq!(api_key_registration.status(), StatusCode::FORBIDDEN);
+    let receipt = api_key_registration
+        .extensions()
+        .get::<interface_runtime::InterfaceInvocationReceipt>()
+        .expect("GET API key rejection belongs to the outer typed authorization");
+    assert_eq!(
+        receipt.resolved().unwrap().binding_id().as_str(),
+        "http.webmcp.registrations.v1"
+    );
+    assert_eq!(
+        receipt
+            .stages()
+            .filter(|stage| *stage == interface_runtime::InterfaceInvocationStage::Executing)
+            .count(),
+        0
+    );
+    let api_key_invocation = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/webmcp/browser_visible/tools/list")
+                .header("authorization", format!("Bearer {api_key}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"arguments":{}}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(api_key_invocation.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(api_key_invocation).await["code"],
+        json!("cookie_session_required")
+    );
 
     let invocation = app
         .clone()
@@ -197,6 +231,22 @@ async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances
         .unwrap();
     assert_eq!(hidden.status(), StatusCode::NOT_FOUND);
 
+    let disabled_instance = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/webmcp/browser_disabled/tools/list")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"arguments":{}}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(disabled_instance.status(), StatusCode::NOT_FOUND);
+
     let disable = app
         .clone()
         .oneshot(
@@ -243,3 +293,5 @@ async fn ac_001_ac_002_authenticated_session_lists_only_webmcp_exposed_instances
         json!([])
     );
 }
+
+mod lifecycle;

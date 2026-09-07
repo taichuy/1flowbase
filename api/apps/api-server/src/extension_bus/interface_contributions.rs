@@ -378,6 +378,19 @@ pub(crate) fn production_interface_contributions(
                 interface_dispatch: Arc::clone(&mcp_interface_dispatch),
             },
         );
+    let webmcp_port = crate::routes::webmcp::port(
+        state.store.clone(),
+        crate::routes::mcp_protocol::McpToolCallDependencies {
+            runtime_dependencies: runtime_tool_invoker_dependencies.clone(),
+            interface_catalog: mcp_interface_catalog_dependencies.clone(),
+            interface_registry: Arc::new(
+                crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                    Arc::clone(&native_interface_registry),
+                ),
+            ),
+            interface_dispatch: Arc::clone(&mcp_interface_dispatch),
+        },
+    );
     let mcp_tool_call_port = crate::routes::mcp_protocol::mcp_tool_call_port(
         crate::routes::mcp_protocol::McpToolCallDependencies {
             runtime_dependencies: runtime_tool_invoker_dependencies,
@@ -418,6 +431,12 @@ pub(crate) fn production_interface_contributions(
     );
 
     Ok(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.webmcp",
+            &["webmcp.registrations.list", "webmcp.tools.invoke"],
+            &[crate::routes::webmcp::interface::OWNER],
+            crate::routes::webmcp::interface::compile_registry(webmcp_port)?,
+        ),
         InterfaceRegistryContribution::new(
             "api-server.public-login-entries",
             &["public.auth.login-entries.read"],
