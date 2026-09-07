@@ -1,7 +1,7 @@
 # Scope
 
 - 作用域：`api/crates/`；更深层 `AGENTS.md` 覆盖本文件的局部规则。
-- 本文件只定义 crate 依赖方向与一级目录 owner；业务细节留在对应 crate。
+- 本文件集中维护 crate 依赖方向与一级目录 owner；宿主接入与跨目录生命周期边界继承 [api/AGENTS.md](../AGENTS.md)，业务细节留在对应 crate。
 - 依赖记法：`A → B` 表示 `A` 可以直接依赖 `B`。
 
 ## Dependency Rules
@@ -19,7 +19,7 @@
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
-| `interface-runtime` | 协议无关的 active Interface Definition、compiled Registry snapshot 与 typed Invocation Kernel | `domain` |
+| `interface-runtime` | 协议无关的 Definition / Binding / compiled Plan、Registry snapshot、认证关联及 Invocation Kernel / Receipt / 有界收尾 | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |
 | `access-control` | 权限目录、角色与授权规则 | `domain` |
 | `control-plane-contracts` | adapter-facing repository trait、持久化投影与 contract error | `domain`、`extension-contracts` |
@@ -43,11 +43,13 @@
 ## Placement Rules
 
 - 业务决策、权限结果、状态流转、事务意图放 `control-plane`；纯领域不变量放 `domain`。
-- repository trait 放 `control-plane-contracts`；SQL、Row 映射和数据库事务实现放 `storage/durable/postgres`。
+- adapter-facing repository trait 以 `control-plane-contracts/src/ports` 为唯一 owner；`control-plane/src/ports` 只保留业务端口或兼容重导出。SQL、Row mapper 和数据库事务实现放 `storage/durable/postgres`；actor/scope 查询过滤属于 repository，状态流转和审计写入属于 `control-plane`。
+- 关键业务写动作从 `control-plane` 的命名 service command 或 Resource Action Kernel action 进入；跨层真实 service/PostgreSQL 验收放 `control-plane-postgres-tests`，生产存储 adapter 不反向依赖业务实现。
 - 跨 Host / Runtime 的稳定协议放 `extension-contracts`；安装、registry 和扩展图放 `plugin-framework`。
 - lifecycle subscriber 的 typed handler binding/registry 由 `plugin-framework` 编译，`api-server` Composition Root 从 active HostExtension 的 native entrypoint factory 注入 binding；delivery adapter 不得按 handler id 硬编码插件实现或以 EventBus enqueue 代替 handler 完成。RuntimeExtension/CapabilityPlugin 在稳定 lifecycle transport 落地前不得声明 durable lifecycle subscriber。
-- RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。
-- `interface-runtime` 只接收 Authentication Adapter factory 完成认证后建立的 sealed `PublicPrincipal`、`UserPrincipal` 或 `ApplicationPrincipal`；User/Application 内的 `ActorContext` 是授权真值，Public 不伪造 Actor。Cookie/Header/Session/API Key 原文只作为 `api-server` BuiltIn/可信 HostExtension factory 的瞬时 typed credential，不进入 Kernel、Receipt 或普通插件。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
+- RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。`extension-package-runtime` 仅负责描述符解析和 artifact load/reconcile，不接管安装、签名或扩展图；Runtime Backend Port 只接收 artifact reference，不泄漏本机 package path。
+- `interface-runtime` 拥有协议无关的认证 attempt 关联、冻结计划执行、调用取消/超时和终态收尾；不拥有凭证解析、业务授权策略、业务事务、Outbox 投递或 Runtime Host。局部不变量与反例见 [interface-runtime/AGENTS.md](interface-runtime/AGENTS.md)。
+- Effective Extension Graph 是声明输入；Composition Root 投影并绑定 typed ports，compiled Dynamic Interface Registry 是 active definition 真值。Kernel 执行冻结的授权/准入 veto 与 Hook，不编译宿主 Graph 或加载插件。
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
 - Provider Distribution Rule 属于 `RuntimeExecutionPort` 的 typed operation，不新增第七 Port；Host 只执行插件 decision，`orchestration-runtime` 独占 eligible target 校验、retry 与 Provider invocation。

@@ -17,32 +17,28 @@
 
 - `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
 - `apps/api-server` 是唯一 Backend composition root，在进程内创建、注入并关闭唯一 `RuntimeExtensionHost`；不得恢复独立 Runtime 服务或端口。
-- `crates/access-control` 放权限目录、内建角色、权限校验。
-- `crates/control-plane-contracts` 放存储适配器可实现的稳定 repository trait、错误与持久化投影；不得依赖 `control-plane`。
-- `crates/control-plane` 放业务 service、状态写入口与审计入口，并消费或重导出稳定 contracts。
-- `crates/control-plane-postgres-tests` 是 `publish = false` 的跨层测试宿主，组合真实 control-plane service 与 PostgreSQL adapter。
-- `crates/domain` 放领域模型、作用域语义、稳定核心对象。
-- `crates/extension-contracts` 是跨 Host / Runtime 稳定 wire type 与 runtime contract 的唯一 owner；不得拥有 package intake、registry、host lifecycle、storage 或 control-plane 逻辑。
-- `crates/extension-package-runtime` 只放 Runtime Host 所需的 package descriptor、manifest 解析、installed artifact 加载与确定性 reconcile；不得拥有 intake、签名、安装、registry 或 graph compiler。
-- `crates/observability` 放日志、trace 与可观测性基础能力。
-- `crates/orchestration-runtime` 放编排编译、绑定运行时、执行引擎、预览执行器。
-- `crates/plugin-framework` 放插件 manifest / schema / contribution / registry / package 边界。
-- `crates/runtime-extension-host` 负责 RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值，只依赖 bounded contracts、`runtime-core` 与 runtime package loader，不依赖完整 `plugin-framework`，且不向协议层泄漏内部实现。
-- `crates/runtime-core` 放 runtime registry、runtime CRUD 核心、slot engine 与稳定 Runtime Backend Port；Port 只接收 artifact reference，不暴露本机 package path，也不得依赖具体 Host。
-- `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
-- `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。
-- `crates/storage/durable/postgres` 是 `storage-durable-postgres` crate，放 PostgreSQL repository impl、启动入口、查询、事务、migrations 与存储层 mapper。
-- `crates/storage/ephemeral` 放非持久 session store、短期协同原语与 ephemeral backend 适配。
-- `crates/storage/object` 放业务文件对象存储 driver 边界；内建 `local` 与 `rustfs` driver。
+- `crates/` 承载协议无关的调用内核、业务、执行与存储模块；完整 crate owner、允许依赖与代码归属只维护在 [crates/AGENTS.md](crates/AGENTS.md)，修改库代码前读取该文件及对应局部规则。
+- 总体调用关系：Protocol Adapter → `interface-runtime` 冻结计划 → typed Handler → Business / Execution；这是调用关系，不授予 crate 反向依赖实现层的权限。
 - `plugins` 是插件源码工作区和包工作区；`host-extensions`、`sets`、`templates`、`packages`、`installed` 的生命周期以 `api/plugins/README.md` 为准。
 - `target` 是构建产物目录，不手工修改。
 - 模块级与单元测试放到对应 `src/_tests`；应用宿主级健康检查、启动冒烟、跨 crate 集成验证放到 `tests/`。
 - 同一目录文件接近 `15` 个时收纳子目录；单文件接近 `1500` 行时拆职责。
 
+## Interface Lifecycle Boundary
+
+- 架构解释见 [请求架构与调用生命周期](https://github.com/taichuy/1flowbase/wiki/Request-Architecture-and-Invocation-Lifecycle-CN)；本文件维护宿主边界，Kernel 不变量见 [interface-runtime/AGENTS.md](crates/interface-runtime/AGENTS.md)。验收范围以对应候选证据为准。
+- 外部业务入口统一进入 Canonical Interface；Protocol / Operational Control 显式分类，不冒充业务调用。Internal / Background Worker 的接入集合与 durable retry/ack 由各自 owner 明确，不能推导为已全量接入。
+- `external_route_assembly` 保持实际 HTTP mount 与 Endpoint Catalog 同源；业务入口缺 Binding、未分类、重复或无实际 mount 时拒绝发布，不能另建手写清单掩盖裸路由。
+- Composition Root 将 Effective Graph 声明、激活的认证 factory 和 typed handlers 编译为 Registry snapshot；Router、Catalog、OpenAPI 与 MCP discovery 消费相应投影，请求期间不动态拼接路由或替换计划。
+- HTTP / SSE / WebSocket / MCP / WebMCP 的协议适配器保留原协议契约；WebMCP 外层调用有独立生命周期，下游业务调用只通过 lineage 关联，不能代替外层收尾。
+- BuiltIn / 可信 HostExtension Authentication factory 独占原始 credential；成功后传递 sealed Principal，拒绝时保留安全的认证 attempt 关联，不向 Handler、Receipt 或普通插件传递凭证原文。
+- 宿主流式调用 owner 必须保持并等待 `InterfaceStreamCompletion::complete()`；socket 关闭、投影/写入失败或桥接任务 abort 不能丢掉唯一收尾 owner。保留后台收尾任务不等于已确认响应交付。
+- Invocation terminal、业务 commit/rollback、协议 delivery/ack 是独立维度：Kernel 记录调用结果，事务 owner 保证业务变更与所需 Outbox fact 原子性，协议适配器记录投影结果；连接关闭不自动发起业务取消，Completion 不冒充 subscriber ACK。
+
 ## Local Truths
 
 - 后端验证在同一 worktree 同时只运行一条 Cargo 命令；单条命令内部默认使用机器全部逻辑 CPU 并行编译和测试，不把 `CARGO_BUILD_JOBS=1/4` 或 `--test-threads=1` 写死进开发命令或仓库配置。
-- `apps/api-server/src/routes` 是协议层：参数解析、上下文提取、调用 service / action、响应与错误映射、OpenAPI 暴露。
+- `apps/api-server/src/routes` 的协议适配器负责参数解析、认证接入和响应投影；业务调用通过已注册 Binding 进入统一 Kernel，再由 typed Handler 调用 service / action，不从协议入口直接绕过调用计划。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
 - `apps/api-server/src/middleware` 是请求链路约束层。
 - 后台注册设置项是后端安全对象：稳定 `feature_id` 同时拥有 console surface 与 Settings API scope；前端只消费注册结果，不定义权限真值。
@@ -50,13 +46,7 @@
 - Settings API 未注册、重复归属或 owner inactive 时 fail closed；不得按前端 URL 推断、allow-by-default，或建立管理员可编辑的 route-to-permission 映射。
 - 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
-- `crates/control-plane` 是业务边界；关键写动作从命名明确的 service command 或 `Resource Action Kernel` action 进入。
-- adapter-facing repository trait 以 `crates/control-plane-contracts/src/ports` 为唯一稳定 owner；`control-plane/src/ports` 只保留业务端口或兼容重导出。
-- `crates/storage/durable/postgres/src/**/*_repository.rs` 和 `crates/storage/ephemeral/src/*` 是存储或短期协同端口实现。
-- actor / scope 过滤型查询属于持久化查询职责；状态流转、权限决策、审计写入属于 `control-plane`。
-- `crates/storage/durable/postgres/src/mappers` 是存储模型与领域模型转换层。
-- `storage-durable-postgres` 不得依赖或引用 `control-plane`、`plugin-framework`、`runtime-core`、`access-control`；跨层行为测试放到 `control-plane-postgres-tests`。
-- controller / routes 不得直接导入具体 PostgreSQL adapter 或 `runtime-extension-host` 内部模块，只能消费业务 service 与稳定 contract。
+- controller / routes 不得直接导入具体 PostgreSQL adapter 或 `runtime-extension-host` 内部模块，通过 typed Handler 消费业务 service，协议适配器消费稳定调用 contract。
 - 主仓 durable 后端官方支持 PostgreSQL；外部数据库、SaaS、API 数据源走 runtime extension。
 - 业务文件二进制走 `storage-object`；插件安装包和业务文件属于不同存储域。
 - 默认本地业务文件根目录是 `api/storage`；`rustfs` driver 内建但不默认启用。
