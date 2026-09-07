@@ -335,9 +335,9 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         writeJson(path.join(paths.root, 'responses-websocket.json'), gatewayWebSocket);
       }],
       ['gateway-websocket-lifecycle', async () => {
-        gatewayWebSocketLifecycle = await (dependencies.runGatewayWebSocketLifecycle ?? runGatewayWebSocketLifecycle)({ ready, mockSnapshot: mock.snapshot });
+        gatewayWebSocketLifecycle = await (dependencies.runGatewayWebSocketLifecycle ?? runGatewayWebSocketLifecycle)({ ready, mockSnapshot: mock.snapshot, terminalBarriers: mock.terminalBarriers });
         writeJson(path.join(paths.root, 'gateway-websocket-lifecycle.json'), gatewayWebSocketLifecycle);
-        if (gatewayWebSocketLifecycle.verdict !== 'PASS' || gatewayWebSocketLifecycle.rows.length !== 8 || gatewayWebSocketLifecycle.rows.some((row) => row.verdict !== 'PASS')) throw new Error('Gateway WebSocket lifecycle matrix failed');
+        if (gatewayWebSocketLifecycle.verdict !== 'PASS' || gatewayWebSocketLifecycle.rows.length !== 9 || gatewayWebSocketLifecycle.rows.some((row) => row.verdict !== 'PASS')) throw new Error('Gateway WebSocket lifecycle matrix failed');
       }],
       ['gateway-error-matrix', async () => {
         gatewayErrorMatrix = await (dependencies.runGatewayErrorMatrix ?? runGatewayErrorMatrix)({ ready, mockSnapshot: mock.snapshot });

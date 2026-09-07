@@ -48,33 +48,40 @@ function consumeServerFrames(buffer, onFrame) {
   return buffer.subarray(offset);
 }
 
-function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, inputText, requestFields = {}, probe } = {}) {
+function collectGatewayFrames(target, clientTraceId, {
+  timeoutMs = 10_000, inputText, requestFields = {}, probe, onOpen, onFirstDelta, observation = {},
+} = {}) {
   const url = new URL(target.url);
   if (url.protocol !== 'ws:') throw new Error('quality gate Gateway WebSocket must use loopback ws:');
+  observation.client_trace_id = clientTraceId;
+  observation.events = [];
   return new Promise((resolve, reject) => {
     const key = crypto.randomBytes(16).toString('base64');
     const frames = [];
     let settled = false;
+    let firstDelta = false;
+    let firstDeltaTask = Promise.resolve();
     let activeSocket = null;
     const finish = (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      const done = async () => {
+        await firstDeltaTask;
+        if (!error && observation.hook_error) error = new Error(observation.hook_error);
+        if (error) { error.observation = observation; reject(error); }
+        else resolve(frames);
+      };
+      if (activeSocket && !activeSocket.closed) activeSocket.once('close', done);
+      else done();
       activeSocket?.destroy();
       request.destroy();
-      if (error) reject(error);
-      else resolve(frames);
     };
     const request = http.request({
-      hostname: url.hostname,
-      port: url.port,
-      path: `${url.pathname}${url.search}`,
+      hostname: url.hostname, port: url.port, path: `${url.pathname}${url.search}`,
       headers: {
-        ...target.connect_headers,
-        connection: 'Upgrade',
-        upgrade: 'websocket',
-        'sec-websocket-key': key,
-        'sec-websocket-version': '13',
+        ...target.connect_headers, connection: 'Upgrade', upgrade: 'websocket',
+        'sec-websocket-key': key, 'sec-websocket-version': '13',
       },
     });
     const timer = setTimeout(() => finish(new Error('Gateway WebSocket evidence timed out')), timeoutMs);
@@ -82,12 +89,15 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, input
     request.once('error', finish);
     request.once('upgrade', (_response, socket, head) => {
       activeSocket = socket;
+      observation.opened_ns = process.hrtime.bigint().toString();
       let buffered = head;
       socket.on('data', (chunk) => {
         try {
           buffered = consumeServerFrames(Buffer.concat([buffered, chunk]), (opcode, payload) => {
+            if (settled) return;
             if (opcode === 0x8) {
               frames.close_code = payload.length >= 2 ? payload.readUInt16BE(0) : null;
+              observation.close_code = frames.close_code;
               if (probe?.closeCode !== undefined) {
                 if (frames.close_code !== probe.closeCode) throw new Error(`expected close ${probe.closeCode}, received ${frames.close_code}`);
                 finish();
@@ -97,39 +107,46 @@ function collectGatewayFrames(target, clientTraceId, { timeoutMs = 10_000, input
             if (opcode === 0x9) { socket.write(clientFrame(payload, 0xa)); return; }
             if (opcode !== 0x1) throw new Error(`unsupported Gateway WebSocket opcode ${opcode}`);
             frames.push([payload]);
-            const text = payload.toString('utf8');
-            const event = JSON.parse(text);
-            if (event.type === 'response.output_text.delta' && probe?.afterDelta) {
+            const event = JSON.parse(payload.toString('utf8'));
+            observation.events.push(event);
+            if (event.type === 'response.output_text.delta' && !firstDelta) {
+              firstDelta = true;
               frames.after_delta = true;
-              if (probe.afterDelta === 'disconnect') { finish(); return; }
-              if (!frames.second_create_sent) {
-                frames.second_create_sent = true;
-                socket.write(clientFrame(JSON.stringify({ type: 'response.create', model: target.model, input: 'second active request' })));
-              }
+              observation.first_delta_ns = process.hrtime.bigint().toString();
+              firstDeltaTask = Promise.resolve().then(() => onFirstDelta?.({ frames, observation })).then(() => {
+                if (settled) return;
+                if (probe?.afterDelta === 'disconnect') {
+                  observation.action = 'client-disconnect';
+                  observation.action_ns = process.hrtime.bigint().toString();
+                  finish();
+                } else if (probe?.afterDelta === 'second-create') {
+                  observation.action = 'second-create';
+                  observation.action_ns = process.hrtime.bigint().toString();
+                  frames.second_create_sent = true;
+                  socket.write(clientFrame(JSON.stringify({ type: 'response.create', model: target.model, input: 'second active request' })));
+                }
+              }).catch((error) => { observation.hook_error = error.message; finish(error); });
             }
-            if (event.type === 'response.completed' || event.type === 'response.failed') finish();
+            if (['response.completed', 'response.failed', 'response.cancelled'].includes(event.type)) finish();
             else if (event.type === 'error' && probe?.closeCode === undefined) finish(new Error(`Gateway WebSocket returned ${event.error?.message ?? 'an error'}`));
           });
-        } catch (error) {
-          finish(error);
-        }
+        } catch (error) { finish(error); }
       });
       socket.once('error', finish);
       socket.once('close', () => {
-        if (!settled) finish(new Error('Gateway WebSocket closed before response.completed'));
+        observation.closed_ns = process.hrtime.bigint().toString();
+        if (!settled) finish(new Error('Gateway WebSocket closed before terminal response'));
       });
-      if (probe?.payload !== undefined) { socket.write(clientFrame(probe.payload, probe.opcode ?? 1)); return; }
-      socket.write(clientFrame(JSON.stringify({
-        ...requestFields,
-        type: 'response.create',
-        model: target.model,
-        stream: true,
-        metadata: { trace_id: clientTraceId },
-        input: [{ role: 'user', content: [{
-          type: 'input_text',
-          text: inputText ?? `gateway websocket ${clientTraceId}`,
-        }] }],
-      })));
+      Promise.resolve().then(() => onOpen?.(observation)).then(() => {
+        if (settled) return;
+        if (probe?.payload !== undefined) { socket.write(clientFrame(probe.payload, probe.opcode ?? 1)); return; }
+        observation.create_sent_ns = process.hrtime.bigint().toString();
+        socket.write(clientFrame(JSON.stringify({
+          ...requestFields, type: 'response.create', model: target.model, stream: true,
+          metadata: { trace_id: clientTraceId },
+          input: [{ role: 'user', content: [{ type: 'input_text', text: inputText ?? `gateway websocket ${clientTraceId}` }] }],
+        })));
+      }).catch(finish);
     });
     request.end();
   });

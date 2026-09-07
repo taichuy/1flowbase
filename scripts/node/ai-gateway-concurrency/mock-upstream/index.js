@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const http = require('node:http');
+const { createTerminalBarrier } = require('./terminal-barrier');
 const {
   MOCK_ROUTE,
   SCENARIO,
@@ -394,6 +395,7 @@ async function emitHttpStream({
   slowChunkDelayMs,
   cancelObservationMs,
   barrier,
+  terminalBarrier,
 }) {
   let disconnected = false;
   request.on('aborted', () => { disconnected = true; });
@@ -405,6 +407,7 @@ async function emitHttpStream({
     return true;
   };
 
+  let terminalBarrierHeld = false;
   let visibleDeltaReleased = false;
   const barrierEvents = stream.barrierEvent
     ? [stream.barrierEvent]
@@ -412,6 +415,10 @@ async function emitHttpStream({
   for (const chunk of stream.chunks) {
     const event = chunk.event ?? chunk.type ?? (chunk.choices ? 'chat.completion.chunk' : undefined);
     if (!write(event, chunk.data ?? chunk)) break;
+    if (terminalBarrier && !terminalBarrierHeld && event === 'response.output_text.delta') {
+      terminalBarrierHeld = true;
+      await terminalBarrier();
+    }
     const visibleMarker = JSON.stringify(chunk).includes(stream.barrierMarker ?? barrier.marker);
     if (!visibleDeltaReleased && barrier.enabled && visibleMarker && barrierEvents.includes(event)) {
       visibleDeltaReleased = true;
@@ -465,6 +472,7 @@ function createMockUpstream(options = {}) {
   const slowChunkDelayMs = options.slowChunkDelayMs ?? 25;
   const cancelObservationMs = options.cancelObservationMs ?? 250;
   const timeline = createTimeline();
+  const terminalBarriers = createTerminalBarrier();
   const counters = { gatewayExecutorInvocations: 0, networkObserverOutbound: 0, providerExecutions: 0 };
   const errorFixtureAttempts = new Map();
   const callbackRetryAttempts = new Map();
@@ -644,8 +652,10 @@ function createMockUpstream(options = {}) {
         timeline: requestTimeline,
         slowChunkDelayMs,
         cancelObservationMs,
+        terminalBarrier: terminalBarriers.forRequest(body, requestTimeline),
         barrier,
       });
+      terminalBarriers.completeRequest(body);
     } catch (error) {
       if (!response.headersSent) response.writeHead(400, { 'content-type': 'application/json' });
       if (!response.destroyed) response.end(JSON.stringify({ error: { type: 'invalid_mock_request', message: error.message } }));
@@ -799,6 +809,7 @@ function createMockUpstream(options = {}) {
       };
     },
     async stop() {
+      terminalBarriers.close();
       for (const socket of sockets) socket.destroy();
       if (!server.listening) return;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
@@ -806,6 +817,7 @@ function createMockUpstream(options = {}) {
     snapshot: () => ({ ...timeline.snapshot(), counters: structuredClone(counters) }),
     waitForEvent: (event) => timeline.waitFor(event),
     releaseBarrier: () => barrier.release(),
+    terminalBarriers,
   };
 }
 

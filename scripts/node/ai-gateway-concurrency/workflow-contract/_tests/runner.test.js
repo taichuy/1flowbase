@@ -126,7 +126,7 @@ test('AC-003/006/007: runner orders WP1/WP3/WP4/WP2F and forwards distinct ready
   fs.writeFileSync(staleArtifact, 'stale secret from a prior cycle');
   const calls = [];
   const result = await runWorkflowContract(inputs, {
-    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(8).fill({ verdict: 'PASS' }) }; },
+    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(9).fill({ verdict: 'PASS' }) }; },
     async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
     createMockUpstream() {
       calls.push('mock:create');
@@ -239,7 +239,7 @@ test('AC-007 controlled negative: runner still closes owned fixture and mock aft
   const inputs = fixtureInputs();
   const calls = [];
   const result = await runWorkflowContract(inputs, {
-    async runGatewayWebSocketLifecycle() { return { verdict: 'FAIL', rows: Array(8).fill({ verdict: 'FAIL' }) }; },
+    async runGatewayWebSocketLifecycle() { return { verdict: 'FAIL', rows: Array(9).fill({ verdict: 'FAIL' }) }; },
     async runGatewayErrorMatrix() { return { verdict: 'FAIL', rows: Array(20).fill({ verdict: 'FAIL' }) }; },
     createMockUpstream() {
       return {
@@ -270,7 +270,7 @@ test('AC service logs: cleanup persistence failure makes the workflow and cleanu
   const inputs = fixtureInputs();
   const calls = [];
   const result = await runWorkflowContract(inputs, {
-    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(8).fill({ verdict: 'PASS' }) }; },
+    async runGatewayWebSocketLifecycle() { return { verdict: 'PASS', rows: Array(9).fill({ verdict: 'PASS' }) }; },
     async runGatewayErrorMatrix() { return { verdict: 'PASS', rows: Array(20).fill({ verdict: 'PASS' }) }; },
     createMockUpstream() {
       return {

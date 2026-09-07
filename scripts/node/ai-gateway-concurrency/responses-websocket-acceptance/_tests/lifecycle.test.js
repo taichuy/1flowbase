@@ -35,3 +35,50 @@ test('Root #1998 P3: real socket collector checks server close code for each uns
     } finally { await new Promise((resolve) => server.close(resolve)); }
   }
 });
+
+const { assertBarrierOrdering } = require('../lifecycle');
+
+function heldEvidence(status = 'succeeded') {
+  return {
+    trace: { run_id: ID, upstream_nonce: 'mock-000001' }, cancel_response: { id: ID },
+    barrier_key: 'barrier', barrier: { nonce: 'mock-000001' },
+    pre_action_native: { status: 'running' },
+    runtime_after_close: { active: { websocket_connections: 0 } },
+    upstream_before_release: [{ event: 'terminal_barrier_waiting' }],
+    wire: {
+      action_ns: '20', closed_ns: '30',
+      events: status === 'cancelled' ? [{ type: 'response.cancelled' }] : [{ type: 'response.output_text.delta' }],
+    },
+    native: { status }, durable: { status },
+    upstream: [
+      { event: 'arrival', nonce: 'mock-000001', sequence: 1 },
+      { event: 'terminal_barrier_waiting', nonce: 'mock-000001', barrier_key: 'barrier', monotonic_ns: '10', sequence: 2 },
+      { event: 'terminal_barrier_released', nonce: 'mock-000001', barrier_key: 'barrier', monotonic_ns: '40', sequence: 3 },
+      { event: 'settled', sequence: 4, successTerminalCount: status === 'succeeded' ? 1 : 0 },
+    ],
+  };
+}
+
+test('Root #1998 F1: delivery failure preserves business success only with complete pre-terminal barrier evidence', () => {
+  assert.doesNotThrow(() => assertBarrierOrdering(heldEvidence(), 'succeeded'));
+  for (const mutate of [
+    (row) => { row.wire.action_ns = '5'; },
+    (row) => { row.wire.closed_ns = '50'; },
+    (row) => { row.pre_action_native.status = 'succeeded'; },
+    (row) => { row.upstream_before_release.push({ event: 'settled' }); },
+    (row) => { row.runtime_after_close.active.websocket_connections = 1; },
+    (row) => { row.wire.events.push({ type: 'response.completed' }); },
+    (row) => { row.upstream.at(-1).successTerminalCount = 0; },
+  ]) {
+    const row = heldEvidence(); mutate(row);
+    assert.throws(() => assertBarrierOrdering(row, 'succeeded'));
+  }
+});
+
+test('Root #1998 F1: explicit Native cancel requires both cancelled business state and terminal wire projection', () => {
+  assert.doesNotThrow(() => assertBarrierOrdering(heldEvidence('cancelled'), 'cancelled'));
+  assert.throws(() => assertBarrierOrdering(heldEvidence(), 'cancelled'), /expected business cancelled/u);
+  const missing = heldEvidence('cancelled'); missing.wire.events = [];
+  assert.throws(() => assertBarrierOrdering(missing, 'cancelled'), /unique failed\/cancelled/u);
+});
+
