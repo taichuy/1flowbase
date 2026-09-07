@@ -13,8 +13,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use interface_runtime::{
-    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, InvocationEnvelope,
-    InvocationId, InvocationLineage, PublicPrincipal,
+    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, PublicPrincipal,
 };
 
 use super::login_entries_interface::{
@@ -201,32 +200,23 @@ pub async fn list_login_entries(
         .snapshot();
     let binding_id = interface_runtime::BindingId::new("http.public.auth.login-entries.v1")
         .expect("static binding id is valid");
-    let activated_authentication = snapshot
+    let _activated_authentication = snapshot
         .authentication(&binding_id)
         .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
-    let principal: PublicPrincipal = boot_snapshot
-        .authenticate(
-            activated_authentication,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, PublicPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             crate::extension_bus::PublicAuthenticationCredential,
         )
         .await?;
-    let authentication_activation = activated_authentication.activation().clone();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         login_entries_interface::PublicLoginEntriesAuthorization,
     ))
     .invoke::<PublicLoginEntriesInput, PublicLoginEntriesOutput, PublicLoginEntriesTargetError>(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            interface_runtime::AuthenticationAdapterReference::new("api-server.public")
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            PublicLoginEntriesInput { locale },
-        ),
+        authenticated.into_envelope(PublicLoginEntriesInput { locale }),
     )
     .await
     .map_err(|failure| public_login_entries_error(failure.into_error()))?;
@@ -326,37 +316,28 @@ pub async fn sign_in(
         .snapshot();
     let binding_id = interface_runtime::BindingId::new(sign_in_interface::BINDING_ID)
         .expect("static binding id is valid");
-    let activated = snapshot
+    let _activated = snapshot
         .authentication(&binding_id)
         .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
-    let principal: PublicPrincipal = boot_snapshot
-        .authenticate(
-            activated,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, PublicPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             crate::extension_bus::PublicAuthenticationCredential,
         )
         .await?;
-    let authentication_activation = activated.activation().clone();
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(sign_in_interface::PublicSignInAuthorization))
             .invoke::<PublicSignInInput, PublicSignInOutput, PublicSignInTargetError>(
                 snapshot,
-                InvocationEnvelope::with_principal(
-                    InvocationLineage::root(InvocationId::now_v7()),
-                    binding_id,
-                    InterfaceProtocol::Http,
-                    interface_runtime::AuthenticationAdapterReference::new("api-server.public")
-                        .expect("static adapter is valid"),
-                    authentication_activation,
-                    principal,
-                    None,
-                    PublicSignInInput(LoginCommand {
-                        login_entry_id: body
-                            .login_entry_id
-                            .unwrap_or(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID),
-                        identifier: body.identifier,
-                        password: body.password,
-                    }),
-                ),
+                authenticated.into_envelope(PublicSignInInput(LoginCommand {
+                    login_entry_id: body
+                        .login_entry_id
+                        .unwrap_or(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID),
+                    identifier: body.identifier,
+                    password: body.password,
+                })),
             )
             .await
             .map_err(|failure| public_sign_in_error(failure.into_error()))?;
@@ -509,33 +490,21 @@ where
         .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
         .snapshot();
     let binding_id = interface_runtime::BindingId::new(binding).expect("static binding is valid");
-    let activated = snapshot
+    let _activated = snapshot
         .authentication(&binding_id)
         .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
-    let principal: PublicPrincipal = boot_snapshot
-        .authenticate(
-            activated,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, PublicPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             crate::extension_bus::PublicAuthenticationCredential,
         )
         .await?;
-    let authentication_activation = activated.activation().clone();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         public_residual_interface::PublicResidualAuthorization,
     ))
-    .invoke::<I, O, PublicResidualTargetError>(
-        snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            interface_runtime::AuthenticationAdapterReference::new("api-server.public")
-                .expect("static authentication adapter reference is valid"),
-            authentication_activation,
-            principal,
-            None,
-            input,
-        ),
-    )
+    .invoke::<I, O, PublicResidualTargetError>(snapshot, authenticated.into_envelope(input))
     .await
     .map_err(|failure| match failure.into_error() {
         InterfaceInvocationError::TargetFailed(error) => error

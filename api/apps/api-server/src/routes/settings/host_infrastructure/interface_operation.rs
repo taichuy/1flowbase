@@ -18,9 +18,8 @@ use interface_runtime::{
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
     InterfaceInvocationError, InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner,
     InterfaceProtocol, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
-    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity,
-    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
-    TargetReference, UserPrincipal,
+    InvocationAdapterPlan, PluginIdentity, PrincipalProfile, ProtocolBinding, ProtocolProjection,
+    RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
 };
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
@@ -312,14 +311,18 @@ pub(crate) async fn invoke_providers_view(
         }
     })
     .expect("built-in binding identity must remain valid");
-    let activated_authentication = snapshot.authentication(&binding_id).cloned().ok_or(
+    let _activated_authentication = snapshot.authentication(&binding_id).cloned().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
-    let principal: UserPrincipal = boot_snapshot
-        .authenticate(&activated_authentication, credential)
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            protocol,
+            credential,
+        )
         .await
         .map_err(crate::error_response::ApiError::from)?;
-    let authentication_activation = activated_authentication.activation().clone();
     match kernel
         .invoke::<
             HostInfrastructureProvidersViewInput,
@@ -327,16 +330,7 @@ pub(crate) async fn invoke_providers_view(
             HostInfrastructureProvidersViewTargetError,
         >(
             snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                protocol,
-                activated_authentication.adapter().clone(),
-                authentication_activation,
-                principal,
-                None,
-                HostInfrastructureProvidersViewInput::new(),
-            ),
+            authenticated.into_envelope(HostInfrastructureProvidersViewInput::new()),
         )
         .await
     {

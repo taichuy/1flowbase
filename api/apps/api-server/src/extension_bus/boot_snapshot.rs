@@ -300,20 +300,6 @@ impl ExtensionBootSnapshot {
             .await
     }
 
-    pub(crate) async fn authenticate<C, P>(
-        &self,
-        activation: &interface_runtime::ActivatedAuthenticationAdapter,
-        credential: C,
-    ) -> anyhow::Result<P>
-    where
-        C: std::any::Any + Send + 'static,
-        P: interface_runtime::InvocationPrincipal,
-    {
-        self.authentication_factories
-            .authenticate(activation, credential)
-            .await
-    }
-
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {
         EffectiveExtensionPlan {
             schema_version: EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,

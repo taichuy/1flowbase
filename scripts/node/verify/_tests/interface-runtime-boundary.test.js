@@ -107,6 +107,7 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'contribution',
     'decision',
     'extension',
+    'finalization',
     'hook',
     'identity',
     'invocation',
@@ -165,7 +166,9 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
   assert.match(activation, /HostExtensionAuthenticationFactoryCatalog/u);
   assert.match(boot, /authentication_factories\s*\.validate_registry\(&candidate\)/u);
   assert.doesNotMatch(routes, /establish_principal/u);
-  assert.match(routes, /\.authenticate\(/u);
+  assert.match(routes, /\.authenticate_invocation/u);
+  assert.doesNotMatch(routes, /\.authenticate\(/u);
+  assert.match(routes, /\.into_envelope\(/u);
   assert.doesNotMatch(
     runtime,
     /axum::http::HeaderMap|bearer_token|session_secret|ApplicationApiKeyAuthenticationCredential|McpUserApiKeyAuthenticationCredential/u,
@@ -257,7 +260,7 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   assert.match(http, /invoke_providers_view/u);
   assert.match(mcp, /invoke_providers_view/u);
   assert.match(operation, /registry\.snapshot\(\)/u);
-  assert.match(operation, /InvocationEnvelope::with_principal/u);
+  assert.match(operation, /\.into_envelope/u);
   assert.match(operation, /InterfaceProtocol/u);
   assert.doesNotMatch(operation, /require_session|Cookie|HeaderMap/u);
   const contractDeclarations = [

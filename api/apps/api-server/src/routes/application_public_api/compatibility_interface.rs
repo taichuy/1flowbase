@@ -721,11 +721,66 @@ fn register_authentication(
     )
 }
 
+/// HTTP retains the authentication attempt; established WebSocket turns get fresh invocation IDs.
+pub(crate) enum ApplicationInvocationAuthentication {
+    Authenticated {
+        snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
+        authenticated: crate::extension_bus::AuthenticatedInvocation<ApplicationPrincipal>,
+    },
+    Established(ApplicationPrincipal),
+}
+impl From<ApplicationPrincipal> for ApplicationInvocationAuthentication {
+    fn from(principal: ApplicationPrincipal) -> Self {
+        Self::Established(principal)
+    }
+}
+impl ApplicationInvocationAuthentication {
+    pub(crate) fn principal(&self) -> &ApplicationPrincipal {
+        match self {
+            Self::Authenticated { authenticated, .. } => authenticated.principal(),
+            Self::Established(principal) => principal,
+        }
+    }
+    fn snapshot(&self) -> Option<Arc<interface_runtime::CompiledInterfaceRegistry>> {
+        match self {
+            Self::Authenticated { snapshot, .. } => Some(snapshot.clone()),
+            Self::Established(_) => None,
+        }
+    }
+    pub(crate) fn into_principal(self) -> ApplicationPrincipal {
+        match self {
+            Self::Authenticated { authenticated, .. } => authenticated.principal().clone(),
+            Self::Established(principal) => principal,
+        }
+    }
+    fn into_envelope(
+        self,
+        binding: BindingId,
+        activation: interface_runtime::AuthenticationActivationIdentity,
+        input: CompatibilityBlockingInput,
+    ) -> InvocationEnvelope<CompatibilityBlockingInput, ApplicationPrincipal> {
+        match self {
+            Self::Authenticated { authenticated, .. } => authenticated.into_envelope(input),
+            Self::Established(principal) => InvocationEnvelope::with_principal(
+                InvocationLineage::root(InvocationId::now_v7()),
+                binding,
+                InterfaceProtocol::Http,
+                AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                    .expect("static adapter is valid"),
+                activation,
+                principal,
+                None,
+                input,
+            ),
+        }
+    }
+}
+
 pub(crate) async fn authenticate_application_principal(
     state: Arc<ApiState>,
     binding_id: &'static str,
     bearer_token: String,
-) -> Result<ApplicationPrincipal, NativeApiError> {
+) -> Result<ApplicationInvocationAuthentication, NativeApiError> {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -744,7 +799,7 @@ pub(crate) async fn authenticate_application_principal(
             )
         })?;
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
@@ -752,14 +807,15 @@ pub(crate) async fn authenticate_application_principal(
         )
     })?;
     boot_snapshot
-        .authenticate(
-            activated,
+        .authenticate_invocation::<_, ApplicationPrincipal>(
+            Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http,
             ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
             },
         )
         .await
+        .map(|authenticated| ApplicationInvocationAuthentication::Authenticated { snapshot, authenticated })
         .map_err(|_| {
             native::native_error(
                 control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
@@ -770,9 +826,10 @@ pub(crate) async fn authenticate_application_principal(
 pub(crate) async fn invoke_typed_stream_with_principal(
     state: Arc<ApiState>,
     binding_id: &'static str,
-    principal: ApplicationPrincipal,
+    principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
 ) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
+    let principal = principal.into();
     let snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -785,6 +842,7 @@ pub(crate) async fn invoke_typed_stream_with_principal(
                 "compatibility interface is unavailable",
             )
         })?;
+    let snapshot = principal.snapshot().unwrap_or(snapshot);
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
     let authentication_activation = snapshot
         .authentication(&binding_id)
@@ -797,7 +855,7 @@ pub(crate) async fn invoke_typed_stream_with_principal(
         })?
         .activation()
         .clone();
-    let application_id = principal.application_id();
+    let application_id = principal.principal().application_id();
     let dispatch_target = native::application_runtime_target(
         state.as_ref(),
         snapshot.as_ref(),
@@ -814,17 +872,7 @@ pub(crate) async fn invoke_typed_stream_with_principal(
         CompatibilityBlockingTargetError,
     >(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            input,
-        ),
+        principal.into_envelope(binding_id, authentication_activation, input),
         dispatch_target,
     )
     .await
@@ -836,11 +884,12 @@ pub(crate) async fn invoke_typed_stream_with_principal(
 pub(crate) async fn invoke_stream_with_principal(
     state: Arc<ApiState>,
     binding_id: &'static str,
-    principal: ApplicationPrincipal,
+    principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
 ) -> Result<Response, NativeApiError> {
-    let application_id = principal.application_id();
+    let principal = principal.into();
+    let application_id = principal.principal().application_id();
     let invocation =
         invoke_typed_stream_with_principal(Arc::clone(&state), binding_id, principal, input)
             .await?;
@@ -905,29 +954,25 @@ pub(crate) async fn invoke_blocking(
             )
         })?;
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
             "compatibility authentication activation is unavailable",
         )
     })?;
-    let principal: ApplicationPrincipal = boot_snapshot
-        .authenticate(
-            activated,
-            ApplicationApiKeyAuthenticationCredential {
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, ApplicationPrincipal>(Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http, ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
-            },
-        )
+            })
         .await
         .map_err(|_| {
             native::native_error(
                 control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
             )
         })?;
-    let application_id = principal.application_id();
-    let authentication_activation = activated.activation().clone();
+    let application_id = authenticated.principal().application_id();
     let dispatch_target = native::application_runtime_target(
         state.as_ref(),
         snapshot.as_ref(),
@@ -943,17 +988,7 @@ pub(crate) async fn invoke_blocking(
         CompatibilityBlockingTargetError,
     >(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            input,
-        ),
+        authenticated.into_envelope(input),
         dispatch_target,
     )
     .await
@@ -965,9 +1000,10 @@ pub(crate) async fn invoke_blocking(
 pub(crate) async fn invoke_blocking_with_principal(
     state: Arc<ApiState>,
     binding_id: &'static str,
-    principal: ApplicationPrincipal,
+    principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
 ) -> Result<NativeRunResult, NativeApiError> {
+    let principal = principal.into();
     let snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -980,6 +1016,7 @@ pub(crate) async fn invoke_blocking_with_principal(
                 "compatibility interface is unavailable",
             )
         })?;
+    let snapshot = principal.snapshot().unwrap_or(snapshot);
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
     let authentication_activation = snapshot
         .authentication(&binding_id)
@@ -996,7 +1033,7 @@ pub(crate) async fn invoke_blocking_with_principal(
         state.as_ref(),
         snapshot.as_ref(),
         &binding_id,
-        principal.application_id(),
+        principal.principal().application_id(),
     );
     let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
         CompatibilityBlockingAuthorization,
@@ -1007,129 +1044,13 @@ pub(crate) async fn invoke_blocking_with_principal(
         CompatibilityBlockingTargetError,
     >(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            input,
-        ),
+        principal.into_envelope(binding_id, authentication_activation, input),
         dispatch_target,
     )
     .await
     .map_err(|failure| invocation_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value().0)
-}
-
-pub(crate) async fn invoke_stream(
-    state: Arc<ApiState>,
-    binding_id: &'static str,
-    bearer_token: String,
-    input: CompatibilityBlockingInput,
-    mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
-) -> Result<Response, NativeApiError> {
-    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
-        NativeApiError::new(
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "interface_registry_unavailable",
-            "compatibility interface is unavailable",
-        )
-    })?;
-    let snapshot = boot_snapshot
-        .interface_registry()
-        .map(|registry| registry.snapshot())
-        .ok_or_else(|| {
-            NativeApiError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "interface_registry_unavailable",
-                "compatibility interface is unavailable",
-            )
-        })?;
-    let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
-        NativeApiError::new(
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "authentication_activation_unavailable",
-            "compatibility authentication activation is unavailable",
-        )
-    })?;
-    let principal: ApplicationPrincipal = boot_snapshot
-        .authenticate(
-            activated,
-            ApplicationApiKeyAuthenticationCredential {
-                state: Arc::clone(&state),
-                bearer_token,
-            },
-        )
-        .await
-        .map_err(|_| {
-            native::native_error(
-                control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
-            )
-        })?;
-    let application_id = principal.application_id();
-    let authentication_activation = activated.activation().clone();
-    let dispatch_target = native::application_runtime_target(
-        state.as_ref(),
-        snapshot.as_ref(),
-        &binding_id,
-        application_id,
-    );
-    let invocation = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
-        CompatibilityBlockingAuthorization,
-    ))
-    .invoke_server_stream_with_dispatch_target::<
-        CompatibilityBlockingInput,
-        CompatibilityStreamEvent,
-        CompatibilityBlockingOutput,
-        CompatibilityBlockingTargetError,
-    >(
-        snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            input,
-        ),
-        dispatch_target,
-    )
-    .await
-    .map_err(|failure| invocation_error(failure.into_error()))?;
-    let (mut events, completion) = invocation.into_parts();
-    let (sender, receiver) = tokio::sync::mpsc::channel(32);
-    let sse_activity = state.runtime_activity.start(
-        application_id,
-        crate::runtime_activity::ApplicationActivityKind::SseConnection,
-    );
-    tokio::spawn(async move {
-        let _sse_activity = sse_activity;
-        let mut projection_open = true;
-        while let Some(event) = events.recv().await {
-            for event in projection.runtime_event_to_sse(&event.run, event.envelope) {
-                if projection_open && sender.send(event).await.is_err() {
-                    projection_open = false;
-                }
-            }
-        }
-        if let Ok(terminal) = completion.complete().await {
-            let _receipt = terminal.receipt().clone().projected();
-        }
-    });
-    Ok(
-        Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
-            .keep_alive(KeepAlive::default())
-            .into_response(),
-    )
 }
 
 fn invocation_error(error: interface_runtime::InterfaceInvocationError) -> NativeApiError {

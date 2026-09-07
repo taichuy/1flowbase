@@ -72,6 +72,17 @@ function inspectExternalRouteAssemblyBoundary(apiServer) {
   return violations;
 }
 
+function inspectAuthenticationInvocationBoundary(relativePath, source) {
+  const violations = [];
+  if (/\.authenticate\s*(?:::<[^>]+>)?\s*\(/u.test(source)) {
+    violations.push(`${relativePath} bypasses the authentication invocation owner`);
+  }
+  if (source.includes('.authenticate_invocation') && !source.includes('.into_envelope(')) {
+    violations.push(`${relativePath} discards authenticated attempt lineage`);
+  }
+  return violations;
+}
+
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
   const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
@@ -104,7 +115,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
       violations.push(`${name} stream route bypasses the compiled invocation plan`);
     }
   }
-  if ((workflowExtension.match(/\.authenticate\(/gu) || []).length !== 1) {
+  if ((workflowExtension.match(/\.authenticate_invocation(?=\s*::|\s*\()/gu) || []).length !== 1) {
     violations.push('/api/ex must have exactly one frozen Authentication owner');
   }
   if (workflowExtension.includes('require_session(&state') || workflowExtension.includes('require_csrf(&headers')) {
@@ -143,6 +154,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     violations.push('Composition Root casts the global ApiState directly to a family Port');
   }
   for (const [relativePath, source] of rustSourcesUnder(repoRoot, 'api/apps/api-server/src/routes')) {
+    violations.push(...inspectAuthenticationInvocationBoundary(relativePath, source));
     const stateTypes = ['ApiState'];
     for (const match of source.matchAll(/type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:crate::app_state::)?ApiState\s*;/gu)) {
       stateTypes.push(match[1]);
@@ -168,4 +180,4 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   return violations;
 }
 
-module.exports = { LEGACY_COMPATIBILITY_SYMBOLS, inspectInterfaceLifecycleBoundary, inspectExternalRouteAssemblyBoundary };
+module.exports = { LEGACY_COMPATIBILITY_SYMBOLS, inspectInterfaceLifecycleBoundary, inspectExternalRouteAssemblyBoundary, inspectAuthenticationInvocationBoundary };

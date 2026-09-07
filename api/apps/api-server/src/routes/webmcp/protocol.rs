@@ -9,7 +9,7 @@ use axum::{
 };
 use interface_runtime::{
     BindingId, InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol,
-    InvocationEnvelope, InvocationId, InvocationLineage, UserPrincipal,
+    UserPrincipal,
 };
 use std::sync::Arc;
 
@@ -28,28 +28,24 @@ pub(super) async fn invoke(
         .ok_or_else(|| anyhow::anyhow!("WebMCP registry unavailable"))?
         .snapshot();
     let binding_id = BindingId::new(binding).expect("static WebMCP binding");
-    let activated = snapshot
+    let _activated = snapshot
         .authentication(&binding_id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("WebMCP authentication unavailable"))?;
-    let principal: UserPrincipal = boot
-        .authenticate(&activated, credential)
+    let authenticated = boot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
         .await
         .map_err(ApiError::from)?;
     let kernel = InterfaceInvocationKernel::new(Arc::new(WebMcpAuthorization));
     let result = kernel
         .invoke::<WebMcpInput, WebMcpOutput, WebMcpTargetError>(
             snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
+            authenticated.into_envelope(input),
         )
         .await;
     let (mut response, receipt) = match result {

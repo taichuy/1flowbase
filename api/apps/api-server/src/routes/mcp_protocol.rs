@@ -13,10 +13,7 @@ use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use interface_runtime::{
-    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, InvocationEnvelope,
-    InvocationId, InvocationLineage,
-};
+use interface_runtime::{InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol};
 
 use crate::{
     app_state::ApiState,
@@ -107,12 +104,14 @@ async fn handle_mcp_request(
         .snapshot();
     let binding_id = interface_runtime::BindingId::new(MCP_INVOCATION_BINDING_ID)
         .expect("static binding id is valid");
-    let activated_authentication = snapshot
+    let _activated_authentication = snapshot
         .authentication(&binding_id)
         .ok_or_else(|| anyhow::anyhow!("MCP authentication activation is unavailable"))?;
-    let principal: interface_runtime::UserPrincipal = boot_snapshot
-        .authenticate(
-            activated_authentication,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, interface_runtime::UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Mcp,
             crate::extension_bus::McpUserApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 headers: headers.clone(),
@@ -120,7 +119,7 @@ async fn handle_mcp_request(
         )
         .await
         .map_err(|_| control_plane::errors::ControlPlaneError::NotAuthenticated)?;
-    let actor = principal.actor().clone();
+    let actor = authenticated.principal().actor().clone();
     let user = state
         .store
         .find_user_by_id(actor.user_id)
@@ -190,24 +189,11 @@ async fn handle_mcp_request(
             })
             .collect();
     }
-    let authentication_activation = activated_authentication.activation().clone();
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(interface_operation::McpInvocationAuthorization))
             .invoke::<McpInvocationInput, McpInvocationOutput, McpInvocationTargetError>(
                 snapshot,
-                InvocationEnvelope::with_principal(
-                    InvocationLineage::root(InvocationId::now_v7()),
-                    binding_id,
-                    InterfaceProtocol::Mcp,
-                    interface_runtime::AuthenticationAdapterReference::new(
-                        "api-server.user-api-key",
-                    )
-                    .expect("static adapter is valid"),
-                    authentication_activation,
-                    principal,
-                    None,
-                    input,
-                ),
+                authenticated.into_envelope(input),
             )
             .await
             .map_err(|failure| mcp_interface_error(failure.into_error()))?;

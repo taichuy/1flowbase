@@ -57,7 +57,8 @@ pub(crate) async fn upgrade(
         compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
         token,
     )
-    .await?;
+    .await?
+    .into_principal();
     let authorization = Arc::new(NativeWebSocketAuthorization { principal });
     Ok(websocket
         .protocols([NATIVE_WEBSOCKET_PROTOCOL])

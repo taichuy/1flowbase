@@ -86,7 +86,12 @@ fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
     assert!(openai.contains("compatibility_interface::invoke_stream"));
     assert!(anthropic.contains("compatibility_interface::invoke_blocking"));
     assert!(anthropic.contains("compatibility_interface::invoke_stream"));
-    assert_eq!(workflow_extension.matches(".authenticate(").count(), 1);
+    assert_eq!(
+        workflow_extension
+            .matches(".authenticate_invocation")
+            .count(),
+        1
+    );
     assert!(!workflow_extension.contains("require_session(&state"));
     assert!(!workflow_extension.contains("require_csrf(&headers"));
 }

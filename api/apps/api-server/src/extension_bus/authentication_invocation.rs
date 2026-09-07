@@ -16,6 +16,7 @@ impl<P: InvocationPrincipal> AuthenticatedInvocation<P> {
     pub(crate) fn principal(&self) -> &P {
         &self.principal
     }
+    #[cfg(test)]
     pub(crate) fn lineage(&self) -> &InvocationLineage {
         self.attempt.lineage()
     }

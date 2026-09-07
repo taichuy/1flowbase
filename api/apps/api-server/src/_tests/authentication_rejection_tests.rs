@@ -202,3 +202,86 @@ async fn root_1998_success_reuses_attempt_lineage_and_unknown_binding_is_ingress
     assert!(!published.contains("interface authentication rejected"));
     assert!(!published.contains("plan_fingerprint"));
 }
+
+#[tokio::test]
+async fn root_1998_mcp_identity_native_webmcp_http_rejections_publish_correlated_safe_terminal() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state);
+    for (method, path, body, binding) in [
+        (
+            "POST",
+            "/mcp/root-1998",
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+            "mcp.user-api-key.invoke.v1",
+        ),
+        (
+            "GET",
+            "/api/console/session",
+            "",
+            "http.console.identity.session.get.v1",
+        ),
+        (
+            "GET",
+            "/api/agent/v1/runs/00000000-0000-0000-0000-000000000001",
+            "",
+            "http.application.native.runs.get.v1",
+        ),
+        (
+            "GET",
+            "/api/webmcp/registrations",
+            "",
+            "http.webmcp.registrations.v1",
+        ),
+    ] {
+        let logs = LogBuffer(Arc::new(Mutex::new(Vec::new())));
+        let writer = logs.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(move || writer.clone())
+            .finish();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("authorization", "Bearer root-1998-private-invalid-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .with_subscriber(subscriber)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
+        let response: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response["code"], "not_authenticated", "{path}: {response}");
+        let published = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            published
+                .matches("interface authentication rejected")
+                .count(),
+            1,
+            "{path}: {published}"
+        );
+        assert!(published.contains(binding), "{path}: {published}");
+        for field in [
+            "invocation_id",
+            "plan_fingerprint",
+            "registry_fingerprint",
+            "authentication_activation",
+            "unestablished",
+            "Rejected",
+        ] {
+            assert!(published.contains(field), "{path}: {field}");
+        }
+        assert!(!published.contains("root-1998-private-invalid-token"));
+    }
+}

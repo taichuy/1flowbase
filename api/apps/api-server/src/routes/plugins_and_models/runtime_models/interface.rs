@@ -15,8 +15,8 @@ use interface_runtime::{
     InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
     InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
     InterfaceProtocol, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
-    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, ProtocolBinding,
-    ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    TargetReference, UserPrincipal,
 };
 use serde_json::Value;
 
@@ -261,12 +261,14 @@ pub(crate) async fn invoke(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let binding_id = BindingId::new(raw_binding_id).expect("static runtime binding id is valid");
-    let Some(activated) = snapshot.authentication(&binding_id) else {
+    let Some(_activated) = snapshot.authentication(&binding_id) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let principal: UserPrincipal = match boot_snapshot
-        .authenticate(
-            activated,
+    let authenticated = match boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             RuntimeModelAuthenticationCredential {
                 state: Arc::clone(&state),
                 headers,
@@ -280,29 +282,18 @@ pub(crate) async fn invoke(
         Ok(principal) => principal,
         Err(error) => return ApiError::from(error).into_response(),
     };
-    let authentication_activation = activated.activation().clone();
     let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
         RuntimeModelAuthorization,
     ))
     .invoke::<RuntimeModelOperationInput, RuntimeModelOperationOutput, RuntimeModelOperationTargetError>(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static runtime authentication adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            RuntimeModelOperationInput {
+        authenticated.into_envelope(RuntimeModelOperationInput {
                 method: descriptor_method,
                 model_code,
                 path: uri.path().to_string(),
                 query: uri.query().map(str::to_string),
                 body: body.to_vec(),
-            },
-        ),
+            }),
     )
     .await;
     let outcome = match outcome {

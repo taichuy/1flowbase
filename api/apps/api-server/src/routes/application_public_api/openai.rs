@@ -155,6 +155,7 @@ pub async fn create_chat_completion(
         .and_then(Value::as_bool)
         .filter(|value| *value)
         .map(|_| "streaming".to_string());
+    let mut authenticated_resume = None;
     if let Some(resume) = correlate_openai_chat_callback(&value)
         .map_err(|error| openai_invalid_request(error.param, error.message))?
     {
@@ -176,7 +177,7 @@ pub async fn create_chat_completion(
             credential.token.clone(),
         )
         .await?;
-        let actor = compatibility_interface::application_actor(&principal);
+        let actor = compatibility_interface::application_actor(principal.principal());
         let command = openai_resume_command(
             "",
             callback_task_id,
@@ -236,6 +237,7 @@ pub async fn create_chat_completion(
             }
             Err(error) => return Err(error.into()),
         }
+        authenticated_resume = Some(principal);
     }
     let translated = match translate_chat_completion_request(value) {
         Ok(translated) => translated,
@@ -265,16 +267,36 @@ pub async fn create_chat_completion(
         compatibility_interface::OPENAI_CHAT_BINDING_ID
     };
 
+    let authentication_binding = if response_mode.as_deref() == Some("streaming") {
+        if uri.path() == "/chat/completions" {
+            compatibility_interface::OPENAI_CHAT_ROOT_STREAM_BINDING_ID
+        } else {
+            compatibility_interface::OPENAI_CHAT_STREAM_BINDING_ID
+        }
+    } else {
+        binding_id
+    };
+    let principal = match authenticated_resume {
+        Some(principal) => principal,
+        None => {
+            compatibility_interface::authenticate_application_principal(
+                state.clone(),
+                authentication_binding,
+                credential.token,
+            )
+            .await?
+        }
+    };
     if response_mode.as_deref() == Some("streaming") {
         let stream_binding_id = if uri.path() == "/chat/completions" {
             compatibility_interface::OPENAI_CHAT_ROOT_STREAM_BINDING_ID
         } else {
             compatibility_interface::OPENAI_CHAT_STREAM_BINDING_ID
         };
-        return compatibility_interface::invoke_stream(
+        return compatibility_interface::invoke_stream_with_principal(
             state,
             stream_binding_id,
-            credential.token,
+            principal,
             compatibility_interface::CompatibilityBlockingInput {
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
@@ -288,10 +310,10 @@ pub async fn create_chat_completion(
         .map_err(Into::into);
     }
 
-    let run = compatibility_interface::invoke_blocking(
+    let run = compatibility_interface::invoke_blocking_with_principal(
         state,
         binding_id,
-        credential.token,
+        principal,
         compatibility_interface::CompatibilityBlockingInput {
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
@@ -552,7 +574,7 @@ async fn dispatch_response_for_endpoint(
         }
     };
     let principal = match preauthenticated_principal {
-        Some(principal) => principal,
+        Some(principal) => principal.into(),
         None => {
             let token = credential
                 .as_ref()
@@ -567,7 +589,7 @@ async fn dispatch_response_for_endpoint(
             .await?
         }
     };
-    let application_actor = compatibility_interface::application_actor(&principal);
+    let application_actor = compatibility_interface::application_actor(principal.principal());
     let previous_response = load_previous_response_context_for_actor(
         state.clone(),
         application_actor.clone(),

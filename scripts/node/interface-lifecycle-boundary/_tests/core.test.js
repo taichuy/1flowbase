@@ -27,7 +27,7 @@ function fixture(overrides = {}) {
     [sources[0]]: 'public_mcp_runtime_invoker_for_actor(&state);',
     [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
     [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
-    [sources[3]]: 'boot_snapshot.authenticate(activated, credential);',
+    [sources[3]]: 'boot_snapshot.authenticate_invocation(snapshot, binding, protocol, credential); authenticated.into_envelope(input);',
     [sources[4]]: 'struct InterfaceRegistryContribution { registry: Arc<CompiledInterfaceRegistry> }',
     [sources[5]]: 'struct PublicProvidersAdapter { store: MainDurableStore }',
     [sources[6]]: 'struct PublicSignInAdapter { store: MainDurableStore }',
@@ -114,4 +114,18 @@ test('root_1998 rejects a bare mount at the final application root', () => {
   const mutated = production.replace('.layer(cors_layer(config))', '.merge(rogue_router()).layer(cors_layer(config))');
   assert.notEqual(mutated, production);
   assert.ok(inspectExternalRouteAssemblyBoundary(mutated).some((value) => value.includes('bare external mount')));
+});
+
+// A4: mutate the real route so a bypass cannot hide behind the wrapper's presence elsewhere.
+test('root_1998 rejects direct authentication and discarded lineage in production source', () => {
+  const { inspectAuthenticationInvocationBoundary } = require('../core');
+  const file = 'api/apps/api-server/src/routes/application_public_api/native.rs';
+  const production = fs.readFileSync(path.resolve(__dirname, '../../../..', file), 'utf8');
+  assert.deepEqual(inspectAuthenticationInvocationBoundary(file, production), []);
+  const bypass = production.replace('.authenticate_invocation', '.authenticate');
+  assert.notEqual(bypass, production);
+  assert.ok(inspectAuthenticationInvocationBoundary(file, bypass).some(value => value.includes('bypasses')));
+  const discarded = production.replaceAll('.into_envelope(', '.discard_attempt(');
+  assert.notEqual(discarded, production);
+  assert.ok(inspectAuthenticationInvocationBoundary(file, discarded).some(value => value.includes('lineage')));
 });

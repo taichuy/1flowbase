@@ -20,8 +20,8 @@ use interface_runtime::{
     InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
     InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
     InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
-    InvocationEnvelope, InvocationId, InvocationLineage, ProtocolBinding, ProtocolProjection,
-    RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+    UserPrincipal,
 };
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
@@ -619,11 +619,16 @@ pub(crate) async fn invoke(
             "interface_operation",
         ))?;
     let binding_id = BindingId::new(binding_id).expect("static console binding is valid");
-    let activated = snapshot.authentication(&binding_id).cloned().ok_or(
+    let _activated = snapshot.authentication(&binding_id).cloned().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
-    let principal: UserPrincipal = boot_snapshot
-        .authenticate(&activated, credential)
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
         .await
         .map_err(ApiError::from)?;
     let kernel = crate::routes::host_infrastructure::interface_operation::invocation_kernel(
@@ -633,16 +638,7 @@ pub(crate) async fn invoke(
     match kernel
         .invoke::<ConsoleIdentityInput, ConsoleIdentityOutput, ConsoleIdentityTargetError>(
             snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
+            authenticated.into_envelope(input),
         )
         .await
     {

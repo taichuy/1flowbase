@@ -11,8 +11,8 @@ use interface_runtime::{
     InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
     InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceTargetFailure,
-    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+    InterfaceVersion, InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompiler,
+    RouteIdentity, TargetReference,
 };
 use storage_durable_postgres::MainDurableStore;
 
@@ -254,44 +254,30 @@ pub(crate) async fn invoke_models(
             )
         })?;
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
             "compatibility models authentication activation is unavailable",
         )
     })?;
-    let principal: ApplicationPrincipal = boot_snapshot
-        .authenticate(
-            activated,
-            ApplicationApiKeyAuthenticationCredential {
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, ApplicationPrincipal>(Arc::clone(&snapshot), &binding_id, InterfaceProtocol::Http, ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
-            },
-        )
+            })
         .await
         .map_err(|_| {
             native::native_error(
                 control_plane::application_public_api::native::NativeRunValidationError::NotAuthenticated,
             )
         })?;
-    let authentication_activation = activated.activation().clone();
     let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
         CompatibilityBlockingAuthorization,
     ))
     .invoke::<CompatibilityModelsInput, CompatibilityModelsOutput, CompatibilityBlockingTargetError>(
         snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            binding_id,
-            InterfaceProtocol::Http,
-            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
-                .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            CompatibilityModelsInput,
-        ),
+        authenticated.into_envelope(CompatibilityModelsInput),
     )
     .await
     .map_err(|failure| invocation_error(failure.into_error()))?;

@@ -47,7 +47,8 @@ pub(crate) async fn upgrade(
         compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
         credential.token,
     )
-    .await?;
+    .await?
+    .into_principal();
     let authorization = ResponsesWebSocketAuthorization { principal };
 
     Ok(websocket.on_upgrade(move |socket| async move {

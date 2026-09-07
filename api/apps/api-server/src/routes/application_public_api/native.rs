@@ -38,10 +38,7 @@ use tracing::{debug, error, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use interface_runtime::{
-    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, InvocationEnvelope,
-    InvocationId, InvocationLineage,
-};
+use interface_runtime::{InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol};
 
 use crate::{
     app_state::ApiState,
@@ -961,16 +958,18 @@ pub async fn create_native_run(
     };
     let binding_id =
         interface_runtime::BindingId::new(binding_id).expect("static binding id is valid");
-    let activated_authentication = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated_authentication = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
             "native authentication activation is unavailable",
         )
     })?;
-    let principal: interface_runtime::ApplicationPrincipal = boot_snapshot
-        .authenticate(
-            activated_authentication,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, interface_runtime::ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             crate::extension_bus::ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(&state),
                 bearer_token,
@@ -978,27 +977,16 @@ pub async fn create_native_run(
         )
         .await
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
-    let application_id = principal.application_id();
+    let application_id = authenticated.principal().application_id();
     let _http_activity = state
         .runtime_activity
         .start(application_id, ApplicationActivityKind::HttpRequest);
-    let authentication_activation = activated_authentication.activation().clone();
     let dispatch_target =
         application_runtime_target(&state, snapshot.as_ref(), &binding_id, application_id);
-    let envelope = InvocationEnvelope::with_principal(
-        InvocationLineage::root(InvocationId::now_v7()),
-        binding_id.clone(),
-        InterfaceProtocol::Http,
-        interface_runtime::AuthenticationAdapterReference::new("api-server.application-api-key")
-            .expect("static adapter is valid"),
-        authentication_activation,
-        principal,
-        None,
-        ApplicationNativeRunInput {
-            request,
-            protocol: TranslationProtocol::Native,
-        },
-    );
+    let envelope = authenticated.into_envelope(ApplicationNativeRunInput {
+        request,
+        protocol: TranslationProtocol::Native,
+    });
     let kernel = InterfaceInvocationKernel::new(Arc::new(
         native_interface::ApplicationNativeRunAuthorization,
     ));
@@ -1272,16 +1260,9 @@ where
     I: interface_runtime::InterfaceContract,
     O: interface_runtime::InterfaceContract,
 {
-    let (snapshot, binding_id, authentication_activation, principal) =
+    let (snapshot, authenticated) =
         authenticate_native_binding(state, bearer_token, binding_id).await?;
-    invoke_native_with_principal(
-        snapshot,
-        binding_id,
-        authentication_activation,
-        principal,
-        input,
-    )
-    .await
+    invoke_native_with_principal(snapshot, authenticated, input).await
 }
 
 async fn authenticate_native_binding(
@@ -1291,9 +1272,7 @@ async fn authenticate_native_binding(
 ) -> Result<
     (
         Arc<interface_runtime::CompiledInterfaceRegistry>,
-        interface_runtime::BindingId,
-        interface_runtime::AuthenticationActivationIdentity,
-        interface_runtime::ApplicationPrincipal,
+        crate::extension_bus::AuthenticatedInvocation<interface_runtime::ApplicationPrincipal>,
     ),
     NativeApiError,
 > {
@@ -1316,16 +1295,18 @@ async fn authenticate_native_binding(
         })?;
     let binding_id = interface_runtime::BindingId::new(binding_id)
         .expect("static native read binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
             "native read authentication is unavailable",
         )
     })?;
-    let principal: interface_runtime::ApplicationPrincipal = boot_snapshot
-        .authenticate(
-            activated,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, interface_runtime::ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
             crate::extension_bus::ApplicationApiKeyAuthenticationCredential {
                 state: Arc::clone(state),
                 bearer_token,
@@ -1333,15 +1314,14 @@ async fn authenticate_native_binding(
         )
         .await
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
-    let authentication_activation = activated.activation().clone();
-    Ok((snapshot, binding_id, authentication_activation, principal))
+    Ok((snapshot, authenticated))
 }
 
 async fn invoke_native_with_principal<I, O>(
     snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
-    binding_id: interface_runtime::BindingId,
-    authentication_activation: interface_runtime::AuthenticationActivationIdentity,
-    principal: interface_runtime::ApplicationPrincipal,
+    authenticated: crate::extension_bus::AuthenticatedInvocation<
+        interface_runtime::ApplicationPrincipal,
+    >,
     input: I,
 ) -> Result<O, NativeApiError>
 where
@@ -1350,22 +1330,7 @@ where
 {
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(native_read_interface::NativeReadAuthorization))
-            .invoke::<I, O, NativeReadTargetError>(
-                snapshot,
-                InvocationEnvelope::with_principal(
-                    InvocationLineage::root(InvocationId::now_v7()),
-                    binding_id,
-                    InterfaceProtocol::Http,
-                    interface_runtime::AuthenticationAdapterReference::new(
-                        "api-server.application-api-key",
-                    )
-                    .expect("static authentication adapter reference is valid"),
-                    authentication_activation,
-                    principal,
-                    None,
-                    input,
-                ),
-            )
+            .invoke::<I, O, NativeReadTargetError>(snapshot, authenticated.into_envelope(input))
             .await
             .map_err(|failure| match failure.into_error() {
                 InterfaceInvocationError::TargetFailed(error) => error
@@ -1459,7 +1424,7 @@ pub async fn upload_native_file(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ApiSuccess<UploadedFileResponse>>), NativeApiError> {
     let bearer_token = bearer_token(&headers)?;
-    let (snapshot, binding_id, authentication_activation, principal) = authenticate_native_binding(
+    let (snapshot, authenticated) = authenticate_native_binding(
         &state,
         bearer_token,
         native_read_interface::UPLOAD_FILE_BINDING_ID,
@@ -1524,9 +1489,7 @@ pub async fn upload_native_file(
     })?;
     let uploaded = invoke_native_with_principal::<NativeUploadFileInput, NativeUploadFileOutput>(
         snapshot,
-        binding_id,
-        authentication_activation,
-        principal,
+        authenticated,
         NativeUploadFileInput {
             file_table_id,
             original_filename: filename.unwrap_or_else(|| "upload.bin".into()),

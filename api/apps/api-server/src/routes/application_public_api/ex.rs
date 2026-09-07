@@ -83,16 +83,18 @@ pub async fn invoke_workflow_extension(
         })?;
     let binding_id = interface_runtime::BindingId::new(workflow_extension_interface::BINDING_ID)
         .expect("static binding id is valid");
-    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
         NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "authentication_activation_unavailable",
             "workflow extension authentication is unavailable",
         )
     })?;
-    let principal: interface_runtime::UserPrincipal = boot_snapshot
-        .authenticate(
-            activated,
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, interface_runtime::UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            interface_runtime::InterfaceProtocol::Http,
             ConsoleAuthenticationCredential::ProtocolWithCsrf {
                 state: state.clone(),
                 headers: headers.clone(),
@@ -100,7 +102,6 @@ pub async fn invoke_workflow_extension(
         )
         .await
         .map_err(|error| workflow_extension_auth_error(ApiError(error)))?;
-    let authentication_activation = activated.activation().clone();
     let method = workflow_extension_method(&method)?;
     let parameters = request_parameters(uri.query(), &headers, &body)?;
     let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
@@ -108,23 +109,11 @@ pub async fn invoke_workflow_extension(
     ))
     .invoke::<WorkflowExtensionInput, WorkflowExtensionOutput, WorkflowExtensionTargetError>(
         snapshot,
-        interface_runtime::InvocationEnvelope::with_principal(
-            interface_runtime::InvocationLineage::root(interface_runtime::InvocationId::now_v7()),
-            binding_id,
-            interface_runtime::InterfaceProtocol::Http,
-            interface_runtime::AuthenticationAdapterReference::new(
-                "api-server.console.require-session",
-            )
-            .expect("static adapter is valid"),
-            authentication_activation,
-            principal,
-            None,
-            WorkflowExtensionInput {
-                request_path: slug,
-                method,
-                parameters,
-            },
-        ),
+        authenticated.into_envelope(WorkflowExtensionInput {
+            request_path: slug,
+            method,
+            parameters,
+        }),
     )
     .await
     .map_err(|failure| workflow_extension_invocation_error(failure.into_error()))?;
