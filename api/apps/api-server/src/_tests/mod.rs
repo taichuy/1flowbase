@@ -72,3 +72,5 @@ pub(crate) use application::{
 mod system_routes;
 mod workflow_schedule_worker;
 mod workspace_routes;
+
+mod interface_lifecycle_acceptance;

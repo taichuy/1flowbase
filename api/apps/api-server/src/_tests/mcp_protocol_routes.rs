@@ -28,11 +28,11 @@ fn mcp_result_delivery_dependencies(
     McpResultDeliveryDependencies::new(state.store.clone(), state.infrastructure.cache_store())
 }
 
-async fn response_json(response: axum::response::Response) -> Value {
+pub(super) async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
-async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str) -> String {
+pub(super) async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str) -> String {
     let response = app
         .clone()
         .oneshot(
@@ -56,7 +56,7 @@ async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str) -> String 
         .to_string()
 }
 
-async fn create_mcp_instance(app: &axum::Router, cookie: &str, csrf: &str) {
+pub(super) async fn create_mcp_instance(app: &axum::Router, cookie: &str, csrf: &str) {
     create_named_mcp_instance(app, cookie, csrf, "taichuy").await;
 }
 
@@ -208,7 +208,7 @@ async fn create_interface_tool_and_binding(
     assert_eq!(create_binding_response.status(), StatusCode::CREATED);
 }
 
-async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
+pub(super) async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
     call_mcp_instance(app, token, "taichuy", request).await
 }
 
@@ -592,7 +592,7 @@ async fn invoke_runtime_create_model(
         .unwrap()
 }
 
-async fn create_model_probe_tool(app: &axum::Router, cookie: &str, csrf: &str) {
+pub(super) async fn create_model_probe_tool(app: &axum::Router, cookie: &str, csrf: &str) {
     create_interface_tool_and_binding(
         app,
         cookie,

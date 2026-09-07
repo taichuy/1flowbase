@@ -1395,7 +1395,7 @@ fn decision_snapshot(
 }
 
 #[tokio::test]
-async fn rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_handler() {
+async fn root_1998_ac_006_rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_handler() {
     for mode in [
         InterfaceExecutionMode::Unary,
         InterfaceExecutionMode::ServerStream,
@@ -1471,7 +1471,7 @@ async fn rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_han
 }
 
 #[tokio::test]
-async fn rr15_core_deny_dominates_plugin_allow_and_extension_failures_fail_closed() {
+async fn root_1998_ac_006_rr15_core_deny_dominates_plugin_allow_and_extension_failures_fail_closed() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let snapshot = decision_snapshot(
         InterfaceExecutionMode::Unary,
@@ -1629,7 +1629,7 @@ fn bare_decision_compiler(value: &str) -> (RegistryCompiler, InterfaceDefinition
 }
 
 #[test]
-fn rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_mismatched() {
+fn root_1998_ac_006_rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_mismatched() {
     let (mut missing, definition) = bare_decision_compiler("review.authz-missing");
     let plugin = PluginIdentity::new("review.authz-missing-plugin").unwrap();
     missing

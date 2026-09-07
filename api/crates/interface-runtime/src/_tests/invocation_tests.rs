@@ -436,9 +436,13 @@ fn envelope(actor: ActorContext) -> InvocationEnvelope<Input> {
 }
 
 #[tokio::test]
-async fn executes_resolve_authorize_admit_invoke_and_records_terminal_receipt() {
+async fn root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt() {
     let seen = Arc::new(Mutex::new(None));
     let snapshot = compile_snapshot("graph:one", 3, false, Arc::clone(&seen));
+    assert!(!snapshot
+        .plan_for_interface(&interface_id())
+        .unwrap()
+        .has_executable_extensions());
     let kernel = InterfaceInvocationKernel::with_target_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: false }),
@@ -987,3 +991,6 @@ async fn explicit_cancellation_terminates_without_dispatch() {
     );
     assert!(failure.receipt().attempt().is_none());
 }
+
+#[path = "snapshot_acceptance_tests.rs"]
+mod snapshot_acceptance_tests;
