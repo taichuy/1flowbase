@@ -23,6 +23,15 @@ impl<P: InvocationPrincipal> AuthenticatedInvocation<P> {
     pub(crate) fn into_envelope<I: InterfaceContract>(self, input: I) -> InvocationEnvelope<I, P> {
         self.attempt.into_envelope(self.principal, input)
     }
+
+    pub(crate) fn into_same_http_carrier_envelope<I: InterfaceContract>(
+        self,
+        binding: &BindingId,
+        input: I,
+    ) -> Result<InvocationEnvelope<I, P>, interface_runtime::HttpSiblingAuthenticationError> {
+        self.attempt
+            .into_same_http_carrier_envelope(binding, self.principal, input)
+    }
 }
 
 impl AuthenticationAdapterFactoryRegistry {

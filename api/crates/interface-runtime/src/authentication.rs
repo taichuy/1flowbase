@@ -81,6 +81,20 @@ pub struct InterfaceAuthenticationAttempt {
     protocol: InterfaceProtocol,
     received_at: SystemTime,
 }
+
+/// A successful HTTP authentication may select only an equivalent carrier variant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum HttpSiblingAuthenticationError {
+    #[error("HTTP sibling binding is not registered in the authentication snapshot")]
+    UnknownBinding,
+    #[error("HTTP sibling binding uses a different protocol, method, or route")]
+    CarrierMismatch,
+    #[error("HTTP sibling binding uses a different authentication owner or policy")]
+    AuthenticationMismatch,
+    #[error("HTTP sibling binding uses a different principal or input contract")]
+    ContractMismatch,
+}
+
 impl InterfaceAuthenticationAttempt {
     pub fn resolve(
         registry: Arc<CompiledInterfaceRegistry>,
@@ -118,6 +132,53 @@ impl InterfaceAuthenticationAttempt {
             None,
             input,
         )
+    }
+
+    /// Consume successful authentication before Kernel resolution. The selected plan must
+    /// be a registered variant of the same HTTP carrier in this attempt's frozen registry.
+    /// Output/execution contracts may differ; the Kernel enforces the selected full plan.
+    pub fn into_same_http_carrier_envelope<I: InterfaceContract, P: InvocationPrincipal>(
+        self,
+        binding: &BindingId,
+        principal: P,
+        input: I,
+    ) -> Result<InvocationEnvelope<I, P>, HttpSiblingAuthenticationError> {
+        let selected = self
+            .registry
+            .plan(binding)
+            .ok_or(HttpSiblingAuthenticationError::UnknownBinding)?;
+        let source_route = self.plan.binding().projection().http_route();
+        if self.protocol != InterfaceProtocol::Http
+            || source_route.is_none()
+            || source_route != selected.binding().projection().http_route()
+        {
+            return Err(HttpSiblingAuthenticationError::CarrierMismatch);
+        }
+        if self.plan.authentication() != selected.authentication()
+            || self.plan.adapter_plan().authentication() != selected.adapter_plan().authentication()
+            || self.plan.definition().authentication() != selected.definition().authentication()
+        {
+            return Err(HttpSiblingAuthenticationError::AuthenticationMismatch);
+        }
+        let source_input = self.plan.binding().input_contract();
+        if source_input != selected.binding().input_contract()
+            || source_input.contract_id() != I::CONTRACT_ID
+            || source_input.version() != I::CONTRACT_VERSION
+            || self.plan.definition().principal_profile() != P::PROFILE
+            || selected.definition().principal_profile() != P::PROFILE
+        {
+            return Err(HttpSiblingAuthenticationError::ContractMismatch);
+        }
+        Ok(InvocationEnvelope::with_principal(
+            self.lineage,
+            selected.binding().binding_id().clone(),
+            self.protocol,
+            selected.authentication().adapter().clone(),
+            selected.authentication().activation().clone(),
+            principal,
+            None,
+            input,
+        ))
     }
     pub async fn reject(
         self,

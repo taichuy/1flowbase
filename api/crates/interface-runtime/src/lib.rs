@@ -63,7 +63,7 @@ pub use stream::{
 #[cfg(test)]
 mod _tests;
 pub use authentication::{
-    ActivatedAuthenticationAdapter, InterfaceAuthenticationAttempt,
+    ActivatedAuthenticationAdapter, HttpSiblingAuthenticationError, InterfaceAuthenticationAttempt,
     InterfaceAuthenticationRejectionClass, InterfaceAuthenticationRejectionReceipt,
 };
 pub use contribution::{

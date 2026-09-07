@@ -20,6 +20,7 @@ const PRIVATE_TURN_MARKER: &str = "K3-CODEX-TURN-METADATA-MUST-NOT-PERSIST";
 enum CompactFixtureMode {
     Success,
     ProviderFailure,
+    LiveCallback,
 }
 
 #[test]
@@ -135,6 +136,207 @@ fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
         assert_eq!(output[0]["encrypted_content"], json!(V2_OPAQUE_CANARY));
         assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
     });
+}
+
+// F9: the root alias consumes the original authentication into its unary sibling plan.
+#[test]
+fn root_1998_f9_root_alias_compact_stream_preserves_completed_projection() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "Compact Root Alias App",
+            CompactFixtureMode::Success,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
+        let response = post_openai_responses(
+            &app,
+            "/responses",
+            &token,
+            v2_compaction_body(true),
+            Some(codex_turn_metadata("responses_compaction_v2")),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        let completed = sse_json_event(&body, "response.completed");
+        assert_eq!(completed["response"]["id"], "resp-v2-canary");
+        assert_eq!(completed["response"]["output"].as_array().unwrap().len(), 1);
+        assert_eq!(completed["response"]["output"][0]["type"], "compaction");
+        assert_eq!(
+            completed["response"]["output"][0]["encrypted_content"],
+            V2_OPAQUE_CANARY
+        );
+        assert_eq!(body.matches(V2_OPAQUE_CANARY).count(), 1);
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
+}
+
+#[test]
+fn root_1998_f9_invalid_key_precedes_unsupported_compaction_classification() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            "not-an-application-api-key",
+            v2_compaction_body(true),
+            Some(codex_turn_metadata("unsupported_fixture_profile")),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let payload = response_json(response).await;
+        assert_eq!(payload["error"]["code"], "not_authenticated");
+        assert!(!payload
+            .to_string()
+            .contains("unsupported_compaction_profile"));
+    });
+}
+
+#[test]
+fn root_1998_f9_stale_callback_with_compact_trigger_falls_through_to_unary_compact() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "Stale Callback Compact App",
+            CompactFixtureMode::Success,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
+        let call_id = encode_openai_callback_tool_call_id(Uuid::now_v7(), "call_inventory");
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            mixed_callback_compact_body(&call_id),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        let completed = sse_json_event(&body, "response.completed");
+        assert_eq!(completed["response"]["id"], "resp-v2-canary");
+        assert_eq!(completed["response"]["output"].as_array().unwrap().len(), 1);
+        assert_eq!(body.matches(V2_OPAQUE_CANARY).count(), 1, "{body}");
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
+}
+
+#[test]
+fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_priority() {
+    run_compat_route_test(|| async {
+        use control_plane::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
+        use control_plane::ports::OrchestrationRuntimeRepository;
+
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "Live Callback Compact Priority App",
+            CompactFixtureMode::LiveCallback,
+        )
+        .await;
+        let mut initial = responses_body(false);
+        initial["tools"] = json!([{
+            "type": "function", "name": "lookup_inventory",
+            "parameters": {"type": "object", "properties": {"sku": {"type": "string"}}}
+        }]);
+        let response = post_openai_responses(&app, "/v1/responses", &token, initial, None).await;
+        let status = response.status();
+        let created = response_json(response).await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let call = created["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["type"] == "function_call")
+            .expect("provider must create a live callback");
+        let call_id = call["call_id"].as_str().unwrap();
+        let (task_id, original_id) = decode_openai_callback_tool_call_id(call_id).unwrap();
+        assert_eq!(original_id, "call_inventory");
+        assert_eq!(
+            state
+                .store
+                .get_callback_task(task_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+        let before = flow_run_count(state.as_ref()).await;
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            mixed_callback_compact_body(call_id),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        let completed = sse_json_event(&body, "response.completed");
+        assert_eq!(
+            completed["response"]["id"], created["id"],
+            "resume must retain the same run"
+        );
+        assert!(body.contains("callback resume completed"), "{body}");
+        assert!(
+            !body.contains(V2_OPAQUE_CANARY),
+            "live callback must take priority over Compact"
+        );
+        assert_eq!(flow_run_count(state.as_ref()).await, before);
+        assert_eq!(
+            state
+                .store
+                .get_callback_task(task_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Completed
+        );
+    });
+}
+
+fn mixed_callback_compact_body(call_id: &str) -> Value {
+    let mut body = v2_compaction_body(true);
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"type": "function_call", "call_id": call_id, "name": "lookup_inventory", "arguments": "{\"sku\":\"sku_123\"}"}),
+        json!({"type": "function_call_output", "call_id": call_id, "output": {"stock": 7}}),
+    ]);
+    body
 }
 
 #[test]
@@ -287,6 +489,7 @@ async fn create_compact_provider_instance(
     let mode = match mode {
         CompactFixtureMode::Success => "success",
         CompactFixtureMode::ProviderFailure => "provider_failure",
+        CompactFixtureMode::LiveCallback => "live_callback",
     };
     let create = app
         .clone()
@@ -512,13 +715,29 @@ switch (request.method) {
       display_name: 'Fixture Compact',
       source: 'dynamic',
       supports_streaming: false,
-      supports_tool_call: false,
+      supports_tool_call: true,
       supports_multimodal: false,
       provider_metadata: {}
     }];
     break;
   case 'invoke': {
     const input = request.input ?? {};
+    if (input.operation !== 'compact' && input.provider_config?.test_compact_mode === 'live_callback') {
+      const resumed = (input.messages ?? []).some(message => message.role === 'tool');
+      const call = { id: 'call_inventory', name: 'lookup_inventory', arguments: { sku: 'sku_123' } };
+      const usage = { input_tokens: 5, output_tokens: 7, total_tokens: 12 };
+      const lines = resumed
+        ? [{ type: 'text_delta', delta: 'callback resume completed' }]
+        : [{ type: 'tool_call_commit', call }];
+      lines.push({ type: 'finish', reason: resumed ? 'stop' : 'tool_call' });
+      lines.push({ type: 'result', result: {
+        final_content: resumed ? 'callback resume completed' : 'need inventory',
+        tool_calls: resumed ? [] : [call], usage,
+        finish_reason: resumed ? 'stop' : 'tool_call'
+      } });
+      process.stdout.write(lines.map(line => JSON.stringify(line)).join('\n') + '\n');
+      process.exit(0);
+    }
     if (input.operation !== 'compact') {
       process.stdout.write(JSON.stringify({
         ok: false,

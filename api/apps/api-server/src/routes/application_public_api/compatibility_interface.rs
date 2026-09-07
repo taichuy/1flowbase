@@ -758,10 +758,19 @@ impl ApplicationInvocationAuthentication {
         binding: BindingId,
         activation: interface_runtime::AuthenticationActivationIdentity,
         input: CompatibilityBlockingInput,
-    ) -> InvocationEnvelope<CompatibilityBlockingInput, ApplicationPrincipal> {
+    ) -> Result<InvocationEnvelope<CompatibilityBlockingInput, ApplicationPrincipal>, NativeApiError>
+    {
         match self {
-            Self::Authenticated { authenticated, .. } => (*authenticated).into_envelope(input),
-            Self::Established(principal) => InvocationEnvelope::with_principal(
+            Self::Authenticated { authenticated, .. } => (*authenticated)
+                .into_same_http_carrier_envelope(&binding, input)
+                .map_err(|error| {
+                    NativeApiError::new(
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "authentication_variant_mismatch",
+                        error.to_string(),
+                    )
+                }),
+            Self::Established(principal) => Ok(InvocationEnvelope::with_principal(
                 InvocationLineage::root(InvocationId::now_v7()),
                 binding,
                 InterfaceProtocol::Http,
@@ -771,7 +780,7 @@ impl ApplicationInvocationAuthentication {
                 principal,
                 None,
                 input,
-            ),
+            )),
         }
     }
 }
@@ -830,19 +839,21 @@ pub(crate) async fn invoke_typed_stream_with_principal(
     input: CompatibilityBlockingInput,
 ) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
     let principal = principal.into();
-    let snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|boot| boot.interface_registry())
-        .map(|registry| registry.snapshot())
-        .ok_or_else(|| {
-            NativeApiError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "interface_registry_unavailable",
-                "compatibility interface is unavailable",
-            )
-        })?;
-    let snapshot = principal.snapshot().unwrap_or(snapshot);
+    let snapshot = match principal.snapshot() {
+        Some(snapshot) => snapshot,
+        None => state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|boot| boot.interface_registry())
+            .map(|registry| registry.snapshot())
+            .ok_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "interface_registry_unavailable",
+                    "compatibility interface is unavailable",
+                )
+            })?,
+    };
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
     let authentication_activation = snapshot
         .authentication(&binding_id)
@@ -872,7 +883,7 @@ pub(crate) async fn invoke_typed_stream_with_principal(
         CompatibilityBlockingTargetError,
     >(
         snapshot,
-        principal.into_envelope(binding_id, authentication_activation, input),
+        principal.into_envelope(binding_id, authentication_activation, input)?,
         dispatch_target,
     )
     .await
@@ -1004,19 +1015,21 @@ pub(crate) async fn invoke_blocking_with_principal(
     input: CompatibilityBlockingInput,
 ) -> Result<NativeRunResult, NativeApiError> {
     let principal = principal.into();
-    let snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|boot| boot.interface_registry())
-        .map(|registry| registry.snapshot())
-        .ok_or_else(|| {
-            NativeApiError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "interface_registry_unavailable",
-                "compatibility interface is unavailable",
-            )
-        })?;
-    let snapshot = principal.snapshot().unwrap_or(snapshot);
+    let snapshot = match principal.snapshot() {
+        Some(snapshot) => snapshot,
+        None => state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|boot| boot.interface_registry())
+            .map(|registry| registry.snapshot())
+            .ok_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "interface_registry_unavailable",
+                    "compatibility interface is unavailable",
+                )
+            })?,
+    };
     let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
     let authentication_activation = snapshot
         .authentication(&binding_id)
@@ -1044,7 +1057,7 @@ pub(crate) async fn invoke_blocking_with_principal(
         CompatibilityBlockingTargetError,
     >(
         snapshot,
-        principal.into_envelope(binding_id, authentication_activation, input),
+        principal.into_envelope(binding_id, authentication_activation, input)?,
         dispatch_target,
     )
     .await

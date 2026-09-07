@@ -165,6 +165,11 @@ async fn workflow_callable_catalog_tracks_publication_and_dispatch_lifecycle() {
         &document,
     );
     // The existing state's boot snapshot is immutable; inspect a fresh compilation.
+    let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        Some(registry.as_ref()),
+    );
+    let (_router, mounted) =
+        crate::console_router_with_assembly(Arc::clone(&state), true, assembly);
     let mut compiler = crate::external_endpoint_catalog::ExternalEndpointCatalogCompiler::default();
     compiler
         .contribute_openapi_document("published-workflow-openapi", &document)
@@ -173,6 +178,10 @@ async fn workflow_callable_catalog_tracks_publication_and_dispatch_lifecycle() {
         .absorb_registry("registry", registry.as_ref())
         .unwrap();
     compiler.contribute_approved_controls(true).unwrap();
+    compiler
+        .contribute_mcp_protocol_surface(crate::routes::mcp_protocol::MCP_INVOCATION_BINDING_ID)
+        .unwrap();
+    compiler.contribute_mounted_routes(&mounted).unwrap();
     let catalog = compiler.compile_complete(registry.as_ref()).unwrap();
     let row = catalog
         .row(

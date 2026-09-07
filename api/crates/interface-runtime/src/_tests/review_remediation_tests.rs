@@ -1733,3 +1733,6 @@ fn root_1998_ac_006_rr15_rr16_decision_bindings_fail_publish_when_missing_extra_
 
 #[path = "finalization_tests.rs"]
 mod finalization_tests;
+
+#[path = "http_sibling_authentication_tests.rs"]
+mod http_sibling_authentication_tests;

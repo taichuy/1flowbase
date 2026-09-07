@@ -205,7 +205,7 @@ pub(crate) enum ExternalEndpointCatalogError {
     )]
     InvalidCarrierBinding {
         identity: ExternalEndpointIdentity,
-        projection: ExternalEndpointIdentity,
+        projection: Box<ExternalEndpointIdentity>,
     },
     #[error("OpenAPI endpoint inventory is invalid: {0}")]
     InvalidOpenApi(String),
@@ -771,7 +771,7 @@ impl ExternalEndpointCatalogCompiler {
             if !owns_carrier {
                 return Err(ExternalEndpointCatalogError::InvalidCarrierBinding {
                     identity: identity.clone(),
-                    projection: projection.clone(),
+                    projection: Box::new(projection.clone()),
                 });
             }
         }
