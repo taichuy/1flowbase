@@ -155,6 +155,10 @@ impl CompatibilityTypedStreamInvocation {
 }
 
 impl CompatibilityStreamEvent {
+    pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
+        Self { run, envelope }
+    }
+
     pub(crate) fn into_parts(self) -> (NativeRunResult, RuntimeEventEnvelope) {
         (self.run, self.envelope)
     }
@@ -414,7 +418,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     let (run, envelope) = event.into_parts();
                     terminal_run = run.clone();
                     if publisher
-                        .emit(CompatibilityStreamEvent { run, envelope })
+                        .emit(CompatibilityStreamEvent::new(run, envelope))
                         .await
                         .is_err()
                     {
