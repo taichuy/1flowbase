@@ -11,16 +11,15 @@ use extension_contracts::*;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
-    plugin_framework::parse_plugin_manifest(match name {
+fn manifest_source(name: &str) -> &'static str {
+    match name {
         "a" => {
             include_str!("../../../../../plugins/fixtures/acme.composition-a/event-manifest.yaml")
         }
         "b" => include_str!("../../../../../plugins/fixtures/acme.composition-b/manifest.yaml"),
         "c" => include_str!("../../../../../plugins/fixtures/acme.composition-c/manifest.yaml"),
         _ => panic!("finite composition fixture"),
-    })
-    .unwrap()
+    }
 }
 fn grant(name: &str, suffix: &str, permission: &str) -> GrantContributionPermission {
     let write = permission == "plugin_data.owned.write";
@@ -162,12 +161,14 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         };
     let mut installations = Vec::new();
     for name in ["a", "b", "c"] {
-        let declared = manifest(name);
+        let source = manifest_source(name);
+        let declared = plugin_framework::parse_plugin_manifest(source).unwrap();
+        let author_document: serde_json::Value = serde_yaml::from_str(source).unwrap();
         let installed = management
             .install_uploaded_plugin(InstallUploadedPluginCommand {
                 actor_user_id: actor_id,
                 file_name: format!("acme.composition-{name}.1flowbasepkg"),
-                package_bytes: package(&declared),
+                package_bytes: package(&author_document),
             })
             .await
             .unwrap();
