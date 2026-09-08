@@ -76,6 +76,8 @@ async fn request(
     path: &str,
     body: Value,
 ) -> (StatusCode, Value) {
+    static NEXT_REQUEST: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+    let request_id = NEXT_REQUEST.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let response = app
         .clone()
         .oneshot(
@@ -86,20 +88,64 @@ async fn request(
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
-                .unwrap(),
+                .unwrap_or_else(|error| panic!("request #{request_id} {method} {path}: {error}")),
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|error| panic!("request #{request_id} {method} {path}: {error}"));
     let status = response.status();
-    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-    (
-        status,
-        if bytes.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_slice(&bytes).unwrap()
-        },
-    )
+    let content_type = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .map(|value| {
+            value
+                .to_str()
+                .unwrap_or("<invalid content-type>")
+                .to_owned()
+        });
+    let context =
+        format!("request #{request_id} {method} {path} -> {status}; content-type={content_type:?}");
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|error| panic!("{context}; raw body unavailable: {error}"));
+    let prefix = &bytes[..bytes.len().min(2048)];
+    let preview = match std::str::from_utf8(prefix) {
+        Ok(text) => format!("{text:?}"),
+        Err(_) => format!("hex:{prefix:02x?}"),
+    };
+    // Rust captures these lines for any later assertion failure, including status-only checks.
+    // Never log session/CSRF request headers; response previews are explicitly byte-bounded.
+    eprintln!(
+        "{context}; body_bytes={}; raw_body_prefix={preview}; truncated={}",
+        bytes.len(),
+        bytes.len() > prefix.len()
+    );
+    let media_type = content_type
+        .as_deref()
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let is_json = media_type
+        .split_once('/')
+        .is_some_and(|(_, subtype)| subtype == "json" || subtype.ends_with("+json"));
+    let body = if is_json {
+        // A JSON media type is a contract: malformed or empty JSON must fail here with evidence.
+        serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+            panic!("{context}; invalid JSON: {error}; raw_body_prefix={preview}")
+        })
+    } else if bytes.is_empty() {
+        Value::Null
+    } else {
+        // Preserve non-JSON bodies for existing status assertions and any downstream diagnostics.
+        // JSON-looking text with a non-JSON media type remains text; it is not silently parsed.
+        Value::String(match String::from_utf8(bytes.to_vec()) {
+            Ok(text) => text,
+            Err(error) => format!("hex:{:02x?}", error.as_bytes()),
+        })
+    };
+    (status, body)
 }
 async fn allow(app: &axum::Router, cookie: &str, csrf: &str, role: &str, operation: &str) {
     let (status,body)=request(app,cookie,csrf,"PUT",&format!("/api/console/settings/roles/{role}/console-policy"),json!({"groups":[{"kind":"settings_feature","group_id":"system.extension-center","enabled":true,"strategy":"custom","operations":[operation]}]})).await;
