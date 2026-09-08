@@ -47,7 +47,7 @@ description: "Use for 1flowbase backend implementation in api/: building, fixing
 
 ## Implementation Routing
 
-- Interface lifecycle: [references/interface-lifecycle.md](references/interface-lifecycle.md)，命中入口装配、认证、Binding、Kernel、Hook、stream、取消/超时或协议重构时读取；架构解释按其中本地文章渐进加载。
+- Interface lifecycle: [references/interface-lifecycle.md](references/interface-lifecycle.md)，命中入口装配、认证、Binding、Kernel、Hook、stream、取消/超时或协议重构时读取；架构解释按其中本文目录按章节读取。
 - AI-friendly API rules: `references/api-design.md`。
 - State and consistency review: `references/state-and-consistency.md`。
 - Stable core vs adapter rules: `references/boundary-design.md`。
@@ -63,7 +63,7 @@ description: "Use for 1flowbase backend implementation in api/: building, fixing
 
 - 新增或修改业务协议入口必须进入冻结 Binding/Plan 与 typed Handler；实际 mount 和 Catalog 同源，不直接从协议适配器绕过 Kernel 调 service。
 - Canonical Interface 统一调用语义，不统一各协议包装；实现交付保留旧输入输出、权限及副作用的对照依据。
-- Kernel 收尾、业务事务、协议交付各有 owner；扩展实现前先确认这三者不会互相推断。细节只维护在本地架构系列及对应局部 AGENTS。
+- Kernel 收尾、业务事务、协议交付各有 owner；扩展实现前先确认这三者不会互相推断。细节只维护在本地架构文档及对应局部 AGENTS。
 
 ## Host Extension Boundary
 

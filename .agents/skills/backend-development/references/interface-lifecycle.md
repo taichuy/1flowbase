@@ -2,14 +2,14 @@
 
 ## Read By Change
 
-架构唯一说明入口：[请求架构与调用生命周期](../../../../docs/architecture/interface-lifecycle/README.md)。先读总览，再按改动读取相应文章，不默认加载整个系列。
+架构唯一说明入口：[请求架构与调用生命周期](../../../../docs/architecture/interface-lifecycle.md)。先读总体结构，再按改动定位相应章节。
 
 | 改动 | 读取 |
 | --- | --- |
-| 新入口、mount、Catalog、MCP/WebMCP | [入口与owner](../../../../docs/architecture/interface-lifecycle/01-ingress-and-ownership.md) |
-| 认证、Binding、Principal、执行变体 | [身份与冻结](../../../../docs/architecture/interface-lifecycle/02-contracts-and-identity.md) |
-| Kernel、Decision、Hook、Handler | [执行与扩展](../../../../docs/architecture/interface-lifecycle/03-execution-and-extensions.md) |
-| stream、取消、deadline、事务、交付 | [终态与交付](../../../../docs/architecture/interface-lifecycle/04-finalization-and-delivery.md) |
+| 新入口、mount、Catalog、MCP/WebMCP | [入口与owner](../../../../docs/architecture/interface-lifecycle.md#ingress-and-ownership) |
+| 认证、Binding、Principal、执行变体 | [身份与冻结](../../../../docs/architecture/interface-lifecycle.md#contracts-and-identity) |
+| Kernel、Decision、Hook、Handler | [执行与扩展](../../../../docs/architecture/interface-lifecycle.md#execution-and-extensions) |
+| stream、取消、deadline、事务、交付 | [终态与交付](../../../../docs/architecture/interface-lifecycle.md#finalization-and-delivery) |
 
 ## Implementation Decisions
 
@@ -18,7 +18,7 @@
 3. 认证改动保留attempt lineage与拒绝证据；同HTTP carrier变体只使用既有受限选择边界，不在业务Resolve后更换计划。
 4. 业务修改留在typed Handler后的service/action；Kernel只执行已绑定ports。检查实际Cargo依赖，不能把逻辑调用图变成实现层依赖。
 5. 流式改动画出event、terminal、completion各自owner与任务退出路径，覆盖socket close、writer失败、bridge abort；正常路径持有句柄不等于异常路径仍有收尾owner。
-6. 交付给QA的是有限场景、旧契约依据、期望状态/副作用和未覆盖项，不能仅给编译通过结果。验证边界见[等价证据](../../../../docs/architecture/interface-lifecycle/05-equivalence-and-evidence.md)。
+6. 交付给QA的是有限场景、旧契约依据、期望状态/副作用和未覆盖项，不能仅给编译通过结果。验证边界见[等价证据](../../../../docs/architecture/interface-lifecycle.md#equivalence-and-evidence)。
 
 ## Failure Examples And Evidence
 

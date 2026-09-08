@@ -1,6 +1,6 @@
 # ADR: Canonical Interface Contract 与 Invocation Lifecycle
 
-> 阅读提示：本文保留架构决策及当时的候选状态；渐进式当前说明见[架构索引](../architecture/README.md)，下文阶段状态不代表最新验收结果。
+> 阅读提示：本文保留架构决策及当时的候选状态；当前说明见[架构索引](../architecture/README.md)，下文阶段状态不代表最新验收结果。
 
 ## Status
 

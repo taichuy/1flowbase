@@ -26,7 +26,7 @@
 
 ## Interface Lifecycle Boundary
 
-- 架构解释见 [请求架构与调用生命周期](../docs/architecture/interface-lifecycle/README.md)；本文件维护宿主边界，Kernel 不变量见 [interface-runtime/AGENTS.md](crates/interface-runtime/AGENTS.md)。验收范围以对应候选证据为准。
+- 架构解释见 [请求架构与调用生命周期](../docs/architecture/interface-lifecycle.md)；本文件维护宿主边界，Kernel 不变量见 [interface-runtime/AGENTS.md](crates/interface-runtime/AGENTS.md)。验收范围以对应候选证据为准。
 - 外部业务入口统一进入 Canonical Interface；Protocol / Operational Control 显式分类，不冒充业务调用。Internal / Background Worker 的接入集合与 durable retry/ack 由各自 owner 明确，不能推导为已全量接入。
 - `external_route_assembly` 保持实际 HTTP mount 与 Endpoint Catalog 同源；业务入口缺 Binding、未分类、重复或无实际 mount 时拒绝发布，不能另建手写清单掩盖裸路由。
 - Composition Root 将 Effective Graph 声明、激活的认证 factory 和 typed handlers 编译为 Registry snapshot；Router、Catalog、OpenAPI 与 MCP discovery 消费相应投影，请求期间不动态拼接路由或替换计划。

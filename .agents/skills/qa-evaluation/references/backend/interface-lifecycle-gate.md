@@ -2,7 +2,7 @@
 
 ## Scope And Reading
 
-适用于入口装配、认证关联、Kernel阶段、流式收尾及接口重构等价验收。先读[架构总览](../../../../../docs/architecture/interface-lifecycle/README.md)和[等价证据](../../../../../docs/architecture/interface-lifecycle/05-equivalence-and-evidence.md)，再按风险读取其余主题；不默认要求无关后端改动执行整套矩阵。
+适用于入口装配、认证关联、Kernel阶段、流式收尾及接口重构等价验收。先读[架构总览](../../../../../docs/architecture/interface-lifecycle.md)和[等价证据](../../../../../docs/architecture/interface-lifecycle.md#equivalence-and-evidence)，再按风险读取其余章节；不默认要求无关后端改动执行整套矩阵。
 
 ## Finite Acceptance Matrix
 

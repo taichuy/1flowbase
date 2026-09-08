@@ -35,6 +35,6 @@ Frozen Binding / authentication attempt（宿主完成凭证认证）
 - 本 crate 的执行约束与反例：[AGENTS.md](AGENTS.md)。
 - crate 职责和允许依赖：[上层 AGENTS.md](../AGENTS.md)。
 - 宿主接入与装配：[api/AGENTS.md](../../AGENTS.md)。
-- 完整架构解释：[请求架构与调用生命周期](../../../docs/architecture/interface-lifecycle/README.md)。
+- 完整架构解释：[请求架构与调用生命周期](../../../docs/architecture/interface-lifecycle.md)。
 
 行为覆盖由对应候选的测试与验收报告证明；本说明不宣称内部调度、durable retry/ack 或完整插件投递已全部接入。
