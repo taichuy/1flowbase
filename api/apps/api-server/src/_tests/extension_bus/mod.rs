@@ -15,3 +15,5 @@ mod managed_candidate_tests;
 mod managed_governance_tests;
 
 mod managed_resource_tests;
+
+mod managed_reinstall_tests;
