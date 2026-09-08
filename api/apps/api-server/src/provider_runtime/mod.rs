@@ -616,6 +616,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .map_err(map_runtime_backend_error)
     }
 
+    async fn guard_managed_artifact_removal(
+        &self,
+        installation_ids: &[Uuid],
+    ) -> anyhow::Result<Box<dyn Send + Sync>> {
+        control_plane_contracts::ports::ManagedArtifactRemovalGuard::guard_managed_artifact_removal(
+            self.services.managed_composition()?.as_ref(),
+            installation_ids,
+        )
+        .await
+    }
     async fn switch_managed_installation(
         &self,
         workspace_id: Uuid,

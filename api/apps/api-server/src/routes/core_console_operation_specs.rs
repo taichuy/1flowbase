@@ -237,6 +237,18 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("i18n_catalog.state.get", "system.i18n-catalog"),
     settings("i18n_catalog.update.activate", "system.i18n-catalog"),
     settings("i18n_catalog.update.check", "system.i18n-catalog"),
+    settings(
+        "extension_center.managed_execution.view",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.lifecycle_deliveries.resume",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.managed_executions.retire",
+        "system.extension-center",
+    ),
     settings("extension_center.installed.view", "system.extension-center"),
     settings(
         "extension_center.contribution_authorizations.grant",

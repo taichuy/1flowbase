@@ -3,7 +3,7 @@
 use crate::plugin_management::HostContributionGrantPolicy;
 use anyhow::{bail, Result};
 use control_plane_contracts::ports::{
-    ContributionAuthorityLease, LifecyclePublicationPlan, RecordLifecycleFactInput,
+    ContributionAuthorityLease, FrozenLifecyclePublication, RecordLifecycleFactInput,
 };
 use extension_contracts::{
     extension_bus::*, ManagedEventDelivery, ManagedEventFact, ManagedEventPublication,
@@ -62,7 +62,7 @@ pub async fn publish_managed_event(
     contribution: &ContributionDescriptor,
     cause: &ManagedEventDelivery,
     publication: ManagedEventPublication,
-    plan: LifecyclePublicationPlan,
+    plan: FrozenLifecyclePublication,
 ) -> Result<Uuid> {
     let installation = lease
         .installation(Uuid::parse_str(identity.installation_id().as_str())?)
@@ -95,15 +95,18 @@ pub async fn publish_managed_event(
         payload: publication.payload,
     };
     lease
-        .commit_derived_lifecycle_fact(RecordLifecycleFactInput {
-            event_id,
-            transaction_id,
-            contract_id: publication.contract_id,
-            contract_version: publication.contract_version,
-            canonical_payload: serde_json::to_vec(&fact)?,
-            occurred_at: time::OffsetDateTime::now_utc(),
-            publication: plan,
-        })
+        .commit_derived_lifecycle_fact(
+            RecordLifecycleFactInput {
+                event_id,
+                transaction_id,
+                contract_id: publication.contract_id,
+                contract_version: publication.contract_version,
+                canonical_payload: serde_json::to_vec(&fact)?,
+                occurred_at: time::OffsetDateTime::now_utc(),
+                publication: plan.plan.clone(),
+            },
+            plan,
+        )
         .await?;
     Ok(event_id)
 }

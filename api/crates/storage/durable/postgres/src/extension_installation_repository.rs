@@ -20,6 +20,7 @@ const JOINED_COLUMNS: &str = r#"
     installation.organization,
     installation.artifact_id,
     installation.artifact_version,
+    installation.contract_version,
     installation.source_kind,
     installation.trust_level,
     installation.expected_checksum,
@@ -570,6 +571,7 @@ async fn find_joined_by_id(
 
 fn map_row(row: PgRow) -> Result<domain::ExtensionInstallationRecord> {
     to_extension_installation_record(StoredExtensionInstallationRow {
+        contract_version: row.try_get("contract_version")?,
         id: row.try_get("id")?,
         category: row.try_get("category")?,
         organization: row.try_get("organization")?,

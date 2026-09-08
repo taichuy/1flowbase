@@ -11,3 +11,5 @@ mod managed_event_effect_tests;
 mod managed_snapshot_tests;
 
 mod managed_candidate_tests;
+
+mod managed_governance_tests;

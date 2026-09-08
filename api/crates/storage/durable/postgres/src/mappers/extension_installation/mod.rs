@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct StoredExtensionInstallationRow {
+    pub contract_version: Option<String>,
     pub id: Uuid,
     pub category: String,
     pub organization: String,
@@ -33,6 +34,7 @@ pub fn to_extension_installation_record(
     row: StoredExtensionInstallationRow,
 ) -> Result<domain::ExtensionInstallationRecord> {
     Ok(domain::ExtensionInstallationRecord {
+        contract_version: row.contract_version,
         id: row.id,
         identity: domain::ExtensionInstallationIdentity {
             category: domain::ExtensionCategory::parse(&row.category)

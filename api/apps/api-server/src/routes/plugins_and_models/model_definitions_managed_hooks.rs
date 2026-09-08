@@ -33,6 +33,7 @@ const PHASES: [HookPhase; 6] = [
 struct FrozenWorkspaceHooks {
     composition: Arc<ManagedExtensionComposition>,
     snapshot: Arc<ManagedWorkspaceSnapshot>,
+    _invocation_reference: Box<dyn Send + Sync>,
     create: ManagedCreateView,
     stages: BTreeMap<HookPhase, Vec<ContributionId>>,
 }
@@ -96,6 +97,7 @@ pub(crate) async fn freeze<I: InterfaceContract>(
     if body.scope_kind == "workspace" {
         if let Ok(composition) = state.provider_runtime.managed_composition() {
             if let Some(snapshot) = composition.snapshot(actor.current_workspace_id).await {
+                let invocation_reference = snapshot.freeze_reference()?;
                 let boot = state
                     .extension_boot_snapshot
                     .as_ref()
@@ -172,6 +174,7 @@ pub(crate) async fn freeze<I: InterfaceContract>(
                     stages.insert(phase, ids);
                 }
                 frozen.workspace = Some(FrozenWorkspaceHooks {
+                    _invocation_reference: Box::new(invocation_reference),
                     composition: composition.clone(),
                     snapshot,
                     create: ManagedCreateView {

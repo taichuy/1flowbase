@@ -1,10 +1,13 @@
 //! Workspace-scoped immutable managed graph assembly and fresh execution admission.
 mod candidate_switch;
+mod governance;
+mod lifetime;
 use anyhow::{bail, Context, Result};
 use control_plane::{
     plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
     ports::{ContributionAuthorityLease, PluginContributionAuthorityRepository, PluginRepository},
 };
+use lifetime::*;
 use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
@@ -23,6 +26,7 @@ pub(crate) struct ManagedContributionBinding {
 }
 
 pub(crate) struct ManagedWorkspaceSnapshot {
+    lifetime: Arc<SnapshotLifetime>,
     pub(crate) graph: Arc<EffectiveExtensionGraph>,
     pub(crate) authority: ManagedGraphAuthority,
     pub(crate) bindings: BTreeMap<ContributionId, ManagedContributionBinding>,
@@ -31,6 +35,9 @@ pub(crate) struct ManagedWorkspaceSnapshot {
 
 #[derive(Clone, Default)]
 struct ManagedSnapshots {
+    // Identity-only gates outlive retired snapshots, so shared handles cannot resurrect an exact
+    // retired graph on a later rebuild. P10 owns bounded retention without unsafe eviction.
+    retired_targets: BTreeMap<String, Arc<SnapshotLifetime>>,
     current: BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
     // Publication and retention share one lock: no delivery can see a new graph before its
     // predecessor is retained. P09 owns explicit retirement after backlog/in-flight disposition.
@@ -54,7 +61,7 @@ pub(crate) struct ManagedExtensionComposition {
     /// One assembly owner; immutable snapshots remain valid while callers hold their Arc.
     snapshots: Mutex<ManagedSnapshots>,
     execution_epoch: Uuid,
-    assembly: Mutex<()>,
+    assembly: Arc<Mutex<()>>,
 }
 
 impl ManagedExtensionComposition {
@@ -73,7 +80,7 @@ impl ManagedExtensionComposition {
             native_lifecycle_plan: Default::default(),
             snapshots: Mutex::new(ManagedSnapshots::default()),
             execution_epoch: Uuid::now_v7(),
-            assembly: Mutex::new(()),
+            assembly: Arc::new(Mutex::new(())),
         }
     }
 
@@ -335,12 +342,42 @@ impl ManagedExtensionComposition {
             }
         }
         let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
-        Ok(Arc::new(ManagedWorkspaceSnapshot {
+        let visible = self.snapshots.lock().await;
+        let lifetime = visible
+            .current
+            .values()
+            .chain(visible.retained.values().flatten())
+            .find(|snapshot| {
+                snapshot.graph.fingerprint() == graph.fingerprint()
+                    && snapshot.bindings.len() == bindings.len()
+                    && bindings.iter().all(|(id, binding)| {
+                        snapshot
+                            .bindings
+                            .get(id)
+                            .is_some_and(|old| old.handle == binding.handle)
+                    })
+            })
+            .map(|snapshot| snapshot.lifetime.clone())
+            .unwrap_or_default();
+        lifetime.ensure_open()?;
+        let snapshot = Arc::new(ManagedWorkspaceSnapshot {
+            lifetime,
             graph,
             authority,
             bindings,
             lifecycle_plan,
-        }))
+        });
+        for binding in snapshot.bindings.values() {
+            let key = serde_json::to_string(&governance::target(
+                &snapshot,
+                binding,
+                self.execution_epoch,
+            ))?;
+            if let Some(retired) = visible.retired_targets.get(&key) {
+                retired.ensure_open()?;
+            }
+        }
+        Ok(snapshot)
     }
 
     fn validate_candidate(
@@ -446,6 +483,7 @@ impl ManagedExtensionComposition {
         mut invocation: extension_contracts::ManagedHookInvocation,
         input: extension_contracts::ManagedCreateHookInput,
     ) -> Result<extension_contracts::ManagedHookOutcome> {
+        let _execution_reference = snapshot.freeze_reference()?;
         let binding = snapshot
             .bindings
             .get(contribution_id)
@@ -527,6 +565,7 @@ impl ManagedExtensionComposition {
             .snapshot(workspace_id)
             .await
             .context("managed workspace is not activated")?;
+        let _execution_reference = snapshot.freeze_reference()?;
         let binding = snapshot
             .bindings
             .get(contribution_id)
@@ -619,11 +658,12 @@ impl ManagedExtensionComposition {
                 fact_contract_version: contract_version.into(),
                 handler_id: id,
                 handler_version: format!(
-                    "{}:{}:{}:{}",
+                    "{}:{}:{}:{}:{}",
                     self.execution_epoch,
                     binding.handle.identity().artifact_fingerprint().as_str(),
                     binding.handle.identity().binding_fingerprint().as_str(),
-                    binding.handle.generation()
+                    binding.handle.generation(),
+                    binding.installation.id
                 ),
             });
         }
@@ -686,6 +726,7 @@ impl ManagedExtensionComposition {
         snapshot: &Arc<ManagedWorkspaceSnapshot>,
         record: &control_plane_contracts::ports::LifecycleOutboxRecord,
     ) -> Result<bool> {
+        let _execution_reference = snapshot.freeze_reference()?;
         if snapshot.graph.fingerprint().as_str() != record.graph_fingerprint {
             bail!("managed event frozen graph mismatch");
         }
@@ -804,13 +845,8 @@ impl ManagedExtensionComposition {
                     .await
                     .context("managed publisher workspace is inactive")?;
                 let plan = current
-                    .publication_plan(&publication.contract_id, &publication.contract_version)
-                    .unwrap_or_else(
-                        || control_plane_contracts::ports::LifecyclePublicationPlan {
-                            graph_fingerprint: current.graph.fingerprint().as_str().into(),
-                            subscribers: Vec::new(),
-                        },
-                    );
+                    .freeze_publication(&publication.contract_id, &publication.contract_version)?
+                    .context("managed publication has no subscribers")?;
                 let lease = self
                     .store
                     .lock_contribution_authority(binding.handle.identity().subject())
@@ -946,13 +982,16 @@ impl control_plane_contracts::ports::WorkspaceLifecyclePublicationSource
         workspace_id: Uuid,
         contract_id: &str,
         contract_version: &str,
-    ) -> Result<Option<control_plane_contracts::ports::LifecyclePublicationPlan>> {
+    ) -> Result<Option<control_plane_contracts::ports::FrozenLifecyclePublication>> {
         let owner = self
             .0
             .upgrade()
             .context("managed publication owner unavailable")?;
         let snapshot = owner.snapshot(workspace_id).await;
-        Ok(snapshot.and_then(|s| s.publication_plan(contract_id, contract_version)))
+        snapshot
+            .map(|s| s.freeze_publication(contract_id, contract_version))
+            .transpose()
+            .map(Option::flatten)
     }
 }
 

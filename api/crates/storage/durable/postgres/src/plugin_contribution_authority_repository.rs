@@ -189,6 +189,48 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn commit_derived_lifecycle_fact(
         mut self: Box<Self>,
         input: control_plane_contracts::ports::RecordLifecycleFactInput,
+        publication: control_plane_contracts::ports::FrozenLifecyclePublication,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<control_plane_contracts::ports::LifecycleOutboxRecord>>
+                + Send,
+        >,
+    > {
+        Box::pin(async move {
+            tokio::spawn(async move {
+                let event_id = input.event_id;
+                let result = async move {
+                    let record =
+                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
+                    &mut self.transaction,
+                    &input,
+                )
+                .await;
+                    let record = match record {
+                        Ok(record) => record,
+                        Err(error) => {
+                            self.transaction.rollback().await?;
+                            drop(publication);
+                            return Err(error);
+                        }
+                    };
+                    self.transaction.commit().await?;
+                    drop(publication);
+                    Ok(record)
+                }
+                .await;
+                if let Err(error) = &result {
+                    tracing::warn!(%event_id,%error,"derived publication transaction owner failed");
+                }
+                result
+            })
+            .await
+            .map_err(|error| anyhow::anyhow!("derived publication owner terminated: {error}"))?
+        })
+    }
+    fn commit_resume_managed_delivery(
+        mut self: Box<Self>,
+        input: control_plane_contracts::ports::ResumeManagedLifecycleDelivery,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<control_plane_contracts::ports::LifecycleOutboxRecord>>
@@ -197,7 +239,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     > {
         Box::pin(async move {
             let record =
-                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
+                crate::lifecycle_outbox_repository::resume_managed_delivery_in_transaction(
                     &mut self.transaction,
                     &input,
                 )
@@ -587,6 +629,20 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         if updated.rows_affected() != 1 {
             return Err(Error::NotFound("active_contribution_authorization").into());
         }
+        let contribution_id: String = sqlx::query_scalar(
+            "select contribution_id from plugin_contribution_authorizations where id=$1",
+        )
+        .bind(input.authorization_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
+            &mut transaction,
+            input.installation_id,
+            Some(input.workspace_id),
+            Some(&contribution_id),
+            control_plane_contracts::ports::LifecycleDeliveryPauseReason::AuthorityRevoked,
+        )
+        .await?;
         append_audit(&mut transaction, &input.audit_log, revision).await?;
         let snapshot = snapshot(
             &mut transaction,

@@ -1294,6 +1294,10 @@ pub(crate) fn production_interface_contributions(
                 "extension_center.contribution_authorizations.grant",
                 "extension_center.contribution_authorizations.revoke",
                 "extension_center.contribution_authorizations.view",
+                "extension_center.managed_execution.view",
+                "extension_center.lifecycle_deliveries.resume",
+                "extension_center.managed_executions.retire",
+
 
                 "extension_center.installed.disable",
                 "extension_center.installed.delete",

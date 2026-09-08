@@ -67,6 +67,11 @@ pub trait ContributionAuthorityLease: Send {
     fn commit_derived_lifecycle_fact(
         self: Box<Self>,
         input: super::RecordLifecycleFactInput,
+        publication: super::FrozenLifecyclePublication,
+    ) -> Pin<Box<dyn Future<Output = Result<super::LifecycleOutboxRecord>> + Send>>;
+    fn commit_resume_managed_delivery(
+        self: Box<Self>,
+        input: super::ResumeManagedLifecycleDelivery,
     ) -> Pin<Box<dyn Future<Output = Result<super::LifecycleOutboxRecord>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }

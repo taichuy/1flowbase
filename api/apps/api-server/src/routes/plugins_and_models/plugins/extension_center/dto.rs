@@ -26,6 +26,7 @@ pub struct ExtensionCompatibilityWarningResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInstalledVersionResponse {
+    pub contract_version: Option<String>,
     pub id: String,
     pub version: String,
     pub source_kind: String,
@@ -48,6 +49,7 @@ pub struct LocalExtensionInstalledVersionResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryEntryResponse {
+    pub contract_version: Option<String>,
     pub id: String,
     pub catalog_id: String,
     pub category: String,

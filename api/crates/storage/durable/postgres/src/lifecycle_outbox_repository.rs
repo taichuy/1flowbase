@@ -460,3 +460,69 @@ pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
     let record = record_lifecycle_fact_in_transaction(transaction, &frozen).await?;
     Ok(record)
 }
+
+#[async_trait]
+impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgControlPlaneStore {
+    async fn managed_installation_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>> {
+        Ok(sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 order by workspace_id").bind(installation_id).fetch_all(self.pool()).await?)
+    }
+    async fn managed_lifecycle_deliveries(
+        &self,
+        subscriber_ids: &[String],
+    ) -> Result<Vec<LifecycleOutboxRecord>> {
+        let rows = sqlx::query("select event_id,subscriber_id from lifecycle_outbox_deliveries where subscriber_id = any($1) order by event_id,subscriber_id")
+            .bind(subscriber_ids).fetch_all(self.pool()).await?;
+        let mut records = Vec::new();
+        for row in rows {
+            if let Some(record) = find_delivery(
+                self.pool(),
+                row.try_get("event_id")?,
+                &row.try_get::<String, _>("subscriber_id")?,
+            )
+            .await?
+            {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+}
+
+pub(crate) async fn resume_managed_delivery_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &control_plane_contracts::ports::ResumeManagedLifecycleDelivery,
+) -> Result<LifecycleOutboxRecord> {
+    sqlx::query("select event_id from lifecycle_outbox where event_id=$1 and graph_fingerprint=$2 for update")
+        .bind(input.event_id).bind(&input.expected.graph_fingerprint).fetch_optional(&mut **tx).await?
+        .ok_or_else(|| anyhow!("frozen lifecycle graph does not match"))?;
+    let changed = sqlx::query("update lifecycle_outbox_deliveries set status='pending',available_at=now(),claimed_by=null,claimed_at=null,claim_id=null,claim_expires_at=null,pause_reason=null,paused_at=null,last_error=null,attempt_count=0 where event_id=$1 and subscriber_id=$2 and handler_id=$3 and handler_version=$4 and status='paused'")
+        .bind(input.event_id).bind(&input.subscriber_id).bind(&input.expected.handler_id).bind(&input.expected.handler_version).execute(&mut **tx).await?.rows_affected();
+    if changed != 1 {
+        bail!("paused lifecycle target changed");
+    }
+    find_delivery(&mut **tx, input.event_id, &input.subscriber_id)
+        .await?
+        .ok_or_else(|| anyhow!("lifecycle target disappeared"))
+}
+
+pub(crate) async fn pause_managed_installation_deliveries(
+    tx: &mut Transaction<'_, Postgres>,
+    installation_id: Uuid,
+    workspace_id: Option<Uuid>,
+    contribution_id: Option<&str>,
+    reason: LifecycleDeliveryPauseReason,
+) -> Result<()> {
+    let rows = sqlx::query("select distinct d.event_id,d.subscriber_id,d.handler_version from extension_installations i join plugin_contribution_authorization_revisions r on r.installation_id=i.id cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c join lifecycle_outbox_deliveries d on d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id') where i.id=$1 and ($2::uuid is null or r.workspace_id=$2) and ($3::text is null or c->>'contribution_id'=$3) and d.status <> 'delivered'")
+        .bind(installation_id).bind(workspace_id).bind(contribution_id).fetch_all(&mut **tx).await?;
+    for row in rows {
+        let version: String = row.try_get("handler_version")?;
+        if control_plane_contracts::ports::managed_handler_installation(&version)
+            .is_some_and(|id| id != installation_id)
+        {
+            continue;
+        }
+        sqlx::query("update lifecycle_outbox_deliveries set status='paused',pause_reason=$3,paused_at=now(),claimed_by=null,claimed_at=null,claim_id=null,claim_expires_at=null where event_id=$1 and subscriber_id=$2 and status<>'delivered'")
+            .bind(row.try_get::<Uuid,_>("event_id")?).bind(row.try_get::<String,_>("subscriber_id")?).bind(reason.as_str()).execute(&mut **tx).await?;
+    }
+    Ok(())
+}

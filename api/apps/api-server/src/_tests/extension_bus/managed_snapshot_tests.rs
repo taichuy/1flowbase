@@ -141,7 +141,7 @@ fn mixed_package() -> Vec<u8> {
     archive.into_inner().unwrap().finish().unwrap()
 }
 
-async fn create(store: &MainDurableStore, actor: Uuid, workspace: Uuid) {
+pub(super) async fn create(store: &MainDurableStore, actor: Uuid, workspace: Uuid) {
     store
         .create_model_definition(&CreateModelDefinitionInput {
             actor_user_id: actor,

@@ -21,6 +21,12 @@ pub struct ProviderRuntimeExecutionContext {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn guard_managed_artifact_removal(
+        &self,
+        _installation_ids: &[uuid::Uuid],
+    ) -> anyhow::Result<Box<dyn Send + Sync>> {
+        anyhow::bail!("managed artifact removal guard is not configured")
+    }
     async fn switch_managed_installation(
         &self,
         _workspace_id: uuid::Uuid,

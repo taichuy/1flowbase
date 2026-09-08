@@ -65,6 +65,7 @@ fn current_ready_artifact(installation_id: Uuid) -> domain::PluginArtifactInstan
 
 fn current_mcp_extension(installation_id: Uuid) -> domain::ExtensionInstallationRecord {
     domain::ExtensionInstallationRecord {
+        contract_version: None,
         id: installation_id,
         identity: domain::ExtensionInstallationIdentity {
             category: domain::ExtensionCategory::Mcp,

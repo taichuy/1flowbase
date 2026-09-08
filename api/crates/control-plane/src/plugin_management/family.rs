@@ -521,6 +521,20 @@ where
                 );
             }
         }
+        let managed_ids = installations
+            .iter()
+            .filter(|installation| installation.contract_version == "1flowbase.extension-bus/v1")
+            .map(|installation| installation.id)
+            .collect::<Vec<_>>();
+        let _managed_removal = if managed_ids.is_empty() {
+            None
+        } else {
+            Some(
+                self.runtime
+                    .guard_managed_artifact_removal(&managed_ids)
+                    .await?,
+            )
+        };
         let current_installation_id = self
             .repository
             .list_assignments(actor.current_workspace_id)
@@ -585,6 +599,7 @@ where
             let runtime_restore = artifacts
                 .iter()
                 .filter_map(|(installation, artifact)| {
+                    if installation.contract_version == "1flowbase.extension-bus/v1" { return None; }
                     artifact
                         .as_ref()
                         .filter(|artifact| {
@@ -600,7 +615,9 @@ where
             // Runtime scopes own their resources. Dispose all of them before staging any
             // artifact, so an unloaded family cannot retain a callable contribution.
             for installation in &installations {
-                self.runtime.deactivate_plugin(installation).await?;
+                // Managed artifacts already have no runtime references; the removal guard owns
+                // assembly until DB completion. Re-entering rebuild here would deadlock it.
+                if installation.contract_version != "1flowbase.extension-bus/v1" { self.runtime.deactivate_plugin(installation).await?; }
             }
             let mut removals = match stage_artifact_removals(artifact_paths) {
                 Ok(removals) => removals,

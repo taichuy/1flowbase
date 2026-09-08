@@ -39,6 +39,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     serde_json::to_writer(&mut trace, &request)?;
     trace.write_all(b"\n")?;
     trace.flush()?;
+    if request.handler == "fixture_barrier" {
+        std::fs::write(executable.with_extension("started"), "started")?;
+        while !executable.with_extension("release").is_file() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_millis() as i64;
+            if now >= request.deadline_unix_ms {
+                return Err("fixture event deadline expired".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
     serve_managed_event(raw.as_slice(), std::io::stdout().lock(), |frame| {
         if frame.handler == "publish" {
             let mut payload = frame.delivery.payload.clone();

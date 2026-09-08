@@ -120,15 +120,25 @@ fn compare_installed_extension_versions(
 }
 
 pub struct ExtensionInstallationService<R> {
+    managed_removal:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::ManagedArtifactRemovalGuard>>,
     repository: R,
     install_root: PathBuf,
 }
 
 impl<R> ExtensionInstallationService<R> {
+    pub fn with_managed_removal_guard(
+        mut self,
+        guard: std::sync::Arc<dyn control_plane_contracts::ports::ManagedArtifactRemovalGuard>,
+    ) -> Self {
+        self.managed_removal = Some(guard);
+        self
+    }
     pub fn new(repository: R, install_root: impl Into<PathBuf>) -> Self {
         Self {
             repository,
             install_root: install_root.into(),
+            managed_removal: None,
         }
     }
 }
@@ -374,6 +384,20 @@ where
         else {
             return Ok(None);
         };
+        let _managed_removal =
+            if record.contract_version.as_deref() == Some("1flowbase.extension-bus/v1") {
+                Some(
+                    self.managed_removal
+                        .as_ref()
+                        .ok_or(ControlPlaneError::Conflict(
+                            "managed_artifact_removal_guard_required",
+                        ))?
+                        .guard_managed_artifact_removal(&[installation_id])
+                        .await?,
+                )
+            } else {
+                None
+            };
         let decision = self
             .repository
             .extension_deletion_decision(node_id, installation_id)

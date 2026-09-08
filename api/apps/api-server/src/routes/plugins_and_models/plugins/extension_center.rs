@@ -78,7 +78,9 @@ mod contribution_authority;
 mod dto;
 use contribution_authority::*;
 pub(crate) mod interface;
+mod managed_execution;
 mod managed_schema;
+use managed_execution::*;
 
 use builtin_mcp::builtin_frontstage_catalog_entry;
 pub(crate) use builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;
@@ -90,6 +92,9 @@ pub(super) fn route_assembly(
     plugin_upload_max_bytes: usize,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
+        .route("/settings/extension-center/installed/:installation_id/managed-execution", console_get(view_managed_execution, ConsoleOperation("extension_center.managed_execution.view".to_string())))
+        .route("/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume", console_post(resume_managed_delivery, ConsoleOperation("extension_center.lifecycle_deliveries.resume".to_string())))
+        .route("/settings/extension-center/installed/:installation_id/managed-executions/retire", console_post(retire_managed_execution, ConsoleOperation("extension_center.managed_executions.retire".to_string())))
         .route(
             "/settings/extension-center/installed/:installation_id/contribution-authorizations",
             console_post(grant_contribution_authorizations,
@@ -209,10 +214,14 @@ fn service(
 fn extension_installation_service(
     dependencies: &ExtensionCenterDependencies,
 ) -> crate::app_state::ApiExtensionInstallationService {
-    ExtensionInstallationService::new(
+    let service = ExtensionInstallationService::new(
         dependencies.store.clone(),
         &dependencies.provider_install_root,
-    )
+    );
+    match dependencies.provider_runtime.managed_composition() {
+        Ok(composition) => service.with_managed_removal_guard(composition),
+        Err(_) => service, // Managed removal fails closed when the host is not configured.
+    }
 }
 
 fn to_risk_warnings(
@@ -232,6 +241,7 @@ fn to_installed_version(
     entry: &domain::ExtensionInstallationRecord,
 ) -> LocalExtensionInstalledVersionResponse {
     LocalExtensionInstalledVersionResponse {
+        contract_version: entry.contract_version.clone(),
         id: entry.id.to_string(),
         version: entry.identity.version.clone(),
         source_kind: entry.source_kind.clone(),
@@ -258,6 +268,7 @@ fn to_local_inventory_family(
     installed_versions: Vec<domain::ExtensionInstallationRecord>,
 ) -> LocalExtensionInventoryEntryResponse {
     LocalExtensionInventoryEntryResponse {
+        contract_version: entry.contract_version,
         id: entry.id.to_string(),
         catalog_id: entry.identity.catalog_id(),
         category: entry.identity.category.as_str().to_string(),
