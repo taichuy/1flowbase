@@ -55,9 +55,7 @@ impl Fixture {
             .fetch_one(runtime.store.pool())
             .await
             .unwrap();
-        let actor = runtime
-            .store
-            .load_actor_context_for_user(actor_id)
+        let actor = AuthRepository::load_actor_context_for_user(&runtime.store, actor_id)
             .await
             .unwrap();
         let management = Arc::new(
@@ -356,7 +354,10 @@ async fn root_2007_ir_f01_changed_reinstall_preserves_history() {
         .snapshot(actor.current_workspace_id)
         .await
     {
-        assert!(snapshot.bindings.values().all(|b| b.installation.id != id));
+        assert!(snapshot
+            .bindings
+            .values()
+            .all(|b| b.handle.installation_id().as_str() != id.to_string()));
     }
     let mut state = (*state).clone();
     state.store = restarted.store.clone();
