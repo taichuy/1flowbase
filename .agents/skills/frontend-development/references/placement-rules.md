@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `app/` | 应用启动、Provider 组装、入口级装配 | 页面业务、route truth layer、请求消费 |
 | `app-shell/` | 共享壳层、顶栏、导航容器、账户菜单 | 业务页面、route tree、feature 私有组件 |
-| `routes/` | `route id / path / selected state / permission key / guard` 真值层 | 页面 JSX、壳层样式、请求逻辑 |
+| `routes/` | `route id / path / selected state` 与权限消费 / guard 配置 | 后端授权策略、页面 JSX、壳层样式、请求逻辑 |
 | `features/*/pages` | 页面容器、页面级状态、页面级组合 | 可复用通用组件、底层请求 client |
 | `features/*/components` | 当前 feature 私有组件 | 过早共享组件、路由真值层 |
 | `features/*/api` | 当前 feature 的 query key、queryFn、mutation、请求适配 | 通用 transport、全站共享 client |
@@ -50,6 +50,7 @@
 ### API Promotion
 
 - 默认先放 `features/*/api`
+- 常规消费链是 `api-client -> features/*/api -> UI`；`shared/api` 是共享编排的可选 owner，不是必经层，也不反向依赖某个 feature 的私有请求实现。
 - 满足以下条件后，才提升到 `shared/api`
   - 两个以上 feature 共享同一套请求编排
   - 不只是共享一个底层 endpoint，而是共享消费方式

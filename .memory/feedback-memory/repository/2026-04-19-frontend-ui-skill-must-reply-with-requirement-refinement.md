@@ -1,8 +1,9 @@
 ---
 memory_type: feedback
+status: superseded
 feedback_category: repository
 topic: frontend-development skill 对 UI 开发需求必须先输出含交互设计的需求整理
-summary: 用户要求 `frontend-development` skill 不仅在模糊需求场景下思考需求，而且在页面 / UI 开发需求中应把需求整理、需求细化、页面交互设计和明确建议作为显式回复内容先发给用户，再默认继续实现；同时主文件应有通用工作流程；`Quick Reference` 在主 skill 中只作为引用导航，详细规范应下沉到 `references/`，并显式指向方法论、模板和示例入口；`Implementation` 只写具体落地锚点与对象链路，不再重复 references 目录。
+summary: 已被 2026-09-08 用户确认的前端 skill 收敛方案取代；原文只保留历史背景，不再用于恢复需求模板或默认实现链路。当前执行规则见 frontend-development 与 problem-framing。
 keywords:
   - frontend
   - skill
@@ -25,13 +26,18 @@ match_when:
   - 调整 quick reference 与 references 的职责边界
   - 调整 implementation 与 quick reference 的职责边界
 created_at: 2026-04-19 00
-updated_at: 2026-04-19 07
-last_verified_at: 2026-04-19 07
-decision_policy: direct_reference
+updated_at: 2026-09-08 08
+last_verified_at: 2026-09-08 08
+decision_policy: verify_before_decision
 scope:
   - .agents/skills/frontend-development
   - .memory/feedback-memory/repository
 ---
+
+## Superseded
+
+2026-09-08 08：用户确认直接更新前端 skill、无需 issue。需求决策统一由 `problem-framing` 承接，已确认方向或直接实现授权不重复需求模板；前端保留交互证据卡。以下旧阶段正文与旧路径仅供追溯，不作为当前执行规则。当前入口：`.agents/skills/frontend-development/SKILL.md`。
+
 
 # frontend-development skill 对 UI 开发需求必须先输出含交互设计的需求整理
 

@@ -1,7 +1,8 @@
 ---
 memory_type: project
+status: superseded
 topic: frontend-development skill 已补模糊需求与图片参考的需求收敛流程
-summary: 用户确认 `frontend-development` skill 需要覆盖“需求模糊、只给图片或外部样本”的场景，要求 agent 先把页面目标、借鉴边界和设计需求草案收敛，再默认直接进入实现；只有阻塞决策时才集中提问。
+summary: 已被 2026-09-08 用户确认的前端 skill 收敛方案取代；原文只保留历史背景，不再用于恢复需求模板或默认实现链路。当前执行规则见 frontend-development 与 problem-framing。
 keywords:
   - frontend
   - skill
@@ -13,13 +14,18 @@ match_when:
   - 用户只给图片、截图、竞品页或模糊页面需求
   - 需要判断前端任务是否应先澄清再实现
 created_at: 2026-04-18 16
-updated_at: 2026-04-18 16
-last_verified_at: 2026-04-18 16
+updated_at: 2026-09-08 08
+last_verified_at: 2026-09-08 08
 decision_policy: verify_before_decision
 scope:
   - .agents/skills/frontend-development
   - .memory/project-memory
 ---
+
+## Superseded
+
+2026-09-08 08：用户确认直接更新前端 skill、无需 issue。需求决策统一由 `problem-framing` 承接，已确认方向或直接实现授权不重复需求模板；前端保留交互证据卡。以下旧阶段正文与旧路径仅供追溯，不作为当前执行规则。当前入口：`.agents/skills/frontend-development/SKILL.md`。
+
 
 # frontend-development skill 已补模糊需求与图片参考的需求收敛流程
 

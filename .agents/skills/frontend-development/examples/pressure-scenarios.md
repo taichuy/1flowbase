@@ -1,147 +1,38 @@
 # Frontend Pressure Scenarios
 
-## Scenario 1: One-Off Component Extraction
+## Use
 
-症状：
+修改 skill / AGENTS 或发现规则误伤时，挑选受影响场景检查最终决策。以下是行为期望与反方样例，不是产品测试通过记录；普通页面开发无需逐项执行。仅凭规则文本不能证明未来 agent 一定遵守。
 
-- 某个页面里出现一段 30 行 JSX
-- 只有这一个地方用到
-- 你想先抽成公共组件
+## Decision Scenarios
 
-结论：
+| 请求 / 事实 | 应产生的决策 | 反方样例 / 不能推出的结论 |
+| --- | --- | --- |
+| “只调这个按钮的间距”，无行为变化 | 给局部可见效果，按 diff 选择必要验证 | 不要求全量 build、全部页面或重新需求对齐 |
+| 一个 feature 新增请求，无跨 feature 编排复用 | `api-client -> feature api -> UI` | 不为凑三层创建 `shared/api`；多个 feature 真实共享编排时可以提取 |
+| 一个页面有 30 行 JSX，只有一处使用 | 按状态归属和变化原因判断是否局部拆分 | 行数和“以后复用”不证明需要公共组件；独立职责仍可拆分 |
+| 页面根组件维护请求、表单、选择和多个弹窗 | 按各自 owner 收敛状态与消费逻辑 | 不把服务端真值复制进全局 store，也不一律拆成微型 hook |
+| “在 home 顺便放完整运行日志” | 核对任务域；完整日志按既定应用 section recipe | 内容更多不证明首页边界合理；新产品方向交 problem-framing |
+| 已确认 Shell 行详情使用 Drawer | 复用交互规则直接实现 | 不重新要求一份需求草案；新第三种 L1 模型属于另一个决策 |
+| “页面不顺手”，入口与对象行为冲突 | 用交互证据卡给 problem-framing 提供结构证据 | 不先改 spacing，也不在前端 skill 内另开审批流程 |
+| 只有参考图，页面目标与核心动作未明确 | 提取结构 / 信息层级线索并进入 problem-framing | 不把图里的按钮当授权；用户明确直接实现时按授权范围判断 |
+| 移动端桌面画布必须横向滚动才可操作 | 使用已确认的摘要与引导降级 | 压小字体不证明小屏可用；纯 DTO 修改不需重拍移动端 |
 
-- 不要因为“看起来更模块化”就先抽
-- 先看变化原因是否单一、是否会出现第二个真实使用点
+## Contract Scenarios
 
-## Scenario 2: Home Scope Creep
+| 请求 / 事实 | 应产生的决策 | 反方样例 / 不能推出的结论 |
+| --- | --- | --- |
+| 编辑角色：关闭 group 后保存，再重开 | 保留 strategy 与自定义 operations，按后端 contract 往返 | `enabled=false` 不等于清空配置；用户明确修改某 operation 才改变对应草稿 |
+| 同 feature 中只授权一个 operation | 消费单接口 operation policy 和 catalog | 页面可见不代表同 feature 所有 API 都已授权；UI 测试不能证明服务端 403 |
+| API catalog 已含 summary / description | 按原字段展示 API owner 的说明 | 不从 URL 生成说明或给 operation 增设 label_ref；普通按钮仍用 UI i18n |
+| SSE 断开且没有收到业务终态 | 记录连接状态，按既有接口恢复观察 / 查询 | EOF 不代表成功、取消或回滚；已收到有效终态则可以展示对应结果 |
+| 取消接口接受请求，但业务仍 running | 区分取消请求与确认终态，继续按 contract 观察 | 接受取消不证明远端停止，也不自动重发可能已提交的 mutation |
+| 切换对象后旧请求才返回 | 旧请求不覆盖新上下文，清理归订阅 owner | 前端 abort 不证明后台取消；独立且仍被使用的共享订阅不应一并关闭 |
+| i18n hygiene 提示重复 value | 保留文案，按语义复用 key 或记录保留原因 | 不为了消除 warning 改文案；用户明确要求改文案仍可按范围修改 |
 
-症状：
+## Evidence And Review Boundary
 
-- 你在 `home` 应用目录里顺手加完整画布、完整 API 卡片、完整日志列表
-- 页面看起来更“充实”，但主问题开始模糊
-
-结论：
-
-- `home` 只回答应用目录、创建 / 导入和筛选问题
-- 应用内编排、日志、API 和监控回到 `/applications/:id/<section>`
-
-## Scenario 3: Nested Widget State Sprawl
-
-症状：
-
-- 页面根组件维护十几个 `useState`
-- 子组件靠 props 层层下发控制弹窗、表单、筛选、加载
-
-结论：
-
-- 先收敛状态归属
-- 页面保留页面级状态，局部交互状态下沉，共享状态只保留跨区域协调
-
-## Scenario 4: A Third L1 Model Appears
-
-症状：
-
-- run row 点击开 `Drawer`
-- node 点击更新 `Inspector`
-- 你又想给另一类对象加 `Modal` 或独立详情页
-
-结论：
-
-- 先停手
-- 1flowbase 当前只允许 `Drawer` 和 `Inspector` 两种 L1 模型
-- 第三种必须先问人
-
-## Scenario 5: It Is Not A Styling Problem
-
-症状：
-
-- 用户说“这个页面不对劲”
-- 你第一反应是改 spacing、颜色、按钮
-
-结论：
-
-- 先跑 `interaction-architecture-gate`
-- 如果 gate 显示问题落在入口、层级、交互一致性，在 gate 内完成完整结构诊断
-
-## Scenario 6: External Inspiration Drift
-
-症状：
-
-- 你看到 `awesome-design-md` 里某份 `DESIGN.md` 很完整
-- 你想整份照抄进当前页面，顺便切成深色或品牌化风格
-
-结论：
-
-- 外部样本只能借鉴局部技法
-- 当前项目仍以 `DESIGN.md` 为准
-- 若要改变产品级视觉基线，先问人
-
-## Scenario 7: Mobile Canvas Compression
-
-症状：
-
-- 小屏下画布只能靠横向滚动查看
-- 你打算通过缩小字体、压缩间距“勉强塞下去”
-
-结论：
-
-- 不要伪造可用状态
-- 移动端直接降级成摘要块和引导文案
-
-## Scenario 8: Screenshot-Only Request
-
-症状：
-
-- 用户只丢来一张截图或竞品页面
-- 说“按这个做一个页面”或“我想要这种感觉”
-- 没有说明页面目标、主对象和关键动作
-
-结论：
-
-- 不要直接照着第三方视觉开写
-- 先拆解这张图的结构、信息层级和组件组合
-- 再回到 `DESIGN.md` 产出设计需求草案，并默认继续实现
-- 只有仍有阻塞分歧时，才集中问“借什么、不借什么”
-
-## Scenario 9: Vague New Page Request
-
-症状：
-
-- 用户说“做个设置页”或“帮我设计一个管理页面”
-- 但没说明用户要完成什么任务、成功标准是什么
-
-结论：
-
-- 先收敛页面目标、核心动作、关键状态和必须模块
-- 新页面把需求收敛后默认继续实现，不等额外确认
-- 如果问题落在入口、层级和交互直觉，先跑 `interaction-architecture-gate` 并完成所需诊断
-
-## Scenario 10: Clear UI Request But No Requirement Reply
-
-症状：
-
-- 用户已经明确说了“把这个设置页改成供应商管理工作台”或“把这个模块改成双栏结构”
-- 你觉得方向足够清楚，准备直接写代码
-- 你打算把需求细化只放在自己脑中，不在回复里说出来
-- 你已经开始堆卡片和区块，但还没整理页面主路径和交互反馈
-
-结论：
-
-- 不要直接跳过需求整理
-- 至少先给用户一版简版需求整理：任务理解、改动范围、页面交互、关键状态、明确建议
-- 先定义入口、主操作、反馈位置和模块协作，再决定卡片和区块怎么摆
-- 只有纯局部样式修补、像素级调整或不改页面结构的 UI bugfix，才可以不走完整需求回复
-
-## Scenario 11: Dual-Column Page But Detail Rule Is Unclear
-
-症状：
-
-- 你要做一个双栏页面或设置页
-- 左边像导航，右边像内容区，中间又想塞列表详情
-- 你不确定详情该走 `Drawer`、右侧详情区还是独立页面
-
-结论：
-
-- 先跑 `interaction-architecture-gate`
-- 先把首屏主任务、L1 / L2 / L3 和反馈落点说清
-- 如果同类对象会出现多种点击结果，在 gate 内补一致性矩阵后再实现
+- 历史冲突：2026-09-08 之前的需求 references 在主 Skill 已移交需求决策后，仍存在“整理后默认实现”链路；旧 API chain 把 `shared/api` 当必经层。可通过 git 历史核对，不保留失效执行模板。
+- 新授权与状态场景依据 [consumer-contracts.md](../references/consumer-contracts.md) 的后端规则、DTO 和架构入口；验证层级依据 [review-checklist.md](../references/review-checklist.md)。
+- 人工确认只落在改变产品目标、授权、业务终态、交互 contract 或成功标准的未决事项；已有确认和直接实现授权持续有效。
+- 本次相关场景能导出一致决策、引用可达且没有冲突规则时结束检查；不为增加覆盖率扩成产品全量 QA。

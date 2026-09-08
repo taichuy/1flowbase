@@ -1,6 +1,6 @@
 ---
 name: frontend-development
-description: "Use for 1flowbase frontend implementation in web/: building, fixing, refactoring, or code-reviewing UI pages, app shell, routes, workspace flows, node UI, schema UI, i18n resources, responsive layout, visual structure, ECharts/reporting UI, low-code JS Block chart primitives, or frontend state boundaries. Use after non-trivial requirements have been aligned by problem-framing, or when the user explicitly asks for direct implementation; do not use for standalone requirement alignment or QA reports."
+description: "Use for 1flowbase frontend implementation and code review in web/: pages, app shell, routes, schema/node UI, API and permission consumption, streaming state, i18n, styles, and charts. Apply after requirement alignment or an explicit request to implement directly; use problem-framing for product decisions and qa-evaluation for acceptance reports."
 ---
 
 # Frontend Development
@@ -12,6 +12,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 ## Entry Contract
 
 - 需求仍有多方向选择、产品拍板、跨前后端边界、架构影响或非局部重构时，先回 `problem-framing`。
+- 已确认方向或用户明确要求直接实现时，复用现有目标、范围、主路径和成功标准，不重复需求模板或申请同一授权；用户明确跳过 issue 时不另开 issue。
 - 涉及可测试行为变化时，先联动 `test-driven-development`；不能走 TDD 时，交付说明必须写明替代验证。
 - 用户要求自检、验收、回归、质量报告或证据结论时，切到 `qa-evaluation`。
 - 进入 `web/` 前先读 `web/AGENTS.md`；存在更近的 `AGENTS.md` 时按最近规则执行。
@@ -37,6 +38,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 - `Ant Design` 负责 Shell Layer，`Editor UI` 只做薄封装，不另起一套视觉语言。
 - 前端展示和交互所需业务数据以后端接口为唯一真值来源；缺字段、排序、筛选、计数、权限、状态原因或聚合结果时，先补后端 DTO / API / 聚合查询。
 - 接口字段名沿用后端 DTO / 领域语义；UI 展示名可以本地化，但不得为展示文案另起接口字段别名。
+- 路由和菜单只拥有导航与展示配置；接口授权、operation 目录和业务终态消费后端 contract，不从页面路径、按钮可见性或连接状态推断。
 - 先定主路径、详情规则、反馈位置和模块协作，再拆组件、落结构、补样式。
 - 新抽象、公共 props、bool/flag 分支、helper/manager/utils、pass-through 组件或重复 defensive check，先读 `../_shared/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
 
@@ -44,16 +46,18 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 
 - 页面 recipe、工作区语法、详情模型：读 `references/workspace-rules.md`。
 - 目录落点、接口消费、schema UI 分层：读 `references/placement-rules.md`。
-- 入口、层级、L0 / L1 / L2 / L3、详情容器或同类对象行为：读 `references/interaction-architecture-gate.md`，完成结构诊断并冻结交互规则后再实现。
+- 入口、层级、L0 / L1 / L2 / L3、详情容器或同类对象行为：读 [references/interaction-architecture-gate.md](references/interaction-architecture-gate.md)，核对已确认交互；未决产品取舍交给 `problem-framing`。
+- 接口 / 权限目录消费、角色编辑、请求取消或流式状态：读 [references/consumer-contracts.md](references/consumer-contracts.md)，只加载命中的契约章节与源码。
 - 多语言资源归属、key / value 语义和 unused-key 规则：读 `references/i18n-rules.md`。
 - 视觉基线、第三方 slot、共享样式边界：读 `references/visual-baseline.md`；需要运行态证据时再读 `references/browser-verification.md`。
 - 报表 / 图表 / ECharts / JS Block chart primitive：读 `references/chart-reporting.md`。
 - 实现收尾自查：读 `references/review-checklist.md` 和 `references/anti-patterns.md`；需要正式 QA 结论时切到 `qa-evaluation`。
+- 修改本 Skill 或判断规则是否误伤局部任务时：读 [examples/pressure-scenarios.md](examples/pressure-scenarios.md)，用正反例检查决策边界。
 
 ## Implementation Rules
 
 - Placement chain: `app-shell / routes / features/* / shared/*`；feature 内部可按 `api / components / hooks / lib / pages / schema / store` 拆分。
-- API consumption chain: `api-client -> features/*/api -> shared/api`。
+- API consumption chain: `api-client -> features/*/api -> UI`；仅跨 feature 共享请求编排时提取到 `shared/api`，它不是每个请求的必经层。
 - Data truth chain: `database/domain/repository -> backend route response -> api-client DTO -> feature api -> UI`。
 - Schema UI chain: `shared/schema-ui -> features/*/schema -> features/*/lib/node-definitions`。
 - Node implementation chain: `node-definitions -> schema fragments/registry -> renderer -> consumer`。
@@ -74,6 +78,7 @@ description: "Use for 1flowbase frontend implementation in web/: building, fixin
 - 交付说明必须包含 context capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口；只写可检索指针，不复制代码或重述完整 diff。
 - 若 issue / handoff 有 `AC-001` 这类验收点，交付时标明已覆盖、未覆盖和延后到 QA / CI 的点。
 - 当前本地开发分支优先跑与本次 UI / contract / state 改动直接相关的 `tsc`、定向 consumer test、局部 page-debug / screenshot 或单文件 lint。
+- 证据按 [review-checklist](references/review-checklist.md) 的风险路由选择并复用；验收点与直接风险已有充分证据时停止，不因进入自检重复跑同一门禁。规则文档变更验证引用、边界和反例，不冒充产品运行态验收。
 - 完整 frontend lint / build / full style-boundary / i18n hygiene / verify-repo 默认交给 beta / CI / 专门质量工作区；需要本地提前跑时，必须在对齐 / 已批准计划 / handoff 阶段先说明证据收益和成本。实现期临时发现时默认标为未验证，除非缺少该证据会影响继续实现安全性或当前任务完成判断。
 
 ## Common Mistakes

@@ -4,14 +4,14 @@
 
 ## Skills
 - 做前端实现、页面、壳层、组件、交互时：使用 `frontend-development`
-- 只要涉及导航、层级、入口、详情容器、L0 / L1 / L2 / L3 或同类对象行为统一，使用 `frontend-development` 的交互架构 gate 完成诊断并冻结规则
+- 涉及导航、层级、入口、详情容器、L0 / L1 / L2 / L3 或同类对象行为时，用 `frontend-development` 的交互架构 gate 核对既定规则；未决产品取舍交给 `problem-framing`，已确认方向不重复审批
 - 做质量评估、回归审计时：使用 `qa-evaluation`
 
 ## Directory Rules
 - `app/src/` 是主前端源码根；下面提到的 `app/`、`app-shell/`、`routes/`、`features/`、`shared/`、`state/`、`styles/`、`style-boundary/` 默认都指 `app/src` 下对应目录。
 - `app/` 只保留应用启动、Provider 组装、入口级装配。
 - `app-shell/` 只承载共享壳层和壳层级菜单，不承载 route tree、feature 页面容器或 feature 私有组件。
-- `routes/` 负责路由真值层：`route id / path / selected state / permission key / guard`。
+- `routes/` 负责 `route id / path / selected state` 与权限消费 / guard 配置；接口授权真值属于后端。
 - `features/*/pages` 放页面容器，`features/*/components` 放 feature 内部组件。
 - `features/*/api` 放 feature 级请求消费层，例如 query key、queryFn、mutation 和当前 feature 的请求适配。
 - `features/*/hooks` 放 feature 内部交互 hooks；跨 feature 复用前不要上提。
@@ -39,6 +39,8 @@
 - 仅开发辅助信息允许在 `import.meta.env.DEV` 下渲染。
 - 路由相关改动必须同步维护导航文案、`route id`、`path`、选中态和权限键。
 - 前端消费后端字段时保持接口字段原名；表格列名、文案和 i18n label 可独立展示，但不要把同一字段映射成新的业务字段名。
+- 菜单、route guard 和角色编辑消费后端权限 / catalog；`feature_id` 注册归属不等于整组接口授权，关闭权限 group 不清空自定义 operations。细则见 [consumer-contracts.md](../.agents/skills/frontend-development/references/consumer-contracts.md)。
+- 前端连接、监听与请求状态不替代后端业务状态；断流、组件卸载或请求 abort 不证明业务取消、成功或回滚，显式取消与终态确认遵循后端 contract。
 - 前端 `i18n/` key 没有静态代码引用时由 `i18n-hygiene` 以 `unused-i18n-key` warning 暴露；保留动态 key 必须写明原因。
 - 样式改动固定按 `theme token -> first-party wrapper -> explicit slot -> stop`；禁止裸写 `.ant-*` 递归覆盖。
 - 管理台/后台页面禁止 `Card` 套 `Card` 和卡片墙式堆叠；优先使用 `Table`、`Descriptions`、`Form`、`Typography`、`Divider`、`Space/Flex` 组织信息。
@@ -49,6 +51,7 @@
 - Model provider 页面用例放在 `features/settings/_tests/model-providers-page/` 场景文件内，不再回退到单个页面大测试文件。
 
 ## Verification
-- 进入自检、验收、回归或交付阶段时，使用 `qa-evaluation` 并自行执行对应脚本。
-- 改动导航、壳层、共享样式、全局样式或第三方 slot 覆写后，QA 结论必须包含 `style-boundary` 证据。
-- 需要页面结论时，必须检查桌面端和移动端关键页面；不能只看代码就判 UI 通过。
+- 自检、验收、回归或交付使用 `qa-evaluation`，默认按 Dev Acceptance Gate 复用当前改动的有效证据；证据足够即停，重型全量门禁留给 beta / CI / 专门质量工作区。
+- 导航、壳层、共享 / 全局样式或第三方 slot 覆写的验收需受影响场景的 `style-boundary` 证据；仅 DTO、请求逻辑或规则文档变化不因此触发样式门禁。
+- 页面视觉 / 响应式结论需受影响页面的桌面与移动端证据；局部截图不证明全站 UI 通过，纯非视觉改动不默认重跑双端浏览器检查。
+- 受保护页面取证使用 `node scripts/node/page-debug/cli.js`，认证 API 使用 `node scripts/node/tooling.js api-debug`；自定义流程复用 `scripts/node/page-debug/auth.js` 的临时 session owner 并在 `finally` 回收，不直接调用 sign-in。
