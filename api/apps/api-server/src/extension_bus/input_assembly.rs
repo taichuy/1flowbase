@@ -314,7 +314,10 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             interface_authentication_adapter_extension_point()?,
             interface_completion_hook_extension_point()?,
             frontend_block_contribution_extension_point()?,
-        ],
+        ]
+        .into_iter()
+        .chain(managed_host_extension_points()?)
+        .collect(),
         contributions: vec![ContributionDescriptor {
             contribution_id: ContributionId::new(INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID)?,
             contributor_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
@@ -664,6 +667,9 @@ fn derive_module_descriptor(
     module_kind: ModuleKind,
     activation: ModuleActivationDeclaration,
 ) -> Result<ModuleDescriptor> {
+    if manifest.managed.is_some() {
+        bail!("managed packages require installed workspace authority; deployment declarations alone cannot activate them");
+    }
     Ok(ModuleDescriptor {
         bus_version: ExtensionBusVersion::V1,
         module_id: ModuleId::new(manifest.plugin_code()?)?,
@@ -759,4 +765,56 @@ fn resolve_workspace_path(api_workspace_root: &Path, relative_path: &Path) -> Re
         );
     }
     Ok(api_workspace_root.join(relative_path))
+}
+
+fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
+    let mut points = Vec::new();
+    for phase in [
+        "authorization",
+        "admission",
+        "before",
+        "after",
+        "failure",
+        "completion",
+    ] {
+        points.push(ExtensionPointDescriptor {
+            point_id: ExtensionPointId::new(format!("1flowbase.model-definitions.create.{phase}"))?,
+            owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+            point_kind: ExtensionPointKind::Pipeline,
+            contract: ContractDescriptor::new("managed-hook", "1")?,
+            scope: ScopeSemantics::Workspace,
+            cardinality: Cardinality::Many,
+            ordering: OrderingSemantics::Dependency,
+            failure: if matches!(phase, "failure" | "completion") {
+                FailureSemantics::BestEffort
+            } else {
+                FailureSemantics::FailClosed
+            },
+            delivery: DeliverySemantics::Synchronous,
+            lifecycle: LifecycleSemantics::Invocation,
+            allowed_permissions: [PermissionCode::new(format!(
+                "hook.model_definitions.create.{phase}"
+            ))?]
+            .into_iter()
+            .collect(),
+            override_policy: OverridePolicy::Sealed,
+        });
+    }
+    points.push(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new("1flowbase.plugin-data.owned-collection")?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::ResourceAction,
+        contract: ContractDescriptor::new("plugin-data", "1flowbase.plugin-data-model/v1")?,
+        scope: ScopeSemantics::Workspace,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: [PermissionCode::new("plugin_data.owned.write")?]
+            .into_iter()
+            .collect(),
+        override_policy: OverridePolicy::Sealed,
+    });
+    Ok(points)
 }

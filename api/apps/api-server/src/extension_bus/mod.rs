@@ -5,6 +5,8 @@ mod boot_snapshot;
 #[cfg(test)]
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 mod input_assembly;
+mod managed_activation;
+pub(crate) use managed_activation::{ManagedExtensionComposition, ManagedWorkspaceSnapshot};
 mod interface_contributions;
 
 #[cfg(test)]

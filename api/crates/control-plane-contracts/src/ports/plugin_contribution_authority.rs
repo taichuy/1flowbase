@@ -34,11 +34,25 @@ pub struct RevokeContributionAuthorizationInput {
 /// A lease carries current facts, not an automatic permission decision.
 pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
+    fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
+    fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
 
 #[async_trait]
 pub trait PluginContributionAuthorityRepository: Send + Sync {
+    /// Sorted, deduplicated scopes share one transaction; an empty batch is invalid.
+    async fn lock_contribution_authority_batch(
+        &self,
+        scopes: &[(Uuid, Uuid)],
+    ) -> Result<Box<dyn ContributionAuthorityLease>>;
+    async fn contribution_authority_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>>;
+    /// One lock per installation/workspace provides all contribution facts without self-deadlock.
+    async fn lock_installation_contribution_authority(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Box<dyn ContributionAuthorityLease>>;
     async fn grant_contribution_authorization(
         &self,
         input: &GrantContributionAuthorizationInput,

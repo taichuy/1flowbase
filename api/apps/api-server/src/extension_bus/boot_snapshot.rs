@@ -73,6 +73,7 @@ impl crate::routes::host_infrastructure::interface_operation::HostInfrastructure
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
 pub struct ExtensionBootSnapshot {
+    managed_composition: OnceLock<Arc<super::ManagedExtensionComposition>>,
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
     authentication_factories: AuthenticationAdapterFactoryRegistry,
@@ -113,6 +114,21 @@ impl std::fmt::Debug for ExtensionBootSnapshot {
 }
 
 impl ExtensionBootSnapshot {
+    pub(crate) fn attach_managed_composition(
+        &self,
+        composition: Arc<super::ManagedExtensionComposition>,
+    ) -> anyhow::Result<()> {
+        self.managed_composition
+            .set(composition)
+            .map_err(|_| anyhow::anyhow!("managed composition already attached"))
+    }
+    pub(crate) async fn managed_workspace_snapshot(
+        &self,
+        workspace_id: uuid::Uuid,
+    ) -> Option<Arc<super::ManagedWorkspaceSnapshot>> {
+        self.managed_composition.get()?.snapshot(workspace_id).await
+    }
+
     #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
@@ -120,6 +136,7 @@ impl ExtensionBootSnapshot {
             interface_registry: None,
             authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()
                 .expect("built-in authentication factories must be valid"),
+            managed_composition: OnceLock::new(),
             external_endpoint_catalog: OnceLock::new(),
             console_operation_snapshot: OnceLock::new(),
         }
@@ -193,6 +210,7 @@ impl ExtensionBootSnapshot {
             graph,
             interface_registry: Some(interface_registry),
             authentication_factories,
+            managed_composition: OnceLock::new(),
             external_endpoint_catalog: OnceLock::new(),
             console_operation_snapshot: OnceLock::new(),
         })

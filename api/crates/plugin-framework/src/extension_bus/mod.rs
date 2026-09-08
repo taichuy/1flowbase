@@ -4,12 +4,16 @@
 //! discovery, persistence, activation, or runtime dispatch behavior.
 
 mod compiler;
+mod contribution_authority;
+pub use contribution_authority::*;
 mod deployment_set;
 mod hook_plan;
 mod lifecycle_handler_registry;
 mod lifecycle_subscriber_plan;
 
-pub use compiler::{compile_extension_graph, CompilationError};
+pub use compiler::{
+    compile_extension_graph, compile_extension_graph_with_authority, CompilationError,
+};
 pub use deployment_set::*;
 pub use extension_contracts::extension_bus::*;
 pub use hook_plan::*;

@@ -505,6 +505,7 @@ async fn app_and_runtime_host_from_config(
         store.clone(),
         config.api_node_id.clone(),
     )?);
+    let managed_base_modules = extension_assembly.module_descriptors().to_vec();
     let active_host_extensions = extension_assembly.into_host_extension_manifests();
     let host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
@@ -643,10 +644,18 @@ async fn app_and_runtime_host_from_config(
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;
-    let provider_runtime = Arc::new(ApiRuntimeServices::new_with_runtime_backend(
-        runtime_backend,
-        Arc::clone(&extension_graph),
-    )?);
+    let provider_runtime = Arc::new(
+        ApiRuntimeServices::new_with_runtime_backend(
+            runtime_backend,
+            Arc::clone(&extension_graph),
+        )?
+        .with_managed_composition(
+            store.clone(),
+            config.api_node_id.clone(),
+            managed_base_modules,
+        ),
+    );
+    extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();

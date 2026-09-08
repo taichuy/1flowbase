@@ -764,10 +764,10 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         scope.dispose().await.map_err(RuntimeBackendError::from)
     }
 
-    async fn managed_capability_execute(
+    async fn admit_managed_capability_execute(
         &self,
         request: RuntimeManagedCapabilityRequest,
-    ) -> Result<serde_json::Value, RuntimeBackendError> {
+    ) -> Result<runtime_core::runtime_backend::AdmittedManagedExecution, RuntimeBackendError> {
         let operation = {
             let workers = self.managed_workers.read().await;
             let lifecycle = self.lifecycle.read().map_err(|_| {
@@ -780,7 +780,16 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                 .execute(request)
                 .map_err(RuntimeBackendError::from)?
         };
-        operation.await.map_err(RuntimeBackendError::from)
+        Ok(Box::pin(async move {
+            operation.await.map_err(RuntimeBackendError::from)
+        }))
+    }
+
+    async fn managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<serde_json::Value, RuntimeBackendError> {
+        self.admit_managed_capability_execute(request).await?.await
     }
 
     async fn activate_capability(

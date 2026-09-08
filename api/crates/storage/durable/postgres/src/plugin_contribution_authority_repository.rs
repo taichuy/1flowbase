@@ -19,11 +19,18 @@ use uuid::Uuid;
 
 struct PgContributionAuthorityLease {
     transaction: Transaction<'static, Postgres>,
-    snapshot: PluginContributionAuthoritySnapshot,
+    snapshots: Vec<PluginContributionAuthoritySnapshot>,
+    installations: std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>,
 }
 impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot {
-        &self.snapshot
+        &self.snapshots[0]
+    }
+    fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot] {
+        &self.snapshots
+    }
+    fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
+        self.installations.get(&installation_id)
     }
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         Box::pin(async move {
@@ -39,13 +46,22 @@ async fn begin_locked(
     workspace_id: Uuid,
 ) -> Result<Transaction<'static, Postgres>> {
     let mut transaction = store.pool().begin().await?;
+    lock_scope(&mut transaction, installation_id, workspace_id).await?;
+    Ok(transaction)
+}
+
+async fn lock_scope(
+    transaction: &mut Transaction<'_, Postgres>,
+    installation_id: Uuid,
+    workspace_id: Uuid,
+) -> Result<()> {
     // Assignment and installation locks also prevent these ownership facts changing while
     // a host admission lease is held. Every authority writer takes locks in this order.
     let installation: Option<Uuid> = sqlx::query_scalar(
         "select id from extension_installations where id=$1 and plugin_id is not null for share",
     )
     .bind(installation_id)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     if installation.is_none() {
         return Err(Error::NotFound("plugin_installation").into());
@@ -55,16 +71,16 @@ async fn begin_locked(
     )
     .bind(installation_id)
     .bind(workspace_id)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     if assignment.is_none() {
         return Err(Error::PermissionDenied("contribution_workspace_assignment_required").into());
     }
     sqlx::query("insert into plugin_contribution_authorization_revisions (installation_id,workspace_id) values ($1,$2) on conflict do nothing")
-        .bind(installation_id).bind(workspace_id).execute(&mut *transaction).await?;
+        .bind(installation_id).bind(workspace_id).execute(&mut **transaction).await?;
     sqlx::query("select revision from plugin_contribution_authorization_revisions where installation_id=$1 and workspace_id=$2 for update")
-        .bind(installation_id).bind(workspace_id).fetch_one(&mut *transaction).await?;
-    Ok(transaction)
+        .bind(installation_id).bind(workspace_id).fetch_one(&mut **transaction).await?;
+    Ok(())
 }
 
 async fn snapshot(
@@ -136,8 +152,65 @@ async fn append_audit(
     Ok(())
 }
 
+async fn locked_installation(
+    transaction: &mut Transaction<'_, Postgres>,
+    installation_id: Uuid,
+) -> Result<domain::PluginInstallationRecord> {
+    let row = sqlx::query("select *, artifact_id as provider_code, artifact_version as plugin_version, receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility from extension_installations where id=$1")
+        .bind(installation_id).fetch_one(&mut **transaction).await?;
+    crate::plugin_repository::map_installation(row)
+}
+
 #[async_trait]
 impl PluginContributionAuthorityRepository for PgControlPlaneStore {
+    async fn lock_contribution_authority_batch(
+        &self,
+        scopes: &[(Uuid, Uuid)],
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        let scopes = scopes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        if scopes.is_empty() {
+            return Err(Error::InvalidInput("empty_contribution_authority_batch").into());
+        }
+        let mut transaction = self.pool().begin().await?;
+        let mut snapshots = Vec::new();
+        let mut installations = std::collections::BTreeMap::new();
+        for (installation_id, workspace_id) in scopes {
+            lock_scope(&mut transaction, installation_id, workspace_id).await?;
+            installations.insert(
+                installation_id,
+                locked_installation(&mut transaction, installation_id).await?,
+            );
+            snapshots.push(snapshot(&mut transaction, installation_id, workspace_id, None).await?);
+        }
+        Ok(Box::new(PgContributionAuthorityLease {
+            transaction,
+            snapshots,
+            installations,
+        }))
+    }
+
+    async fn contribution_authority_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>> {
+        Ok(sqlx::query_scalar("select workspace_id from plugin_assignments where installation_id=$1 order by workspace_id")
+            .bind(installation_id).fetch_all(self.pool()).await?)
+    }
+    async fn lock_installation_contribution_authority(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        let mut transaction = begin_locked(self, installation_id, workspace_id).await?;
+        let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
+        let installation = locked_installation(&mut transaction, installation_id).await?;
+        Ok(Box::new(PgContributionAuthorityLease {
+            transaction,
+            snapshots: vec![snapshot],
+            installations: [(installation_id, installation)].into_iter().collect(),
+        }))
+    }
+
     async fn grant_contribution_authorization(
         &self,
         input: &GrantContributionAuthorizationInput,
@@ -224,9 +297,11 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             Some(subject.contribution_id().as_str()),
         )
         .await?;
+        let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
             transaction,
-            snapshot,
+            snapshots: vec![snapshot],
+            installations: [(installation_id, installation)].into_iter().collect(),
         }))
     }
 }

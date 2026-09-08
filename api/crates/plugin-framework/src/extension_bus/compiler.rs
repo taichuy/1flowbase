@@ -17,6 +17,8 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CompilationError {
+    #[error("managed contribution {contribution_id:?} has no exact host authority")]
+    MissingContributionAuthority { contribution_id: ContributionId },
     #[error("duplicate module descriptor for {module_id:?}")]
     DuplicateModule { module_id: ModuleId },
     #[error("module {module_id:?} depends on missing module {dependency_id:?}")]
@@ -118,6 +120,20 @@ struct ContributionDeclaration {
 pub fn compile_extension_graph(
     modules: Vec<ModuleDescriptor>,
 ) -> Result<EffectiveExtensionGraph, CompilationError> {
+    compile_graph(modules, None)
+}
+
+pub fn compile_extension_graph_with_authority(
+    modules: Vec<ModuleDescriptor>,
+    authority: &super::ManagedGraphAuthority,
+) -> Result<EffectiveExtensionGraph, CompilationError> {
+    compile_graph(modules, Some(authority))
+}
+
+fn compile_graph(
+    modules: Vec<ModuleDescriptor>,
+    authority: Option<&super::ManagedGraphAuthority>,
+) -> Result<EffectiveExtensionGraph, CompilationError> {
     let modules = index_modules(modules)?;
     let module_order = compile_module_order(&modules)?;
     let module_provenances = module_order
@@ -135,10 +151,10 @@ pub fn compile_extension_graph(
         })
         .collect::<Vec<_>>();
     let points = index_points(&modules)?;
-    let contributions = index_contributions(&modules, &points)?;
+    let contributions = index_contributions(&modules, &points, authority)?;
     let (effective_points, contribution_receipts) =
         compile_points(points, contributions, &module_statuses)?;
-    let fingerprint = fingerprint(
+    let mut fingerprint = fingerprint(
         ExtensionBusVersion::V1,
         &module_order,
         &module_provenances,
@@ -146,6 +162,12 @@ pub fn compile_extension_graph(
         &effective_points,
         &contribution_receipts,
     );
+
+    if let Some(authority) = authority {
+        let canonical = serde_json::to_vec(&(fingerprint.as_str(), authority))
+            .expect("typed managed authority is serializable");
+        fingerprint = ExtensionGraphFingerprint::new(format!("{:x}", Sha256::digest(canonical)));
+    }
 
     Ok(EffectiveExtensionGraph::new(
         ExtensionBusVersion::V1,
@@ -341,6 +363,7 @@ fn validate_delivery_semantics(point: &ExtensionPointDescriptor) -> Result<(), C
 fn index_contributions(
     modules: &BTreeMap<ModuleId, ModuleDescriptor>,
     points: &BTreeMap<ExtensionPointId, PointDeclaration>,
+    authority: Option<&super::ManagedGraphAuthority>,
 ) -> Result<BTreeMap<ExtensionPointId, Vec<ContributionDeclaration>>, CompilationError> {
     let mut contribution_ids = BTreeSet::new();
     let mut indexed = BTreeMap::<ExtensionPointId, Vec<ContributionDeclaration>>::new();
@@ -373,7 +396,7 @@ fn index_contributions(
                 });
             }
             validate_override(module, &point.descriptor, contribution)?;
-            validate_permissions(module, &point.descriptor, contribution)?;
+            validate_permissions(module, &point.descriptor, contribution, authority)?;
 
             indexed
                 .entry(contribution.point_id.clone())
@@ -408,9 +431,26 @@ fn validate_permissions(
     module: &ModuleDescriptor,
     point: &ExtensionPointDescriptor,
     contribution: &ContributionDescriptor,
+    authority: Option<&super::ManagedGraphAuthority>,
 ) -> Result<(), CompilationError> {
+    let granted_permissions = if let Some(facts) =
+        authority.filter(|facts| facts.managed_modules.contains(&module.module_id))
+    {
+        &facts
+            .contributions
+            .get(&contribution.contribution_id)
+            .filter(|fact| {
+                fact.subject.contribution_id() == &contribution.contribution_id && fact.revision > 0
+            })
+            .ok_or_else(|| CompilationError::MissingContributionAuthority {
+                contribution_id: contribution.contribution_id.clone(),
+            })?
+            .permissions
+    } else {
+        &module.granted_permissions
+    };
     for permission in &contribution.required_permissions {
-        if !module.granted_permissions.contains(permission)
+        if !granted_permissions.contains(permission)
             || !point.allowed_permissions.contains(permission)
         {
             return Err(CompilationError::PermissionEscalation {

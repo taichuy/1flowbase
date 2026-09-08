@@ -259,6 +259,11 @@ pub struct RuntimeManagedActivation {
     pub identity: extension_contracts::extension_bus::ManagedExecutionIdentity,
 }
 
+/// Execution whose generation admission has already completed. Dropping cancels its scope lease.
+pub type AdmittedManagedExecution = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Value, RuntimeBackendError>> + Send + 'static>,
+>;
+
 /// Host-only request. Neither the handle nor principal is taken from worker JSON.
 #[derive(Debug, Clone)]
 pub struct RuntimeManagedCapabilityRequest {
@@ -468,6 +473,13 @@ pub trait CapabilityRuntimePort: Send + Sync {
         &self,
         handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
     ) -> Result<(), RuntimeBackendError>;
+    /// Returns only after validating the handle/deadline and acquiring its execution scope lease.
+    /// The caller holds its current authority lease until this returns, then releases it before
+    /// awaiting the worker. This must not merely wrap a not-yet-admitted async call.
+    async fn admit_managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<AdmittedManagedExecution, RuntimeBackendError>;
     /// The composition owner must admit each call against current contribution authority.
     /// Worker output is an opaque result and never grants credit or other host permissions.
     async fn managed_capability_execute(

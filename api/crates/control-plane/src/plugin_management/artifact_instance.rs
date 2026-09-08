@@ -573,7 +573,11 @@ where
         .get_artifact_instance(node_id, installation.id)
         .await?;
     let artifact_status = match runtime_status {
-        domain::PluginRuntimeStatus::LoadFailed => domain::PluginArtifactInstanceStatus::LoadFailed,
+        domain::PluginRuntimeStatus::LoadFailed
+            if installation.contract_version != "1flowbase.extension-bus/v1" =>
+        {
+            domain::PluginArtifactInstanceStatus::LoadFailed
+        }
         _ => domain::PluginArtifactInstanceStatus::Ready,
     };
     let (local_version, local_checksum, local_path, package_path, manifest_fingerprint, is_current) =

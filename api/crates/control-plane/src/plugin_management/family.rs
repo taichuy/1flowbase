@@ -358,10 +358,13 @@ where
         if !supports_workspace_assignment(&installation) {
             return Err(ControlPlaneError::Conflict("plugin_assignment_not_supported").into());
         }
+        // Managed installation scope must exist before its first host grant and activation.
+        // Assignment establishes that scope; it does not start a worker or grant permissions.
         if matches!(
             installation.desired_state,
             domain::PluginDesiredState::Disabled
-        ) {
+        ) && installation.contract_version != "1flowbase.extension-bus/v1"
+        {
             return Err(ControlPlaneError::Conflict("plugin_installation_disabled").into());
         }
 
@@ -1037,6 +1040,9 @@ pub(super) fn supports_workspace_assignment(
 ) -> bool {
     matches!(
         installation.contract_version.as_str(),
-        CURRENT_PROVIDER_CONTRACT | "1flowbase.data_source/v1" | "1flowbase.capability/v1"
+        CURRENT_PROVIDER_CONTRACT
+            | "1flowbase.data_source/v1"
+            | "1flowbase.capability/v1"
+            | "1flowbase.extension-bus/v1"
     )
 }

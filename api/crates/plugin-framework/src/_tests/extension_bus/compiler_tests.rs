@@ -422,3 +422,69 @@ fn compilation_rejects_event_delivery_on_non_event_point_and_inverse() {
         Err(CompilationError::IncompatibleDeliverySemantics { .. })
     ));
 }
+
+#[test]
+fn root_2007_managed_contributions_do_not_union_authority() {
+    use plugin_framework::extension_bus::{
+        compile_extension_graph_with_authority, ManagedContributionAuthority,
+        ManagedContributionSubject, ManagedGraphAuthority, ManagedInstallationId,
+        ManagedWorkspaceId,
+    };
+    let mut modules = valid_modules();
+    let permission = PermissionCode::new("test.execute").unwrap();
+    modules[0].extension_points[0]
+        .allowed_permissions
+        .insert(permission.clone());
+    for contribution in &mut modules[1].contributions {
+        contribution.required_permissions.insert(permission.clone());
+    }
+    // Even a forged module permission union cannot replace the missing second contribution grant.
+    modules[1].granted_permissions.insert(permission.clone());
+    let mut authority = ManagedGraphAuthority::new("host-policy-v1".into());
+    authority
+        .managed_modules
+        .insert(ModuleId::new("alpha").unwrap());
+    authority.contributions.insert(
+        ContributionId::new("alpha.action").unwrap(),
+        ManagedContributionAuthority {
+            subject: ManagedContributionSubject::new(
+                ManagedInstallationId::new("installation-a").unwrap(),
+                ManagedWorkspaceId::new("workspace-a").unwrap(),
+                ContributionId::new("alpha.action").unwrap(),
+            ),
+            revision: 1,
+            permissions: [permission.clone()].into_iter().collect(),
+        },
+    );
+    assert!(matches!(
+        compile_extension_graph_with_authority(modules.clone(), &authority),
+        Err(CompilationError::MissingContributionAuthority { .. })
+    ));
+    let mut second = authority.contributions.values().next().unwrap().clone();
+    second.subject = ManagedContributionSubject::new(
+        ManagedInstallationId::new("installation-a").unwrap(),
+        ManagedWorkspaceId::new("workspace-a").unwrap(),
+        ContributionId::new("alpha.aux").unwrap(),
+    );
+    authority
+        .contributions
+        .insert(ContributionId::new("alpha.aux").unwrap(), second);
+    let graph = compile_extension_graph_with_authority(modules.clone(), &authority).unwrap();
+    authority
+        .contributions
+        .get_mut(&ContributionId::new("alpha.aux").unwrap())
+        .unwrap()
+        .revision = 2;
+    let changed = compile_extension_graph_with_authority(modules.clone(), &authority).unwrap();
+    assert_ne!(graph.fingerprint(), changed.fingerprint());
+    authority
+        .contributions
+        .get_mut(&ContributionId::new("alpha.aux").unwrap())
+        .unwrap()
+        .permissions
+        .clear();
+    assert!(matches!(
+        compile_extension_graph_with_authority(modules, &authority),
+        Err(CompilationError::PermissionEscalation { .. })
+    ));
+}

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use domain::{ActorContext, ContributionResourceScope, PluginContributionAuthoritySnapshot};
 use serde_json::json;
+use sha2::Digest;
 use uuid::Uuid;
 
 use crate::{
@@ -33,7 +34,7 @@ pub struct RevokeContributionPermission {
     pub expected_revision: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 struct HostContributionPermissionRule {
     point_id: String,
     permission: String,
@@ -79,17 +80,84 @@ impl HostContributionGrantPolicy {
                 publisher_artifact: (permission == "event.publish").then_some("acme.composition-a"),
             });
         }
-        rules.push(HostContributionPermissionRule {
-            point_id: "1flowbase.plugin-data.owned-collection".into(),
-            permission: "plugin_data.owned.write".into(),
-            permission_contract_id: "plugin-data",
-            point_contract_version: "1flowbase.plugin-data-model/v1",
-            resource_scope: ContributionResourceScope::OwnedCollection {
-                collection_code: "processed_models".into(),
-            },
-            publisher_artifact: Some("acme.composition-a"),
-        });
+        for artifact in [
+            "acme.composition-a",
+            "acme.composition-b",
+            "acme.composition-c",
+        ] {
+            rules.push(HostContributionPermissionRule {
+                point_id: "1flowbase.plugin-data.owned-collection".into(),
+                permission: "plugin_data.owned.write".into(),
+                permission_contract_id: "plugin-data",
+                point_contract_version: "1flowbase.plugin-data-model/v1",
+                resource_scope: ContributionResourceScope::OwnedCollection {
+                    collection_code: "processed_models".into(),
+                },
+                publisher_artifact: Some(artifact),
+            });
+        }
         Self { rules }
+    }
+
+    pub const IDENTITY: &'static str = "1flowbase.managed-root-composition-authority/v1";
+
+    pub fn identity(&self) -> String {
+        let bytes =
+            serde_json::to_vec(&self.rules).expect("compiled host authority rules serialize");
+        format!(
+            "{}:sha256:{:x}",
+            Self::IDENTITY,
+            sha2::Sha256::digest(bytes)
+        )
+    }
+
+    /// Intersects exact durable grants with the current compiled host ceiling. The caller
+    /// supplies the descriptor from verified installed bytes, never from a worker message.
+    pub fn effective_permissions(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+        workspace_id: Uuid,
+        contribution: &plugin_framework::extension_bus::ContributionDescriptor,
+        snapshot: &PluginContributionAuthoritySnapshot,
+    ) -> Result<std::collections::BTreeSet<plugin_framework::extension_bus::PermissionCode>> {
+        if snapshot.installation_id != installation.id || snapshot.workspace_id != workspace_id {
+            return Err(ControlPlaneError::PermissionDenied(
+                "contribution_authority_scope_mismatch",
+            )
+            .into());
+        }
+        let mut permissions = std::collections::BTreeSet::new();
+        for authorization in &snapshot.authorizations {
+            if authorization.installation_id != installation.id
+                || authorization.workspace_id != workspace_id
+                || authorization.contribution_id != contribution.contribution_id.as_str()
+                || authorization.point_id != contribution.point_id.as_str()
+                || authorization.status != domain::ContributionAuthorizationStatus::Active
+            {
+                continue;
+            }
+            let request = GrantContributionPermission {
+                contribution_id: authorization.contribution_id.clone(),
+                permission: authorization.permission.clone(),
+                resource_scope: authorization.resource_scope.clone(),
+                permission_contract_id: authorization.permission_contract_id.clone(),
+                permission_contract_version: authorization.permission_contract_version.clone(),
+            };
+            if self.admits(installation, contribution, &request) {
+                permissions.insert(plugin_framework::extension_bus::PermissionCode::new(
+                    authorization.permission.clone(),
+                )?);
+            }
+        }
+        if contribution.required_permissions.is_empty()
+            || !contribution.required_permissions.is_subset(&permissions)
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "managed_contribution_authorization_required",
+            )
+            .into());
+        }
+        Ok(permissions)
     }
 
     fn admits(
