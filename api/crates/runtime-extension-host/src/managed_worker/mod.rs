@@ -1,4 +1,6 @@
 mod binding;
+mod event;
+mod event_stdio;
 mod hook;
 mod hook_stdio;
 pub(crate) use binding::LoadedManagedBinding;
@@ -93,6 +95,17 @@ impl ManagedWorkers {
     {
         let mounted = self.exact_mount(&request.handle)?;
         // Hook bindings must use their finite typed transport, never opaque capability JSON.
+        if mounted
+            .binding
+            .contribution
+            .required_permissions
+            .iter()
+            .any(|p| matches!(p.as_str(), "event.subscribe" | "event.publish"))
+        {
+            return Err(invalid(
+                "managed event binding requires typed event admission",
+            ));
+        }
         if mounted
             .binding
             .contribution

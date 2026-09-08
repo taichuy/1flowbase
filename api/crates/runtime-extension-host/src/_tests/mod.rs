@@ -1,3 +1,4 @@
+mod managed_event_transport;
 mod managed_hook_transport;
 mod network_egress_runtime;
 mod provider_stdio_streaming;

@@ -475,7 +475,10 @@ fn runtime_event_after_commit_extension_point() -> Result<ExtensionPointDescript
         failure: FailureSemantics::IsolateContribution,
         delivery: DeliverySemantics::AfterCommitDurable,
         lifecycle: LifecycleSemantics::Invocation,
-        allowed_permissions: BTreeSet::new(),
+        allowed_permissions: ["event.subscribe", "event.publish"]
+            .into_iter()
+            .map(PermissionCode::new)
+            .collect::<Result<_, _>>()?,
         override_policy: OverridePolicy::Sealed,
     })
 }

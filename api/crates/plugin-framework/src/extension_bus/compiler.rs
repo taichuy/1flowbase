@@ -150,7 +150,7 @@ fn compile_graph(
             )
         })
         .collect::<Vec<_>>();
-    let points = index_points(&modules)?;
+    let points = index_points(&modules, authority)?;
     let contributions = index_contributions(&modules, &points, authority)?;
     let (effective_points, contribution_receipts) =
         compile_points(points, contributions, &module_statuses)?;
@@ -302,10 +302,21 @@ fn resolve_module_statuses(
 
 fn index_points(
     modules: &BTreeMap<ModuleId, ModuleDescriptor>,
+    authority: Option<&super::ManagedGraphAuthority>,
 ) -> Result<BTreeMap<ExtensionPointId, PointDeclaration>, CompilationError> {
     let mut points = BTreeMap::new();
     for module in modules.values() {
-        if !module.extension_points.is_empty() && !module.module_kind.may_define_points() {
+        if !module.module_kind.may_define_points()
+            && module.extension_points.iter().any(|point| {
+                !matches!(
+                    module.module_kind,
+                    ModuleKind::Runtime | ModuleKind::Capability
+                ) || !point.is_managed_composition_event(&module.module_id)
+                    || !authority.is_some_and(|authority| {
+                        authority.managed_modules.contains(&module.module_id)
+                    })
+            })
+        {
             return Err(CompilationError::UnauthorizedPointDefinition {
                 module_id: module.module_id.clone(),
                 module_kind: module.module_kind,
@@ -433,6 +444,20 @@ fn validate_permissions(
     contribution: &ContributionDescriptor,
     authority: Option<&super::ManagedGraphAuthority>,
 ) -> Result<(), CompilationError> {
+    if matches!(
+        module.module_kind,
+        ModuleKind::Runtime | ModuleKind::Capability
+    ) && point.point_kind == ExtensionPointKind::EventStream
+        && contribution
+            .required_permissions
+            .iter()
+            .any(|p| matches!(p.as_str(), "event.subscribe" | "event.publish"))
+        && !authority.is_some_and(|facts| facts.managed_modules.contains(&module.module_id))
+    {
+        return Err(CompilationError::MissingContributionAuthority {
+            contribution_id: contribution.contribution_id.clone(),
+        });
+    }
     let granted_permissions = if let Some(facts) =
         authority.filter(|facts| facts.managed_modules.contains(&module.module_id))
     {

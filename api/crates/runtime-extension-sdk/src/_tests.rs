@@ -76,3 +76,5 @@ fn public_fixture_does_not_require_untyped_maps() {
 }
 #[path = "_tests/managed_hook_tests.rs"]
 mod managed_hook_tests;
+
+mod managed_event_tests;

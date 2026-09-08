@@ -23,3 +23,10 @@ pub use extension_contracts::{
 
 #[cfg(test)]
 mod _tests;
+
+mod managed_event;
+pub use extension_contracts::{
+    ManagedEventHostFrame, ManagedEventOutcome, ManagedEventPayload, ManagedEventPublication,
+    ManagedEventStatus,
+};
+pub use managed_event::serve_managed_event;

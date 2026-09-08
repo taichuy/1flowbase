@@ -523,15 +523,7 @@ async fn app_and_runtime_host_from_config(
             )?
             .activate(&active_host_extensions)?,
         )?;
-    let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog);
-    tokio::spawn(
-        control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
-            store.clone(),
-            Arc::new(lifecycle_delivery),
-            Arc::new(ApiLifecycleDeliveryCompletion),
-        )
-        .run(),
-    );
+    let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog.clone());
     let session_store = infrastructure
         .session_store()
         .expect("storage-ephemeral default provider must provide session store");
@@ -654,6 +646,20 @@ async fn app_and_runtime_host_from_config(
             config.api_node_id.clone(),
             managed_base_modules,
         ),
+    );
+    let managed_composition = provider_runtime.managed_composition()?;
+    managed_composition.attach_native_lifecycle_plan(lifecycle_plan.clone())?;
+    lifecycle_publication_catalog.attach_workspace_source(Arc::new(
+        extension_bus::ManagedWorkspacePublicationSource(Arc::downgrade(&managed_composition)),
+    ))?;
+    let lifecycle_delivery = lifecycle_delivery.with_managed(&managed_composition);
+    tokio::spawn(
+        control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
+            store.clone(),
+            Arc::new(lifecycle_delivery),
+            Arc::new(ApiLifecycleDeliveryCompletion),
+        )
+        .run(),
     );
     extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());

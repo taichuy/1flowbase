@@ -25,6 +25,7 @@ pub(crate) struct ManagedWorkspaceSnapshot {
     pub(crate) graph: Arc<EffectiveExtensionGraph>,
     pub(crate) authority: ManagedGraphAuthority,
     pub(crate) bindings: BTreeMap<ContributionId, ManagedContributionBinding>,
+    pub(crate) lifecycle_plan: Option<EffectiveLifecycleSubscriberPlan>,
 }
 
 struct PreparedPackage {
@@ -40,6 +41,7 @@ pub(crate) struct ManagedExtensionComposition {
     backend: Arc<dyn RuntimeBackend>,
     base_modules: Vec<ModuleDescriptor>,
     policy: HostContributionGrantPolicy,
+    native_lifecycle_plan: std::sync::OnceLock<EffectiveLifecycleSubscriberPlan>,
     /// One assembly owner; immutable snapshots remain valid while callers hold their Arc.
     snapshots: Mutex<BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>>,
     assembly: Mutex<()>,
@@ -58,6 +60,7 @@ impl ManagedExtensionComposition {
             backend,
             base_modules,
             policy: HostContributionGrantPolicy::root_composition(),
+            native_lifecycle_plan: Default::default(),
             snapshots: Mutex::new(BTreeMap::new()),
             assembly: Mutex::new(()),
         }
@@ -94,20 +97,53 @@ impl ManagedExtensionComposition {
                     module.activation = ModuleActivationDeclaration::Active;
                     module.granted_permissions.clear();
                     authority.managed_modules.insert(module.module_id.clone());
-                    if !module.extension_points.is_empty() { bail!("managed point declarations require a separate host namespace admission"); }
+                    if module
+                        .extension_points
+                        .iter()
+                        .any(|point| !point.is_managed_composition_event(&module.module_id))
+                    {
+                        bail!("managed point declaration exceeds host namespace admission");
+                    }
                     for contribution in &module.contributions {
-                        let permissions = self.policy.effective_permissions(&package.installation, workspace_id, contribution, &package.authority)?;
-                        let subject = managed_subject(package.installation.id, workspace_id, contribution.contribution_id.clone())?;
-                        if authority.contributions.insert(contribution.contribution_id.clone(), ManagedContributionAuthority { subject, revision: package.authority.revision, permissions }).is_some() {
+                        let permissions = self.policy.effective_permissions(
+                            &package.installation,
+                            workspace_id,
+                            contribution,
+                            &package.authority,
+                        )?;
+                        let subject = managed_subject(
+                            package.installation.id,
+                            workspace_id,
+                            contribution.contribution_id.clone(),
+                        )?;
+                        if authority
+                            .contributions
+                            .insert(
+                                contribution.contribution_id.clone(),
+                                ManagedContributionAuthority {
+                                    subject,
+                                    revision: package.authority.revision,
+                                    permissions,
+                                },
+                            )
+                            .is_some()
+                        {
                             bail!("duplicate managed contribution identity");
                         }
                     }
-                    expected.insert((package.installation.id, workspace_id), (package.authority.revision, package.installation.updated_at));
+                    expected.insert(
+                        (package.installation.id, workspace_id),
+                        (package.authority.revision, package.installation.updated_at),
+                    );
                     modules.push(module);
                 }
                 let graph = Arc::new(compile_extension_graph_with_authority(modules, &authority)?);
                 for receipt in graph.contribution_receipts() {
-                    if authority.contributions.contains_key(&receipt.descriptor().contribution_id) && receipt.status() != &ContributionResolutionStatus::Active {
+                    if authority
+                        .contributions
+                        .contains_key(&receipt.descriptor().contribution_id)
+                        && receipt.status() != &ContributionResolutionStatus::Active
+                    {
                         bail!("managed contribution is inactive in the effective graph");
                     }
                 }
@@ -115,36 +151,90 @@ impl ManagedExtensionComposition {
                 for package in &packages {
                     for contribution in &package.manifest.module.contributions {
                         let identity = ManagedExecutionIdentity::new(
-                            ManagedInstallationId::new(package.installation.id.to_string())?, ManagedWorkspaceId::new(workspace_id.to_string())?,
-                            contribution.contribution_id.clone(), package.artifact_fingerprint.clone(), package.manifest.execution_binding_fingerprint(&contribution.contribution_id)?,
+                            ManagedInstallationId::new(package.installation.id.to_string())?,
+                            ManagedWorkspaceId::new(workspace_id.to_string())?,
+                            contribution.contribution_id.clone(),
+                            package.artifact_fingerprint.clone(),
+                            package
+                                .manifest
+                                .execution_binding_fingerprint(&contribution.contribution_id)?,
                         );
-                        let handle = self.backend.activate_managed_contribution(RuntimeManagedActivation {
-                            plugin_id: package.installation.plugin_id.clone(), artifact: RuntimeArtifactReference::new(package.installation.id.to_string())?, identity,
-                        }).await?;
-                        let retained = published.get(&workspace_id).is_some_and(|old| old.bindings.values().any(|binding| binding.handle == handle));
-                        if !retained { new_handles.push(handle.clone()); }
-                        bindings.insert(contribution.contribution_id.clone(), ManagedContributionBinding { handle, descriptor: contribution.clone(), installation: package.installation.clone() });
+                        let handle = self
+                            .backend
+                            .activate_managed_contribution(RuntimeManagedActivation {
+                                plugin_id: package.installation.plugin_id.clone(),
+                                artifact: RuntimeArtifactReference::new(
+                                    package.installation.id.to_string(),
+                                )?,
+                                identity,
+                            })
+                            .await?;
+                        let retained = published.get(&workspace_id).is_some_and(|old| {
+                            old.bindings
+                                .values()
+                                .any(|binding| binding.handle == handle)
+                        });
+                        if !retained {
+                            new_handles.push(handle.clone());
+                        }
+                        bindings.insert(
+                            contribution.contribution_id.clone(),
+                            ManagedContributionBinding {
+                                handle,
+                                descriptor: contribution.clone(),
+                                installation: package.installation.clone(),
+                            },
+                        );
                     }
                 }
-                candidates.insert(workspace_id, Arc::new(ManagedWorkspaceSnapshot { graph, authority, bindings }));
+                let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
+                candidates.insert(
+                    workspace_id,
+                    Arc::new(ManagedWorkspaceSnapshot {
+                        graph,
+                        authority,
+                        bindings,
+                        lifecycle_plan,
+                    }),
+                );
             }
             // A disabled target may no longer appear in the new graph. Lock its assignment and
             // installation too, so removal and a concurrent re-enable cannot cross publication.
             for workspace_id in candidates.keys() {
                 if !expected.contains_key(&(installation_id, *workspace_id)) {
-                    let lease = self.store.lock_installation_contribution_authority(installation_id, *workspace_id).await?;
-                    let installation = lease.installation(installation_id).context("missing locked installation")?;
-                    expected.insert((installation_id, *workspace_id), (lease.snapshot().revision, installation.updated_at));
+                    let lease = self
+                        .store
+                        .lock_installation_contribution_authority(installation_id, *workspace_id)
+                        .await?;
+                    let installation = lease
+                        .installation(installation_id)
+                        .context("missing locked installation")?;
+                    expected.insert(
+                        (installation_id, *workspace_id),
+                        (lease.snapshot().revision, installation.updated_at),
+                    );
                     lease.release().await?;
                 }
             }
             let scopes = expected.keys().copied().collect::<Vec<_>>();
-            let lease = self.store.lock_contribution_authority_batch(&scopes).await?;
+            let lease = self
+                .store
+                .lock_contribution_authority_batch(&scopes)
+                .await?;
             Self::validate_candidate(&expected, lease.as_ref())?;
             // The authority batch remains locked until the complete candidate set is visible.
             // Readers continue using the prior immutable snapshot during preparation.
-            let previous = candidates.keys().filter_map(|workspace| published.get(workspace).map(|value| (*workspace, value.clone()))).collect::<BTreeMap<_, _>>();
-            for (workspace, candidate) in &candidates { published.insert(*workspace, candidate.clone()); }
+            let previous = candidates
+                .keys()
+                .filter_map(|workspace| {
+                    published
+                        .get(workspace)
+                        .map(|value| (*workspace, value.clone()))
+                })
+                .collect::<BTreeMap<_, _>>();
+            for (workspace, candidate) in &candidates {
+                published.insert(*workspace, candidate.clone());
+            }
             let mut visible = self.snapshots.lock().await;
             let original = visible.clone();
             *visible = published.clone();
@@ -153,7 +243,8 @@ impl ManagedExtensionComposition {
                 return Err(error);
             }
             Ok::<_, anyhow::Error>(previous)
-        }.await;
+        }
+        .await;
         match result {
             Err(error) => {
                 for handle in new_handles {
@@ -402,4 +493,311 @@ fn managed_subject(
         ManagedWorkspaceId::new(workspace_id.to_string())?,
         contribution_id,
     ))
+}
+
+impl ManagedExtensionComposition {
+    pub(crate) fn attach_native_lifecycle_plan(
+        &self,
+        plan: EffectiveLifecycleSubscriberPlan,
+    ) -> Result<()> {
+        self.native_lifecycle_plan
+            .set(plan)
+            .map_err(|_| anyhow::anyhow!("native lifecycle plan already attached"))
+    }
+
+    fn compile_event_plan(
+        &self,
+        graph: &EffectiveExtensionGraph,
+        bindings: &BTreeMap<ContributionId, ManagedContributionBinding>,
+    ) -> Result<Option<EffectiveLifecycleSubscriberPlan>> {
+        let event_bindings = bindings
+            .values()
+            .filter(|binding| {
+                binding
+                    .descriptor
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "event.subscribe")
+            })
+            .collect::<Vec<_>>();
+        if event_bindings.is_empty() {
+            return Ok(None);
+        }
+        let mut subscriber_bindings = self
+            .native_lifecycle_plan
+            .get()
+            .context("managed events require native lifecycle plan binding")?
+            .bindings();
+        for binding in event_bindings {
+            let (contract_id, contract_version) = match binding.descriptor.point_id.as_str() {
+                extension_contracts::MANAGED_CREATE_EVENT_POINT => {
+                    (extension_contracts::MANAGED_CREATE_EVENT_ID, "v1")
+                }
+                extension_contracts::MANAGED_PROCESSED_EVENT_ID => {
+                    (extension_contracts::MANAGED_PROCESSED_EVENT_ID, "1")
+                }
+                _ => bail!("managed event subscription contract is not opened"),
+            };
+            let id = format!(
+                "managed.{}.{}",
+                binding.handle.identity().workspace_id().as_str(),
+                binding.descriptor.contribution_id.as_str()
+            );
+            subscriber_bindings.push(LifecycleSubscriberBinding {
+                contribution_id: binding.descriptor.contribution_id.clone(),
+                subscription_id: id.clone(),
+                point_id: binding.descriptor.point_id.clone(),
+                fact_contract_id: contract_id.into(),
+                fact_contract_version: contract_version.into(),
+                handler_id: id,
+                handler_version: format!(
+                    "{}:{}:{}",
+                    binding.handle.identity().artifact_fingerprint().as_str(),
+                    binding.handle.identity().binding_fingerprint().as_str(),
+                    binding.handle.generation()
+                ),
+            });
+        }
+        Ok(Some(compile_lifecycle_subscriber_plan(
+            graph,
+            subscriber_bindings,
+        )?))
+    }
+
+    /// P08 extends this exact lookup to retained executable generations. No latest-version fallback.
+    pub(crate) async fn event_snapshot_for_graph(
+        &self,
+        fingerprint: &str,
+    ) -> Option<Arc<ManagedWorkspaceSnapshot>> {
+        self.snapshots
+            .lock()
+            .await
+            .values()
+            .find(|s| s.graph.fingerprint().as_str() == fingerprint)
+            .cloned()
+    }
+
+    /// A record can reach a native handler only after its exact target is found in the frozen
+    /// combined plan. Managed handlers additionally acquire current subject authority at admission.
+    pub(crate) async fn deliver_event_record(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+    ) -> Result<bool> {
+        if snapshot.graph.fingerprint().as_str() != record.graph_fingerprint {
+            bail!("managed event frozen graph mismatch");
+        }
+        let subscriber = snapshot
+            .lifecycle_plan
+            .as_ref()
+            .context("managed lifecycle plan missing")?
+            .subscribers()
+            .iter()
+            .find(|s| {
+                s.subscriber_id == record.subscriber_id
+                    && s.handler_id == record.handler_id
+                    && s.handler_version == record.handler_version
+                    && s.fact_contract_id == record.contract_id
+                    && s.fact_contract_version == record.contract_version
+            })
+            .context("managed event frozen subscriber mismatch")?;
+        if !matches!(
+            subscriber.contributor_module_kind,
+            ModuleKind::Runtime | ModuleKind::Capability
+        ) {
+            return Ok(false);
+        }
+        let binding = snapshot
+            .bindings
+            .get(&subscriber.contribution_id)
+            .context("managed subscriber execution binding missing")?;
+        let delivery = decode_event_delivery(record)?;
+        let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
+        if delivery.workspace_id != workspace_id.to_string() {
+            bail!("managed event cross-workspace delivery rejected");
+        }
+        let frozen = snapshot
+            .authority
+            .contributions
+            .get(&subscriber.contribution_id)
+            .context("managed event frozen authority missing")?;
+        if &frozen.subject != binding.handle.identity().subject() {
+            bail!("managed event authority subject mismatch");
+        }
+        let lease = self
+            .store
+            .lock_contribution_authority(binding.handle.identity().subject())
+            .await?;
+        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+        let admitted = self
+            .backend
+            .admit_managed_event(runtime_core::runtime_backend::RuntimeManagedEventRequest {
+                handle: binding.handle.clone(),
+                graph_fingerprint: record.graph_fingerprint.clone(),
+                authority_revision: lease.snapshot().revision,
+                deadline_unix_ms: ((time::OffsetDateTime::now_utc() + time::Duration::seconds(10))
+                    .unix_timestamp_nanos()
+                    / 1_000_000) as i64,
+                delivery: delivery.clone(),
+            })
+            .await?;
+        lease.release().await?;
+        match admitted.await? {
+            extension_contracts::ManagedEventOutcome::Acknowledged => {}
+            extension_contracts::ManagedEventOutcome::Failed { classification } => {
+                bail!("managed event handler failed: {classification}")
+            }
+            extension_contracts::ManagedEventOutcome::Publish { publication } => {
+                // New publication gets the currently effective target set (new subscriptions only
+                // see facts published after activation); the E consumer binding remains frozen.
+                let current = self
+                    .snapshot(workspace_id)
+                    .await
+                    .context("managed publisher workspace is inactive")?;
+                let plan = current
+                    .publication_plan(&publication.contract_id, &publication.contract_version)
+                    .unwrap_or_else(
+                        || control_plane_contracts::ports::LifecyclePublicationPlan {
+                            graph_fingerprint: current.graph.fingerprint().as_str().into(),
+                            subscribers: Vec::new(),
+                        },
+                    );
+                let lease = self
+                    .store
+                    .lock_contribution_authority(binding.handle.identity().subject())
+                    .await?;
+                self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+                let installation = lease
+                    .installation(binding.installation.id)
+                    .context("managed publisher installation missing")?;
+                control_plane::managed_event_publication::publish_managed_event(
+                    &self.store,
+                    installation,
+                    lease.snapshot(),
+                    binding.handle.identity(),
+                    &binding.descriptor,
+                    &delivery,
+                    publication,
+                    plan,
+                )
+                .await?;
+                lease.release().await?;
+            }
+        }
+        Ok(true)
+    }
+}
+
+impl ManagedWorkspaceSnapshot {
+    pub(crate) fn publication_plan(
+        &self,
+        contract_id: &str,
+        contract_version: &str,
+    ) -> Option<control_plane_contracts::ports::LifecyclePublicationPlan> {
+        let plan = self.lifecycle_plan.as_ref()?;
+        let subscribers = plan
+            .subscribers()
+            .iter()
+            .filter(|s| {
+                s.fact_contract_id == contract_id && s.fact_contract_version == contract_version
+            })
+            .map(
+                |s| control_plane_contracts::ports::LifecycleSubscriberTarget {
+                    subscriber_id: s.subscriber_id.clone(),
+                    handler_id: s.handler_id.clone(),
+                    handler_version: s.handler_version.clone(),
+                },
+            )
+            .collect::<Vec<_>>();
+        if subscribers.is_empty() {
+            return None;
+        }
+        Some(control_plane_contracts::ports::LifecyclePublicationPlan {
+            graph_fingerprint: self.graph.fingerprint().as_str().into(),
+            subscribers,
+        })
+    }
+}
+
+fn decode_event_delivery(
+    record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+) -> Result<extension_contracts::ManagedEventDelivery> {
+    use extension_contracts::*;
+    let delivery = match (
+        record.contract_id.as_str(),
+        record.contract_version.as_str(),
+    ) {
+        (MANAGED_CREATE_EVENT_ID, "v1") => {
+            let fact: AfterCommitFact<
+                control_plane_contracts::ports::ModelDefinitionCommittedFact,
+            > = serde_json::from_slice(&record.canonical_payload)?;
+            if fact.fact_id().as_str() != record.event_id.to_string()
+                || fact.transaction_id().as_str() != record.transaction_id.to_string()
+                || fact.contract().contract_id.as_str() != record.contract_id
+                || fact.contract().contract_version.as_str() != record.contract_version
+                || fact.payload().scope_kind != domain::DataModelScopeKind::Workspace
+            {
+                bail!("managed Create fact identity or workspace mismatch");
+            }
+            ManagedEventDelivery {
+                event_id: record.event_id.to_string(),
+                contract_id: record.contract_id.clone(),
+                contract_version: record.contract_version.clone(),
+                workspace_id: fact.payload().scope_id.to_string(),
+                causation_id: record.event_id.to_string(),
+                correlation_id: record.event_id.to_string(),
+                payload: ManagedEventPayload {
+                    model_id: fact.payload().model_definition_id.to_string(),
+                    status: ManagedEventStatus::Committed,
+                    result_reference: None,
+                },
+            }
+        }
+        (MANAGED_PROCESSED_EVENT_ID, "1") => {
+            let fact: ManagedEventFact = serde_json::from_slice(&record.canonical_payload)?;
+            if fact.event_id != record.event_id.to_string()
+                || fact.transaction_id != record.transaction_id.to_string()
+                || fact.contract_id != record.contract_id
+                || fact.contract_version != record.contract_version
+                || fact.workspace_id != fact.publisher.workspace_id().as_str()
+            {
+                bail!("managed processed fact identity mismatch");
+            }
+            ManagedEventDelivery {
+                event_id: fact.event_id,
+                contract_id: fact.contract_id,
+                contract_version: fact.contract_version,
+                workspace_id: fact.workspace_id,
+                causation_id: fact.causation_id,
+                correlation_id: fact.correlation_id,
+                payload: fact.payload,
+            }
+        }
+        _ => bail!("managed event contract is not opened"),
+    };
+    delivery.validate()?;
+    Ok(delivery)
+}
+
+/// Weak link prevents the store's shared catalog from retaining its own composition owner.
+pub(crate) struct ManagedWorkspacePublicationSource(
+    pub(crate) std::sync::Weak<ManagedExtensionComposition>,
+);
+#[async_trait::async_trait]
+impl control_plane_contracts::ports::WorkspaceLifecyclePublicationSource
+    for ManagedWorkspacePublicationSource
+{
+    async fn plan_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        contract_id: &str,
+        contract_version: &str,
+    ) -> Result<Option<control_plane_contracts::ports::LifecyclePublicationPlan>> {
+        let owner = self
+            .0
+            .upgrade()
+            .context("managed publication owner unavailable")?;
+        let snapshot = owner.snapshot(workspace_id).await;
+        Ok(snapshot.and_then(|s| s.publication_plan(contract_id, contract_version)))
+    }
 }

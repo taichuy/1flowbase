@@ -78,9 +78,18 @@ pub(crate) fn production_lifecycle_handler_factories(
 
 pub(crate) struct ApiLifecycleFactDelivery {
     registry: EffectiveLifecycleHandlerRegistry,
+    managed: Option<std::sync::Weak<crate::extension_bus::ManagedExtensionComposition>>,
 }
 
 impl ApiLifecycleFactDelivery {
+    pub(crate) fn with_managed(
+        mut self,
+        composition: &Arc<crate::extension_bus::ManagedExtensionComposition>,
+    ) -> Self {
+        self.managed = Some(Arc::downgrade(composition));
+        self
+    }
+
     pub(crate) fn bind(
         plan: &EffectiveLifecycleSubscriberPlan,
         handler_bindings: Vec<LifecycleHandlerBinding>,
@@ -115,7 +124,13 @@ impl ApiLifecycleFactDelivery {
             }),
         )?;
         let registry = compile_lifecycle_handler_registry(plan, handler_bindings)?;
-        Ok((Self { registry }, catalog))
+        Ok((
+            Self {
+                registry,
+                managed: None,
+            },
+            catalog,
+        ))
     }
 }
 
@@ -124,6 +139,32 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
     for ApiLifecycleFactDelivery
 {
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
+        if let Some(owner) = &self.managed {
+            let owner = owner
+                .upgrade()
+                .ok_or_else(|| anyhow::anyhow!("managed event owner unavailable"))?;
+            if let Some(snapshot) = owner
+                .event_snapshot_for_graph(&fact.graph_fingerprint)
+                .await
+            {
+                if owner.deliver_event_record(&snapshot, fact).await? {
+                    return Ok(());
+                }
+                // Exact native target was validated against the combined frozen plan above.
+                return self
+                    .registry
+                    .deliver(
+                        self.registry.graph_fingerprint(),
+                        &fact.handler_id,
+                        &fact.handler_version,
+                        &fact.contract_id,
+                        &fact.contract_version,
+                        &fact.canonical_payload,
+                    )
+                    .await
+                    .map_err(anyhow::Error::from);
+            }
+        }
         self.registry
             .deliver(
                 &fact.graph_fingerprint,

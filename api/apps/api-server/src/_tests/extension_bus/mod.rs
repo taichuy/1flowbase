@@ -4,3 +4,4 @@ mod input_assembly_tests;
 mod interface_operation_tests;
 
 mod managed_activation_tests;
+mod managed_event_authority_tests;

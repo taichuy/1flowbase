@@ -785,6 +785,27 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         }))
     }
 
+    async fn admit_managed_event(
+        &self,
+        request: runtime_core::runtime_backend::RuntimeManagedEventRequest,
+    ) -> Result<runtime_core::runtime_backend::AdmittedManagedEvent, RuntimeBackendError> {
+        let operation = {
+            let workers = self.managed_workers.read().await;
+            let lifecycle = self.lifecycle.read().map_err(|_| {
+                RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+            })?;
+            if *lifecycle != RuntimeBackendLifecycle::Ready {
+                return Err(RuntimeBackendError::Unavailable(*lifecycle));
+            }
+            workers
+                .admit_event(request)
+                .map_err(RuntimeBackendError::from)?
+        };
+        Ok(Box::pin(async move {
+            operation.await.map_err(RuntimeBackendError::from)
+        }))
+    }
+
     async fn admit_managed_hook(
         &self,
         request: runtime_core::runtime_backend::RuntimeManagedHookRequest,

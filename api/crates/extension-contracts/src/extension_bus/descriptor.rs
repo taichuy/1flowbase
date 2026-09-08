@@ -322,3 +322,30 @@ pub struct ModuleDescriptor {
     #[serde(default)]
     pub contributions: Vec<ContributionDescriptor>,
 }
+
+impl ExtensionPointDescriptor {
+    /// The first managed event contract is sealed to the approved installation namespace.
+    /// This does not grant general point ownership or override rights to ordinary modules.
+    pub fn is_managed_composition_event(&self, owner: &ModuleId) -> bool {
+        owner.as_str() == "acme.composition-a"
+            && self.owner_module_id == *owner
+            && self.point_id.as_str() == crate::MANAGED_PROCESSED_EVENT_ID
+            && self.contract.contract_id.as_str() == crate::MANAGED_PROCESSED_EVENT_ID
+            && self.contract.contract_version.as_str() == "1"
+            && self.point_kind == ExtensionPointKind::EventStream
+            && self.scope == ScopeSemantics::Workspace
+            && self.cardinality == Cardinality::Many
+            && self.delivery == DeliverySemantics::AfterCommitDurable
+            && self.failure == FailureSemantics::IsolateContribution
+            && self.lifecycle == LifecycleSemantics::WorkspaceAssignment
+            && self.override_policy == OverridePolicy::Sealed
+            && self
+                .allowed_permissions
+                .iter()
+                .all(|p| p.as_str() == "event.subscribe" || p.as_str() == "event.publish")
+            && self
+                .allowed_permissions
+                .iter()
+                .any(|p| p.as_str() == "event.subscribe")
+    }
+}

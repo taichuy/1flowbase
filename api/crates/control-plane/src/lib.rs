@@ -64,3 +64,5 @@ pub fn crate_name() -> &'static str {
 
 #[cfg(test)]
 pub mod _tests;
+
+pub mod managed_event_publication;

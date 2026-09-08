@@ -80,6 +80,18 @@ impl HostContributionGrantPolicy {
                 publisher_artifact: (permission == "event.publish").then_some("acme.composition-a"),
             });
         }
+        // A's one subscriber contribution has two independent grants. Publication remains
+        // restricted to its sealed processed@1 contract by the event publication command.
+        for permission in ["event.subscribe", "event.publish"] {
+            rules.push(HostContributionPermissionRule {
+                point_id: extension_contracts::MANAGED_CREATE_EVENT_POINT.into(),
+                permission: permission.into(),
+                permission_contract_id: "managed-event",
+                point_contract_version: "1",
+                resource_scope: ContributionResourceScope::Workspace,
+                publisher_artifact: Some("acme.composition-a"),
+            });
+        }
         for artifact in [
             "acme.composition-a",
             "acme.composition-b",

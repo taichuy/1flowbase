@@ -14,9 +14,12 @@ pub struct LifecyclePublicationPlan {
     pub subscribers: Vec<LifecycleSubscriberTarget>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default)]
 pub struct LifecyclePublicationCatalog {
     plans: BTreeMap<(String, String), LifecyclePublicationPlan>,
+    workspace_source: std::sync::Arc<
+        std::sync::OnceLock<std::sync::Arc<dyn WorkspaceLifecyclePublicationSource>>,
+    >,
 }
 
 impl LifecyclePublicationCatalog {
@@ -33,7 +36,10 @@ impl LifecyclePublicationCatalog {
                 );
             }
         }
-        Ok(Self { plans: indexed })
+        Ok(Self {
+            plans: indexed,
+            workspace_source: Default::default(),
+        })
     }
 
     pub fn plan_for(
@@ -43,6 +49,54 @@ impl LifecyclePublicationCatalog {
     ) -> Option<&LifecyclePublicationPlan> {
         self.plans
             .get(&(contract_id.to_string(), contract_version.to_string()))
+    }
+}
+
+/// Reads one immutable workspace snapshot containing graph and subscriber plan together.
+#[async_trait]
+pub trait WorkspaceLifecyclePublicationSource: Send + Sync {
+    async fn plan_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        contract_id: &str,
+        contract_version: &str,
+    ) -> anyhow::Result<Option<LifecyclePublicationPlan>>;
+}
+impl LifecyclePublicationCatalog {
+    pub fn attach_workspace_source(
+        &self,
+        source: std::sync::Arc<dyn WorkspaceLifecyclePublicationSource>,
+    ) -> anyhow::Result<()> {
+        self.workspace_source
+            .set(source)
+            .map_err(|_| anyhow::anyhow!("workspace lifecycle publication source already attached"))
+    }
+    pub async fn frozen_plan_for_workspace(
+        &self,
+        workspace_id: Option<Uuid>,
+        contract_id: &str,
+        contract_version: &str,
+    ) -> anyhow::Result<Option<LifecyclePublicationPlan>> {
+        if let (Some(workspace), Some(source)) = (workspace_id, self.workspace_source.get()) {
+            if let Some(plan) = source
+                .plan_for_workspace(workspace, contract_id, contract_version)
+                .await?
+            {
+                return Ok(Some(plan));
+            }
+        }
+        Ok(self.plan_for(contract_id, contract_version).cloned())
+    }
+}
+impl std::fmt::Debug for LifecyclePublicationCatalog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LifecyclePublicationCatalog")
+            .field("plans", &self.plans)
+            .field(
+                "workspace_source_attached",
+                &self.workspace_source.get().is_some(),
+            )
+            .finish()
     }
 }
 
@@ -112,5 +166,15 @@ pub trait LifecycleOutboxRepository: Send + Sync {
         worker_id: Uuid,
         available_at: OffsetDateTime,
         error: &str,
+    ) -> anyhow::Result<LifecycleOutboxRecord>;
+}
+
+/// Same durable Outbox, with host-derived event identity. First successful publication freezes
+/// time and targets; repeats must preserve payload/contract/transaction and reuse those targets.
+#[async_trait]
+pub trait DerivedLifecyclePublicationRepository: LifecycleOutboxRepository {
+    async fn record_derived_lifecycle_fact(
+        &self,
+        input: &RecordLifecycleFactInput,
     ) -> anyhow::Result<LifecycleOutboxRecord>;
 }

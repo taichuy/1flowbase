@@ -146,11 +146,13 @@ pub(super) async fn create_model_definition(
         );
         let publication = store
             .lifecycle_publication_catalog
-            .plan_for(
+            .frozen_plan_for_workspace(
+                (model.scope_kind == domain::DataModelScopeKind::Workspace)
+                    .then_some(model.scope_id),
                 ModelDefinitionCommittedFact::CONTRACT_ID,
                 ModelDefinitionCommittedFact::CONTRACT_VERSION,
             )
-            .cloned();
+            .await?;
         let canonical_payload = serde_json::to_vec(&fact)?;
         let fact_input = publication.map(|publication| RecordLifecycleFactInput {
             event_id,

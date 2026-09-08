@@ -196,7 +196,18 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
         assert_eq!(descriptor.delivery, delivery);
         assert_eq!(descriptor.lifecycle, LifecycleSemantics::Invocation);
         assert_eq!(descriptor.override_policy, OverridePolicy::Sealed);
-        assert!(descriptor.allowed_permissions.is_empty());
+        if point_id == api_server::extension_bus::RUNTIME_EVENT_AFTER_COMMIT_POINT_ID {
+            assert_eq!(
+                descriptor
+                    .allowed_permissions
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>(),
+                ["event.publish", "event.subscribe"]
+            );
+        } else {
+            assert!(descriptor.allowed_permissions.is_empty());
+        }
         if point_id == api_server::extension_bus::RUNTIME_EVENT_AFTER_COMMIT_POINT_ID {
             assert_eq!(lane.contributions().len(), 1);
             assert_eq!(

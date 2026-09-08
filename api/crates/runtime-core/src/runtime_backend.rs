@@ -283,6 +283,25 @@ pub struct RuntimeManagedHookRequest {
     pub input: extension_contracts::ManagedCreateHookInput,
 }
 
+pub type AdmittedManagedEvent = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<extension_contracts::ManagedEventOutcome, RuntimeBackendError>,
+            > + Send
+            + 'static,
+    >,
+>;
+
+/// Host-bound subscriber service identity. No original actor is delegated to this request.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedEventRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub graph_fingerprint: String,
+    pub authority_revision: i64,
+    pub deadline_unix_ms: i64,
+    pub delivery: extension_contracts::ManagedEventDelivery,
+}
+
 /// Host-only request. Neither the handle nor principal is taken from worker JSON.
 #[derive(Debug, Clone)]
 pub struct RuntimeManagedCapabilityRequest {
@@ -500,6 +519,11 @@ pub trait CapabilityRuntimePort: Send + Sync {
         request: RuntimeManagedCapabilityRequest,
     ) -> Result<AdmittedManagedExecution, RuntimeBackendError>;
     /// Holds current contribution authority until the exact Hook binding obtains its scope lease.
+    async fn admit_managed_event(
+        &self,
+        request: RuntimeManagedEventRequest,
+    ) -> Result<AdmittedManagedEvent, RuntimeBackendError>;
+
     async fn admit_managed_hook(
         &self,
         request: RuntimeManagedHookRequest,

@@ -115,9 +115,14 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             "host_extension cannot declare workspace binding_targets",
         ));
     }
-    if !module.module_kind.may_define_points() && !module.extension_points.is_empty() {
+    if !module.module_kind.may_define_points()
+        && module
+            .extension_points
+            .iter()
+            .any(|point| !point.is_managed_composition_event(&module.module_id))
+    {
         return Err(invalid(
-            "only trusted host packages may define extension points",
+            "managed packages may only define their sealed composition event",
         ));
     }
     if module.contributions.is_empty() {
