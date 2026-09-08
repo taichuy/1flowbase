@@ -1,3 +1,4 @@
+use control_plane_contracts::ports::{LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason};
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Result;
@@ -6,8 +7,8 @@ use control_plane::ports::EventBus;
 use control_plane_contracts::ports::{LifecycleOutboxRecord, LifecycleSubscriberTarget};
 use plugin_framework::extension_bus::{
     compile_lifecycle_handler_registry, EffectiveLifecycleHandlerRegistry,
-    EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding, LifecycleHandlerError,
-    LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
+    EffectiveLifecycleSubscriber, EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding,
+    LifecycleHandlerError, LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
 };
 
 use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
@@ -78,6 +79,7 @@ pub(crate) fn production_lifecycle_handler_factories(
 
 pub(crate) struct ApiLifecycleFactDelivery {
     registry: EffectiveLifecycleHandlerRegistry,
+    native_targets: Vec<EffectiveLifecycleSubscriber>,
     managed: Option<std::sync::Weak<crate::extension_bus::ManagedExtensionComposition>>,
 }
 
@@ -123,10 +125,12 @@ impl ApiLifecycleFactDelivery {
                 )
             }),
         )?;
+        let native_targets = plan.subscribers().to_vec();
         let registry = compile_lifecycle_handler_registry(plan, handler_bindings)?;
         Ok((
             Self {
                 registry,
+                native_targets,
                 managed: None,
             },
             catalog,
@@ -140,9 +144,9 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
 {
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
         if let Some(owner) = &self.managed {
-            let owner = owner
-                .upgrade()
-                .ok_or_else(|| anyhow::anyhow!("managed event owner unavailable"))?;
+            let owner = owner.upgrade().ok_or_else(|| {
+                LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
+            })?;
             if let Some(snapshot) = owner
                 .event_snapshot_for_graph(&fact.graph_fingerprint)
                 .await
@@ -164,6 +168,24 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
                     .await
                     .map_err(anyhow::Error::from);
             }
+        }
+        if fact.graph_fingerprint != self.registry.graph_fingerprint() {
+            return Err(LifecycleDeliveryBlocked(
+                LifecycleDeliveryPauseReason::FrozenGraphUnavailable,
+            )
+            .into());
+        }
+        if !self.native_targets.iter().any(|target| {
+            target.subscriber_id == fact.subscriber_id
+                && target.handler_id == fact.handler_id
+                && target.handler_version == fact.handler_version
+                && target.fact_contract_id == fact.contract_id
+                && target.fact_contract_version == fact.contract_version
+        }) {
+            return Err(LifecycleDeliveryBlocked(
+                LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
+            )
+            .into());
         }
         self.registry
             .deliver(
@@ -267,6 +289,10 @@ mod tests {
             available_at: OffsetDateTime::now_utc(),
             claimed_by: Some(Uuid::now_v7()),
             claimed_at: Some(OffsetDateTime::now_utc()),
+            claim_id: Some(Uuid::now_v7()),
+            claim_expires_at: Some(OffsetDateTime::now_utc() + time::Duration::seconds(30)),
+            pause_reason: None,
+            paused_at: None,
             delivered_at: None,
         };
         delivery.deliver(&record).await.unwrap();

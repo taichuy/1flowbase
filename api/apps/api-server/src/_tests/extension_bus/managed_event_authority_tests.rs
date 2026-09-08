@@ -328,7 +328,12 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     assert_eq!(e2_count, 1);
     for record in &facts {
         store
-            .mark_lifecycle_fact_delivered(record.event_id, &record.subscriber_id, worker)
+            .mark_lifecycle_fact_delivered(
+                record.event_id,
+                &record.subscriber_id,
+                worker,
+                record.claim_id.unwrap(),
+            )
             .await
             .unwrap();
     }
@@ -393,7 +398,16 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         .iter()
         .find(|f| f.subscriber_id.ends_with("acme.composition-b.events"))
         .unwrap();
-    assert!(delivery.deliver(b_record).await.is_err());
+    assert_eq!(
+        delivery
+            .deliver(b_record)
+            .await
+            .unwrap_err()
+            .downcast_ref::<control_plane_contracts::ports::LifecycleDeliveryBlocked>()
+            .unwrap()
+            .0,
+        control_plane_contracts::ports::LifecycleDeliveryPauseReason::AuthorityRevoked
+    );
     let c_record = processed
         .iter()
         .find(|f| f.subscriber_id.ends_with("acme.composition-c.events"))
@@ -421,6 +435,84 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         delivery.deliver(committed).await.is_err(),
         "frozen graph cannot restore a revoked publication grant"
     );
+    // P06: actual dispatcher persists explicit unavailability/revocation without blind retries.
+    store
+        .retry_lifecycle_fact(
+            b_record.event_id,
+            &b_record.subscriber_id,
+            worker,
+            b_record.claim_id.unwrap(),
+            time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
+            "fixture redelivery",
+        )
+        .await
+        .unwrap();
+    // Persisted disable precedes replacement graph assembly; the frozen binding must still deny.
+    control_plane_contracts::ports::PluginRepository::update_desired_state(
+        &store,
+        &control_plane_contracts::ports::UpdatePluginDesiredStateInput {
+            installation_id: installations[2].installation.id,
+            desired_state: domain::PluginDesiredState::Disabled,
+            actor_user_id: actor_id,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        delivery
+            .deliver(c_record)
+            .await
+            .unwrap_err()
+            .downcast_ref::<control_plane_contracts::ports::LifecycleDeliveryBlocked>()
+            .unwrap()
+            .0,
+        control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive
+    );
+    store
+        .retry_lifecycle_fact(
+            c_record.event_id,
+            &c_record.subscriber_id,
+            worker,
+            c_record.claim_id.unwrap(),
+            time::OffsetDateTime::now_utc() - time::Duration::seconds(1),
+            "fixture disabled delivery",
+        )
+        .await
+        .unwrap();
+    let unavailable_id = Uuid::now_v7();
+    store
+        .record_lifecycle_fact(&control_plane_contracts::ports::RecordLifecycleFactInput {
+            event_id: unavailable_id,
+            transaction_id: Uuid::now_v7(),
+            contract_id: MANAGED_PROCESSED_EVENT_ID.into(),
+            contract_version: "1".into(),
+            canonical_payload: processed[0].canonical_payload.clone(),
+            occurred_at: time::OffsetDateTime::now_utc(),
+            publication: control_plane_contracts::ports::LifecyclePublicationPlan {
+                graph_fingerprint: "retired-graph".into(),
+                subscribers: vec![control_plane_contracts::ports::LifecycleSubscriberTarget {
+                    subscriber_id: "unavailable".into(),
+                    handler_id: "retired-handler".into(),
+                    handler_version: "retired-version".into(),
+                }],
+            },
+        })
+        .await
+        .unwrap();
+    let dispatcher = control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
+        store.clone(),
+        Arc::new(delivery),
+        Arc::new(crate::ApiLifecycleDeliveryCompletion),
+    );
+    assert_eq!(dispatcher.run_once().await.unwrap(), 3);
+    let paused: Vec<(String, String)> = sqlx::query_as("select subscriber_id, pause_reason from lifecycle_outbox_deliveries where status='paused' order by subscriber_id").fetch_all(store.pool()).await.unwrap();
+    assert!(paused.contains(&(b_record.subscriber_id.clone(), "authority_revoked".into())));
+    assert!(paused.contains(&("unavailable".into(), "frozen_graph_unavailable".into())));
+    assert!(paused.contains(&(
+        c_record.subscriber_id.clone(),
+        "installation_inactive".into()
+    )));
+    assert_eq!(dispatcher.run_once().await.unwrap(), 0);
     for installed in installations {
         let trace =
             PathBuf::from(installed.local_artifact.local_path.unwrap()).join("bin/worker.trace");

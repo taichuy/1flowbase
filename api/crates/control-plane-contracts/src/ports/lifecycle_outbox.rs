@@ -105,6 +105,7 @@ pub enum LifecycleOutboxStatus {
     Pending,
     Claimed,
     Delivered,
+    Paused,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +136,10 @@ pub struct LifecycleOutboxRecord {
     pub available_at: OffsetDateTime,
     pub claimed_by: Option<Uuid>,
     pub claimed_at: Option<OffsetDateTime>,
+    pub claim_id: Option<Uuid>,
+    pub claim_expires_at: Option<OffsetDateTime>,
+    pub pause_reason: Option<LifecycleDeliveryPauseReason>,
+    pub paused_at: Option<OffsetDateTime>,
     pub delivered_at: Option<OffsetDateTime>,
 }
 
@@ -157,6 +162,7 @@ pub trait LifecycleOutboxRepository: Send + Sync {
         event_id: Uuid,
         subscriber_id: &str,
         worker_id: Uuid,
+        claim_id: Uuid,
     ) -> anyhow::Result<LifecycleOutboxRecord>;
 
     async fn retry_lifecycle_fact(
@@ -164,8 +170,17 @@ pub trait LifecycleOutboxRepository: Send + Sync {
         event_id: Uuid,
         subscriber_id: &str,
         worker_id: Uuid,
+        claim_id: Uuid,
         available_at: OffsetDateTime,
         error: &str,
+    ) -> anyhow::Result<LifecycleOutboxRecord>;
+    async fn pause_lifecycle_fact(
+        &self,
+        event_id: Uuid,
+        subscriber_id: &str,
+        worker_id: Uuid,
+        claim_id: Uuid,
+        reason: LifecycleDeliveryPauseReason,
     ) -> anyhow::Result<LifecycleOutboxRecord>;
 }
 
@@ -178,3 +193,31 @@ pub trait DerivedLifecyclePublicationRepository: LifecycleOutboxRepository {
         input: &RecordLifecycleFactInput,
     ) -> anyhow::Result<LifecycleOutboxRecord>;
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecycleDeliveryPauseReason {
+    FrozenGraphUnavailable,
+    FrozenHandlerUnavailable,
+    AuthorityRevoked,
+    InstallationInactive,
+    RetryBudgetExhausted,
+}
+impl LifecycleDeliveryPauseReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FrozenGraphUnavailable => "frozen_graph_unavailable",
+            Self::FrozenHandlerUnavailable => "frozen_handler_unavailable",
+            Self::AuthorityRevoked => "authority_revoked",
+            Self::InstallationInactive => "installation_inactive",
+            Self::RetryBudgetExhausted => "retry_budget_exhausted",
+        }
+    }
+}
+/// An expired/replaced claim is a terminal result for that attempt, never a new retry owner.
+#[derive(Debug, thiserror::Error)]
+#[error("lifecycle delivery claim expired or replaced")]
+pub struct LifecycleClaimLost;
+
+#[derive(Debug, thiserror::Error)]
+#[error("lifecycle delivery paused: {0:?}")]
+pub struct LifecycleDeliveryBlocked(pub LifecycleDeliveryPauseReason);

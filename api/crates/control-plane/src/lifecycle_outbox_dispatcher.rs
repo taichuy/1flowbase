@@ -2,7 +2,10 @@ use std::{sync::Arc, time::Duration as StdDuration};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane_contracts::ports::{LifecycleOutboxRecord, LifecycleOutboxRepository};
+use control_plane_contracts::ports::{
+    LifecycleClaimLost, LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason,
+    LifecycleOutboxRecord, LifecycleOutboxRepository,
+};
 use extension_contracts::{
     CompletionOutcome, CompletionTerminal, LifecycleContract, LifecycleOperationId,
 };
@@ -14,6 +17,7 @@ use uuid::Uuid;
 pub struct LifecycleFactDeliveryCompletion {
     pub event_id: Uuid,
     pub attempt_count: i32,
+    pub claim_id: Uuid,
 }
 
 impl LifecycleContract for LifecycleFactDeliveryCompletion {
@@ -69,52 +73,123 @@ where
             .claim_lifecycle_facts(self.worker_id, self.claim_limit, self.claim_lease)
             .await?;
         let count = facts.len();
+        // Start the bounded claimed batch together; no queued claim expires behind slow siblings.
+        let mut attempts = tokio::task::JoinSet::new();
         for fact in facts {
-            let (terminal, retry_error) =
-                match tokio::time::timeout(self.delivery_deadline, self.delivery.deliver(&fact))
+            let dispatcher = self.clone();
+            attempts.spawn(async move { dispatcher.dispatch_claim(fact).await });
+        }
+        let mut failure = None;
+        while let Some(result) = attempts.join_next().await {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    failure.get_or_insert(error);
+                }
+                Err(error) => {
+                    failure.get_or_insert(anyhow::Error::from(error));
+                }
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        Ok(count)
+    }
+
+    async fn dispatch_claim(&self, fact: LifecycleOutboxRecord) -> Result<()> {
+        let claim_id = fact.claim_id.ok_or(LifecycleClaimLost)?;
+        let remaining =
+            fact.claim_expires_at.ok_or(LifecycleClaimLost)? - OffsetDateTime::now_utc();
+        let remaining = StdDuration::try_from(remaining).map_err(|_| LifecycleClaimLost)?;
+        if remaining.is_zero() {
+            return Ok(());
+        }
+        let (terminal, error) = match tokio::time::timeout(
+            self.delivery_deadline.min(remaining),
+            self.delivery.deliver(&fact),
+        )
+        .await
+        {
+            Ok(Ok(())) => (CompletionTerminal::Succeeded, None),
+            Ok(Err(error)) => (CompletionTerminal::Failed, Some(error)),
+            Err(_) => (
+                CompletionTerminal::TimedOut,
+                Some(anyhow::anyhow!(
+                    "lifecycle subscriber delivery deadline elapsed"
+                )),
+            ),
+        };
+        let update = if let Some(error) = error {
+            let blocked = error
+                .downcast_ref::<LifecycleDeliveryBlocked>()
+                .map(|e| e.0)
+                .or_else(|| {
+                    (fact.attempt_count >= 5)
+                        .then_some(LifecycleDeliveryPauseReason::RetryBudgetExhausted)
+                });
+            if let Some(reason) = blocked {
+                self.repository
+                    .pause_lifecycle_fact(
+                        fact.event_id,
+                        &fact.subscriber_id,
+                        self.worker_id,
+                        claim_id,
+                        reason,
+                    )
                     .await
-                {
-                    Ok(Ok(())) => (CompletionTerminal::Succeeded, None),
-                    Ok(Err(error)) => (CompletionTerminal::Failed, Some(error.to_string())),
-                    Err(_) => (
-                        CompletionTerminal::TimedOut,
-                        Some(format!(
-                            "lifecycle subscriber delivery exceeded {}ms deadline",
-                            self.delivery_deadline.as_millis()
-                        )),
-                    ),
+            } else {
+                // Persist bounded diagnostic text; a large worker error must not strand a claim.
+                let message = error.to_string();
+                let message = if message.is_empty() {
+                    "lifecycle subscriber failed".to_string()
+                } else {
+                    message
                 };
-            if let Some(error) = retry_error {
-                let retry_delay = i64::from(fact.attempt_count.clamp(1, 60));
+                let mut end = message.len().min(4096);
+                while !message.is_char_boundary(end) {
+                    end -= 1;
+                }
                 self.repository
                     .retry_lifecycle_fact(
                         fact.event_id,
                         &fact.subscriber_id,
                         self.worker_id,
-                        OffsetDateTime::now_utc() + Duration::seconds(retry_delay),
-                        &error,
+                        claim_id,
+                        OffsetDateTime::now_utc()
+                            + Duration::seconds(i64::from(fact.attempt_count.clamp(1, 60))),
+                        &message[..end],
                     )
-                    .await?;
-            } else {
-                self.repository
-                    .mark_lifecycle_fact_delivered(
-                        fact.event_id,
-                        &fact.subscriber_id,
-                        self.worker_id,
-                    )
-                    .await?;
-            };
-            self.completion.complete(CompletionOutcome::new(
-                LifecycleOperationId::new(fact.event_id.to_string())?,
-                terminal,
-                OffsetDateTime::now_utc().unix_timestamp_nanos() as i64 / 1_000_000,
-                LifecycleFactDeliveryCompletion {
-                    event_id: fact.event_id,
-                    attempt_count: fact.attempt_count,
-                },
-            ));
+                    .await
+            }
+        } else {
+            self.repository
+                .mark_lifecycle_fact_delivered(
+                    fact.event_id,
+                    &fact.subscriber_id,
+                    self.worker_id,
+                    claim_id,
+                )
+                .await
+        };
+        if let Err(error) = update {
+            if error.downcast_ref::<LifecycleClaimLost>().is_none() {
+                return Err(error);
+            }
+            // Completion describes this attempt only; losing a fence never mutates the new claim.
+            tracing::info!(event_id = %fact.event_id, %claim_id, "lifecycle attempt lost its claim fence");
         }
-        Ok(count)
+        self.completion.complete(CompletionOutcome::new(
+            LifecycleOperationId::new(format!("{}:{claim_id}", fact.event_id))?,
+            terminal,
+            (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
+            LifecycleFactDeliveryCompletion {
+                event_id: fact.event_id,
+                attempt_count: fact.attempt_count,
+                claim_id,
+            },
+        ));
+        Ok(())
     }
 
     pub async fn run(self) {
@@ -141,6 +216,21 @@ mod tests {
 
     #[async_trait]
     impl LifecycleOutboxRepository for MemoryRepository {
+        async fn pause_lifecycle_fact(
+            &self,
+            _event_id: Uuid,
+            _subscriber_id: &str,
+            _worker_id: Uuid,
+            _claim_id: Uuid,
+            reason: LifecycleDeliveryPauseReason,
+        ) -> Result<LifecycleOutboxRecord> {
+            *self.completed.lock().unwrap() = Some(LifecycleOutboxStatus::Paused);
+            let mut record = self.record.clone();
+            record.status = LifecycleOutboxStatus::Paused;
+            record.pause_reason = Some(reason);
+            Ok(record)
+        }
+
         async fn record_lifecycle_fact(
             &self,
             _input: &RecordLifecycleFactInput,
@@ -164,6 +254,7 @@ mod tests {
             _event_id: Uuid,
             _subscriber_id: &str,
             _worker_id: Uuid,
+            _claim_id: Uuid,
         ) -> Result<LifecycleOutboxRecord> {
             *self.completed.lock().unwrap() = Some(LifecycleOutboxStatus::Delivered);
             Ok(self.record.clone())
@@ -174,6 +265,7 @@ mod tests {
             _event_id: Uuid,
             _subscriber_id: &str,
             _worker_id: Uuid,
+            _claim_id: Uuid,
             _available_at: OffsetDateTime,
             _error: &str,
         ) -> Result<LifecycleOutboxRecord> {
@@ -222,6 +314,10 @@ mod tests {
                 available_at: OffsetDateTime::now_utc(),
                 claimed_by: None,
                 claimed_at: Some(OffsetDateTime::now_utc()),
+                claim_id: Some(Uuid::now_v7()),
+                claim_expires_at: Some(OffsetDateTime::now_utc() + Duration::seconds(30)),
+                pause_reason: None,
+                paused_at: None,
                 delivered_at: None,
             },
             completed: Arc::new(Mutex::new(None)),
@@ -277,6 +373,17 @@ mod tests {
 
     #[async_trait]
     impl LifecycleOutboxRepository for BatchRepository {
+        async fn pause_lifecycle_fact(
+            &self,
+            _event_id: Uuid,
+            _subscriber_id: &str,
+            _worker_id: Uuid,
+            _claim_id: Uuid,
+            _reason: LifecycleDeliveryPauseReason,
+        ) -> Result<LifecycleOutboxRecord> {
+            anyhow::bail!("pause unused in this fixture")
+        }
+
         async fn record_lifecycle_fact(
             &self,
             _input: &RecordLifecycleFactInput,
@@ -306,6 +413,7 @@ mod tests {
             _event_id: Uuid,
             subscriber_id: &str,
             _worker_id: Uuid,
+            _claim_id: Uuid,
         ) -> Result<LifecycleOutboxRecord> {
             self.delivered
                 .lock()
@@ -319,6 +427,7 @@ mod tests {
             _event_id: Uuid,
             subscriber_id: &str,
             _worker_id: Uuid,
+            _claim_id: Uuid,
             _available_at: OffsetDateTime,
             _error: &str,
         ) -> Result<LifecycleOutboxRecord> {
@@ -367,9 +476,41 @@ mod tests {
             repository.delivered.lock().unwrap().as_slice(),
             ["subscriber-healthy"]
         );
-        assert_eq!(
-            completion.0.lock().unwrap().as_slice(),
-            &[CompletionTerminal::TimedOut, CompletionTerminal::Succeeded]
-        );
+        let completions = completion.0.lock().unwrap();
+        assert_eq!(completions.len(), 2);
+        assert!(completions.contains(&CompletionTerminal::TimedOut));
+        assert!(completions.contains(&CompletionTerminal::Succeeded));
+    }
+    struct BlockedDelivery;
+    #[async_trait]
+    impl LifecycleFactDeliveryPort for BlockedDelivery {
+        async fn deliver(&self, _fact: &LifecycleOutboxRecord) -> Result<()> {
+            Err(
+                LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
+                    .into(),
+            )
+        }
+    }
+    #[tokio::test]
+    async fn root_2007_ac_007_dispatcher_pauses_unavailable_and_exhausted_attempts() {
+        for unavailable in [true, false] {
+            let mut repository = repository();
+            repository.record.attempt_count = if unavailable { 1 } else { 5 };
+            let delivery: Arc<dyn LifecycleFactDeliveryPort> = if unavailable {
+                Arc::new(BlockedDelivery)
+            } else {
+                Arc::new(Delivery(false))
+            };
+            let dispatcher = LifecycleOutboxDispatcher::new(
+                repository.clone(),
+                delivery,
+                Arc::new(Completion::default()),
+            );
+            assert_eq!(dispatcher.run_once().await.unwrap(), 1);
+            assert_eq!(
+                *repository.completed.lock().unwrap(),
+                Some(LifecycleOutboxStatus::Paused)
+            );
+        }
     }
 }

@@ -1,8 +1,8 @@
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    LifecycleOutboxRecord, LifecycleOutboxRepository, LifecycleOutboxStatus,
-    RecordLifecycleFactInput,
+    LifecycleClaimLost, LifecycleDeliveryPauseReason, LifecycleOutboxRecord,
+    LifecycleOutboxRepository, LifecycleOutboxStatus, RecordLifecycleFactInput,
 };
 use sqlx::{Postgres, Row, Transaction};
 use time::OffsetDateTime;
@@ -140,19 +140,21 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         if claim_lease <= time::Duration::ZERO || claim_lease > time::Duration::hours(1) {
             bail!("lifecycle outbox claim lease must be between 1ns and 1h");
         }
-        let stale_before = OffsetDateTime::now_utc() - claim_lease;
+        let mut transaction = self.pool().begin().await?;
+        let lease_micros = i64::try_from(claim_lease.whole_microseconds().max(1))?;
         let rows = sqlx::query(
             r#"
             with candidates as (
                 select event_id, subscriber_id from lifecycle_outbox_deliveries
                 where (status = 'pending' and available_at <= now())
-                   or (status = 'claimed' and claimed_at <= $3)
+                   or (status = 'claimed' and claim_expires_at <= now())
                 order by available_at, event_id, subscriber_id
                 for update skip locked
                 limit $2
             )
             update lifecycle_outbox_deliveries as delivery
             set status = 'claimed', claimed_by = $1, claimed_at = now(),
+                claim_id = gen_random_uuid(), claim_expires_at = now() + $3::bigint * interval '1 microsecond',
                 attempt_count = attempt_count + 1
             from candidates
             where delivery.event_id = candidates.event_id
@@ -162,14 +164,14 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         )
         .bind(worker_id)
         .bind(i64::from(limit))
-        .bind(stale_before)
-        .fetch_all(self.pool())
+        .bind(lease_micros)
+        .fetch_all(&mut *transaction)
         .await?;
         let mut records = Vec::with_capacity(rows.len());
         for row in rows {
             records.push(
                 find_delivery(
-                    self.pool(),
+                    &mut *transaction,
                     row.try_get("event_id")?,
                     row.try_get::<String, _>("subscriber_id")?.as_str(),
                 )
@@ -177,6 +179,7 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
                 .ok_or_else(|| anyhow!("claimed lifecycle delivery disappeared"))?,
             );
         }
+        transaction.commit().await?;
         Ok(records)
     }
 
@@ -185,39 +188,27 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         event_id: Uuid,
         subscriber_id: &str,
         worker_id: Uuid,
+        claim_id: Uuid,
     ) -> Result<LifecycleOutboxRecord> {
-        let record = update_claim(
+        update_claim(
             self,
             event_id,
             subscriber_id,
             worker_id,
+            claim_id,
             "delivered",
             None,
             None,
+            None,
         )
-        .await?;
-        sqlx::query(
-            r#"
-            update lifecycle_outbox
-            set status = 'delivered', delivered_at = now()
-            where event_id = $1
-              and not exists (
-                select 1 from lifecycle_outbox_deliveries
-                where event_id = $1 and status <> 'delivered'
-              )
-            "#,
-        )
-        .bind(event_id)
-        .execute(self.pool())
-        .await?;
-        Ok(record)
+        .await
     }
-
     async fn retry_lifecycle_fact(
         &self,
         event_id: Uuid,
         subscriber_id: &str,
         worker_id: Uuid,
+        claim_id: Uuid,
         available_at: OffsetDateTime,
         error: &str,
     ) -> Result<LifecycleOutboxRecord> {
@@ -229,9 +220,32 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
             event_id,
             subscriber_id,
             worker_id,
+            claim_id,
             "pending",
             Some(available_at),
             Some(error),
+            None,
+        )
+        .await
+    }
+    async fn pause_lifecycle_fact(
+        &self,
+        event_id: Uuid,
+        subscriber_id: &str,
+        worker_id: Uuid,
+        claim_id: Uuid,
+        reason: LifecycleDeliveryPauseReason,
+    ) -> Result<LifecycleOutboxRecord> {
+        update_claim(
+            self,
+            event_id,
+            subscriber_id,
+            worker_id,
+            claim_id,
+            "paused",
+            None,
+            None,
+            Some(reason),
         )
         .await
     }
@@ -242,36 +256,52 @@ async fn update_claim(
     event_id: Uuid,
     subscriber_id: &str,
     worker_id: Uuid,
+    claim_id: Uuid,
     target_status: &str,
     available_at: Option<OffsetDateTime>,
     error: Option<&str>,
+    pause_reason: Option<LifecycleDeliveryPauseReason>,
 ) -> Result<LifecycleOutboxRecord> {
-    let row = sqlx::query(
+    let mut transaction = store.pool().begin().await?;
+    // Serialize sibling ACK rollup on the fact; the last ACK sees all earlier committed siblings.
+    sqlx::query("select event_id from lifecycle_outbox where event_id = $1 for update")
+        .bind(event_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+    let changed = sqlx::query(
         r#"
         update lifecycle_outbox_deliveries
-        set status = $4, available_at = coalesce($5, available_at),
-            claimed_by = null, claimed_at = null,
-            delivered_at = case when $4 = 'delivered' then now() else null end,
-            last_error = $6
-        where event_id = $1 and subscriber_id = $2
-          and status = 'claimed' and claimed_by = $3
-        returning event_id, subscriber_id
+        set status = $5, available_at = coalesce($6, available_at),
+            claimed_by = null, claimed_at = null, claim_id = null, claim_expires_at = null,
+            delivered_at = case when $5 = 'delivered' then now() else null end,
+            last_error = case when $5 = 'paused' then coalesce($7, last_error) else $7 end, pause_reason = $8,
+            paused_at = case when $5 = 'paused' then now() else null end
+        where event_id = $1 and subscriber_id = $2 and status = 'claimed'
+          and claimed_by = $3 and claim_id = $4 and claim_expires_at > clock_timestamp()
         "#,
     )
     .bind(event_id)
     .bind(subscriber_id)
     .bind(worker_id)
+    .bind(claim_id)
     .bind(target_status)
     .bind(available_at)
     .bind(error)
-    .fetch_optional(store.pool())
+    .bind(pause_reason.map(|r| r.as_str()))
+    .execute(&mut *transaction)
     .await?
-    .ok_or_else(|| anyhow!("lifecycle outbox claim is missing or owned by another worker"))?;
-    let event_id = row.try_get("event_id")?;
-    let subscriber_id: String = row.try_get("subscriber_id")?;
-    find_delivery(store.pool(), event_id, &subscriber_id)
+    .rows_affected();
+    if changed != 1 {
+        return Err(LifecycleClaimLost.into());
+    }
+    if target_status == "delivered" {
+        sqlx::query("update lifecycle_outbox set status = 'delivered', delivered_at = now() where event_id = $1 and not exists (select 1 from lifecycle_outbox_deliveries where event_id = $1 and status <> 'delivered')").bind(event_id).execute(&mut *transaction).await?;
+    }
+    let record = find_delivery(&mut *transaction, event_id, subscriber_id)
         .await?
-        .ok_or_else(|| anyhow!("updated lifecycle delivery disappeared"))
+        .ok_or_else(|| anyhow!("updated lifecycle delivery disappeared"))?;
+    transaction.commit().await?;
+    Ok(record)
 }
 
 async fn find_delivery<'e, E>(
@@ -289,7 +319,7 @@ where
                outbox.graph_fingerprint, delivery.subscriber_id, delivery.handler_id,
                delivery.handler_version, delivery.status, delivery.attempt_count,
                delivery.available_at, delivery.claimed_by, delivery.claimed_at,
-               delivery.delivered_at
+               delivery.delivered_at, delivery.claim_id, delivery.claim_expires_at, delivery.pause_reason, delivery.paused_at
         from lifecycle_outbox outbox
         join lifecycle_outbox_deliveries delivery using (event_id)
         where outbox.event_id = $1 and delivery.subscriber_id = $2
@@ -339,6 +369,7 @@ fn map_record(row: sqlx::postgres::PgRow) -> Result<LifecycleOutboxRecord> {
         "pending" => LifecycleOutboxStatus::Pending,
         "claimed" => LifecycleOutboxStatus::Claimed,
         "delivered" => LifecycleOutboxStatus::Delivered,
+        "paused" => LifecycleOutboxStatus::Paused,
         other => bail!("invalid lifecycle outbox status {other}"),
     };
     Ok(LifecycleOutboxRecord {
@@ -357,6 +388,24 @@ fn map_record(row: sqlx::postgres::PgRow) -> Result<LifecycleOutboxRecord> {
         available_at: row.try_get("available_at")?,
         claimed_by: row.try_get("claimed_by")?,
         claimed_at: row.try_get("claimed_at")?,
+        claim_id: row.try_get("claim_id")?,
+        claim_expires_at: row.try_get("claim_expires_at")?,
+        pause_reason: row
+            .try_get::<Option<String>, _>("pause_reason")?
+            .map(|value| match value.as_str() {
+                "frozen_graph_unavailable" => {
+                    Ok(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
+                }
+                "frozen_handler_unavailable" => {
+                    Ok(LifecycleDeliveryPauseReason::FrozenHandlerUnavailable)
+                }
+                "authority_revoked" => Ok(LifecycleDeliveryPauseReason::AuthorityRevoked),
+                "installation_inactive" => Ok(LifecycleDeliveryPauseReason::InstallationInactive),
+                "retry_budget_exhausted" => Ok(LifecycleDeliveryPauseReason::RetryBudgetExhausted),
+                _ => Err(anyhow!("invalid lifecycle delivery pause reason")),
+            })
+            .transpose()?,
+        paused_at: row.try_get("paused_at")?,
         delivered_at: row.try_get("delivered_at")?,
     })
 }

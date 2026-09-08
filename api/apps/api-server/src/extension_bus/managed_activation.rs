@@ -600,7 +600,7 @@ impl ManagedExtensionComposition {
                     && s.fact_contract_id == record.contract_id
                     && s.fact_contract_version == record.contract_version
             })
-            .context("managed event frozen subscriber mismatch")?;
+            .ok_or(control_plane_contracts::ports::LifecycleDeliveryBlocked(control_plane_contracts::ports::LifecycleDeliveryPauseReason::FrozenHandlerUnavailable))?;
         if !matches!(
             subscriber.contributor_module_kind,
             ModuleKind::Runtime | ModuleKind::Capability
@@ -610,7 +610,9 @@ impl ManagedExtensionComposition {
         let binding = snapshot
             .bindings
             .get(&subscriber.contribution_id)
-            .context("managed subscriber execution binding missing")?;
+            .ok_or(control_plane_contracts::ports::LifecycleDeliveryBlocked(
+            control_plane_contracts::ports::LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
+        ))?;
         let delivery = decode_event_delivery(record)?;
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
         if delivery.workspace_id != workspace_id.to_string() {
@@ -628,7 +630,7 @@ impl ManagedExtensionComposition {
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
             .await?;
-        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+        self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
         let admitted = self
             .backend
             .admit_managed_event(runtime_core::runtime_backend::RuntimeManagedEventRequest {
@@ -640,7 +642,15 @@ impl ManagedExtensionComposition {
                     / 1_000_000) as i64,
                 delivery: delivery.clone(),
             })
-            .await?;
+            .await
+            .map_err(|error| -> anyhow::Error {
+                // No worker has started: the already validated frozen binding cannot be admitted.
+                // In-flight worker/process failures below remain retryable within the retry budget.
+                if matches!(&error, runtime_core::runtime_backend::RuntimeBackendError::Contract(_) | runtime_core::runtime_backend::RuntimeBackendError::Unavailable(_) | runtime_core::runtime_backend::RuntimeBackendError::MissingBackend | runtime_core::runtime_backend::RuntimeBackendError::UnsupportedOperation(_)) {
+                    tracing::warn!(%error, "frozen managed event handler admission unavailable");
+                    control_plane_contracts::ports::LifecycleDeliveryBlocked(control_plane_contracts::ports::LifecycleDeliveryPauseReason::FrozenHandlerUnavailable).into()
+                } else { error.into() }
+            })?;
         lease.release().await?;
         match admitted.await? {
             extension_contracts::ManagedEventOutcome::Acknowledged => {}
@@ -666,7 +676,7 @@ impl ManagedExtensionComposition {
                     .store
                     .lock_contribution_authority(binding.handle.identity().subject())
                     .await?;
-                self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+                self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
                 let installation = lease
                     .installation(binding.installation.id)
                     .context("managed publisher installation missing")?;
@@ -799,5 +809,53 @@ impl control_plane_contracts::ports::WorkspaceLifecyclePublicationSource
             .context("managed publication owner unavailable")?;
         let snapshot = owner.snapshot(workspace_id).await;
         Ok(snapshot.and_then(|s| s.publication_plan(contract_id, contract_version)))
+    }
+}
+
+impl ManagedExtensionComposition {
+    fn validate_event_current_binding(
+        &self,
+        binding: &ManagedContributionBinding,
+        workspace_id: Uuid,
+        lease: &dyn ContributionAuthorityLease,
+    ) -> Result<()> {
+        use control_plane_contracts::ports::{
+            LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason,
+        };
+        let installation =
+            lease
+                .installation(binding.installation.id)
+                .ok_or(LifecycleDeliveryBlocked(
+                    LifecycleDeliveryPauseReason::InstallationInactive,
+                ))?;
+        if installation.desired_state != domain::PluginDesiredState::ActiveRequested {
+            return Err(LifecycleDeliveryBlocked(
+                LifecycleDeliveryPauseReason::InstallationInactive,
+            )
+            .into());
+        }
+        if installation.metadata_json != binding.installation.metadata_json
+            || installation.organization != binding.installation.organization
+            || installation.provider_code != binding.installation.provider_code
+            || installation.plugin_version != binding.installation.plugin_version
+        {
+            return Err(LifecycleDeliveryBlocked(
+                LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
+            )
+            .into());
+        }
+        self.validate_current_binding(binding, workspace_id, lease)
+            .map_err(|error| {
+                if matches!(
+                    error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                    Some(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        _
+                    ))
+                ) {
+                    LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::AuthorityRevoked).into()
+                } else {
+                    error
+                }
+            })
     }
 }
