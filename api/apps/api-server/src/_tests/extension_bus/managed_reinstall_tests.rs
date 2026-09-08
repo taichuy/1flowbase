@@ -357,7 +357,7 @@ async fn root_2007_ir_f01_changed_reinstall_preserves_history() {
         assert!(snapshot
             .bindings
             .values()
-            .all(|b| b.handle.installation_id().as_str() != id.to_string()));
+            .all(|b| b.handle.identity().installation_id().as_str() != id.to_string()));
     }
     let mut state = (*state).clone();
     state.store = restarted.store.clone();
