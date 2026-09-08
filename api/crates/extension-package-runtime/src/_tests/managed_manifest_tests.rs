@@ -16,6 +16,11 @@ fn root_2007_ac_001_002_manifest_routes() {
     assert_eq!(managed.execution_bindings[0].handler, "compute");
     assert_eq!(managed.execution_bindings[1].handler, "render");
 
+    // Anchor the complete YAML line: declarations are indented six spaces, while
+    // execution bindings use four. A substring replacement would rename both sides.
+    let render_binding = "\n    - contribution_id: managed_fixture.render";
+    assert_eq!(MANAGED.matches(render_binding).count(), 1);
+
     for (name, raw) in [
         ("v1 cannot carry managed", MANAGED.replace("manifest_version: 2", "manifest_version: 1").replace("manifest/v2", "manifest/v1")),
         ("version mismatch", MANAGED.replace("manifest/v2", "manifest/v1")),
@@ -24,9 +29,9 @@ fn root_2007_ac_001_002_manifest_routes() {
         ("forged identity", MANAGED.replace("module_id: managed_fixture\n", "module_id: other\n")),
         ("host impersonation", MANAGED.replace("module_kind: runtime", "module_kind: trusted_host")),
         ("self grant", MANAGED.replace("    contributions:", "    granted_permissions: [admin]\n    contributions:")),
-        ("duplicate binding", MANAGED.replace("    - contribution_id: managed_fixture.render", "    - contribution_id: managed_fixture.compute")),
-        ("missing binding", MANAGED.split("    - contribution_id: managed_fixture.render").next().unwrap().to_owned()),
-        ("unknown binding", MANAGED.replace("    - contribution_id: managed_fixture.render", "    - contribution_id: unknown")),
+        ("duplicate binding", MANAGED.replace(render_binding, "\n    - contribution_id: managed_fixture.compute")),
+        ("missing binding", MANAGED.split(render_binding).next().unwrap().to_owned()),
+        ("unknown binding", MANAGED.replace(render_binding, "\n    - contribution_id: unknown")),
         ("invalid path", MANAGED.replace("entry: ui/render.json", "entry: ../render.json")),
         ("invalid execution pair", MANAGED.replace("execution_mode: declarative_only", "execution_mode: stateful_runtime_worker")),
         ("missing payload", MANAGED.replace("      handler: render", "      handler: render\n      payload: {kind: frontend_block, contribution_code: missing}")),

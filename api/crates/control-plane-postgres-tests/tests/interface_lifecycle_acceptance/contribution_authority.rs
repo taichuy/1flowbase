@@ -156,11 +156,28 @@ async fn root_2007_ac_002_009_contribution_authority() {
         .await
     });
     // Observe PostgreSQL's actual blocked writer, rather than interpreting elapsed time
-    // as evidence that the revoke reached its lock boundary. The relation OID pins this
-    // isolated fixture schema, so another concurrently running fixture cannot satisfy it.
+    // as evidence that the revoke reached its lock boundary. Admission now owns the
+    // workspace advisory lock before the revision row lock. Match this fixture's exact
+    // advisory key in the current database, not another workspace's blocked writer.
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
-            let blocked: bool = sqlx::query_scalar("select exists(select 1 from pg_locks l join pg_stat_activity a on a.pid=l.pid where l.relation='plugin_contribution_authorization_revisions'::regclass and a.wait_event_type='Lock' and cardinality(pg_blocking_pids(a.pid))>0)")
+            let blocked: bool = sqlx::query_scalar(
+                "with expected as (
+                    select hashtextextended('managed-workspace:' || $1::text, 0) as key
+                 )
+                 select exists(
+                    select 1 from pg_locks l
+                    join pg_stat_activity a on a.pid = l.pid
+                    cross join expected e
+                    where l.locktype = 'advisory' and not l.granted
+                      and l.database = (select oid from pg_database where datname = current_database())
+                      and l.classid = ((e.key >> 32) & 4294967295)::oid
+                      and l.objid = (e.key & 4294967295)::oid
+                      and l.objsubid = 1 and a.wait_event_type = 'Lock'
+                      and cardinality(pg_blocking_pids(a.pid)) > 0
+                 )",
+            )
+                .bind(fixture.actor.current_workspace_id.to_string())
                 .fetch_one(fixture.store.pool()).await.unwrap();
             if blocked { break; }
             assert!(!pending_revoke.is_finished(), "revoke must wait for the authority lease");
