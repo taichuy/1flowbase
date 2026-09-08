@@ -1,0 +1,894 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2007",
+  "supportedPlatform": "linux",
+  "targets": [
+    {
+      "id": "extension-contracts:lib",
+      "package": "extension-contracts",
+      "packageRoot": "api/crates/extension-contracts",
+      "target": "lib",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "extension-package-runtime:lib",
+      "package": "extension-package-runtime",
+      "packageRoot": "api/crates/extension-package-runtime",
+      "target": "lib",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "runtime-extension-sdk:lib",
+      "package": "runtime-extension-sdk",
+      "packageRoot": "api/crates/runtime-extension-sdk",
+      "target": "lib",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "plugin-framework:lib",
+      "package": "plugin-framework",
+      "packageRoot": "api/crates/plugin-framework",
+      "target": "lib",
+      "regressionFilters": [
+        "_tests::extension_bus"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "interface-runtime:lib",
+      "package": "interface-runtime",
+      "packageRoot": "api/crates/interface-runtime",
+      "target": "lib",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "runtime-extension-host:lib",
+      "package": "runtime-extension-host",
+      "packageRoot": "api/crates/runtime-extension-host",
+      "target": "lib",
+      "regressionFilters": [
+        "plugin_scope::tests::dispose_rejects_new_calls_and_waits_for_the_mounted_generation",
+        "_tests::managed_hook_transport",
+        "_tests::managed_event_transport"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "runtime-extension-host:runtime_host_lifecycle",
+      "package": "runtime-extension-host",
+      "packageRoot": "api/crates/runtime-extension-host",
+      "target": "runtime_host_lifecycle",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "control-plane:lib",
+      "package": "control-plane",
+      "packageRoot": "api/crates/control-plane",
+      "target": "lib",
+      "regressionFilters": [
+        "_tests::plugin_management::package_router",
+        "lifecycle_outbox_dispatcher",
+        "_tests::orchestration_runtime::service::runtime_events"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "storage-durable-postgres:lib",
+      "package": "storage-durable-postgres",
+      "packageRoot": "api/crates/storage/durable/postgres",
+      "target": "lib",
+      "regressionFilters": [
+        "_tests::lifecycle_outbox_repository_tests"
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "control-plane-postgres-tests:interface_lifecycle_acceptance",
+      "package": "control-plane-postgres-tests",
+      "packageRoot": "api/crates/control-plane-postgres-tests",
+      "target": "interface_lifecycle_acceptance",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "control-plane-postgres-tests:dependency_boundaries",
+      "package": "control-plane-postgres-tests",
+      "packageRoot": "api/crates/control-plane-postgres-tests",
+      "target": "dependency_boundaries",
+      "regressionFilters": [
+        ""
+      ],
+      "minimum": 1
+    },
+    {
+      "id": "api-server:lib",
+      "package": "api-server",
+      "packageRoot": "api/apps/api-server",
+      "target": "lib",
+      "regressionFilters": [
+        "_tests::extension_bus",
+        "_tests::interface_lifecycle_acceptance"
+      ],
+      "minimum": 1
+    }
+  ],
+  "required": [
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_activation_tests::root_2007_ac_001_002_package_activation",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_activation_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-07"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_candidate_switch",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "ac": [
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-01",
+        "AUTH-05",
+        "AUTH-06",
+        "AUTH-07",
+        "AUTH-08",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_historical_authority",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_candidate_tests.rs",
+      "ac": [
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-01",
+        "AUTH-05",
+        "AUTH-06",
+        "AUTH-07",
+        "AUTH-08",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_installed_publisher_and_subscribers",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "ac": [
+        "AC-005"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_static_namespace_and_contract",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_authority_tests.rs",
+      "ac": [
+        "AC-005"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_event_effect_tests::root_2007_ac_007_ack_loss_and_claim_fencing",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_event_effect_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_governance_tests::root_2007_ac_009_pause_revoke_retire",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_governance_tests.rs",
+      "ac": [
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-01",
+        "AUTH-05",
+        "AUTH-06",
+        "AUTH-07",
+        "AUTH-08",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_resource_tests::root_2007_ac_010_lane_budgets_owned_transactions_shutdown",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_resource_tests.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_snapshot_tests::root_2007_ac_008_snapshot_restart",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_snapshot_tests.rs",
+      "ac": [
+        "AC-008"
+      ],
+      "auth": [
+        "AUTH-05",
+        "AUTH-07",
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE",
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::interface_lifecycle_acceptance::contribution_authority::root_2007_contribution_authority_routes_are_independent",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/contribution_authority.rs",
+      "ac": [
+        "AC-002",
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-01",
+        "AUTH-02",
+        "AUTH-04",
+        "AUTH-05",
+        "AUTH-08"
+      ],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::interface_lifecycle_acceptance::managed_create_pair::root_2007_ac_003_004_managed_create_pair",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_create_pair.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_retirement_saturation",
+      "expected": 1,
+      "source": "api/apps/api-server/src/extension_bus/managed_activation/_tests/lifetime.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "name": "extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_snapshot_capacity",
+      "expected": 1,
+      "source": "api/apps/api-server/src/extension_bus/managed_activation/_tests/lifetime.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "control-plane-postgres-tests:interface_lifecycle_acceptance",
+      "name": "contribution_authority::root_2007_ac_002_009_contribution_authority",
+      "expected": 1,
+      "source": "api/crates/control-plane-postgres-tests/tests/interface_lifecycle_acceptance/contribution_authority.rs",
+      "ac": [
+        "AC-002",
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-01",
+        "AUTH-02",
+        "AUTH-04",
+        "AUTH-05",
+        "AUTH-08"
+      ],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "_tests::orchestration_runtime::service::runtime_events::resource_budgets::root_2007_ac_010_lane_budgets",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/_tests/orchestration_runtime/service/runtime_events/resource_budgets.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "_tests::orchestration_runtime::service::runtime_events::resource_budgets::root_2007_ac_010_lane_budgets_temporary_after_commit_scope",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/_tests/orchestration_runtime/service/runtime_events/resource_budgets.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "_tests::plugin_management::package_router::root_2007_ac_001_002_manifest_routes",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/_tests/plugin_management/package_router.rs",
+      "ac": [
+        "AC-001",
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-08"
+      ],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "lifecycle_outbox_dispatcher::budget_tests::root_2007_ac_010_lane_budgets_dispatcher_shutdown",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/_tests/lifecycle_outbox_budgets.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "lifecycle_outbox_dispatcher::budget_tests::root_2007_ac_010_lane_budgets_retry_capacity",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/_tests/lifecycle_outbox_budgets.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "control-plane:lib",
+      "name": "lifecycle_outbox_dispatcher::tests::root_2007_ac_007_dispatcher_pauses_unavailable_and_exhausted_attempts",
+      "expected": 1,
+      "source": "api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "extension-contracts:lib",
+      "name": "_tests::managed_hook_contract_tests::root_2007_ac_003_004_hook_transport_phase_and_identity_contract",
+      "expected": 1,
+      "source": "api/crates/extension-contracts/src/_tests/managed_hook_contract_tests.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": []
+    },
+    {
+      "target": "extension-package-runtime:lib",
+      "name": "_tests::managed_manifest_tests::root_2007_ac_001_002_manifest_routes",
+      "expected": 1,
+      "source": "api/crates/extension-package-runtime/src/_tests/managed_manifest_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-08"
+      ],
+      "env": []
+    },
+    {
+      "target": "extension-package-runtime:lib",
+      "name": "_tests::managed_manifest_tests::root_2007_ac_001_002_manifest_routes_preserve_typed_data_model_payload",
+      "expected": 1,
+      "source": "api/crates/extension-package-runtime/src/_tests/managed_manifest_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-08"
+      ],
+      "env": []
+    },
+    {
+      "target": "interface-runtime:lib",
+      "name": "_tests::invocation_tests::managed_context_tests::root_2007_ac_003_004_managed_context_completion_and_reporter_are_isolated",
+      "expected": 1,
+      "source": "api/crates/interface-runtime/src/_tests/managed_context_tests.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "interface-runtime:lib",
+      "name": "_tests::invocation_tests::managed_context_tests::root_2007_ac_003_004_managed_late_report_cannot_mark_another_observer_failed",
+      "expected": 1,
+      "source": "api/crates/interface-runtime/src/_tests/managed_context_tests.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "plugin-framework:lib",
+      "name": "_tests::extension_bus::compiler_tests::root_2007_managed_contributions_do_not_union_authority",
+      "expected": 1,
+      "source": "api/crates/plugin-framework/src/_tests/extension_bus/compiler_tests.rs",
+      "ac": [
+        "AC-002",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-03"
+      ],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_event_transport::root_2007_ac_005_event_authority_real_worker",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs",
+      "ac": [
+        "AC-005"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_event_transport::root_2007_ac_005_event_authority_untrusted_output",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs",
+      "ac": [
+        "AC-005"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_event_transport::root_2007_ac_010_lane_budgets_event_cancel_and_reap",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_event_transport.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_cancel_timeout_and_scope_cleanup",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_real_sdk_roundtrip_and_identity",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_scope_generation_phase_and_deadline",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_003_004_hook_transport_untrusted_output_is_bounded_and_rejected",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_008_snapshot_restart_exact_worker_versions",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-008"
+      ],
+      "auth": [
+        "AUTH-05",
+        "AUTH-07",
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_010_lane_budgets_capability_output_and_reap",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "_tests::managed_hook_transport::root_2007_ac_010_lane_budgets_worker_cancel_and_reap",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "name": "runtime_host::managed_hash_budget_tests::root_2007_ac_010_lane_budgets_hash_shutdown",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hash_budget.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-host:runtime_host_lifecycle",
+      "name": "root_2007_ac_002_contribution_execution_identity",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-host/tests/runtime_host_lifecycle.rs",
+      "ac": [
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-09"
+      ],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-sdk:lib",
+      "name": "_tests::managed_event_tests::root_2007_ac_005_event_authority_wire_rejects_identity_and_wrong_version",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-sdk/src/_tests/managed_event_tests.rs",
+      "ac": [
+        "AC-005"
+      ],
+      "auth": [
+        "AUTH-04",
+        "AUTH-10"
+      ],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-sdk:lib",
+      "name": "_tests::managed_event_tests::root_2007_ac_007_processed_effect_is_finite_and_matches_delivery",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-sdk/src/_tests/managed_event_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-sdk:lib",
+      "name": "_tests::managed_hook_tests::root_2007_ac_003_004_hook_transport_sdk",
+      "expected": 1,
+      "source": "api/crates/runtime-extension-sdk/src/_tests/managed_hook_tests.rs",
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-06",
+        "AUTH-09"
+      ],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_006_transaction_targets",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "ac": [
+        "AC-006"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_claim_fencing_and_paused_backlog",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_concurrent_ack_rollup",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "_tests::lifecycle_outbox_repository_tests::root_2007_ac_007_delivery_migration_preserves_old_targets",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/lifecycle_outbox_repository_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "_tests::plugin::plugin_data_repository_tests::root_2007_ac_007_receipt_commit_failure_rolls_back_effect",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/plugin/plugin_data_repository_tests.rs",
+      "ac": [
+        "AC-007"
+      ],
+      "auth": [
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": []
+    },
+    {
+      "target": "storage-durable-postgres:lib",
+      "name": "managed_operation_lifetime::tests::root_2007_ac_010_lane_budgets_owned_operation_shutdown",
+      "expected": 1,
+      "source": "api/crates/storage/durable/postgres/src/_tests/managed_operation_lifetime.rs",
+      "ac": [
+        "AC-010"
+      ],
+      "auth": [],
+      "env": []
+    }
+  ],
+  "node": [
+    {
+      "id": "package-regression",
+      "args": [
+        "--test",
+        "scripts/node/plugin/_tests/core.test.js",
+        "scripts/node/plugin/_tests/modules.test.js",
+        "scripts/node/plugin/_tests/managed-manifest.test.js"
+      ],
+      "ac": [
+        "AC-001",
+        "AC-002"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-08"
+      ]
+    },
+    {
+      "id": "outbox-boundary",
+      "args": [
+        "--test",
+        "scripts/node/verify/_tests/lifecycle-outbox-production-boundary.test.js"
+      ],
+      "ac": [
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-009",
+        "AC-010"
+      ],
+      "auth": [
+        "AUTH-10"
+      ]
+    },
+    {
+      "id": "interface-boundary",
+      "args": [
+        "scripts/node/interface-lifecycle-boundary/cli.js"
+      ],
+      "ac": [
+        "AC-003",
+        "AC-004"
+      ],
+      "auth": [
+        "AUTH-04"
+      ]
+    },
+    {
+      "id": "finite-selector",
+      "args": [
+        "--test",
+        "scripts/node/plugin-composition-test-batch/_tests/runner.test.js",
+        "scripts/node/github-quality-gate/_tests/plugin-composition.test.js"
+      ],
+      "ac": [
+        "AC-010"
+      ],
+      "auth": []
+    }
+  ]
+}

@@ -38,6 +38,7 @@ const DEFAULT_AGGREGATE_SCOPES = [
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
 ];
 const VALID_SCOPES = new Set([
+  'plugin-composition-2007',
   'ci',
   'repo',
   'repo-tooling',
@@ -73,6 +74,9 @@ function buildGateCommand({ repoRoot, scope }) {
   }
 
   const command = process.execPath;
+  if (scope === 'plugin-composition-2007') {
+    return { command, args: [path.join(repoRoot, 'scripts/node/plugin-composition-test-batch/runner.js')], cwd: repoRoot };
+  }
 
   if (scope === 'coverage') {
     return {
