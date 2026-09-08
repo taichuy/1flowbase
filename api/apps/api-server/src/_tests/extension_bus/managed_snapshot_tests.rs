@@ -432,6 +432,28 @@ async fn root_2007_ac_008_snapshot_restart() {
         runtime.delivery.deliver(&old).await.unwrap_err(),
         LifecycleDeliveryPauseReason::AuthorityRevoked,
     );
+    let stale_retry = runtime
+        .store
+        .retry_lifecycle_fact(
+            old.event_id,
+            &old.subscriber_id,
+            worker_id,
+            old.claim_id.unwrap(),
+            time::OffsetDateTime::now_utc(),
+            "revoked claim must not regain pending state",
+        )
+        .await
+        .unwrap_err();
+    assert!(stale_retry.is::<LifecycleClaimLost>(), "{stale_retry:#}");
+    let exact_resume = ResumeManagedLifecycleDelivery {
+        event_id: old.event_id,
+        subscriber_id: old.subscriber_id.clone(),
+        expected: ManagedFrozenExecutionTarget {
+            graph_fingerprint: old.graph_fingerprint.clone(),
+            handler_id: old.handler_id.clone(),
+            handler_version: old.handler_version.clone(),
+        },
+    };
     authority
         .grant(
             &actor,
@@ -440,6 +462,40 @@ async fn root_2007_ac_008_snapshot_restart() {
         )
         .await
         .unwrap();
+    let still_paused = runtime
+        .store
+        .managed_lifecycle_delivery(installations[0].installation.id, workspace, &exact_resume)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        still_paused.status,
+        LifecycleOutboxStatus::Paused,
+        "regrant never implicitly resumes a revoked delivery"
+    );
+    assert_eq!(
+        still_paused.pause_reason,
+        Some(LifecycleDeliveryPauseReason::AuthorityRevoked)
+    );
+    assert!(still_paused.claim_id.is_none());
+    ManagedExecutionService::new(runtime.store.clone(), runtime.composition.governance())
+        .resume(
+            &actor,
+            installations[0].installation.id,
+            exact_resume.clone(),
+        )
+        .await
+        .unwrap();
+    let resumed = runtime
+        .store
+        .managed_lifecycle_delivery(installations[0].installation.id, workspace, &exact_resume)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(resumed.status, LifecycleOutboxStatus::Pending);
+    assert_eq!(resumed.graph_fingerprint, old.graph_fingerprint);
+    assert_eq!(resumed.handler_id, old.handler_id);
+    assert_eq!(resumed.handler_version, old.handler_version);
     // The new authority revision changes a graph; retain a current-graph durable target too.
     runtime
         .composition
@@ -448,23 +504,20 @@ async fn root_2007_ac_008_snapshot_restart() {
         .unwrap();
     let before_restart = runtime.composition.snapshot(workspace).await.unwrap();
     create(&runtime.store, actor_id, workspace).await;
-    runtime
-        .store
-        .retry_lifecycle_fact(
-            old.event_id,
-            &old.subscriber_id,
-            worker_id,
-            old.claim_id.unwrap(),
-            time::OffsetDateTime::now_utc(),
-            "restart fixture retains original target",
-        )
-        .await
-        .unwrap();
     let pending = runtime
         .store
         .claim_lifecycle_facts(worker_id, 32, time::Duration::minutes(5))
         .await
         .unwrap();
+    let reclaimed_old = pending
+        .iter()
+        .find(|record| record.event_id == old.event_id && record.subscriber_id == old.subscriber_id)
+        .expect("explicitly resumed original target must acquire a fresh claim");
+    assert!(reclaimed_old.claim_id.is_some());
+    assert_ne!(reclaimed_old.claim_id, old.claim_id);
+    assert_eq!(reclaimed_old.graph_fingerprint, old.graph_fingerprint);
+    assert_eq!(reclaimed_old.handler_id, old.handler_id);
+    assert_eq!(reclaimed_old.handler_version, old.handler_version);
     let current = pending
         .iter()
         .find(|r| {
