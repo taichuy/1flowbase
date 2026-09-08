@@ -213,14 +213,20 @@ impl Fixture {
                     response,
                 )
             } else {
-                assert_ne!(response["result"]["isError"], true, "{response}");
+                assert_ne!(
+                    response["result"]["isError"], true,
+                    "protocol=MCP body={response}"
+                );
                 (201, response["result"]["structuredContent"].clone())
             }
         } else {
             let response = create_pair::http(&self.app, &self.cookie, &self.csrf, body).await;
             let status = response.status().as_u16();
             if status == 422 {
-                return (status, Value::Null);
+                let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+                    .await
+                    .expect("protocol=HTTP status=422: read rejection body");
+                return (status, json!(String::from_utf8_lossy(&bytes)));
             }
             let response = response_json(response).await;
             (
@@ -426,11 +432,80 @@ async fn root_2007_ac_003_004_managed_create_pair() {
             fixture.trace().is_empty(),
             "workspace worker must never inspect a system target"
         );
+        fixture.mode("");
+        let forged_scope = Uuid::now_v7();
+        assert_ne!(forged_scope, fixture.actor.current_workspace_id);
         let mut forged = body("root2007_forged_scope");
-        forged["scope_id"] = json!(Uuid::now_v7());
-        assert!(fixture.call(mcp, forged).await.0 >= 400);
-        assert!(fixture.trace().is_empty());
-        assert_eq!(fixture.model_count("root2007_forged_scope").await, 0);
+        forged["scope_id"] = json!(forged_scope);
+        let before_forged = create_pair::persisted(fixture.state.store.pool()).await;
+        let (status, response) = fixture.call(mcp, forged).await;
+        let protocol = if mcp { "MCP" } else { "HTTP" };
+        let diagnostic = format!("protocol={protocol} status={status} body={response}");
+        if mcp {
+            // The probe maps only six legal fields. Unmapped scope_id cannot override
+            // the sealed actor's workspace; verify committed facts, not raw DTO rejection.
+            assert_eq!(status, 201, "{diagnostic}");
+            let rows = sqlx::query_scalar::<_, Value>(
+                "select to_jsonb(m) from model_definitions m where code=$1",
+            )
+            .bind("root2007_forged_scope")
+            .fetch_all(fixture.state.store.pool())
+            .await
+            .unwrap();
+            assert_eq!(rows.len(), 1, "{diagnostic}: exactly one committed model");
+            assert_eq!(rows[0]["id"], response["id"], "{diagnostic}");
+            assert_eq!(rows[0]["scope_kind"], "workspace", "{diagnostic}");
+            assert_eq!(
+                rows[0]["scope_id"],
+                fixture.actor.current_workspace_id.to_string(),
+                "{diagnostic}: database ownership must use trusted workspace"
+            );
+            assert_eq!(
+                rows[0]["created_by"],
+                fixture.actor.user_id.to_string(),
+                "{diagnostic}: database creator must use trusted actor"
+            );
+            assert_eq!(response["scope_id"], rows[0]["scope_id"], "{diagnostic}");
+            let forged_writes: i64 = sqlx::query_scalar(
+                "select (select count(*) from model_definitions where scope_id=$1)
+                    + (select count(*) from model_fields where scope_id=$1)
+                    + (select count(*) from scope_data_model_grants where scope_id=$1)
+                    + (select count(*) from audit_logs where scope_id=$1 or workspace_id=$1)",
+            )
+            .bind(forged_scope)
+            .fetch_one(fixture.state.store.pool())
+            .await
+            .unwrap();
+            assert_eq!(forged_writes, 0, "{diagnostic}: no forged workspace writes");
+            // Checks all five phases plus invocation/registry/graph/revision correlation,
+            // workspace, installation and actor identity on every real worker frame.
+            assert_trace(
+                &fixture,
+                &[
+                    "authorization",
+                    "admission",
+                    "before",
+                    "after",
+                    "completion",
+                ],
+            );
+        } else {
+            assert_eq!(status, 422, "{diagnostic}: HTTP rejects unknown scope_id");
+            assert!(
+                fixture.trace().is_empty(),
+                "{diagnostic}: no worker admission"
+            );
+            assert_eq!(
+                fixture.model_count("root2007_forged_scope").await,
+                0,
+                "{diagnostic}"
+            );
+            assert_eq!(
+                create_pair::persisted(fixture.state.store.pool()).await,
+                before_forged,
+                "{diagnostic}: rejection must not persist model, fields, grants or audits"
+            );
+        }
         core_deny(&fixture, mcp).await;
         frozen_graph(&fixture, mcp).await;
         revoked_between_stages(&fixture, mcp).await;
