@@ -28,6 +28,28 @@ function passedExact(text, name, code) {
   return code === 0 && text.split(/\r?\n/u).includes(`test ${name} ... ok`)
     && /test result: ok\. 1 passed; 0 failed; 0 ignored;/u.test(text);
 }
+function nodeTapResult(text, code) {
+  const lines = text.split(/\r?\n/u);
+  const counts = {};
+  const reject = reason => ({ passed: false, counts, reason });
+  if (code !== 0) return reject(`Node exited with ${code}`);
+  if (lines.filter(line => line === 'TAP version 13').length !== 1) return reject('missing or duplicate TAP header');
+  for (const field of ['tests', 'suites', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
+    const matches = lines.filter(line => new RegExp(`^# ${field} \\d+$`, 'u').test(line));
+    if (matches.length !== 1) return reject(`missing or duplicate TAP ${field} summary`);
+    counts[field] = Number(matches[0].split(' ').at(-1));
+    if (!Number.isSafeInteger(counts[field])) return reject(`invalid TAP ${field} count`);
+  }
+  const plans = lines.filter(line => /^1\.\.[1-9]\d*$/u.test(line));
+  const points = lines.flatMap(line => { const match = /^ok ([1-9]\d*)\b/u.exec(line); return match ? [Number(match[1])] : []; });
+  if (plans.length !== 1 || points.length === 0 || Number(plans[0].slice(3)) !== points.length
+      || points.some((number, index) => number !== index + 1)) return reject('missing, duplicate or inconsistent TAP root plan/results');
+  if (counts.tests < 1 || counts.pass !== counts.tests) return reject('zero or incomplete Node tests');
+  if (['fail', 'cancelled', 'skipped', 'todo'].some(field => counts[field] !== 0)) return reject('failed, cancelled, skipped or todo Node tests');
+  if (lines.some(line => /^\s*(?:not ok\b|Bail out!)/u.test(line)
+      || /^\s*ok\b.*#\s*(?:SKIP|TODO)\b/iu.test(line))) return reject('non-passing TAP test point');
+  return { passed: true, counts, reason: null };
+}
 function validateSources(root, data = manifest) {
   const requiredKeys = new Set();
   for (const entry of data.required) {
@@ -68,4 +90,4 @@ function validateSources(root, data = manifest) {
     if (!data.required.some(row => row[prefix === 'AC' ? 'ac' : 'auth'].includes(id))) throw new Error(`unmapped ${id}`);
   }
 }
-module.exports = { manifest, parseList, selectTests, passedExact, validateSources };
+module.exports = { manifest, parseList, selectTests, passedExact, nodeTapResult, validateSources };

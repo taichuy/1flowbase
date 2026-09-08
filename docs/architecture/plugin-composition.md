@@ -1,6 +1,6 @@
 # 插件组合与事件交付
 
-本文描述当前源码的有限机制。源码、示例与验收 fixture 已提供；Root #2007 的集中 QA 尚未执行，本文不构成验收通过或生产就绪证据。
+本文描述当前源码的有限机制。源码、示例与验收 fixture 已提供；Root #2007 的当前修复候选尚待集中 QA，本文不构成验收通过或生产就绪证据。
 
 ## 治理、安装与授权
 
@@ -58,9 +58,15 @@ claim 身份每次领取独立，过期 worker ACK 不能确认新 claim。冻�
 | hash / loading | 4，permit 随真实阻塞工作保留 |
 | 当前工作区 / 保留快照 / 冻结引用 | 各 256；满额拒绝，不驱逐存活对象 |
 | 退休标记 | 4096；满额拒绝 |
+| 治理状态历史 | 首个 256 条候选元数据窗口；额外 1 条检测 `deliveries_truncated`，不读取历史 payload |
+| 退休 / 删除积压检查 | 安装 / 历史作用域 / 贡献限定的未完成元数据，最多检查 4096 条；应用与数据库各 5 秒预算，无法证明为空则返回 Busy |
 | 受管 capability 消息 | request / stdout / stderr 各 1 MiB |
 | 临时 AfterCommit lane | 4096，含完成幂等标记；容量失败 attempts=0 |
 | Outbox dispatcher | 单批 32；deadline 10 秒且不越过 30 秒 lease；最多 5 次；诊断 4096 字节 |
+
+状态响应保留 `deliveries`，并增加 `deliveries_truncated`。查询按 event_id / subscriber_id 读取首个 256 条候选窗口；已验证属于其他安装的行被排除，因此返回数可以少于 256。`deliveries_truncated=true` 表示还有候选历史未检查，不能把当前列表当成完整历史或空积压证明。单条 resume 使用 installation / workspace / event / subscriber / graph / handler / version 精确查询，最多读取一个目标 payload。
+
+退休 / 删除的安全检查不使用展示页：SQL 先限定安装、历史授权作用域、贡献与未完成状态，再有界遍历元数据。超过 4096 条或 5 秒预算返回 `managed_backlog_check_busy`（HTTP 409），不误判为空；已完成历史不参与检查。删除直接关联历史 scope，不先收集所有工作区。native subscriber 的精确目标使用 SQL EXISTS，在数据库内投影 Create / processed 的 workspace；未知 legacy 或不能验证的 scope 保守阻塞，不能通过分页绕过。
 
 `ApiRuntimeShutdown` 先关闭 dispatcher 新批次并等待真实 batch（15 秒），再依次等待 composition owner（15 秒）、store Create/E2 owner（15 秒）、冻结引用（15 秒）。已有 Create 必须仍能冻结，故引用 gate 不能提前关闭。最后 Host 关闭运行时并等待 hash（5 秒）、scope / worker（5 秒），再做普通清理；成功后才清空 composition。超时报告未完成，不删除数据库 backlog。子进程 owner 在取消时仍持有 lease 直到 kill / reap；reap 失败保留 permit 并报告未完成。
 
@@ -70,10 +76,17 @@ required 事件通道保留背压，诊断通道即使接收者丢弃也保留�
 
 SDK 与 fixture 的构建、打包命令见 [SDK README](../../api/crates/runtime-extension-sdk/README.md) 和 [A fixture](../../api/plugins/fixtures/acme.composition-a/README.md)。使用仓库根目录、Linux、锁定依赖与实际 SDK worker，不能把旧 Python fixture 当成 typed Hook/event worker。
 
-有限门禁 scope 为 `plugin-composition-2007`。Root 冻结并推送候选后，从同一候选 ref dispatch 工作流：
+有限门禁 scope 为 `plugin-composition-2007`。Root 冻结并推送候选后，先核对远程分支 SHA，再以该分支名 dispatch；两个输入仍使用完整冻结 SHA。GitHub 的 dispatch ref 使用 branch / tag 名，不能用裸 SHA 代替：
 
 ```bash
-gh workflow run quality-gate.yml --ref "$CANDIDATE_SHA" \
+: "${CANDIDATE_SHA:?请先设置 Root 已冻结的完整候选 SHA}"
+candidate_remote_sha="$(git ls-remote --exit-code origin refs/heads/codex/plugin-composition-2007 | cut -f1)"
+if [ "$candidate_remote_sha" != "$CANDIDATE_SHA" ]; then
+  echo '远程分支与冻结候选不一致，停止 dispatch' >&2
+  exit 1
+fi
+gh workflow run quality-gate.yml --repo taichuy/1flowbase \
+  --ref codex/plugin-composition-2007 \
   -f scope=plugin-composition-2007 -f target_branch="$CANDIDATE_SHA" \
   -f candidate_sha="$CANDIDATE_SHA"
 ```
@@ -87,4 +100,4 @@ export API_DATABASE_URL="$DATABASE_URL"
 node scripts/node/plugin-composition-test-batch/runner.js
 ```
 
-runner 校验 checkout / workflow SHA，串行构建真实 SDK examples 和 12 个 Rust test target，核对 47 个必需完整测试名，与既定回归过滤范围合并去重后逐项精确执行；另运行 4 组 Node 命令。缺名、零测试、忽略、失败、环境缺失都不能算通过。实际回归总数由编译产物 `--list` 决定，不预报通过数。报告及逐命令日志位于 `tmp/test-governance/2007`，工作流始终尝试上传 artifact。AC / AUTH 映射是证据索引，最终验收由 Root 集中 QA 结算。
+runner 校验 checkout / workflow SHA，串行构建真实 SDK examples 和 12 个 Rust test target，核对 47 个必需完整测试名，与既定回归过滤范围合并去重后逐项精确执行；另运行 4 组 Node 命令，其中测试命令显式使用 `--test-reporter=tap`，不依赖 Node 24 的终端展示默认值。TAP 证据必须有一致计划 / 结果、非零 tests、pass=tests、fail/cancelled/skipped/todo 全为零且进程退出码为零；单有 tests 数不能算通过。编译并行度复用 `scripts/node/testing/verify-runtime.js` 的 CPU 配置，CI 使用 runner 实际可用 CPU 数；Cargo 命令始终串行，每个 Rust 命令以 `--exact` 选择一项测试。缺名、零测试、忽略、失败、环境缺失都不能算通过。实际回归总数由编译产物 `--list` 决定，不预报通过数。报告及逐命令日志位于 `tmp/test-governance/2007`，工作流始终尝试上传 artifact，报告记录各 Node 组的独立状态、计数和实际 Cargo 并行度。dispatch 请求被拒且没有创建 run 时没有测试执行证据，不能计为一次验证或重试。AC / AUTH 映射是证据索引，最终验收由 Root 集中 QA 结算。

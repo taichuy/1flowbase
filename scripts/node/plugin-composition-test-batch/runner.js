@@ -3,13 +3,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { manifest, parseList, selectTests, passedExact, validateSources } = require('./selection.js');
+const { getAvailableParallelism, loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
+const { manifest, parseList, selectTests, passedExact, nodeTapResult, validateSources } = require('./selection.js');
 const root = path.resolve(__dirname, '../../..');
 const output = path.join(root, 'tmp/test-governance/2007');
-const report = { schema: 1, scope: manifest.scope, startedAt: new Date().toISOString(), status: 'running', candidate: null, commands: [], targets: [], tests: [], blockers: [], identities: [], manifest };
+const report = { schema: 1, scope: manifest.scope, startedAt: new Date().toISOString(), status: 'running', candidate: null, commands: [], node: [], targets: [], tests: [], blockers: [], identities: [], manifest };
 fs.mkdirSync(output, { recursive: true });
 let commandIndex = 0;
-const env = { ...process.env, RUST_TEST_THREADS: '1' };
+const env = { ...process.env };
+delete env.RUST_TEST_THREADS; // Every Rust command selects exactly one test; the chain itself is serial.
 function save() {
   report.finishedAt = new Date().toISOString();
   report.mapping = Object.fromEntries(['ac', 'auth'].flatMap(kind => [...new Set(manifest.required.flatMap(row => row[kind]))].sort().map(id => [id, manifest.required.filter(row => row[kind].includes(id)).map(row => ({ target: row.target, name: row.name, status: report.tests.find(test => test.target === row.target && test.name === row.name)?.status || 'not_run' }))])));
@@ -51,6 +53,11 @@ try {
   validateSources(root);
   for (const variable of ['DATABASE_URL', 'API_DATABASE_URL']) if (!env[variable]) throw new Error(`${variable} is required; no silent database fallback`);
   env.CARGO_TARGET_DIR = path.resolve(root, env.CARGO_TARGET_DIR || 'tmp/quality-gate-cache/plugin-composition-2007/target');
+  const availableParallelism = getAvailableParallelism();
+  const runtimeConfig = loadVerifyRuntimeConfig({ repoRoot: root, env, availableParallelism });
+  env.CARGO_BUILD_JOBS = String(runtimeConfig.backend.cargoJobs);
+  report.resources = { availableParallelism, cargoJobs: runtimeConfig.backend.cargoJobs };
+
   identity(path.join(__dirname, 'manifest.json'));
   for (const target of manifest.targets) identity(path.join(root, target.packageRoot, 'Cargo.toml'));
   for (const file of ['api/Cargo.lock', 'api/crates/runtime-extension-sdk/Cargo.toml', 'api/crates/runtime-extension-sdk/src/_tests/managed_hook_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/managed_event_worker.rs', 'api/plugins/fixtures/acme.composition-a/manifest.yaml', 'api/plugins/fixtures/acme.composition-a/event-manifest.yaml', 'api/plugins/fixtures/acme.composition-b/manifest.yaml', 'api/plugins/fixtures/acme.composition-c/manifest.yaml']) identity(path.join(root, file));
@@ -66,7 +73,11 @@ try {
   }
   for (const node of manifest.node) {
     const result = run(node.id, process.execPath, node.args);
-    if (result.code !== 0 || (node.args.includes('--test') && !/# tests [1-9]\d*/u.test(result.text))) report.blockers.push(`${node.id}: failed or zero Node tests`);
+    const evidence = node.args.includes('--test') ? nodeTapResult(result.text, result.code)
+      : { passed: result.code === 0, counts: null, reason: result.code === 0 ? null : `Node command exited with ${result.code}` };
+    report.node.push({ id: node.id, ...evidence, commandIndex });
+    if (!evidence.passed) report.blockers.push(`${node.id}: ${evidence.reason}`);
+    save();
   }
   for (const target of manifest.targets) {
     const targetReport = { id: target.id, status: 'not_run', selected: [] };
@@ -95,7 +106,7 @@ try {
           report.blockers.push(`${target.id}/${name}: missing ${missing.join(', ')}`);
           continue;
         }
-        const result = run(`test-${target.id}`, binary, [name, '--exact', '--test-threads=1', '--format=pretty', '--color=never'], { cwd, timeout: 5 * 60 * 1000 });
+        const result = run(`test-${target.id}`, binary, [name, '--exact', '--format=pretty', '--color=never'], { cwd, timeout: 5 * 60 * 1000 });
         const passed = passedExact(result.text, name, result.code);
         report.tests.push({ target: target.id, name, expected: 1, status: passed ? 'passed' : 'failed', commandIndex });
         if (!passed) report.blockers.push(`${target.id}/${name}: failed, ignored, timed out or wrong actual count`);

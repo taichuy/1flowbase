@@ -241,7 +241,6 @@ jobs:
     env:
       PLUGIN_COMPOSITION_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/plugin-composition-2007/target
-      CARGO_BUILD_JOBS: "2"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase

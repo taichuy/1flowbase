@@ -835,6 +835,7 @@
       "id": "package-regression",
       "args": [
         "--test",
+        "--test-reporter=tap",
         "scripts/node/plugin/_tests/core.test.js",
         "scripts/node/plugin/_tests/modules.test.js",
         "scripts/node/plugin/_tests/managed-manifest.test.js"
@@ -852,6 +853,7 @@
       "id": "outbox-boundary",
       "args": [
         "--test",
+        "--test-reporter=tap",
         "scripts/node/verify/_tests/lifecycle-outbox-production-boundary.test.js"
       ],
       "ac": [
@@ -882,6 +884,7 @@
       "id": "finite-selector",
       "args": [
         "--test",
+        "--test-reporter=tap",
         "scripts/node/plugin-composition-test-batch/_tests/runner.test.js",
         "scripts/node/github-quality-gate/_tests/plugin-composition.test.js"
       ],
