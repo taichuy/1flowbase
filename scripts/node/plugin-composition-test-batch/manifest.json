@@ -828,6 +828,67 @@
       ],
       "auth": [],
       "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_changed_reinstall_preserves_history",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-008",
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-05",
+        "AUTH-08",
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_identical_archive_restores_artifact",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-008",
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-05",
+        "AUTH-08",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_upgrade_and_concurrent_identity",
+      "expected": 1,
+      "source": "api/apps/api-server/src/_tests/extension_bus/managed_reinstall_tests.rs",
+      "ac": [
+        "AC-001",
+        "AC-002",
+        "AC-008",
+        "AC-009"
+      ],
+      "auth": [
+        "AUTH-02",
+        "AUTH-06",
+        "AUTH-08",
+        "AUTH-09",
+        "AUTH-10"
+      ],
+      "env": [
+        "MANAGED_EVENT_WORKER_FIXTURE"
+      ]
     }
   ],
   "node": [

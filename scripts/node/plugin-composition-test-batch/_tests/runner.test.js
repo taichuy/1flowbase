@@ -5,7 +5,18 @@ const { manifest, parseList, selectTests, passedExact, nodeTapResult, validateSo
 const target = { id: 'fixture:lib', regressionFilters: ['old::'], minimum: 1 };
 const required = [{ target: target.id, name: 'new::root_2007_case', expected: 1 }];
 test('finite manifest covers actual Root source inventory and all AC/AUTH rows', () => {
-  assert.equal(manifest.required.length, 47);
+  assert.equal(manifest.required.length, 50);
+  const reinstall = manifest.required.filter(entry => entry.name.includes('::managed_reinstall_tests::'));
+  assert.deepEqual(reinstall.map(entry => entry.name.split('::').at(-1)).sort(), [
+    'root_2007_ir_f01_changed_reinstall_preserves_history',
+    'root_2007_ir_f01_identical_archive_restores_artifact',
+    'root_2007_ir_f01_upgrade_and_concurrent_identity',
+  ]);
+  for (const entry of reinstall) {
+    assert.equal(entry.target, 'api-server:lib');
+    assert.equal(entry.expected, 1);
+    assert.deepEqual(entry.env, ['MANAGED_EVENT_WORKER_FIXTURE']);
+  }
   assert.equal(manifest.targets.length, 12);
   assert.equal(manifest.node.length, 4);
   for (const command of manifest.node.filter(command => command.args.includes('--test'))) {

@@ -615,6 +615,11 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
             handler_version: version.clone(),
         },
     };
+    // IR-F01 old-data compatibility: an earlier installer could overwrite the manifest while
+    // retaining this installation and its delivery rows. No new ownership write can repair it;
+    // reads and subsequent revoke/disable must use the original frozen delivery identity.
+    sqlx::query("update extension_installations set metadata_json=jsonb_set(metadata_json,'{managed,module,contributions}','[]'::jsonb) where id=$1")
+        .bind(installation).execute(store.pool()).await.unwrap();
     let page = store
         .managed_lifecycle_delivery_page(installation, workspace)
         .await
@@ -625,6 +630,57 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         .deliveries
         .iter()
         .all(|row| row.event_id != input.event_id));
+    assert!(page
+        .deliveries
+        .iter()
+        .all(|row| row.subscriber_id == subscriber));
+
+    // SQL may conservatively admit an unrecognized version, but must not hide malformed
+    // legacy ownership merely because its last component happens to name another install.
+    let foreign_id = Uuid::now_v7();
+    let foreign_subscriber = format!("managed.{workspace}.aaa-retired-contribution");
+    let foreign_version = format!("{}:{foreign_id}", version.rsplit_once(':').unwrap().0);
+    let overflow = foreign_version.replacen(":1:", ":18446744073709551616:", 1);
+    let huge_generation = foreign_version.replacen(":1:", ":999999999999999999999999:", 1);
+    let invalid_algorithm = foreign_version.replacen(":sha256:", ":SHA256:", 1);
+    for (candidate, expected_legacy) in [
+        (foreign_version.clone(), false),
+        (overflow, true),
+        (huge_generation, true),
+        (invalid_algorithm, true),
+        (format!("{foreign_version}\n"), true),
+        (
+            format!("bad-epoch:{}", foreign_version.split_once(':').unwrap().1),
+            true,
+        ),
+    ] {
+        assert_eq!(
+            managed_handler_installation(&candidate).is_none(),
+            expected_legacy
+        );
+        sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,delivered_at) values($1,$2,$2,$3,'delivered',now()) on conflict(event_id,subscriber_id) do update set handler_version=excluded.handler_version")
+            .bind(ids[0]).bind(&foreign_subscriber).bind(&candidate)
+            .execute(store.pool()).await.unwrap();
+        let observed = store
+            .managed_lifecycle_delivery_page(installation, workspace)
+            .await
+            .unwrap();
+        let legacy = observed
+            .deliveries
+            .iter()
+            .find(|row| row.subscriber_id == foreign_subscriber);
+        assert_eq!(legacy.is_some(), expected_legacy, "version={candidate}");
+        if let Some(legacy) = legacy {
+            assert_eq!(legacy.ownership, "unknown_legacy");
+        }
+    }
+    // This auxiliary row only probes the SQL/parser boundary; the genuine old target remains.
+    sqlx::query("delete from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2")
+        .bind(ids[0])
+        .bind(&foreign_subscriber)
+        .execute(store.pool())
+        .await
+        .unwrap();
     assert_eq!(
         store
             .managed_lifecycle_delivery(installation, workspace, &exact)

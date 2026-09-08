@@ -10,6 +10,7 @@ mod extension_installation;
 mod family;
 mod filesystem;
 mod install;
+mod managed_installation;
 mod package_router;
 
 #[cfg(test)]

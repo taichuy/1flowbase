@@ -462,16 +462,25 @@ pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
     Ok(record)
 }
 
-// No payloads leave the database for these metadata reads. The canonical installation document
-// and historical authorization scope select subscribers even after assignment removal/restart.
+// Subscriber scope and the frozen handler version are durable history. Current manifest
+// contributions may have changed under an older installer and cannot select historical rows.
+// SQL recognizes only a conservative subset of the canonical parser's valid owner shapes:
+// everything else remains unknown and reaches the Rust parser/legacy safety checks.
 const MANAGED_HISTORY_SCOPE: &str = r#"
     from extension_installations i
     join plugin_contribution_authorization_revisions r on r.installation_id=i.id
-    cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c
     join lifecycle_outbox_deliveries d
-      on d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id')
+      on starts_with(d.subscriber_id,'managed.'||r.workspace_id::text||'.')
     join lifecycle_outbox o on o.event_id=d.event_id
+    cross join lateral (
+      select case
+        when d.handler_version ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:sha256:[0-9a-fA-F]{64}:sha256:[0-9a-fA-F]{64}:[0-9]{1,20}:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        then case when split_part(d.handler_version,':',6)::numeric <= 18446744073709551615
+          then lower(split_part(d.handler_version,':',7)) end
+      end as known_installation
+    ) owner
     where i.id=$1 and ($2::uuid is null or r.workspace_id=$2)
+      and (owner.known_installation is null or owner.known_installation=i.id::text)
 "#;
 const MAX_MANAGED_BACKLOG_ROWS: usize = 4096;
 const MANAGED_BACKLOG_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -686,10 +695,9 @@ pub(crate) async fn pause_managed_installation_deliveries(
               and exists (
                 select 1 from extension_installations i
                 join plugin_contribution_authorization_revisions r on r.installation_id=i.id
-                cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c
                 where i.id=$1 and ($2::uuid is null or r.workspace_id=$2)
-                  and ($3::text is null or c->>'contribution_id'=$3)
-                  and d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id')
+                  and starts_with(d.subscriber_id,'managed.'||r.workspace_id::text||'.')
+                  and ($3::text is null or d.subscriber_id='managed.'||r.workspace_id::text||'.'||$3)
               )
             order by d.event_id,d.subscriber_id limit $6
         "#).bind(installation_id).bind(workspace_id).bind(contribution_id)

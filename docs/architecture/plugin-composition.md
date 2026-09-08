@@ -80,13 +80,13 @@ SDK 与 fixture 的构建、打包命令见 [SDK README](../../api/crates/runtim
 
 ```bash
 : "${CANDIDATE_SHA:?请先设置 Root 已冻结的完整候选 SHA}"
-candidate_remote_sha="$(git ls-remote --exit-code origin refs/heads/codex/plugin-composition-2007 | cut -f1)"
+candidate_remote_sha="$(git ls-remote --exit-code origin refs/heads/codex/plugin-composition-2007-reinstall | cut -f1)"
 if [ "$candidate_remote_sha" != "$CANDIDATE_SHA" ]; then
   echo '远程分支与冻结候选不一致，停止 dispatch' >&2
   exit 1
 fi
 gh workflow run quality-gate.yml --repo taichuy/1flowbase \
-  --ref codex/plugin-composition-2007 \
+  --ref codex/plugin-composition-2007-reinstall \
   -f scope=plugin-composition-2007 -f target_branch="$CANDIDATE_SHA" \
   -f candidate_sha="$CANDIDATE_SHA"
 ```
@@ -100,4 +100,14 @@ export API_DATABASE_URL="$DATABASE_URL"
 node scripts/node/plugin-composition-test-batch/runner.js
 ```
 
-runner 校验 checkout / workflow SHA，串行构建真实 SDK examples 和 12 个 Rust test target，核对 47 个必需完整测试名，与既定回归过滤范围合并去重后逐项精确执行；另运行 4 组 Node 命令，其中测试命令显式使用 `--test-reporter=tap`，不依赖 Node 24 的终端展示默认值。TAP 证据必须有一致计划 / 结果、非零 tests、pass=tests、fail/cancelled/skipped/todo 全为零且进程退出码为零；单有 tests 数不能算通过。编译并行度复用 `scripts/node/testing/verify-runtime.js` 的 CPU 配置，CI 使用 runner 实际可用 CPU 数；Cargo 命令始终串行，每个 Rust 命令以 `--exact` 选择一项测试。缺名、零测试、忽略、失败、环境缺失都不能算通过。实际回归总数由编译产物 `--list` 决定，不预报通过数。报告及逐命令日志位于 `tmp/test-governance/2007`，工作流始终尝试上传 artifact，报告记录各 Node 组的独立状态、计数和实际 Cargo 并行度。dispatch 请求被拒且没有创建 run 时没有测试执行证据，不能计为一次验证或重试。AC / AUTH 映射是证据索引，最终验收由 Root 集中 QA 结算。
+runner 校验 checkout / workflow SHA，串行构建真实 SDK examples 和 12 个 Rust test target，核对 50 个必需完整测试名，与既定回归过滤范围合并去重后逐项精确执行；另运行 4 组 Node 命令，其中测试命令显式使用 `--test-reporter=tap`，不依赖 Node 24 的终端展示默认值。TAP 证据必须有一致计划 / 结果、非零 tests、pass=tests、fail/cancelled/skipped/todo 全为零且进程退出码为零；单有 tests 数不能算通过。编译并行度复用 `scripts/node/testing/verify-runtime.js` 的 CPU 配置，CI 使用 runner 实际可用 CPU 数；Cargo 命令始终串行，每个 Rust 命令以 `--exact` 选择一项测试。缺名、零测试、忽略、失败、环境缺失都不能算通过。实际回归总数由编译产物 `--list` 决定，不预报通过数。报告及逐命令日志位于 `tmp/test-governance/2007`，工作流始终尝试上传 artifact，报告记录各 Node 组的独立状态、计数和实际 Cargo 并行度。dispatch 请求被拒且没有创建 run 时没有测试执行证据，不能计为一次验证或重试。AC / AUTH 映射是证据索引，最终验收由 Root 集中 QA 结算。
+
+### 同版本重装与历史投递
+
+受管插件的同一 `plugin_id + version` 以安装时持久保存的原归档 SHA256 为内容身份。只允许重传**同一原 archive bytes** 恢复制品；安装目录、保存的归档缺失时也可恢复，保留 installation ID、Disabled 意图、贡献 metadata、授权修订与历史积压。相同内容不会仅因存在积压被拒绝。重新打包即使 manifest 看起来相同，只要归档 digest 不同就不是原制品，同版本重装明确拒绝；同步修改 descriptor 与 execution binding 或改为旧包类别也不能覆盖原身份。安装准入和提交使用同一数据库连接的身份锁，支持单连接池，并发首次安装不能让两个不同归档取得同一版本身份。
+
+缺少可靠历史 checksum 的旧安装不能凭当前 manifest 认领或回填内容身份，恢复请求明确拒绝。新版本仍按独立安装、候选显式授权及正式切换执行；原版本授权不会自动授给候选，旧冻结投递也不转交新版本。
+
+历史投递归属依据已持久的安装身份、workspace 与冻结目标，不依赖当前 manifest 的 contribution 列表。停用及完整 host/composition 重启后，旧暂停记录仍可查、精确定位，并阻止删除所需制品；原 epoch 或执行图不可用时明确拒绝恢复。未知 legacy 记录保守保留并阻止清理，不能由新 manifest 推断归属。
+
+新增 IR01–03 在 `managed_reinstall_tests` 中经正式上传安装、真实 `MANAGED_EVENT_WORKER_FIXTURE`、Create owner、PostgreSQL 和 session/CSRF 治理 API 取证；IR04 在原必需 PostgreSQL fixture 中覆盖旧 metadata 已失去贡献的历史。50 项必需库存保留原 47 项与原 12 targets / 4 Node 组，所有新行为结论由冻结候选的集中 CI 给出，机械检查不代表测试通过。

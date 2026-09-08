@@ -230,13 +230,16 @@ impl StagedArtifactPath {
         if self.final_path.exists() {
             fs::rename(&self.final_path, &self.backup_path)?;
         }
-        if let Err(error) = fs::rename(&self.staged_path, &self.final_path) {
-            if self.backup_path.exists() {
-                let _ = fs::rename(&self.backup_path, &self.final_path);
-            }
-            return Err(error.into());
-        }
+        // Once the previous path has moved, the guard owns restoration even if publication fails.
         self.activated = true;
+        if let Err(error) = fs::rename(&self.staged_path, &self.final_path) {
+            return match self.rollback() {
+                Ok(()) => Err(error.into()),
+                Err(rollback) => Err(anyhow::Error::from(error).context(format!(
+                    "failed to restore previous installation artifact: {rollback}"
+                ))),
+            };
+        }
         Ok(())
     }
 
