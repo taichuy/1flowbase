@@ -357,6 +357,7 @@ async fn root_2007_ac_007_claim_fencing_and_paused_backlog() {
             .await
             .unwrap();
     assert_eq!(parent, "pending");
+    bounded_governance_history(&store).await;
 }
 
 #[tokio::test]
@@ -540,4 +541,259 @@ async fn root_2007_ac_007_concurrent_ack_rollup() {
         .await
         .unwrap();
     assert_eq!(state, "delivered");
+}
+
+// Extends the fixed Root claim/backlog fixture; no second test execution or new required name.
+async fn bounded_governance_history(store: &PgControlPlaneStore) {
+    use control_plane_contracts::ports::*;
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "Bounded governance")
+        .await
+        .unwrap()
+        .id;
+    let other_workspace = Uuid::now_v7();
+    let user = Uuid::now_v7();
+    sqlx::query("insert into users(id,account,email,password_hash,name,nickname,status) values($1,$2,$3,'x','Bounded','Bounded','active')")
+        .bind(user).bind(format!("bounded-{user}")).bind(format!("bounded-{user}@example.test"))
+        .execute(store.pool()).await.unwrap();
+    let installation = Uuid::now_v7();
+    let contribution = "acme.bounded.events";
+    sqlx::query("insert into extension_installations(id,category,organization,artifact_id,artifact_version,plugin_id,contract_version,protocol,display_name,source_kind,trust_level,verification_status,desired_state,signature_status,metadata_json,created_by) values($1,'runtime-extensions','acme','bounded','1.0.0','acme.bounded','1flowbase.extension-bus/v1','stdio_json','Bounded','uploaded','unverified','valid','active_requested','missing',$2,$3)")
+        .bind(installation).bind(serde_json::json!({"managed":{"module":{"contributions":[{"contribution_id":contribution}]}}}))
+        .bind(user).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into plugin_contribution_authorization_revisions(installation_id,workspace_id) values($1,$2)")
+        .bind(installation).bind(workspace).execute(store.pool()).await.unwrap();
+    let subscriber = format!("managed.{workspace}.{contribution}");
+    let version = format!(
+        "{}:sha256:{}:sha256:{}:1:{installation}",
+        Uuid::now_v7(),
+        "a".repeat(64),
+        "b".repeat(64)
+    );
+    let ids = (1..=MANAGED_DELIVERY_PAGE_LIMIT + 40)
+        .map(|i| Uuid::from_u128(i as u128))
+        .collect::<Vec<_>>();
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint,status,delivered_at) select id,id,'model_definition.committed','v1',decode('ff','hex'),now(),'bounded-graph','delivered',now() from unnest($1::uuid[]) id")
+        .bind(&ids).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,delivered_at) select id,$2,$2,$3,'delivered',now() from unnest($1::uuid[]) id")
+        .bind(&ids).bind(&subscriber).bind(&version).execute(store.pool()).await.unwrap();
+    let mut input = RecordLifecycleFactInput {
+        event_id: Uuid::now_v7(),
+        transaction_id: Uuid::now_v7(),
+        contract_id: "model_definition.committed".into(),
+        contract_version: "v1".into(),
+        canonical_payload: Vec::new(),
+        occurred_at: OffsetDateTime::now_utc(),
+        publication: LifecyclePublicationPlan {
+            graph_fingerprint: "bounded-graph".into(),
+            subscribers: vec![LifecycleSubscriberTarget {
+                subscriber_id: subscriber.clone(),
+                handler_id: subscriber.clone(),
+                handler_version: version.clone(),
+            }],
+        },
+    };
+    let fact = extension_contracts::AfterCommitFact::new(
+        extension_contracts::LifecycleFactId::new(input.event_id.to_string()).unwrap(),
+        extension_contracts::LifecycleTransactionId::new(input.transaction_id.to_string()).unwrap(),
+        1,
+        ModelDefinitionCommittedFact {
+            model_definition_id: Uuid::now_v7(),
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            scope_id: workspace,
+        },
+    );
+    input.canonical_payload = serde_json::to_vec(&fact).unwrap();
+    store.record_lifecycle_fact(&input).await.unwrap();
+    let exact = ResumeManagedLifecycleDelivery {
+        event_id: input.event_id,
+        subscriber_id: subscriber.clone(),
+        expected: ManagedFrozenExecutionTarget {
+            graph_fingerprint: input.publication.graph_fingerprint.clone(),
+            handler_id: subscriber.clone(),
+            handler_version: version.clone(),
+        },
+    };
+    let page = store
+        .managed_lifecycle_delivery_page(installation, workspace)
+        .await
+        .unwrap();
+    assert!(page.truncated);
+    assert_eq!(page.deliveries.len(), MANAGED_DELIVERY_PAGE_LIMIT);
+    assert!(page
+        .deliveries
+        .iter()
+        .all(|row| row.event_id != input.event_id));
+    assert_eq!(
+        store
+            .managed_lifecycle_delivery(installation, workspace, &exact)
+            .await
+            .unwrap()
+            .unwrap()
+            .canonical_payload,
+        input.canonical_payload,
+        "one exact target survives unrelated invalid historical payloads beyond the display window"
+    );
+    assert!(store
+        .managed_lifecycle_delivery(installation, other_workspace, &exact)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .managed_lifecycle_delivery(Uuid::now_v7(), workspace, &exact)
+        .await
+        .unwrap()
+        .is_none());
+    let mut wrong = exact.clone();
+    wrong.expected.handler_version.push('x');
+    assert!(store
+        .managed_lifecycle_delivery(installation, workspace, &wrong)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .managed_installation_has_backlog(
+            installation,
+            Some(workspace),
+            Some(&[exact.expected.clone()])
+        )
+        .await
+        .unwrap());
+    assert!(
+        store
+            .managed_installation_has_backlog(installation, None, None)
+            .await
+            .unwrap(),
+        "late pending blocks deletion"
+    );
+    assert!(!store
+        .managed_installation_has_backlog(installation, Some(other_workspace), None)
+        .await
+        .unwrap());
+    assert!(!store
+        .managed_installation_has_backlog(installation, Some(workspace), Some(&[wrong.expected]))
+        .await
+        .unwrap());
+    assert!(store
+        .lifecycle_target_has_backlog(
+            workspace,
+            "bounded-graph",
+            &input.publication.subscribers[0]
+        )
+        .await
+        .unwrap());
+    assert!(!store
+        .lifecycle_target_has_backlog(
+            other_workspace,
+            "bounded-graph",
+            &input.publication.subscribers[0]
+        )
+        .await
+        .unwrap());
+
+    // Native IDs carry no workspace prefix; only the canonical fact scope distinguishes them.
+    let native = LifecycleSubscriberTarget {
+        subscriber_id: "native-bounded".into(),
+        handler_id: "native-bounded".into(),
+        handler_version: "1".into(),
+    };
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version) values($1,$2,$3,$4)")
+        .bind(input.event_id).bind(&native.subscriber_id).bind(&native.handler_id).bind(&native.handler_version)
+        .execute(store.pool()).await.unwrap();
+    assert!(store
+        .lifecycle_target_has_backlog(workspace, "bounded-graph", &native)
+        .await
+        .unwrap());
+    assert!(!store
+        .lifecycle_target_has_backlog(other_workspace, "bounded-graph", &native)
+        .await
+        .unwrap());
+    assert!(!store
+        .lifecycle_target_has_backlog(workspace, "other-graph", &native)
+        .await
+        .unwrap());
+    sqlx::query("update lifecycle_outbox_deliveries set status='delivered',delivered_at=now() where event_id=$1")
+        .bind(input.event_id).execute(store.pool()).await.unwrap();
+    assert!(
+        !store
+            .managed_installation_has_backlog(installation, None, None)
+            .await
+            .unwrap(),
+        "delivered history is excluded from guard work"
+    );
+
+    let processed_event = Uuid::now_v7();
+    let processed_transaction = Uuid::now_v7();
+    let processed: extension_contracts::ManagedEventFact = serde_json::from_value(serde_json::json!({
+        "event_id":processed_event,"transaction_id":processed_transaction,
+        "contract_id":"acme.composition-a.processed","contract_version":"1","workspace_id":workspace,
+        "publisher":{"subject":{"installation_id":installation,"workspace_id":workspace,"contribution_id":contribution},
+            "artifact_fingerprint":format!("sha256:{}", "a".repeat(64)),"binding_fingerprint":format!("sha256:{}", "b".repeat(64))},
+        "causation_id":input.event_id,"correlation_id":input.event_id,
+        "payload":{"model_id":Uuid::now_v7(),"status":"processed","result_reference":null}
+    })).unwrap();
+    store
+        .record_lifecycle_fact(&RecordLifecycleFactInput {
+            event_id: processed_event,
+            transaction_id: processed_transaction,
+            contract_id: processed.contract_id.clone(),
+            contract_version: processed.contract_version.clone(),
+            canonical_payload: serde_json::to_vec(&processed).unwrap(),
+            occurred_at: OffsetDateTime::now_utc(),
+            publication: LifecyclePublicationPlan {
+                graph_fingerprint: "bounded-graph".into(),
+                subscribers: vec![native.clone()],
+            },
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .lifecycle_target_has_backlog(workspace, "bounded-graph", &native)
+        .await
+        .unwrap());
+    assert!(
+        !store
+            .lifecycle_target_has_backlog(other_workspace, "bounded-graph", &native)
+            .await
+            .unwrap(),
+        "processed identity reads publisher.subject.workspace_id, not a flattened alias"
+    );
+    assert!(store
+        .managed_lifecycle_delivery_page(installation, other_workspace)
+        .await
+        .unwrap()
+        .deliveries
+        .is_empty());
+
+    // Owner uncertainty remains conservative even when all prior completed rows exceed the page.
+    sqlx::query("update lifecycle_outbox_deliveries set status='pending',delivered_at=null,handler_version='legacy-unknown' where event_id=$1 and subscriber_id=$2")
+        .bind(input.event_id).bind(&subscriber).execute(store.pool()).await.unwrap();
+    assert!(store
+        .managed_installation_has_backlog(installation, Some(workspace), Some(&[]))
+        .await
+        .unwrap());
+    assert!(store
+        .managed_installation_has_backlog(installation, None, None)
+        .await
+        .unwrap());
+    assert!(store
+        .managed_lifecycle_delivery(installation, workspace, &exact)
+        .await
+        .unwrap()
+        .is_none());
+
+    // An unfinished inspection is explicitly Busy, not an empty target proof.
+    sqlx::query("update lifecycle_outbox_deliveries set status='delivered',delivered_at=now() where event_id=$1")
+        .bind(input.event_id).execute(store.pool()).await.unwrap();
+    let large_ids = (1000..5100).map(Uuid::from_u128).collect::<Vec<_>>();
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint) select id,id,'model_definition.committed','v1',decode('ff','hex'),now(),'bounded-other-graph' from unnest($1::uuid[]) id")
+        .bind(&large_ids).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version) select id,$2,$2,$3 from unnest($1::uuid[]) id")
+        .bind(&large_ids).bind(&subscriber).bind(&version).execute(store.pool()).await.unwrap();
+    assert!(store
+        .managed_installation_has_backlog(installation, Some(workspace), Some(&[exact.expected]))
+        .await
+        .unwrap_err()
+        .is::<ManagedLifecycleBacklogCheckBusy>());
 }

@@ -24,29 +24,11 @@ pub(super) fn target(
         ),
     }
 }
-fn delivery_projection(record: &LifecycleOutboxRecord) -> ManagedLifecycleDelivery {
-    ManagedLifecycleDelivery {
-        event_id: record.event_id,
-        subscriber_id: record.subscriber_id.clone(),
-        target: ManagedFrozenExecutionTarget {
-            graph_fingerprint: record.graph_fingerprint.clone(),
-            handler_id: record.handler_id.clone(),
-            handler_version: record.handler_version.clone(),
-        },
-        status: match record.status {
-            LifecycleOutboxStatus::Pending => "pending",
-            LifecycleOutboxStatus::Claimed => "claimed",
-            LifecycleOutboxStatus::Paused => "paused",
-            LifecycleOutboxStatus::Delivered => "delivered",
-        }
-        .into(),
-        pause_reason: record.pause_reason.map(|r| r.as_str().into()),
-        ownership: if managed_handler_installation(&record.handler_version).is_some() {
-            "verified"
-        } else {
-            "unknown_legacy"
-        }
-        .into(),
+fn backlog_error(error: anyhow::Error) -> anyhow::Error {
+    if error.is::<ManagedLifecycleBacklogCheckBusy>() {
+        control_plane::errors::ControlPlaneError::Conflict("managed_backlog_check_busy").into()
+    } else {
+        error
     }
 }
 // This local port owner retains the shared composition across detached retirement work.
@@ -58,46 +40,15 @@ impl ManagedExtensionComposition {
         Arc::new(ManagedCompositionGovernance(self.clone()))
     }
 
-    async fn installation_deliveries(
-        &self,
-        workspace_id: Uuid,
-        installation_id: Uuid,
-    ) -> Result<Vec<LifecycleOutboxRecord>> {
-        let installation = self
-            .store
-            .get_installation(installation_id)
-            .await?
-            .context("managed installation missing")?;
-        let manifest: plugin_framework::ManagedManifest =
-            serde_json::from_value(installation.metadata_json["managed"].clone())?;
-        let ids = manifest
-            .module
-            .contributions
-            .iter()
-            .map(|c| format!("managed.{workspace_id}.{}", c.contribution_id.as_str()))
-            .collect::<Vec<_>>();
-        Ok(self
-            .store
-            .managed_lifecycle_deliveries(&ids)
-            .await?
-            .into_iter()
-            .filter(|record| {
-                managed_handler_installation(&record.handler_version)
-                    .is_none_or(|owner| owner == installation_id)
-            })
-            .collect())
-    }
     async fn execution_state(
         &self,
         workspace_id: Uuid,
         installation_id: Uuid,
     ) -> Result<ManagedExecutionState> {
-        let deliveries = self
-            .installation_deliveries(workspace_id, installation_id)
-            .await?
-            .iter()
-            .map(delivery_projection)
-            .collect();
+        let page = self
+            .store
+            .managed_lifecycle_delivery_page(installation_id, workspace_id)
+            .await?;
         let snapshots = self.snapshots.lock().await;
         let mut executions = Vec::<ManagedExecutionReference>::new();
         let mut counted = std::collections::BTreeSet::new();
@@ -139,7 +90,8 @@ impl ManagedExtensionComposition {
             installation_id,
             workspace_id,
             executions,
-            deliveries,
+            deliveries: page.deliveries,
+            deliveries_truncated: page.truncated,
         })
     }
     async fn resume_delivery(
@@ -155,14 +107,9 @@ impl ManagedExtensionComposition {
             .into());
         }
         let record = self
-            .installation_deliveries(workspace_id, installation_id)
+            .store
+            .managed_lifecycle_delivery(installation_id, workspace_id, &input)
             .await?
-            .into_iter()
-            .find(|r| {
-                r.event_id == input.event_id
-                    && r.subscriber_id == input.subscriber_id
-                    && delivery_projection(r).target == input.expected
-            })
             .ok_or(control_plane::errors::ControlPlaneError::Conflict(
                 "managed_paused_target_missing",
             ))?;
@@ -320,23 +267,33 @@ impl ManagedExtensionComposition {
         // Freeze is closed before this query. Existing publication leases have finished their
         // commit/rollback, so an empty durable result cannot be invalidated by an old publisher.
         for snapshot in &snapshots {
+            let targets = snapshot
+                .lifecycle_plan
+                .as_ref()
+                .map(|plan| {
+                    plan.subscribers()
+                        .iter()
+                        .map(|subscriber| ManagedFrozenExecutionTarget {
+                            graph_fingerprint: snapshot.graph.fingerprint().as_str().into(),
+                            handler_id: subscriber.handler_id.clone(),
+                            handler_version: subscriber.handler_version.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let mut checked = std::collections::BTreeSet::new();
             for binding in snapshot.bindings.values() {
                 let scope = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
-                if self
-                    .installation_deliveries(scope, binding.installation.id)
-                    .await?
-                    .iter()
-                    .any(|record| {
-                        record.status != LifecycleOutboxStatus::Delivered
-                            && (managed_handler_installation(&record.handler_version).is_none()
-                                || (record.graph_fingerprint == expected.graph_fingerprint
-                                    && snapshot.lifecycle_plan.as_ref().is_some_and(|plan| {
-                                        plan.subscribers().iter().any(|s| {
-                                            s.handler_id == record.handler_id
-                                                && s.handler_version == record.handler_version
-                                        })
-                                    })))
-                    })
+                if checked.insert((scope, binding.installation.id))
+                    && self
+                        .store
+                        .managed_installation_has_backlog(
+                            binding.installation.id,
+                            Some(scope),
+                            Some(&targets),
+                        )
+                        .await
+                        .map_err(backlog_error)?
                 {
                     return Err(control_plane::errors::ControlPlaneError::Conflict(
                         "managed_execution_has_durable_deliveries",
@@ -345,19 +302,20 @@ impl ManagedExtensionComposition {
                 }
             }
             if let Some(plan) = &snapshot.lifecycle_plan {
-                let ids = plan
-                    .subscribers()
-                    .iter()
-                    .map(|subscriber| subscriber.subscriber_id.clone())
-                    .collect::<Vec<_>>();
-                for record in self.store.managed_lifecycle_deliveries(&ids).await? {
-                    if record.status != LifecycleOutboxStatus::Delivered
-                        && record.graph_fingerprint == expected.graph_fingerprint
-                        && plan.subscribers().iter().any(|subscriber| {
-                            subscriber.handler_id == record.handler_id
-                                && subscriber.handler_version == record.handler_version
-                        })
-                        && decode_event_delivery(&record)?.workspace_id == workspace_id.to_string()
+                for subscriber in plan.subscribers() {
+                    if self
+                        .store
+                        .lifecycle_target_has_backlog(
+                            workspace_id,
+                            snapshot.graph.fingerprint().as_str(),
+                            &LifecycleSubscriberTarget {
+                                subscriber_id: subscriber.subscriber_id.clone(),
+                                handler_id: subscriber.handler_id.clone(),
+                                handler_version: subscriber.handler_version.clone(),
+                            },
+                        )
+                        .await
+                        .map_err(backlog_error)?
                     {
                         return Err(control_plane::errors::ControlPlaneError::Conflict(
                             "managed_execution_has_durable_deliveries",
@@ -467,23 +425,17 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
         }
         drop(visible);
         for installation_id in installation_ids {
-            // Historical authorities are needed after assignment removal and host restart.
-            let workspaces = self
+            // SQL joins historical authority scopes directly; no unbounded workspace/history Vec.
+            if self
                 .store
-                .managed_installation_workspaces(*installation_id)
-                .await?;
-            for workspace in workspaces {
-                if self
-                    .installation_deliveries(workspace, *installation_id)
-                    .await?
-                    .iter()
-                    .any(|r| r.status != LifecycleOutboxStatus::Delivered)
-                {
-                    return Err(control_plane::errors::ControlPlaneError::Conflict(
-                        "managed_artifact_has_durable_deliveries",
-                    )
-                    .into());
-                }
+                .managed_installation_has_backlog(*installation_id, None, None)
+                .await
+                .map_err(backlog_error)?
+            {
+                return Err(control_plane::errors::ControlPlaneError::Conflict(
+                    "managed_artifact_has_durable_deliveries",
+                )
+                .into());
             }
         }
         Ok(Box::new((assembly, operation)))

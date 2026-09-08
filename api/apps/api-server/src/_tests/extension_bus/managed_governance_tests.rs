@@ -16,6 +16,58 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+// Small pre-existing fixture histories must remain complete; production callers use the page
+// and never turn it into a full-history proof.
+async fn deliveries(
+    runtime: &RuntimeFixture,
+    installation: Uuid,
+    workspace: Uuid,
+) -> Vec<LifecycleOutboxRecord> {
+    let page = runtime
+        .store
+        .managed_lifecycle_delivery_page(installation, workspace)
+        .await
+        .unwrap();
+    assert!(!page.truncated);
+    let mut records = Vec::new();
+    for row in page.deliveries {
+        records.push(
+            runtime
+                .store
+                .managed_lifecycle_delivery(
+                    installation,
+                    workspace,
+                    &ResumeManagedLifecycleDelivery {
+                        event_id: row.event_id,
+                        subscriber_id: row.subscriber_id,
+                        expected: row.target,
+                    },
+                )
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    records
+}
+
+async fn insert_completed_history(
+    runtime: &RuntimeFixture,
+    record: &LifecycleOutboxRecord,
+) -> Vec<Uuid> {
+    let ids = (1..=MANAGED_DELIVERY_PAGE_LIMIT + 40)
+        .map(|i| Uuid::from_u128(i as u128))
+        .collect::<Vec<_>>();
+    // Deliberately invalid payload bytes prove metadata reads do not decode unrelated history.
+    sqlx::query("insert into lifecycle_outbox(event_id,transaction_id,contract_id,contract_version,canonical_payload,occurred_at,graph_fingerprint,status,delivered_at) select id,id,$2,$3,decode('ff','hex'),now(),$4,'delivered',now() from unnest($1::uuid[]) id")
+        .bind(&ids).bind(&record.contract_id).bind(&record.contract_version).bind(&record.graph_fingerprint)
+        .execute(runtime.store.pool()).await.unwrap();
+    sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,delivered_at) select id,$2,$3,$4,'delivered',now() from unnest($1::uuid[]) id")
+        .bind(&ids).bind(&record.subscriber_id).bind(&record.handler_id).bind(&record.handler_version)
+        .execute(runtime.store.pool()).await.unwrap();
+    ids
+}
+
 async fn request(
     app: &axum::Router,
     cookie: &str,
@@ -472,14 +524,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     drop(blocker);
     tokio::time::timeout(std::time::Duration::from_secs(3), async {
         loop {
-            if runtime
-                .store
-                .managed_lifecycle_deliveries(&[a_record.subscriber_id.clone()])
-                .await
-                .unwrap()
-                .len()
-                == 2
-            {
+            if deliveries(&runtime, a, workspace).await.len() == 2 {
                 break;
             }
             tokio::task::yield_now().await;
@@ -526,11 +571,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         )
         .await
         .unwrap();
-    let pending = runtime
-        .store
-        .managed_lifecycle_deliveries(&[a_record.subscriber_id.clone()])
+    let pending = deliveries(&runtime, a, workspace)
         .await
-        .unwrap()
         .into_iter()
         .find(|r| r.status != LifecycleOutboxStatus::Delivered)
         .unwrap();
@@ -617,6 +659,53 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .0,
         StatusCode::FORBIDDEN
     );
+    let history_ids = insert_completed_history(&runtime, &pending).await;
+    let (_, bounded_view) = request(&app, &cookie, &csrf, "GET", &view, Value::Null).await;
+    assert_eq!(bounded_view["data"]["deliveries_truncated"], true);
+    assert_eq!(
+        bounded_view["data"]["deliveries"].as_array().unwrap().len(),
+        MANAGED_DELIVERY_PAGE_LIMIT
+    );
+    assert!(!bounded_view["data"]["deliveries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["event_id"] == pending.event_id.to_string()));
+    assert_eq!(
+        request(
+            &app,
+            &cookie,
+            &csrf,
+            "POST",
+            &retire_path,
+            target_g2.clone()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT,
+        "pending target beyond the displayed page still prevents retirement"
+    );
+    assert!(
+        runtime
+            .store
+            .managed_installation_has_backlog(a, None, None)
+            .await
+            .unwrap(),
+        "completed history cannot hide a late pending target from the deletion guard"
+    );
+    assert!(
+        runtime
+            .store
+            .managed_lifecycle_delivery(
+                a,
+                Uuid::now_v7(),
+                &serde_json::from_value(resume(&pending)).unwrap()
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "exact lookup remains workspace-scoped"
+    );
     assert_eq!(
         request(
             &app,
@@ -631,6 +720,12 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         StatusCode::OK,
         "only explicit exact regrant can resume"
     );
+    sqlx::query("delete from lifecycle_outbox where event_id=any($1)")
+        .bind(&history_ids)
+        .execute(&pool)
+        .await
+        .unwrap();
+
     let claimant = Uuid::now_v7();
     for record in runtime
         .store
@@ -640,11 +735,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     {
         acknowledge(&runtime, &record, claimant).await;
     }
-    assert!(runtime
-        .store
-        .managed_lifecycle_deliveries(&[pending.subscriber_id.clone()])
+    assert!(deliveries(&runtime, a, workspace)
         .await
-        .unwrap()
         .iter()
         .all(|r| r.status == LifecycleOutboxStatus::Delivered));
 
@@ -689,11 +781,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         })
         .await
         .unwrap();
-    let disabled = runtime
-        .store
-        .managed_lifecycle_deliveries(&[pending.subscriber_id.clone()])
+    let disabled = deliveries(&runtime, a, workspace)
         .await
-        .unwrap()
         .into_iter()
         .find(|record| record.status != LifecycleOutboxStatus::Delivered)
         .unwrap();
@@ -723,11 +812,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .await
         .unwrap();
     assert_eq!(
-        runtime
-            .store
-            .managed_lifecycle_deliveries(&[pending.subscriber_id.clone()])
+        deliveries(&runtime, a, workspace)
             .await
-            .unwrap()
             .into_iter()
             .find(|record| record.event_id == disabled.event_id)
             .unwrap()
@@ -913,6 +999,14 @@ async fn root_2007_ac_009_pause_revoke_retire() {
             .0,
         StatusCode::CONFLICT
     );
+    let _history_ids = insert_completed_history(&runtime, &legacy).await;
+    let (_, bounded_legacy) = request(&app, &cookie, &csrf, "GET", &view, Value::Null).await;
+    assert_eq!(bounded_legacy["data"]["deliveries_truncated"], true);
+    assert!(!bounded_legacy["data"]["deliveries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["event_id"] == event_id.to_string()));
     assert!(control_plane_contracts::ports::ManagedArtifactRemovalGuard::guard_managed_artifact_removal(runtime.composition.as_ref(),&[a]).await.is_err());
     assert_ne!(
         request(&app, &cookie, &csrf, "DELETE", &base, Value::Null)

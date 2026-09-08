@@ -287,19 +287,48 @@ pub struct ManagedExecutionState {
     pub workspace_id: Uuid,
     pub executions: Vec<ManagedExecutionReference>,
     pub deliveries: Vec<ManagedLifecycleDelivery>,
+    /// Only the first bounded subscriber-history window was inspected; this is not an empty-backlog proof.
+    pub deliveries_truncated: bool,
 }
+
+pub const MANAGED_DELIVERY_PAGE_LIMIT: usize = 256;
+#[derive(Debug)]
+pub struct ManagedLifecycleDeliveryPage {
+    pub deliveries: Vec<ManagedLifecycleDelivery>,
+    pub truncated: bool,
+}
+#[derive(Debug, thiserror::Error)]
+#[error("managed backlog check busy: bounded inspection did not prove the scope empty")]
+pub struct ManagedLifecycleBacklogCheckBusy;
 
 /// Durable rows remain the delivery truth. No separate pause or retirement table.
 #[async_trait]
 pub trait ManagedLifecycleOutboxRepository: Send + Sync {
-    async fn managed_installation_workspaces(
+    async fn managed_lifecycle_delivery_page(
         &self,
         installation_id: Uuid,
-    ) -> anyhow::Result<Vec<Uuid>>;
-    async fn managed_lifecycle_deliveries(
+        workspace_id: Uuid,
+    ) -> anyhow::Result<ManagedLifecycleDeliveryPage>;
+    async fn managed_lifecycle_delivery(
         &self,
-        subscriber_ids: &[String],
-    ) -> anyhow::Result<Vec<LifecycleOutboxRecord>>;
+        installation_id: Uuid,
+        workspace_id: Uuid,
+        input: &ResumeManagedLifecycleDelivery,
+    ) -> anyhow::Result<Option<LifecycleOutboxRecord>>;
+    /// None checks all installation backlog; Some checks exact targets plus unverifiable legacy rows.
+    /// Exhausting the bounded inspection budget returns Busy, never a false empty result.
+    async fn managed_installation_has_backlog(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Option<Uuid>,
+        targets: Option<&[ManagedFrozenExecutionTarget]>,
+    ) -> anyhow::Result<bool>;
+    async fn lifecycle_target_has_backlog(
+        &self,
+        workspace_id: Uuid,
+        graph_fingerprint: &str,
+        target: &LifecycleSubscriberTarget,
+    ) -> anyhow::Result<bool>;
 }
 
 /// Prevent artifact removal while host references can still create or execute a frozen target.

@@ -4,6 +4,7 @@ use control_plane_contracts::ports::{
     LifecycleClaimLost, LifecycleDeliveryPauseReason, LifecycleOutboxRecord,
     LifecycleOutboxRepository, LifecycleOutboxStatus, RecordLifecycleFactInput,
 };
+use futures_util::TryStreamExt;
 use sqlx::{Postgres, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -461,30 +462,189 @@ pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
     Ok(record)
 }
 
+// No payloads leave the database for these metadata reads. The canonical installation document
+// and historical authorization scope select subscribers even after assignment removal/restart.
+const MANAGED_HISTORY_SCOPE: &str = r#"
+    from extension_installations i
+    join plugin_contribution_authorization_revisions r on r.installation_id=i.id
+    cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c
+    join lifecycle_outbox_deliveries d
+      on d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id')
+    join lifecycle_outbox o on o.event_id=d.event_id
+    where i.id=$1 and ($2::uuid is null or r.workspace_id=$2)
+"#;
+const MAX_MANAGED_BACKLOG_ROWS: usize = 4096;
+const MANAGED_BACKLOG_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn backlog_query_error(error: anyhow::Error) -> anyhow::Error {
+    if matches!(error.downcast_ref::<sqlx::Error>(), Some(sqlx::Error::Database(database))
+        if database.code().as_deref() == Some("57014"))
+    {
+        anyhow!(control_plane_contracts::ports::ManagedLifecycleBacklogCheckBusy)
+    } else {
+        error
+    }
+}
+
 #[async_trait]
 impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgControlPlaneStore {
-    async fn managed_installation_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>> {
-        Ok(sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 order by workspace_id").bind(installation_id).fetch_all(self.pool()).await?)
-    }
-    async fn managed_lifecycle_deliveries(
+    async fn managed_lifecycle_delivery_page(
         &self,
-        subscriber_ids: &[String],
-    ) -> Result<Vec<LifecycleOutboxRecord>> {
-        let rows = sqlx::query("select event_id,subscriber_id from lifecycle_outbox_deliveries where subscriber_id = any($1) order by event_id,subscriber_id")
-            .bind(subscriber_ids).fetch_all(self.pool()).await?;
-        let mut records = Vec::new();
-        for row in rows {
-            if let Some(record) = find_delivery(
-                self.pool(),
-                row.try_get("event_id")?,
-                &row.try_get::<String, _>("subscriber_id")?,
-            )
-            .await?
-            {
-                records.push(record);
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<control_plane_contracts::ports::ManagedLifecycleDeliveryPage> {
+        use control_plane_contracts::ports::*;
+        // The extra row makes truncation explicit. Ownership filtering cannot turn this window
+        // into a complete-history claim when a different installation reused the contribution ID.
+        let sql = format!("select o.event_id,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} order by o.event_id,d.subscriber_id limit $3");
+        let rows = sqlx::query(&sql)
+            .bind(installation_id)
+            .bind(workspace_id)
+            .bind((MANAGED_DELIVERY_PAGE_LIMIT + 1) as i64)
+            .fetch_all(self.pool())
+            .await?;
+        let truncated = rows.len() > MANAGED_DELIVERY_PAGE_LIMIT;
+        let mut deliveries = Vec::new();
+        for row in rows.into_iter().take(MANAGED_DELIVERY_PAGE_LIMIT) {
+            let version: String = row.try_get("handler_version")?;
+            let owner = managed_handler_installation(&version);
+            if owner.is_some_and(|id| id != installation_id) {
+                continue;
             }
+            deliveries.push(ManagedLifecycleDelivery {
+                event_id: row.try_get("event_id")?,
+                subscriber_id: row.try_get("subscriber_id")?,
+                target: ManagedFrozenExecutionTarget {
+                    graph_fingerprint: row.try_get("graph_fingerprint")?,
+                    handler_id: row.try_get("handler_id")?,
+                    handler_version: version,
+                },
+                status: row.try_get("status")?,
+                pause_reason: row.try_get("pause_reason")?,
+                ownership: if owner.is_some() {
+                    "verified"
+                } else {
+                    "unknown_legacy"
+                }
+                .into(),
+            });
         }
-        Ok(records)
+        Ok(ManagedLifecycleDeliveryPage {
+            deliveries,
+            truncated,
+        })
+    }
+    async fn managed_lifecycle_delivery(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+        input: &control_plane_contracts::ports::ResumeManagedLifecycleDelivery,
+    ) -> Result<Option<LifecycleOutboxRecord>> {
+        use control_plane_contracts::ports::managed_handler_installation;
+        if managed_handler_installation(&input.expected.handler_version) != Some(installation_id) {
+            return Ok(None);
+        }
+        let sql = format!("select exists(select 1 {MANAGED_HISTORY_SCOPE} and o.event_id=$3 and d.subscriber_id=$4 and o.graph_fingerprint=$5 and d.handler_id=$6 and d.handler_version=$7)");
+        let matches: bool = sqlx::query_scalar(&sql)
+            .bind(installation_id)
+            .bind(workspace_id)
+            .bind(input.event_id)
+            .bind(&input.subscriber_id)
+            .bind(&input.expected.graph_fingerprint)
+            .bind(&input.expected.handler_id)
+            .bind(&input.expected.handler_version)
+            .fetch_one(self.pool())
+            .await?;
+        if !matches {
+            return Ok(None);
+        }
+        // At most one payload, addressed by the outbox/delivery primary key. The resume write
+        // rechecks this exact target under its authority transaction before changing state.
+        Ok(
+            find_delivery(self.pool(), input.event_id, &input.subscriber_id)
+                .await?
+                .filter(|record| {
+                    record.graph_fingerprint == input.expected.graph_fingerprint
+                        && record.handler_id == input.expected.handler_id
+                        && record.handler_version == input.expected.handler_version
+                }),
+        )
+    }
+    async fn managed_installation_has_backlog(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Option<Uuid>,
+        targets: Option<&[control_plane_contracts::ports::ManagedFrozenExecutionTarget]>,
+    ) -> Result<bool> {
+        use control_plane_contracts::ports::*;
+        tokio::time::timeout(MANAGED_BACKLOG_DEADLINE, async {
+            let mut transaction = self.pool().begin().await?;
+            sqlx::query("set local statement_timeout = '5s'").execute(&mut *transaction).await?;
+            let sql = format!("select o.graph_fingerprint,d.handler_id,d.handler_version {MANAGED_HISTORY_SCOPE} and d.status <> 'delivered' order by o.event_id,d.subscriber_id limit $3");
+            let mut rows = sqlx::query(&sql).bind(installation_id).bind(workspace_id)
+                .bind((MAX_MANAGED_BACKLOG_ROWS + 1) as i64).fetch(&mut *transaction);
+            let mut inspected = 0;
+            while let Some(row) = rows.try_next().await? {
+                inspected += 1;
+                if inspected > MAX_MANAGED_BACKLOG_ROWS { return Err(ManagedLifecycleBacklogCheckBusy.into()); }
+                let version: String = row.try_get("handler_version")?;
+                let owner = managed_handler_installation(&version);
+                if owner.is_some_and(|id| id != installation_id) { continue; }
+                if owner.is_none() || targets.is_none() { return Ok(true); }
+                let graph: String = row.try_get("graph_fingerprint")?;
+                let handler: String = row.try_get("handler_id")?;
+                if targets.is_some_and(|targets| targets.iter().any(|target|
+                    target.graph_fingerprint == graph && target.handler_id == handler
+                        && target.handler_version == version)) { return Ok(true); }
+            }
+            Ok(false)
+        }).await.map_err(|_| anyhow!(ManagedLifecycleBacklogCheckBusy))?
+            .map_err(backlog_query_error)
+    }
+    async fn lifecycle_target_has_backlog(
+        &self,
+        workspace_id: Uuid,
+        graph_fingerprint: &str,
+        target: &control_plane_contracts::ports::LifecycleSubscriberTarget,
+    ) -> Result<bool> {
+        use control_plane_contracts::ports::ManagedLifecycleBacklogCheckBusy;
+        // Native subscriber IDs are not workspace-qualified. Project only the finite fact's
+        // scope inside SQL; malformed/unknown scope blocks retirement, never means no backlog.
+        // Neither historical canonical bytes nor a list of workspaces is materialized in Rust.
+        let result = tokio::time::timeout(MANAGED_BACKLOG_DEADLINE, async {
+            let mut transaction = self.pool().begin().await?;
+            sqlx::query("set local statement_timeout = '5s'").execute(&mut *transaction).await?;
+            let found: bool = sqlx::query_scalar(r#"
+            select exists (
+                select 1 from lifecycle_outbox o
+                join lifecycle_outbox_deliveries d using(event_id)
+                cross join lateral (select case when o.graph_fingerprint=$1 and d.subscriber_id=$2
+                    and d.handler_id=$3 and d.handler_version=$4 and d.status <> 'delivered'
+                    then convert_from(o.canonical_payload,'UTF8')::jsonb end as fact) f
+                where o.graph_fingerprint=$1 and d.subscriber_id=$2
+                  and d.handler_id=$3 and d.handler_version=$4 and d.status <> 'delivered'
+                  and coalesce(case
+                    when o.contract_id='model_definition.committed' and o.contract_version='v1' then
+                      not (f.fact->>'fact_id'=o.event_id::text
+                        and f.fact->>'transaction_id'=o.transaction_id::text
+                        and f.fact#>>'{contract,contract_id}'=o.contract_id
+                        and f.fact#>>'{contract,contract_version}'=o.contract_version
+                        and f.fact#>>'{payload,scope_kind}'='workspace')
+                      or (f.fact#>>'{payload,scope_id}')::uuid=$5
+                    when o.contract_id='acme.composition-a.processed' and o.contract_version='1' then
+                      not (f.fact->>'event_id'=o.event_id::text
+                        and f.fact->>'transaction_id'=o.transaction_id::text
+                        and f.fact->>'contract_id'=o.contract_id
+                        and f.fact->>'contract_version'=o.contract_version
+                        and (f.fact->>'workspace_id')=(f.fact#>>'{publisher,subject,workspace_id}'))
+                      or (f.fact->>'workspace_id')::uuid=$5
+                    else true end, true)
+            )
+        "#).bind(graph_fingerprint).bind(&target.subscriber_id).bind(&target.handler_id)
+            .bind(&target.handler_version).bind(workspace_id).fetch_one(&mut *transaction).await?;
+            Ok::<bool, anyhow::Error>(found)
+        }).await.map_err(|_| anyhow!(ManagedLifecycleBacklogCheckBusy))?;
+        result.map_err(backlog_query_error)
     }
 }
 
