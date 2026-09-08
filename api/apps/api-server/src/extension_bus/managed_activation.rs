@@ -277,6 +277,82 @@ impl ManagedExtensionComposition {
         Ok(packages)
     }
 
+    /// Execute against the invocation's retained plan, with fresh authority at every admission.
+    /// A newer published workspace snapshot must never substitute the requested binding.
+    pub(crate) async fn execute_hook(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        contribution_id: &ContributionId,
+        principal: RuntimeExecutionPrincipal,
+        mut invocation: extension_contracts::ManagedHookInvocation,
+        input: extension_contracts::ManagedCreateHookInput,
+    ) -> Result<extension_contracts::ManagedHookOutcome> {
+        let binding = snapshot
+            .bindings
+            .get(contribution_id)
+            .context("managed hook contribution is absent from the frozen snapshot")?;
+        let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
+        if principal.workspace_id != workspace_id.to_string()
+            || invocation.graph_fingerprint != snapshot.graph.fingerprint().as_str()
+            || binding.descriptor.point_id.as_str() != input.point_id()
+            || binding.descriptor.contract_version.as_str() != "1"
+        {
+            bail!("managed hook frozen plan or scope mismatch");
+        }
+        let frozen_authority = snapshot
+            .authority
+            .contributions
+            .get(contribution_id)
+            .context("managed hook frozen authority is missing")?;
+        if &frozen_authority.subject != binding.handle.identity().subject() {
+            bail!("managed hook frozen authority subject mismatch");
+        }
+        // The adapter supplies invocation/registry identity; the composition owns grant identity.
+        invocation.authority_revision = frozen_authority.revision;
+        let lease = self
+            .store
+            .lock_contribution_authority(binding.handle.identity().subject())
+            .await?;
+        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
+        let admitted = self
+            .backend
+            .admit_managed_hook(runtime_core::runtime_backend::RuntimeManagedHookRequest {
+                handle: binding.handle.clone(),
+                principal,
+                invocation,
+                input,
+            })
+            .await?;
+        lease.release().await?;
+        Ok(admitted.await?)
+    }
+
+    fn validate_current_binding(
+        &self,
+        binding: &ManagedContributionBinding,
+        workspace_id: Uuid,
+        lease: &dyn ContributionAuthorityLease,
+    ) -> Result<()> {
+        let installation = lease
+            .installation(binding.installation.id)
+            .context("managed installation missing")?;
+        if installation.desired_state != domain::PluginDesiredState::ActiveRequested
+            || installation.metadata_json != binding.installation.metadata_json
+            || installation.organization != binding.installation.organization
+            || installation.provider_code != binding.installation.provider_code
+            || installation.plugin_version != binding.installation.plugin_version
+        {
+            bail!("managed installation is disabled or changed");
+        }
+        self.policy.effective_permissions(
+            installation,
+            workspace_id,
+            &binding.descriptor,
+            lease.snapshot(),
+        )?;
+        Ok(())
+    }
+
     pub(crate) async fn execute(
         &self,
         workspace_id: Uuid,
@@ -300,23 +376,7 @@ impl ManagedExtensionComposition {
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
             .await?;
-        let installation = lease
-            .installation(binding.installation.id)
-            .context("managed installation missing")?;
-        if installation.desired_state != domain::PluginDesiredState::ActiveRequested
-            || installation.metadata_json != binding.installation.metadata_json
-            || installation.organization != binding.installation.organization
-            || installation.provider_code != binding.installation.provider_code
-            || installation.plugin_version != binding.installation.plugin_version
-        {
-            bail!("managed installation is disabled or changed");
-        }
-        self.policy.effective_permissions(
-            installation,
-            workspace_id,
-            &binding.descriptor,
-            lease.snapshot(),
-        )?;
+        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
         let admitted = self
             .backend
             .admit_managed_capability_execute(RuntimeManagedCapabilityRequest {

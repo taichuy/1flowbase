@@ -264,6 +264,25 @@ pub type AdmittedManagedExecution = std::pin::Pin<
     Box<dyn std::future::Future<Output = Result<Value, RuntimeBackendError>> + Send + 'static>,
 >;
 
+/// An already-admitted typed Hook execution. Dropping cancels the worker and its mount lease.
+pub type AdmittedManagedHook = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<extension_contracts::ManagedHookOutcome, RuntimeBackendError>,
+            > + Send
+            + 'static,
+    >,
+>;
+
+/// Trusted invocation input. Runtime Host supplies the worker correlation and bound identity.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedHookRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub principal: RuntimeExecutionPrincipal,
+    pub invocation: extension_contracts::ManagedHookInvocation,
+    pub input: extension_contracts::ManagedCreateHookInput,
+}
+
 /// Host-only request. Neither the handle nor principal is taken from worker JSON.
 #[derive(Debug, Clone)]
 pub struct RuntimeManagedCapabilityRequest {
@@ -480,6 +499,11 @@ pub trait CapabilityRuntimePort: Send + Sync {
         &self,
         request: RuntimeManagedCapabilityRequest,
     ) -> Result<AdmittedManagedExecution, RuntimeBackendError>;
+    /// Holds current contribution authority until the exact Hook binding obtains its scope lease.
+    async fn admit_managed_hook(
+        &self,
+        request: RuntimeManagedHookRequest,
+    ) -> Result<AdmittedManagedHook, RuntimeBackendError>;
     /// The composition owner must admit each call against current contribution authority.
     /// Worker output is an opaque result and never grants credit or other host permissions.
     async fn managed_capability_execute(

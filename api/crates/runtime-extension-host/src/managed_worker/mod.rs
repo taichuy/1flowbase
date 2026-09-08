@@ -1,4 +1,6 @@
 mod binding;
+mod hook;
+mod hook_stdio;
 pub(crate) use binding::LoadedManagedBinding;
 
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -90,6 +92,18 @@ impl ManagedWorkers {
     ) -> FrameworkResult<impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static>
     {
         let mounted = self.exact_mount(&request.handle)?;
+        // Hook bindings must use their finite typed transport, never opaque capability JSON.
+        if mounted
+            .binding
+            .contribution
+            .point_id
+            .as_str()
+            .starts_with("1flowbase.model-definitions.create.")
+        {
+            return Err(invalid(
+                "managed Hook binding requires typed Hook admission",
+            ));
+        }
         if request.principal.workspace_id != request.handle.identity().workspace_id().as_str() {
             return Err(invalid(
                 "managed execution workspace does not match the mounted identity",

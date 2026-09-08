@@ -314,6 +314,12 @@ impl CapabilityRuntimePort for CompleteFakeBackend {
     ) -> Result<crate::runtime_backend::AdmittedManagedExecution, RuntimeBackendError> {
         unreachable!("compile fixture is not executed")
     }
+    async fn admit_managed_hook(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedHookRequest,
+    ) -> Result<crate::runtime_backend::AdmittedManagedHook, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
     async fn managed_capability_execute(
         &self,
         _request: crate::runtime_backend::RuntimeManagedCapabilityRequest,

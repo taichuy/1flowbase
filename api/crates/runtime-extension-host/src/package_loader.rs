@@ -111,6 +111,19 @@ impl PackageLoader {
             execution_mode: binding.execution_mode,
             limits: binding.runtime.limits.clone(),
             handler: binding.handler.clone(),
+            contribution: managed
+                .module
+                .contributions
+                .iter()
+                .find(|contribution| {
+                    &contribution.contribution_id == request.identity.contribution_id()
+                })
+                .ok_or_else(|| {
+                    PluginFrameworkError::invalid_provider_package(
+                        "managed contribution declaration missing",
+                    )
+                })?
+                .clone(),
         })
     }
 

@@ -3,6 +3,9 @@
 use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeArtifactResolver, ApiRuntimeServices};
 use async_trait::async_trait;
 use control_plane::{plugin_management::*, ports::AuthRepository};
+use extension_contracts::{
+    ManagedCreateHookInput, ManagedCreateView, ManagedHookInvocation, ManagedHookOutcome,
+};
 use plugin_framework::extension_bus::*;
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackendError, RuntimeExecutionPrincipal,
@@ -45,9 +48,14 @@ fn package_bytes(root: &Path) -> Vec<u8> {
         flate2::Compression::default(),
     ));
     for relative in ["manifest.yaml", "bin/worker.py"] {
-        archive
-            .append_path_with_name(root.join(relative), relative)
-            .unwrap();
+        let source = if relative == "bin/worker.py" {
+            PathBuf::from(std::env::var_os("MANAGED_HOOK_WORKER_FIXTURE").expect(
+                "build the managed_hook_worker SDK example for the real managed activation fixture",
+            ))
+        } else {
+            root.join(relative)
+        };
+        archive.append_path_with_name(source, relative).unwrap();
     }
     archive.into_inner().unwrap().finish().unwrap()
 }
@@ -61,6 +69,27 @@ fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
             / 1_000_000) as i64,
     }
 }
+fn hook_input(code: &str) -> ManagedCreateHookInput {
+    ManagedCreateHookInput::Before {
+        create: ManagedCreateView {
+            code: code.into(),
+            template_provider: "core".into(),
+            template_code: "general".into(),
+            template_version: "1".into(),
+        },
+    }
+}
+fn hook_invocation(
+    snapshot: &crate::extension_bus::ManagedWorkspaceSnapshot,
+) -> ManagedHookInvocation {
+    ManagedHookInvocation {
+        invocation_id: "activation-fixture".into(),
+        registry_fingerprint: "activation-fixture-registry".into(),
+        graph_fingerprint: snapshot.graph.fingerprint().as_str().into(),
+        authority_revision: 0,
+    }
+}
+
 fn grant(contribution: &str) -> GrantContributionPermission {
     let data = contribution == "data";
     GrantContributionPermission {
@@ -229,27 +258,54 @@ async fn root_2007_ac_001_002_package_activation() {
     assert_eq!(first_snapshot.authority.contributions.len(), 3);
     for name in ["first", "second"] {
         let id = ContributionId::new(format!("acme.composition-a.{name}")).unwrap();
-        let output = composition.execute(actor.current_workspace_id, &id, principal(actor.current_workspace_id, actor_id), json!({}), json!({"contribution_id":"forged", "workspace_id":"foreign", "granted_permissions":["admin"]})).await.unwrap();
-        assert_eq!(output["worker"], name);
+        let output = composition
+            .execute_hook(
+                &first_snapshot,
+                &id,
+                principal(actor.current_workspace_id, actor_id),
+                hook_invocation(&first_snapshot),
+                hook_input("identify"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            output,
+            ManagedHookOutcome::Deny {
+                classification: format!("fixture.{name}")
+            }
+        );
     }
     let first = ContributionId::new("acme.composition-a.first").unwrap();
+    assert!(composition
+        .execute_hook(
+            &first_snapshot,
+            &first,
+            principal(Uuid::now_v7(), actor_id),
+            hook_invocation(&first_snapshot),
+            hook_input("model")
+        )
+        .await
+        .is_err());
+    let mut wrong_graph = hook_invocation(&first_snapshot);
+    wrong_graph.graph_fingerprint = "foreign-graph".into();
+    assert!(composition
+        .execute_hook(
+            &first_snapshot,
+            &first,
+            principal(actor.current_workspace_id, actor_id),
+            wrong_graph,
+            hook_input("model")
+        )
+        .await
+        .is_err());
+    // The old opaque channel cannot be used to invoke a Hook or inject actor/scope claims.
     assert!(composition
         .execute(
             actor.current_workspace_id,
             &first,
-            principal(Uuid::now_v7(), actor_id),
-            json!({}),
-            json!({})
-        )
-        .await
-        .is_err());
-    assert!(composition
-        .execute(
-            Uuid::now_v7(),
-            &first,
             principal(actor.current_workspace_id, actor_id),
             json!({}),
-            json!({})
+            json!({"actor_id":"forged", "workspace_id":"foreign"})
         )
         .await
         .is_err());
@@ -293,12 +349,12 @@ async fn root_2007_ac_001_002_package_activation() {
             .unwrap()
     ));
     assert!(composition
-        .execute(
-            actor.current_workspace_id,
+        .execute_hook(
+            &first_snapshot,
             &first,
             principal(actor.current_workspace_id, actor_id),
-            json!({}),
-            json!({})
+            hook_invocation(&first_snapshot),
+            hook_input("model")
         )
         .await
         .is_err());
@@ -307,21 +363,22 @@ async fn root_2007_ac_001_002_package_activation() {
         .grant(&actor, installation_id, grant("first"))
         .await
         .unwrap();
-    let marker_root = std::env::temp_dir().join(format!("root-2007-admission-{}", Uuid::now_v7()));
-    std::fs::create_dir(&marker_root).unwrap();
-    let marker = marker_root.join("worker");
+    // Every installation has its own materialized executable; no process-global fixture files.
+    let worker =
+        Path::new(installed.local_artifact.local_path.as_ref().unwrap()).join("bin/worker.py");
     let running_owner = composition.clone();
     let running_first = first.clone();
+    let running_snapshot = first_snapshot.clone();
     let workspace_id = actor.current_workspace_id;
-    let running_marker = marker.clone();
+    let marker = worker.clone();
     let running = tokio::spawn(async move {
         running_owner
-            .execute(
-                workspace_id,
+            .execute_hook(
+                &running_snapshot,
                 &running_first,
                 principal(workspace_id, actor_id),
-                json!({}),
-                json!({"fixture_barrier":running_marker}),
+                hook_invocation(&running_snapshot),
+                hook_input("fixture_barrier"),
             )
             .await
     });
@@ -349,18 +406,22 @@ async fn root_2007_ac_001_002_package_activation() {
     .unwrap();
     assert!(!running.is_finished());
     assert!(composition
-        .execute(
-            workspace_id,
+        .execute_hook(
+            &first_snapshot,
             &first,
             principal(workspace_id, actor_id),
-            json!({}),
-            json!({})
+            hook_invocation(&first_snapshot),
+            hook_input("model")
         )
         .await
         .is_err());
     std::fs::write(marker.with_extension("release"), "release").unwrap();
-    assert_eq!(running.await.unwrap().unwrap()["worker"], "first");
-    std::fs::remove_dir_all(marker_root).unwrap();
+    assert_eq!(
+        running.await.unwrap().unwrap(),
+        ManagedHookOutcome::Continue
+    );
+    std::fs::remove_file(marker.with_extension("started")).unwrap();
+    std::fs::remove_file(marker.with_extension("release")).unwrap();
     authority
         .grant(&actor, installation_id, grant("first"))
         .await
