@@ -25,6 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match attack {
             "identity" => response["actor_id"] = serde_json::json!("forged"),
             "patch" => response["outcome"]["patch"] = serde_json::json!({"code":"forged"}),
+            "observed_patch" => {
+                response["outcome"] =
+                    serde_json::json!({"decision":"observed", "patch":{"code":"forged"}})
+            }
             "correlation" => response["call_id"] = serde_json::json!("forged"),
             "observer_deny" => {
                 response["outcome"] =

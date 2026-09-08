@@ -101,13 +101,34 @@ pub struct ManagedHookHostFrame {
     pub input: ManagedCreateHookInput,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "decision", rename_all = "snake_case")]
 pub enum ManagedHookOutcome {
     Continue,
     Deny { classification: String },
     Observed,
     Failed { classification: String },
+}
+
+impl<'de> Deserialize<'de> for ManagedHookOutcome {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Internally tagged unit variants may discard their remaining map. Empty struct
+        // variants force serde to validate every key without changing the public enum or wire.
+        #[derive(Deserialize)]
+        #[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
+        enum StrictOutcome {
+            Continue {},
+            Deny { classification: String },
+            Observed {},
+            Failed { classification: String },
+        }
+        Ok(match StrictOutcome::deserialize(deserializer)? {
+            StrictOutcome::Continue {} => Self::Continue,
+            StrictOutcome::Deny { classification } => Self::Deny { classification },
+            StrictOutcome::Observed {} => Self::Observed,
+            StrictOutcome::Failed { classification } => Self::Failed { classification },
+        })
+    }
 }
 
 /// Workers can echo correlation, never execution identity, actor, scope, target or patched input.

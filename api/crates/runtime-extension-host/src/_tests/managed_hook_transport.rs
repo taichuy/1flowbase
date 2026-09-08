@@ -232,12 +232,13 @@ async fn root_2007_ac_003_004_hook_transport_untrusted_output_is_bounded_and_rej
     for handler in [
         "attack.identity",
         "attack.patch",
+        "attack.observed_patch",
         "attack.correlation",
         "attack.flood",
         "crash",
         "attack.observer_deny",
     ] {
-        let input = if handler == "attack.observer_deny" {
+        let input = if matches!(handler, "attack.observer_deny" | "attack.observed_patch") {
             ManagedCreateHookInput::Completion {
                 terminal: ManagedHookTerminal::Succeeded,
             }
@@ -247,26 +248,33 @@ async fn root_2007_ac_003_004_hook_transport_untrusted_output_is_bounded_and_rej
         let mut workers = ManagedWorkers::default();
         let handle = workers
             .mount(identity(), fixture.binding(&input, handler))
-            .unwrap();
+            .unwrap_or_else(|error| panic!("{handler}: fixture mount failed: {error}"));
         // A flooding process sleeps 30 seconds after writing; the byte limit must abort it first.
         let error = tokio::time::timeout(
             Duration::from_secs(3),
-            workers.admit_hook(request(handle.clone(), input)).unwrap(),
+            workers
+                .admit_hook(request(handle.clone(), input))
+                .unwrap_or_else(|error| panic!("{handler}: fixture admission failed: {error}")),
         )
         .await
-        .expect("invalid worker output must terminate promptly")
-        .unwrap_err();
+        .unwrap_or_else(|_| panic!("{handler}: invalid worker output did not terminate promptly"))
+        .expect_err(&format!(
+            "{handler}: malicious worker output must be rejected"
+        ));
         assert!(
             !error.to_string().contains("deadline"),
             "{handler}: {error}"
         );
         tokio::time::timeout(
             Duration::from_secs(1),
-            workers.unmount(&handle).unwrap().dispose(),
+            workers
+                .unmount(&handle)
+                .unwrap_or_else(|error| panic!("{handler}: fixture unmount failed: {error}"))
+                .dispose(),
         )
         .await
-        .unwrap()
-        .unwrap();
+        .unwrap_or_else(|_| panic!("{handler}: fixture cleanup did not finish"))
+        .unwrap_or_else(|error| panic!("{handler}: fixture cleanup failed: {error}"));
     }
 }
 

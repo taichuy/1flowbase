@@ -101,6 +101,75 @@ fn root_2007_ac_003_004_hook_transport_phase_and_identity_contract() {
             );
         }
     }
+    // Exercise each outcome's raw map: validating an already-decoded unit value would
+    // miss serde discarding attacker-controlled fields inside the outcome object (QA1 B03).
+    for outcome in [
+        ManagedHookOutcome::Continue,
+        ManagedHookOutcome::Observed,
+        ManagedHookOutcome::Deny {
+            classification: "plugin.denied".into(),
+        },
+        ManagedHookOutcome::Failed {
+            classification: "plugin.failed".into(),
+        },
+    ] {
+        let encoded = serde_json::to_value(&outcome).unwrap();
+        assert_eq!(
+            serde_json::from_value::<ManagedHookOutcome>(encoded.clone()).unwrap(),
+            outcome
+        );
+        let expected_keys = if matches!(
+            outcome,
+            ManagedHookOutcome::Continue | ManagedHookOutcome::Observed
+        ) {
+            vec!["decision"]
+        } else {
+            vec!["classification", "decision"]
+        };
+        let mut keys = encoded
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(keys, expected_keys, "normal wire shape: {outcome:?}");
+        for field in [
+            "actor_id",
+            "workspace_id",
+            "execution_identity",
+            "generation",
+            "patch",
+            "code",
+            "template_code",
+            "call_id",
+        ] {
+            for value in [json!("forged"), json!(null), json!({"code":"forged"})] {
+                let mut raw = encoded.clone();
+                raw[field] = value;
+                assert!(
+                    serde_json::from_value::<ManagedHookOutcome>(raw.clone()).is_err(),
+                    "outcome={outcome:?}, extra={field}"
+                );
+                let frame = json!({"protocol":MANAGED_HOOK_PROTOCOL_V1, "call_id":"host-call", "phase":"before", "outcome":raw});
+                assert!(
+                    serde_json::from_value::<ManagedHookWorkerFrame>(frame).is_err(),
+                    "frame outcome={outcome:?}, extra={field}"
+                );
+            }
+        }
+        if matches!(
+            outcome,
+            ManagedHookOutcome::Continue | ManagedHookOutcome::Observed
+        ) {
+            let mut raw = encoded;
+            raw["classification"] = json!("unexpected");
+            assert!(
+                serde_json::from_value::<ManagedHookOutcome>(raw).is_err(),
+                "unit outcome={outcome:?} must have no payload"
+            );
+        }
+    }
     for raw in [
         json!({"phase":"authentication_adapter"}),
         json!({"phase":"before", "create": {"code":"x", "template_provider":"core", "template_code":"general", "template_version":"1", "actor_id":"forged"}}),
