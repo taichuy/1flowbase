@@ -44,6 +44,29 @@ pub struct ManagedManifest {
     pub execution_bindings: Vec<ManagedContributionExecutionBinding>,
 }
 
+impl ManagedManifest {
+    /// Pins the declaration (including contract and required permissions) and execution together.
+    pub fn execution_binding_fingerprint(
+        &self,
+        contribution_id: &ContributionId,
+    ) -> FrameworkResult<extension_contracts::extension_bus::ManagedBindingFingerprint> {
+        let contribution = self
+            .module
+            .contributions
+            .iter()
+            .find(|contribution| &contribution.contribution_id == contribution_id)
+            .ok_or_else(|| invalid("managed contribution does not exist"))?;
+        let binding = self
+            .execution_bindings
+            .iter()
+            .find(|binding| &binding.contribution_id == contribution_id)
+            .ok_or_else(|| invalid("managed execution binding does not exist"))?;
+        let bytes = serde_json::to_vec(&(contribution, binding))
+            .map_err(|error| invalid(&error.to_string()))?;
+        Ok(extension_contracts::extension_bus::ManagedBindingFingerprint::from_bytes(&bytes))
+    }
+}
+
 impl PluginManifestV1 {
     /// Governance derives from the package classification, never a contribution's point kind.
     pub fn module_kind(&self) -> ModuleKind {

@@ -250,6 +250,24 @@ impl RuntimeArtifactReference {
     }
 }
 
+/// Trusted installation/activation input. The composition owner supplies current authority;
+/// the Runtime Host binds this identity to verified artifact bytes and a concrete generation.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedActivation {
+    pub plugin_id: String,
+    pub artifact: RuntimeArtifactReference,
+    pub identity: extension_contracts::extension_bus::ManagedExecutionIdentity,
+}
+
+/// Host-only request. Neither the handle nor principal is taken from worker JSON.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedCapabilityRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub principal: RuntimeExecutionPrincipal,
+    pub config_payload: Value,
+    pub input_payload: Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimePackageActivation {
     pub plugin_id: String,
@@ -441,6 +459,22 @@ pub trait DataSourceRuntimePort: Send + Sync {
 /// impl CapabilityRuntimePort for IncompleteCapabilityBackend {}
 /// ```
 pub trait CapabilityRuntimePort: Send + Sync {
+    /// Bind a trusted installation identity to an exact contribution. This does not grant permission.
+    async fn activate_managed_contribution(
+        &self,
+        request: RuntimeManagedActivation,
+    ) -> Result<extension_contracts::extension_bus::ManagedExecutionHandle, RuntimeBackendError>;
+    async fn deactivate_managed_contribution(
+        &self,
+        handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError>;
+    /// The composition owner must admit each call against current contribution authority.
+    /// Worker output is an opaque result and never grants credit or other host permissions.
+    async fn managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<Value, RuntimeBackendError>;
+
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,

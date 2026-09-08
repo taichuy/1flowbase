@@ -13,9 +13,9 @@ use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSnapshot,
     RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
     RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeLegacyManifestEligibility,
-    RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
-    RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot, RuntimeRequestId,
-    RuntimeStreamEventSink, RuntimeStreamSinks,
+    RuntimeManagedActivation, RuntimeManagedCapabilityRequest, RuntimeNetworkEgressActivation,
+    RuntimeObservationPort, RuntimePackageActivation, RuntimeProviderDistributionRequest,
+    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
 };
 
 #[async_trait]
@@ -77,6 +77,7 @@ use crate::{
 pub struct RuntimeExtensionHost {
     provider_host: Arc<RwLock<ProviderHost>>,
     capability_host: Arc<RwLock<CapabilityHost>>,
+    managed_workers: Arc<RwLock<crate::managed_worker::ManagedWorkers>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
     network_egress_host: Arc<RwLock<NetworkEgressHost>>,
     provider_distribution_host: Arc<RwLock<ProviderDistributionHost>>,
@@ -154,6 +155,9 @@ impl RuntimeExtensionHost {
         Ok(Self {
             provider_host,
             capability_host,
+            managed_workers: Arc::new(
+                RwLock::new(crate::managed_worker::ManagedWorkers::default()),
+            ),
             data_source_host,
             network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
             provider_distribution_host: Arc::new(RwLock::new(ProviderDistributionHost::default())),
@@ -210,6 +214,11 @@ impl RuntimeExtensionHost {
             }
         }
 
+        self.managed_workers
+            .read()
+            .await
+            .close_admission()
+            .map_err(RuntimeBackendError::from)?;
         let handles = self
             .active_requests
             .lock()
@@ -237,6 +246,12 @@ impl RuntimeExtensionHost {
         }
         if let Err(error) = self.network_egress_host.write().await.stop_all().await {
             first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
+        }
+        let managed_scopes = self.managed_workers.write().await.take_scopes();
+        for scope in managed_scopes {
+            if let Err(error) = scope.dispose().await {
+                first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
+            }
         }
         let mut lifecycle = self.lifecycle.write().map_err(|_| {
             RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".to_string())
@@ -699,6 +714,75 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
 
 #[async_trait]
 impl CapabilityRuntimePort for RuntimeExtensionHost {
+    async fn activate_managed_contribution(
+        &self,
+        request: RuntimeManagedActivation,
+    ) -> Result<extension_contracts::extension_bus::ManagedExecutionHandle, RuntimeBackendError>
+    {
+        self.ensure_activating()?;
+        if request.artifact.as_str() != request.identity.installation_id().as_str() {
+            return Err(RuntimeBackendError::InvalidRequest(
+                "managed artifact must belong to the bound installation".into(),
+            ));
+        }
+        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let identity = request.identity.clone();
+        let binding = tokio::task::spawn_blocking(move || {
+            crate::package_loader::PackageLoader::load_managed(package_root, &request)
+        })
+        .await
+        .map_err(|error| RuntimeBackendError::Execution {
+            target_id: identity.contribution_id().as_str().to_string(),
+            message: error.to_string(),
+        })?
+        .map_err(RuntimeBackendError::from)?;
+        let mut workers = self.managed_workers.write().await;
+        let lifecycle = self.lifecycle.read().map_err(|_| {
+            RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+        })?;
+        if !matches!(
+            *lifecycle,
+            RuntimeBackendLifecycle::Starting | RuntimeBackendLifecycle::Ready
+        ) {
+            return Err(RuntimeBackendError::Unavailable(*lifecycle));
+        }
+        workers
+            .mount(identity, binding)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn deactivate_managed_contribution(
+        &self,
+        handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        let scope = self
+            .managed_workers
+            .write()
+            .await
+            .unmount(handle)
+            .map_err(RuntimeBackendError::from)?;
+        scope.dispose().await.map_err(RuntimeBackendError::from)
+    }
+
+    async fn managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<serde_json::Value, RuntimeBackendError> {
+        let operation = {
+            let workers = self.managed_workers.read().await;
+            let lifecycle = self.lifecycle.read().map_err(|_| {
+                RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+            })?;
+            if *lifecycle != RuntimeBackendLifecycle::Ready {
+                return Err(RuntimeBackendError::Unavailable(*lifecycle));
+            }
+            workers
+                .execute(request)
+                .map_err(RuntimeBackendError::from)?
+        };
+        operation.await.map_err(RuntimeBackendError::from)
+    }
+
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,
@@ -1076,6 +1160,7 @@ impl RuntimeObservationPort for RuntimeExtensionHost {
     async fn snapshot(&self) -> Result<RuntimeBackendSnapshot, RuntimeBackendError> {
         let providers = self.provider_host.read().await.loaded_count();
         let capabilities = self.capability_host.read().await.loaded_count();
+        let capabilities = capabilities + self.managed_workers.read().await.loaded_count();
         let data_sources = self.data_source_host.read().await.loaded_count();
         let network_egress_providers = self.network_egress_host.read().await.loaded_count();
         let mut active_request_ids = self

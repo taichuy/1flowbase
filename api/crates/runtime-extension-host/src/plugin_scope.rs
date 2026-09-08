@@ -66,29 +66,40 @@ impl PluginScope {
         })
     }
 
-    pub(crate) async fn dispose(&self) -> FrameworkResult<()> {
-        {
-            let mut admission = self.lock_admission()?;
-            match admission.state {
-                PluginScopeState::Mounted => admission.state = PluginScopeState::Disposing,
-                PluginScopeState::Disposing | PluginScopeState::Disposed => return Ok(()),
-            }
+    pub(crate) fn admit_generation(
+        self: &Arc<Self>,
+        generation: u64,
+    ) -> FrameworkResult<PluginScopeLease> {
+        if self.generation != generation {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "plugin scope generation does not match execution handle",
+            ));
         }
-        self.wait_until_drained().await;
+        self.admit()
+    }
+
+    pub(crate) fn close_admission(&self) -> FrameworkResult<()> {
+        let mut admission = self.lock_admission()?;
+        if admission.state == PluginScopeState::Mounted {
+            admission.state = PluginScopeState::Disposing;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn dispose(&self) -> FrameworkResult<()> {
+        self.close_admission()?;
+        self.wait_until_drained().await?;
         self.lock_admission()?.state = PluginScopeState::Disposed;
         Ok(())
     }
 
-    async fn wait_until_drained(&self) {
+    async fn wait_until_drained(&self) -> FrameworkResult<()> {
         loop {
             let notified = self.drained.notified();
-            if self
-                .admission
-                .lock()
-                .map(|admission| admission.in_flight == 0)
-                .unwrap_or(true)
-            {
-                return;
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.lock_admission()?.in_flight == 0 {
+                return Ok(());
             }
             notified.await;
         }

@@ -12,6 +12,7 @@ mod capability_host;
 mod capability_stdio;
 mod data_source_host;
 mod data_source_stdio;
+mod managed_worker;
 mod network_egress_host;
 mod package_loader;
 mod plugin_scope;
