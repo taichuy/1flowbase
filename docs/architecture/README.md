@@ -10,6 +10,7 @@
 | 插件生命周期契约 | [Plugin Lifecycle Contracts](plugin-lifecycle-contracts.md) | Hook、领域事实、Outbox与订阅者责任 |
 | 插件管理的数据模型 | [Plugin Managed Data Model](plugin-managed-data-model.md) | 声明式schema、ownership、增量变更与恢复边界 |
 | Runtime Backend | [演进边界](runtime-extension-backend-evolution.md) | 进程内Host、稳定Ports、Worker生命周期及Remote演进约束 |
+| 插件组合架构研究 | [时空可组合性研究稿](plugin-composability-research.md) | 两类插件治理边界下的图、状态机、快照、事件交付与数学模型；不是实现覆盖声明 |
 
 这些是独立主题。接口生命周期验收通过不自动证明插件开放、Outbox或其他主题全部实现；具体覆盖仍查对应候选证据。
 

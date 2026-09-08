@@ -28,3 +28,13 @@ P1–P7及原有限修复已在beta集成。用户随后授权修正后端Seed�
 ## 2026-09-08 01 本轮结算
 
 Root已完成批准的后端一致性补验、认证schema分类及旧PG/Seed测试前置修正，b1135c206已合回并推送beta。同SHA CI34143783378与fresh QA2通过；报告位于主工作区tmp/test-governance/1998/parity-followup/qa2/final-qa.md。发现的既有WebSocket收尾owner缺口已修复；断连与显式业务取消保持分离。Root/Delivery仍open等待统一用户验收；前端、全仓verify、性能等价、完整Outbox/PluginData仍不在本轮。后续判断先查当前Issue/代码/报告，不把有限范围通过泛化为所有接口完全一致。
+
+## 2026-09-08 08 阶段转入插件架构研究
+
+用户表示对应接口生命周期调整已完成，要求使用 problem-framing 开始研究三级插件时空可组合性架构，重点为接口生命周期各阶段接入、事件注册与通知；随后明确研究范围包含插件自行定义事件并供其他插件订阅。动机是基于已有接口生命周期继续开放真实插件组合能力。本轮仅研究与方向对齐，不代表已批准实现、开放普通插件全局扩展点或关闭既有 GitHub Issue；无固定截止日期。后续不能沿用第一阶段“暂不研究插件开放”的范围，也不能把包含插件间事件理解为已批准具体命名空间、交付或升级方案。
+
+用户进一步要求先重新判断三级分类本身是否必要，指出最初动机包含规避 Rust native so/dll 反复加载卸载时 TLS/static 与依赖全局状态风险；当前主要开发 RuntimeExtension，认可可信 HostExtension 随宿主整体重启的边界，质疑 CapabilityPlugin 的独立价值。此时需区分消费/贡献语义与执行/回收机制，不能仅复述现有分类便宣称三级合理。
+
+随后用户明确认可“HostExtension + 受管插件”两种治理边界：不再把 RuntimeExtension 与 CapabilityPlugin 作为顶层互斥分类，供应商、节点、组件、Hook、事件等作为贡献类型，执行方式与激活作用域分别建模；可信 native HostExtension 继续随宿主重启，现有 Rust 子进程可复用，不因分类调整引入 WASM/Lua。最终类型名称和分类迁移尚未批准实施。用户继续提出是否需要统一技术总线管理插件/事件的注册、时机和通知获取；当前在对齐 Extension Bus 的治理职责与各执行/交付通道边界。
+
+用户认可统一总线建议并要求全面研究可借鉴的成熟架构、算法、数据结构与数学建模。研究入口为 docs/architecture/plugin-composability-research.md（研究建议，非实现或形式化验证通过）：覆盖 OSGi/VS Code 声明与生命周期、typed graph/约束、策略交集与读写集、不可变快照、乘积状态机/TLA+、事件偏序、Outbox/Inbox、fencing、Little 定律与背压，明确各模型假设和适用边界。具体模型选择、协议、迁移与执行计划仍待确认；不把“认可建议”扩展为实现授权。
