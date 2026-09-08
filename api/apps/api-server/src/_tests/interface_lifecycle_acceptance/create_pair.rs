@@ -23,16 +23,16 @@ use tower::ServiceExt;
 
 const PATH: &str = "/api/console/settings/data-models/model-definitions";
 const CODE: &str = "root_1998_create_pair";
-fn input() -> Value {
+pub(super) fn input() -> Value {
     json!({"scope_kind":"workspace", "code":CODE, "title":"Delegated model",
         "template_provider":"core", "template_code":"general", "template_version":"v1"})
 }
-fn mcp_request(body: Value) -> Value {
+pub(super) fn mcp_request(body: Value) -> Value {
     json!({"jsonrpc":"2.0", "id":1998, "method":"tools/call", "params":{
         "name":"mcp_call", "arguments":{"tool_id":"create_model_probe", "max_inline_chars":12000,
         "arguments":{"body":body}}}})
 }
-async fn http(
+pub(super) async fn http(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
@@ -52,7 +52,7 @@ async fn http(
         .await
         .unwrap()
 }
-fn normalized_model(mut model: Value, workspace: uuid::Uuid) -> Value {
+pub(super) fn normalized_model(mut model: Value, workspace: uuid::Uuid) -> Value {
     // Only generated model/field identities and the equivalent isolated workspace differ.
     // Preserve every business field, including physical names, namespaces and capabilities.
     let mut keys = model
@@ -134,7 +134,7 @@ fn normalized_model(mut model: Value, workspace: uuid::Uuid) -> Value {
     }
     model
 }
-async fn persisted(pool: &sqlx::PgPool) -> Value {
+pub(super) async fn persisted(pool: &sqlx::PgPool) -> Value {
     sqlx::query_scalar::<_, Value>(r#"
         select jsonb_build_object(
             'models', (select count(*) from model_definitions),
@@ -156,7 +156,7 @@ async fn persisted(pool: &sqlx::PgPool) -> Value {
     "#).bind(CODE).fetch_one(pool).await.unwrap()
 }
 
-async fn assert_persisted_create(
+pub(super) async fn assert_persisted_create(
     pool: &sqlx::PgPool,
     response: &Value,
     persisted: &mut Value,
@@ -300,7 +300,20 @@ async fn root_1998_ac_005_http_mcp_create_success_and_core_deny_preserve_baselin
                 plan.binding().projection().http_route().unwrap().path(),
                 PATH
             );
-            assert!(!plan.has_executable_extensions());
+            // The trusted Create bridges are compiled even when no workspace worker is installed.
+            assert!(plan.has_executable_extensions());
+            assert_eq!(
+                plan.extension_plan()
+                    .registrations()
+                    .iter()
+                    .filter(|entry| entry
+                        .registration()
+                        .plugin()
+                        .as_str()
+                        .starts_with("api-server.managed-create."))
+                    .count(),
+                6
+            );
             pins.push((
                 snapshot.graph_fingerprint().clone(),
                 snapshot.fingerprint().clone(),

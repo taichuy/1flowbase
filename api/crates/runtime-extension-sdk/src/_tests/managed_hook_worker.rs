@@ -9,6 +9,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .take((extension_contracts::MANAGED_HOOK_MAX_FRAME_BYTES + 1) as u64)
         .read_to_end(&mut raw)?;
     let request: extension_contracts::ManagedHookHostFrame = serde_json::from_slice(&raw)?;
+    if request.handler.starts_with("trace.") {
+        let executable = std::env::current_exe()?;
+        let mut trace = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(executable.with_extension("trace"))?;
+        serde_json::to_writer(&mut trace, &request)?;
+        trace.write_all(b"\n")?;
+        trace.flush()?;
+    }
     // Explicit malicious peers exercise host validation; ordinary exchanges always use the SDK.
     if let Some(attack) = request.handler.strip_prefix("attack.") {
         let mut response = serde_json::json!({"protocol": extension_contracts::MANAGED_HOOK_PROTOCOL_V1, "call_id":request.call_id, "phase":request.input.phase(), "outcome":{"decision":"continue"}});
@@ -36,6 +46,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     serve_managed_hook(raw.as_slice(), std::io::stdout().lock(), |frame| {
+        if let Some(phase) = frame.handler.strip_prefix("trace.") {
+            let executable = std::env::current_exe().unwrap();
+            let mode =
+                std::fs::read_to_string(executable.with_extension("mode")).unwrap_or_default();
+            if mode.trim() == format!("deny.{phase}") {
+                return ManagedHookOutcome::Deny {
+                    classification: "fixture.denied".into(),
+                };
+            }
+            if mode.trim() == format!("fail.{phase}") {
+                return ManagedHookOutcome::Failed {
+                    classification: "fixture.failed".into(),
+                };
+            }
+            if mode.trim() == format!("timeout.{phase}") {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+            if mode.trim() == format!("barrier.{phase}") {
+                std::fs::write(executable.with_extension("started"), "started").unwrap();
+                while !executable.with_extension("release").is_file() {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+        }
         match frame.handler.as_str() {
             "sleep" => {
                 std::fs::write(

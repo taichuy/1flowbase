@@ -9,6 +9,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct InterfaceAuthorizationContributionRequest {
+    context: crate::InterfaceHookContext,
     principal: PrincipalSummary,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
@@ -21,14 +22,20 @@ impl InterfaceAuthorizationContributionRequest {
         definition: InterfaceDefinition,
         binding: ProtocolBinding,
         protocol: InterfaceProtocol,
+        context: crate::InterfaceHookContext,
     ) -> Self {
         Self {
+            context,
             principal,
             definition,
             binding,
             protocol,
         }
     }
+    pub fn context(&self) -> &crate::InterfaceHookContext {
+        &self.context
+    }
+
     pub fn principal(&self) -> &PrincipalSummary {
         &self.principal
     }
@@ -45,6 +52,7 @@ impl InterfaceAuthorizationContributionRequest {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceAdmissionContributionRequest {
+    context: crate::InterfaceHookContext,
     principal: PrincipalSummary,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
@@ -59,8 +67,10 @@ impl InterfaceAdmissionContributionRequest {
         binding: ProtocolBinding,
         protocol: InterfaceProtocol,
         authorization: AuthorizationDecisionFingerprint,
+        context: crate::InterfaceHookContext,
     ) -> Self {
         Self {
+            context,
             principal,
             definition,
             binding,
@@ -68,6 +78,10 @@ impl InterfaceAdmissionContributionRequest {
             authorization,
         }
     }
+    pub fn context(&self) -> &crate::InterfaceHookContext {
+        &self.context
+    }
+
     pub fn principal(&self) -> &PrincipalSummary {
         &self.principal
     }

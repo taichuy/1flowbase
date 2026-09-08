@@ -1032,6 +1032,9 @@ pub(crate) fn production_interface_contributions(
                     state.api_node_id.clone(),
                     state.provider_install_root.clone(),
                 ),
+                GraphFingerprint::new(state.extension_boot_snapshot.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("managed Create bridge requires the boot graph"))?
+                    .graph().fingerprint().as_str())?,
             )?,
         ),
         InterfaceRegistryContribution::new(

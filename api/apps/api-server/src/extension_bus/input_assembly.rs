@@ -785,7 +785,7 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
             scope: ScopeSemantics::Workspace,
             cardinality: Cardinality::Many,
             ordering: OrderingSemantics::Dependency,
-            failure: if matches!(phase, "failure" | "completion") {
+            failure: if matches!(phase, "after" | "failure" | "completion") {
                 FailureSemantics::BestEffort
             } else {
                 FailureSemantics::FailClosed

@@ -9,12 +9,23 @@ use crate::{
     RegistryFingerprint,
 };
 
+/// Opaque host-only context retained by the invocation through Completion. Never serialized.
+#[derive(Clone)]
+pub(crate) struct InvocationExtensionContext(pub(crate) Arc<dyn Any + Send + Sync>);
+impl std::fmt::Debug for InvocationExtensionContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("InvocationExtensionContext(<host-owned>)")
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct InterfaceHookContext {
     principal: Option<PrincipalSummary>,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
+    extension_context: Option<InvocationExtensionContext>,
+    observer_failed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl InterfaceHookContext {
@@ -29,6 +40,8 @@ impl InterfaceHookContext {
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
+            extension_context: None,
+            observer_failed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -42,7 +55,33 @@ impl InterfaceHookContext {
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
+            extension_context: None,
+            observer_failed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+
+    pub(crate) fn with_extension_context(
+        mut self,
+        context: Option<InvocationExtensionContext>,
+    ) -> Self {
+        self.extension_context = context;
+        self
+    }
+
+    pub fn extension_context<T: Any + Send + Sync>(&self) -> Option<&T> {
+        self.extension_context.as_ref()?.0.downcast_ref()
+    }
+
+    /// Diagnostic only: an observer's failure must not replace the invocation's main result.
+    pub fn report_observer_failure(&self) {
+        self.observer_failed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn observer_context(&self) -> Self {
+        let mut context = self.clone();
+        context.observer_failed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        context
     }
 
     pub fn principal(&self) -> Option<&PrincipalSummary> {
@@ -261,11 +300,18 @@ where
             .zip(&self.after)
             .rev()
         {
-            budget
+            let observed = context.observer_context();
+            let record = budget
                 .observe(plugin, InterfaceExtensionPoint::After, || {
-                    hook.after(context.clone(), output)
+                    hook.after(observed.clone(), output)
                 })
                 .await;
+            if observed
+                .observer_failed
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                budget.record_reported_failure(record);
+            }
         }
     }
 
@@ -281,11 +327,18 @@ where
             .zip(&self.failure)
             .rev()
         {
-            budget
+            let observed = context.observer_context();
+            let record = budget
                 .observe(plugin, InterfaceExtensionPoint::Failure, || {
-                    hook.failed(context.clone(), classification)
+                    hook.failed(observed.clone(), classification)
                 })
                 .await;
+            if observed
+                .observer_failed
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                budget.record_reported_failure(record);
+            }
         }
     }
 
@@ -309,11 +362,18 @@ where
             .zip(&self.completion)
             .rev()
         {
-            budget
+            let observed = context.observer_context();
+            let record = budget
                 .observe(plugin, InterfaceExtensionPoint::Completion, || {
-                    hook.completed(context.clone(), terminal)
+                    hook.completed(observed.clone(), terminal)
                 })
                 .await;
+            if observed
+                .observer_failed
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                budget.record_reported_failure(record);
+            }
         }
     }
 }
