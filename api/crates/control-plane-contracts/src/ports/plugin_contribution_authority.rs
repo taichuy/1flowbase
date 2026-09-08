@@ -6,6 +6,8 @@ use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 pub struct GrantContributionAuthorizationInput {
+    /// Host-injected node; required only for explicit same-family candidate authorization.
+    pub candidate_node_id: Option<String>,
     pub expected_installation_updated_at: time::OffsetDateTime,
     pub installation_id: Uuid,
     pub workspace_id: Uuid,
@@ -26,6 +28,23 @@ pub struct RevokeContributionAuthorizationInput {
     pub expected_revision: i64,
     pub actor_user_id: Uuid,
     pub audit_log: AuditLogRecord,
+}
+
+pub struct ManagedInstallationSwitch {
+    pub workspace_id: Uuid,
+    pub current_installation_id: Uuid,
+    pub target_installation_id: Uuid,
+    pub node_id: String,
+    pub installation_ids: Vec<Uuid>,
+}
+
+pub trait ManagedInstallationSwitchLease: Send {
+    fn authority(&self) -> &dyn ContributionAuthorityLease;
+    fn commit(
+        self: Box<Self>,
+        audit_log: AuditLogRecord,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+    fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
 
 /// Holds the same serialization lock as grant/revoke until release or drop. The caller must
@@ -54,6 +73,10 @@ pub trait ContributionAuthorityLease: Send {
 
 #[async_trait]
 pub trait PluginContributionAuthorityRepository: Send + Sync {
+    async fn lock_managed_installation_switch(
+        &self,
+        input: &ManagedInstallationSwitch,
+    ) -> Result<Box<dyn ManagedInstallationSwitchLease>>;
     /// Sorted, deduplicated scopes share one transaction; an empty batch is invalid.
     async fn lock_contribution_authority_batch(
         &self,

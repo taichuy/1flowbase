@@ -963,6 +963,12 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         input: &CreatePluginAssignmentInput,
     ) -> Result<domain::PluginAssignmentRecord> {
+        let mut transaction = self.pool().begin().await?;
+        crate::plugin_contribution_authority_repository::lock_managed_workspace(
+            &mut transaction,
+            input.workspace_id,
+        )
+        .await?;
         let row = sqlx::query(
             r#"
             insert into plugin_assignments (
@@ -990,10 +996,12 @@ impl PluginRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(&input.provider_code)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
 
-        map_assignment(row)
+        let assignment = map_assignment(row)?;
+        transaction.commit().await?;
+        Ok(assignment)
     }
 
     async fn list_assignments(

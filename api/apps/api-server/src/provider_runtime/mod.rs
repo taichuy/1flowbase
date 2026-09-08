@@ -616,6 +616,20 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .map_err(map_runtime_backend_error)
     }
 
+    async fn switch_managed_installation(
+        &self,
+        workspace_id: Uuid,
+        current: Uuid,
+        target: Uuid,
+        audit: domain::AuditLogRecord,
+        task: domain::PluginTaskRecord,
+    ) -> anyhow::Result<domain::PluginTaskRecord> {
+        self.services
+            .managed_composition()?
+            .switch_installation(workspace_id, current, target, audit, task)
+            .await
+    }
+
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

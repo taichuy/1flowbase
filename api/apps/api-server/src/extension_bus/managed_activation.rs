@@ -1,4 +1,5 @@
 //! Workspace-scoped immutable managed graph assembly and fresh execution admission.
+mod candidate_switch;
 use anyhow::{bail, Context, Result};
 use control_plane::{
     plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
@@ -117,109 +118,16 @@ impl ManagedExtensionComposition {
         let result = async {
             for workspace_id in workspaces {
                 let packages = self.prepare_packages(workspace_id).await?;
-                let mut modules = self.base_modules.clone();
-                let mut authority = ManagedGraphAuthority::new(self.policy.identity());
-                for package in &packages {
-                    let mut module = package.manifest.module.clone();
-                    // Both values are host-owned. Preserve per-contribution requirements exactly.
-                    module.activation = ModuleActivationDeclaration::Active;
-                    module.granted_permissions.clear();
-                    authority.managed_modules.insert(module.module_id.clone());
-                    if module
-                        .extension_points
-                        .iter()
-                        .any(|point| !point.is_managed_composition_event(&module.module_id))
-                    {
-                        bail!("managed point declaration exceeds host namespace admission");
-                    }
-                    for contribution in &module.contributions {
-                        let permissions = self.policy.effective_permissions(
-                            &package.installation,
-                            workspace_id,
-                            contribution,
-                            &package.authority,
-                        )?;
-                        let subject = managed_subject(
-                            package.installation.id,
-                            workspace_id,
-                            contribution.contribution_id.clone(),
-                        )?;
-                        if authority
-                            .contributions
-                            .insert(
-                                contribution.contribution_id.clone(),
-                                ManagedContributionAuthority {
-                                    subject,
-                                    revision: package.authority.revision,
-                                    permissions,
-                                },
-                            )
-                            .is_some()
-                        {
-                            bail!("duplicate managed contribution identity");
-                        }
-                    }
-                    expected.insert(
-                        (package.installation.id, workspace_id),
-                        (package.authority.revision, package.installation.updated_at),
-                    );
-                    modules.push(module);
-                }
-                let graph = Arc::new(compile_extension_graph_with_authority(modules, &authority)?);
-                for receipt in graph.contribution_receipts() {
-                    if authority
-                        .contributions
-                        .contains_key(&receipt.descriptor().contribution_id)
-                        && receipt.status() != &ContributionResolutionStatus::Active
-                    {
-                        bail!("managed contribution is inactive in the effective graph");
-                    }
-                }
-                let mut bindings = BTreeMap::new();
-                for package in &packages {
-                    for contribution in &package.manifest.module.contributions {
-                        let identity = ManagedExecutionIdentity::new(
-                            ManagedInstallationId::new(package.installation.id.to_string())?,
-                            ManagedWorkspaceId::new(workspace_id.to_string())?,
-                            contribution.contribution_id.clone(),
-                            package.artifact_fingerprint.clone(),
-                            package
-                                .manifest
-                                .execution_binding_fingerprint(&contribution.contribution_id)?,
-                        );
-                        let handle = self
-                            .backend
-                            .activate_managed_contribution(RuntimeManagedActivation {
-                                plugin_id: package.installation.plugin_id.clone(),
-                                artifact: RuntimeArtifactReference::new(
-                                    package.installation.id.to_string(),
-                                )?,
-                                identity,
-                            })
-                            .await?;
-                        if !owned_handles.contains(&handle) {
-                            new_handles.push(handle.clone());
-                        }
-                        bindings.insert(
-                            contribution.contribution_id.clone(),
-                            ManagedContributionBinding {
-                                handle,
-                                descriptor: contribution.clone(),
-                                installation: package.installation.clone(),
-                            },
-                        );
-                    }
-                }
-                let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
-                candidates.insert(
-                    workspace_id,
-                    Arc::new(ManagedWorkspaceSnapshot {
-                        graph,
-                        authority,
-                        bindings,
-                        lifecycle_plan,
-                    }),
-                );
+                let candidate = self
+                    .prepare_snapshot(
+                        workspace_id,
+                        &packages,
+                        &owned_handles,
+                        &mut expected,
+                        &mut new_handles,
+                    )
+                    .await?;
+                candidates.insert(workspace_id, candidate);
             }
             // A disabled target may no longer appear in the new graph. Lock its assignment and
             // installation too, so removal and a concurrent re-enable cannot cross publication.
@@ -238,6 +146,30 @@ impl ManagedExtensionComposition {
                     );
                     lease.release().await?;
                 }
+            }
+            let removed = published
+                .iter()
+                .filter(|(workspace, _)| candidates.contains_key(workspace))
+                .flat_map(|(_, snapshot)| snapshot.bindings.values())
+                .filter(|binding| {
+                    !candidates.values().any(|candidate| {
+                        candidate
+                            .bindings
+                            .values()
+                            .any(|next| next.handle == binding.handle)
+                    })
+                })
+                .map(|binding| binding.handle.clone())
+                .collect::<Vec<_>>();
+            let drain = if removed.is_empty() {
+                None
+            } else {
+                Some(self.backend.drain_managed_contributions(&removed).await?)
+            };
+            if let Some(drain) = &drain {
+                tokio::time::timeout(std::time::Duration::from_secs(5), drain.wait_drained())
+                    .await
+                    .context("managed graph drain timed out; current graph retained")??;
             }
             let scopes = expected.keys().copied().collect::<Vec<_>>();
             let lease = self
@@ -301,6 +233,116 @@ impl ManagedExtensionComposition {
         }
     }
 
+    async fn prepare_snapshot(
+        &self,
+        workspace_id: Uuid,
+        packages: &[PreparedPackage],
+        owned_handles: &[ManagedExecutionHandle],
+        expected: &mut BTreeMap<(Uuid, Uuid), (i64, time::OffsetDateTime)>,
+        new_handles: &mut Vec<ManagedExecutionHandle>,
+    ) -> Result<Arc<ManagedWorkspaceSnapshot>> {
+        let mut modules = self.base_modules.clone();
+        let mut authority = ManagedGraphAuthority::new(self.policy.identity());
+        for package in packages {
+            let mut module = package.manifest.module.clone();
+            // Both values are host-owned. Preserve per-contribution requirements exactly.
+            module.activation = ModuleActivationDeclaration::Active;
+            module.granted_permissions.clear();
+            authority.managed_modules.insert(module.module_id.clone());
+            if module
+                .extension_points
+                .iter()
+                .any(|point| !point.is_managed_composition_event(&module.module_id))
+            {
+                bail!("managed point declaration exceeds host namespace admission");
+            }
+            for contribution in &module.contributions {
+                let permissions = self.policy.effective_permissions(
+                    &package.installation,
+                    workspace_id,
+                    contribution,
+                    &package.authority,
+                )?;
+                let subject = managed_subject(
+                    package.installation.id,
+                    workspace_id,
+                    contribution.contribution_id.clone(),
+                )?;
+                if authority
+                    .contributions
+                    .insert(
+                        contribution.contribution_id.clone(),
+                        ManagedContributionAuthority {
+                            subject,
+                            revision: package.authority.revision,
+                            permissions,
+                        },
+                    )
+                    .is_some()
+                {
+                    bail!("duplicate managed contribution identity");
+                }
+            }
+            expected.insert(
+                (package.installation.id, workspace_id),
+                (package.authority.revision, package.installation.updated_at),
+            );
+            modules.push(module);
+        }
+        let graph = Arc::new(compile_extension_graph_with_authority(modules, &authority)?);
+        for receipt in graph.contribution_receipts() {
+            if authority
+                .contributions
+                .contains_key(&receipt.descriptor().contribution_id)
+                && receipt.status() != &ContributionResolutionStatus::Active
+            {
+                bail!("managed contribution is inactive in the effective graph");
+            }
+        }
+        let mut bindings = BTreeMap::new();
+        for package in packages {
+            for contribution in &package.manifest.module.contributions {
+                let identity = ManagedExecutionIdentity::new(
+                    ManagedInstallationId::new(package.installation.id.to_string())?,
+                    ManagedWorkspaceId::new(workspace_id.to_string())?,
+                    contribution.contribution_id.clone(),
+                    package.artifact_fingerprint.clone(),
+                    package
+                        .manifest
+                        .execution_binding_fingerprint(&contribution.contribution_id)?,
+                );
+                let handle = self
+                    .backend
+                    .activate_managed_contribution(RuntimeManagedActivation {
+                        plugin_id: package.installation.plugin_id.clone(),
+                        artifact: RuntimeArtifactReference::new(
+                            package.installation.id.to_string(),
+                        )?,
+                        identity,
+                    })
+                    .await?;
+                if !owned_handles.contains(&handle) {
+                    new_handles.push(handle.clone());
+                }
+                bindings.insert(
+                    contribution.contribution_id.clone(),
+                    ManagedContributionBinding {
+                        handle,
+                        descriptor: contribution.clone(),
+                        installation: package.installation.clone(),
+                    },
+                );
+            }
+        }
+        let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
+        Ok(Arc::new(ManagedWorkspaceSnapshot {
+            graph,
+            authority,
+            bindings,
+            lifecycle_plan,
+        }))
+    }
+
     fn validate_candidate(
         expected: &BTreeMap<(Uuid, Uuid), (i64, time::OffsetDateTime)>,
         lease: &dyn ContributionAuthorityLease,
@@ -336,31 +378,6 @@ impl ManagedExtensionComposition {
             {
                 continue;
             }
-            let local = ready_current_node_plugin_installation(
-                &self.store,
-                &self.node_id,
-                Path::new(""),
-                installation.id,
-            )
-            .await?;
-            let raw = tokio::fs::read(
-                local
-                    .local_path()
-                    .context("managed artifact has no path")?
-                    .to_string()
-                    + "/manifest.yaml",
-            )
-            .await?;
-            let manifest: PluginManifestV1 =
-                plugin_framework::parse_plugin_manifest(std::str::from_utf8(&raw)?)?;
-            let managed = manifest.managed.context("managed declaration required")?;
-            if manifest.publisher_namespace != installation.organization
-                || manifest.version != installation.plugin_version
-                || managed.module.module_id.as_str() != installation.provider_code
-                || serde_json::to_value(&managed)? != installation.metadata_json["managed"]
-            {
-                bail!("managed installed bytes and durable identity disagree");
-            }
             let lease = self
                 .store
                 .lock_installation_contribution_authority(installation.id, workspace_id)
@@ -375,15 +392,48 @@ impl ManagedExtensionComposition {
             }
             let authority = lease.snapshot().clone();
             lease.release().await?;
-            packages.push(PreparedPackage {
-                installation,
-                manifest: managed,
-                artifact_fingerprint: ManagedArtifactFingerprint::from_bytes(&raw),
-                authority,
-            });
+            packages.push(self.prepare_package(installation, authority).await?);
         }
         packages.sort_by_key(|package| package.installation.id);
         Ok(packages)
+    }
+
+    async fn prepare_package(
+        &self,
+        installation: domain::PluginInstallationRecord,
+        authority: domain::PluginContributionAuthoritySnapshot,
+    ) -> Result<PreparedPackage> {
+        let local = ready_current_node_plugin_installation(
+            &self.store,
+            &self.node_id,
+            Path::new(""),
+            installation.id,
+        )
+        .await?;
+        let raw = tokio::fs::read(
+            local
+                .local_path()
+                .context("managed artifact has no path")?
+                .to_string()
+                + "/manifest.yaml",
+        )
+        .await?;
+        let manifest: PluginManifestV1 =
+            plugin_framework::parse_plugin_manifest(std::str::from_utf8(&raw)?)?;
+        let managed = manifest.managed.context("managed declaration required")?;
+        if manifest.publisher_namespace != installation.organization
+            || manifest.version != installation.plugin_version
+            || managed.module.module_id.as_str() != installation.provider_code
+            || serde_json::to_value(&managed)? != installation.metadata_json["managed"]
+        {
+            bail!("managed installed bytes and durable identity disagree");
+        }
+        Ok(PreparedPackage {
+            installation,
+            manifest: managed,
+            artifact_fingerprint: ManagedArtifactFingerprint::from_bytes(&raw),
+            authority,
+        })
     }
 
     /// Execute against the invocation's retained plan, with fresh authority at every admission.

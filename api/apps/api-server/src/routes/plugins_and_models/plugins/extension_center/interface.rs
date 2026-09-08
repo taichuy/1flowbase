@@ -70,7 +70,7 @@ impl ExtensionCenterAdapter {
                 let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
                     self.0.store.for_actor(actor.clone()),
                     control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
-                );
+                ).with_node_id(self.0.api_node_id.clone());
                 let snapshot = service
                     .grant(
                         actor,
@@ -92,7 +92,7 @@ impl ExtensionCenterAdapter {
                 let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
                     self.0.store.for_actor(actor.clone()),
                     control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
-                );
+                ).with_node_id(self.0.api_node_id.clone());
                 let snapshot = service
                     .revoke(
                         actor,
@@ -111,7 +111,7 @@ impl ExtensionCenterAdapter {
                 let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
                     self.0.store.for_actor(actor.clone()),
                     control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
-                );
+                ).with_node_id(self.0.api_node_id.clone());
                 let snapshot = service.query(actor, installation_id).await?;
                 Ok(ExtensionCenterOutput::ContributionAuthorizations(
                     snapshot.into(),
@@ -197,6 +197,39 @@ impl ExtensionCenterAdapter {
                 ))
             }
             ExtensionCenterInput::Select(installation_id) => {
+                if let Some(target) = control_plane::ports::PluginRepository::get_installation(
+                    &self.0.store,
+                    installation_id,
+                )
+                .await?
+                {
+                    if target.contract_version == "1flowbase.extension-bus/v1" {
+                        let assigned = control_plane::ports::PluginRepository::list_assignments(
+                            &self.0.store,
+                            actor.current_workspace_id,
+                        )
+                        .await?;
+                        if !assigned
+                            .iter()
+                            .any(|assignment| assignment.installation_id == installation_id)
+                        {
+                            service(&self.0, actor, "extension_center.installed.select")
+                                .switch_version(
+                                    control_plane::plugin_management::SwitchPluginVersionCommand {
+                                        actor_user_id: actor.user_id,
+                                        provider_code: target.provider_code,
+                                        target_installation_id: installation_id,
+                                    },
+                                )
+                                .await?;
+                        }
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        return Ok(ExtensionCenterOutput::Installation(
+                            to_local_inventory_entry(selected),
+                        ));
+                    }
+                }
                 let installation = extension_installation_service(&self.0)
                     .select_current_installation(&self.0.api_node_id, installation_id)
                     .await?

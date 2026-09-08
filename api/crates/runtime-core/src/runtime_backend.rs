@@ -493,6 +493,16 @@ pub trait DataSourceRuntimePort: Send + Sync {
     ) -> Result<Value, RuntimeBackendError>;
 }
 
+/// Closes exact runtime generations until dropped. Dropping after timeout/cancellation reopens
+/// only still-mounted scopes; disposal cannot be undone. No durable authority is implied.
+pub trait RuntimeManagedDrain: Send + Sync {
+    fn wait_drained(
+        &self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), RuntimeBackendError>> + Send + '_>,
+    >;
+}
+
 #[async_trait]
 /// Capability operations are mandatory for every Runtime Backend.
 ///
@@ -502,6 +512,10 @@ pub trait DataSourceRuntimePort: Send + Sync {
 /// impl CapabilityRuntimePort for IncompleteCapabilityBackend {}
 /// ```
 pub trait CapabilityRuntimePort: Send + Sync {
+    async fn drain_managed_contributions(
+        &self,
+        handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn RuntimeManagedDrain>, RuntimeBackendError>;
     /// Bind a trusted installation identity to an exact contribution. This does not grant permission.
     async fn activate_managed_contribution(
         &self,

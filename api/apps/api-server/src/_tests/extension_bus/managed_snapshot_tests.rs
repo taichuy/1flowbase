@@ -20,15 +20,15 @@ use std::{path::PathBuf, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
-struct RuntimeFixture {
-    host: Arc<runtime_extension_host::RuntimeExtensionHost>,
-    services: Arc<ApiRuntimeServices>,
-    composition: Arc<ManagedExtensionComposition>,
-    delivery: Arc<ApiLifecycleFactDelivery>,
-    store: MainDurableStore,
+pub(super) struct RuntimeFixture {
+    pub(super) host: Arc<runtime_extension_host::RuntimeExtensionHost>,
+    pub(super) services: Arc<ApiRuntimeServices>,
+    pub(super) composition: Arc<ManagedExtensionComposition>,
+    pub(super) delivery: Arc<ApiLifecycleFactDelivery>,
+    pub(super) store: MainDurableStore,
 }
 impl RuntimeFixture {
-    fn new(state: &crate::app_state::ApiState) -> Self {
+    pub(super) fn new(state: &crate::app_state::ApiState) -> Self {
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
             crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,

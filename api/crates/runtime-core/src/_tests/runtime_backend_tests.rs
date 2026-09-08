@@ -295,6 +295,12 @@ impl DataSourceRuntimePort for CompleteFakeBackend {
 
 #[async_trait]
 impl CapabilityRuntimePort for CompleteFakeBackend {
+    async fn drain_managed_contributions(
+        &self,
+        _handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn crate::runtime_backend::RuntimeManagedDrain>, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
     async fn activate_managed_contribution(
         &self,
         _request: crate::runtime_backend::RuntimeManagedActivation,

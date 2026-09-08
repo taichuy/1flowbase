@@ -21,6 +21,16 @@ pub struct ProviderRuntimeExecutionContext {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn switch_managed_installation(
+        &self,
+        _workspace_id: uuid::Uuid,
+        _current: uuid::Uuid,
+        _target: uuid::Uuid,
+        _audit: domain::AuditLogRecord,
+        _task: domain::PluginTaskRecord,
+    ) -> anyhow::Result<domain::PluginTaskRecord> {
+        anyhow::bail!("managed installation switching is not configured")
+    }
     async fn provider_distribution_registry_fingerprint(&self) -> anyhow::Result<String> {
         Ok("builtin-provider-distribution-registry/v1".to_string())
     }

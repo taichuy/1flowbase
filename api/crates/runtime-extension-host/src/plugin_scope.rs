@@ -14,6 +14,7 @@ enum PluginScopeState {
 struct PluginScopeAdmission {
     state: PluginScopeState,
     in_flight: usize,
+    drains: usize,
 }
 
 /// Per-mount runtime ownership boundary. A new load receives a new generation; disposal closes
@@ -27,6 +28,22 @@ pub(crate) struct PluginScope {
 
 pub(crate) struct PluginScopeLease {
     scope: Arc<PluginScope>,
+}
+
+pub(crate) struct PluginScopeDrain {
+    scope: Arc<PluginScope>,
+}
+impl Drop for PluginScopeDrain {
+    fn drop(&mut self) {
+        if let Ok(mut admission) = self.scope.admission.lock() {
+            admission.drains = admission.drains.saturating_sub(1);
+        }
+    }
+}
+impl PluginScopeDrain {
+    pub(crate) async fn wait_drained(&self) -> FrameworkResult<()> {
+        self.scope.wait_until_drained().await
+    }
 }
 
 impl Drop for PluginScopeLease {
@@ -47,6 +64,7 @@ impl PluginScope {
             admission: Mutex::new(PluginScopeAdmission {
                 state: PluginScopeState::Mounted,
                 in_flight: 0,
+                drains: 0,
             }),
             drained: Notify::new(),
         })
@@ -54,7 +72,7 @@ impl PluginScope {
 
     pub(crate) fn admit(self: &Arc<Self>) -> FrameworkResult<PluginScopeLease> {
         let mut admission = self.lock_admission()?;
-        if admission.state != PluginScopeState::Mounted {
+        if admission.state != PluginScopeState::Mounted || admission.drains != 0 {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
                 "plugin scope generation {} is not accepting calls",
                 self.generation
@@ -76,6 +94,21 @@ impl PluginScope {
             ));
         }
         self.admit()
+    }
+
+    pub(crate) fn begin_drain(self: &Arc<Self>) -> FrameworkResult<PluginScopeDrain> {
+        let mut admission = self.lock_admission()?;
+        if admission.state != PluginScopeState::Mounted {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed scope is already disposing",
+            ));
+        }
+        admission.drains = admission.drains.checked_add(1).ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package("managed drain count exhausted")
+        })?;
+        Ok(PluginScopeDrain {
+            scope: self.clone(),
+        })
     }
 
     pub(crate) fn close_admission(&self) -> FrameworkResult<()> {

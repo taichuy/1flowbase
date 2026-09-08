@@ -898,6 +898,11 @@ where
             )
             .await?;
 
+        if current.contract_version == "1flowbase.extension-bus/v1" {
+            return self.runtime.switch_managed_installation(actor.current_workspace_id, current.id, target.id,
+                audit_log(Some(actor.current_workspace_id), Some(actor_user_id), "plugin_assignment", Some(target.id), "plugin.version_switched",
+                    json!({"previous_installation_id":current.id,"target_installation_id":target.id,"provider_code":provider_code})), running_task).await;
+        }
         let switch_result = async {
             let mut local_artifact = self.refresh_current_node_artifact_snapshot(target).await?;
             if !local_artifact.artifact_status.is_ready() {

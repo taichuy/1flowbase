@@ -208,6 +208,7 @@ impl HostContributionGrantPolicy {
 pub struct PluginContributionAuthorityService<R> {
     repository: R,
     host_policy: HostContributionGrantPolicy,
+    candidate_node_id: Option<String>,
 }
 impl<R> PluginContributionAuthorityService<R>
 where
@@ -217,7 +218,13 @@ where
         Self {
             repository,
             host_policy,
+            candidate_node_id: None,
         }
+    }
+
+    pub fn with_node_id(mut self, node_id: impl Into<String>) -> Self {
+        self.candidate_node_id = Some(node_id.into());
+        self
     }
 
     pub async fn grant(
@@ -228,7 +235,7 @@ where
     ) -> Result<PluginContributionAuthoritySnapshot> {
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_GRANT)
             .await?;
-        let installation = self.scoped_installation(actor, installation_id).await?;
+        let installation = self.managed_installation(installation_id).await?;
         let managed: plugin_framework::ManagedManifest =
             serde_json::from_value(installation.metadata_json.get("managed").cloned().ok_or(
                 ControlPlaneError::InvalidInput("managed_contribution_declaration"),
@@ -273,6 +280,7 @@ where
         );
         self.repository
             .grant_contribution_authorization(&GrantContributionAuthorizationInput {
+                candidate_node_id: self.candidate_node_id.clone(),
                 expected_installation_updated_at: installation.updated_at,
                 installation_id,
                 workspace_id: actor.current_workspace_id,
@@ -296,7 +304,7 @@ where
     ) -> Result<PluginContributionAuthoritySnapshot> {
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_REVOKE)
             .await?;
-        self.scoped_installation(actor, installation_id).await?;
+        self.managed_installation(installation_id).await?;
         if request.expected_revision < 0 {
             return Err(ControlPlaneError::InvalidInput("expected_revision").into());
         }
@@ -314,7 +322,7 @@ where
     ) -> Result<PluginContributionAuthoritySnapshot> {
         self.ensure_operation(actor, CONTRIBUTION_AUTHORIZATION_VIEW)
             .await?;
-        self.scoped_installation(actor, installation_id).await?;
+        self.managed_installation(installation_id).await?;
         self.repository
             .query_contribution_authority(
                 installation_id,
@@ -348,9 +356,8 @@ where
         }
     }
 
-    async fn scoped_installation(
+    async fn managed_installation(
         &self,
-        actor: &ActorContext,
         installation_id: Uuid,
     ) -> Result<domain::PluginInstallationRecord> {
         let installation = self
@@ -359,18 +366,15 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         if installation.category == domain::ExtensionCategory::HostExtensions
-            || !self
-                .repository
-                .list_assignments(actor.current_workspace_id)
-                .await?
-                .iter()
-                .any(|assignment| assignment.installation_id == installation_id)
+            || installation.contract_version != "1flowbase.extension-bus/v1"
         {
             return Err(ControlPlaneError::PermissionDenied(
-                "contribution_workspace_assignment_required",
+                "managed_contribution_installation_required",
             )
             .into());
         }
+        // The repository validates exact assignment, explicit same-family candidate grant, or
+        // durable history under its authority lock. A read must never manufacture history.
         Ok(installation)
     }
 }

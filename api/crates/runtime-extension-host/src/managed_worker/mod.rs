@@ -30,7 +30,45 @@ pub(crate) struct ManagedWorkers {
     next_generation: u64,
 }
 
+struct ManagedDrain(Vec<crate::plugin_scope::PluginScopeDrain>);
+impl runtime_core::runtime_backend::RuntimeManagedDrain for ManagedDrain {
+    fn wait_drained(
+        &self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<(), runtime_core::runtime_backend::RuntimeBackendError>,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            for scope in &self.0 {
+                scope.wait_drained().await?;
+            }
+            Ok(())
+        })
+    }
+}
+
 impl ManagedWorkers {
+    pub(crate) fn drain(
+        &self,
+        handles: &[ManagedExecutionHandle],
+    ) -> FrameworkResult<Box<dyn runtime_core::runtime_backend::RuntimeManagedDrain>> {
+        let scopes = handles
+            .iter()
+            .map(|handle| {
+                self.exact_mount(handle)
+                    .map(|mounted| mounted.scope.clone())
+            })
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        let drains = scopes
+            .iter()
+            .map(|scope| scope.begin_drain())
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        Ok(Box::new(ManagedDrain(drains)))
+    }
     pub(crate) fn mount(
         &mut self,
         identity: ManagedExecutionIdentity,

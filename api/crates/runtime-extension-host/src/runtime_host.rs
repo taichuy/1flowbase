@@ -738,6 +738,17 @@ impl RuntimeExtensionHost {
 
 #[async_trait]
 impl CapabilityRuntimePort for RuntimeExtensionHost {
+    async fn drain_managed_contributions(
+        &self,
+        handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn runtime_core::runtime_backend::RuntimeManagedDrain>, RuntimeBackendError>
+    {
+        self.managed_workers
+            .write()
+            .await
+            .drain(handles)
+            .map_err(Into::into)
+    }
     async fn activate_managed_contribution(
         &self,
         request: RuntimeManagedActivation,
