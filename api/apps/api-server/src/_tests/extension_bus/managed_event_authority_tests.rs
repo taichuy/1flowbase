@@ -434,8 +434,8 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         delivery.deliver(committed).await.is_err(),
         "frozen graph cannot restore a revoked publication grant"
     );
-    // P06: actual dispatcher persists explicit unavailability/revocation without blind retries.
-    store
+    // Revoke already paused B and cleared its claim; a stale retry must not reopen it.
+    assert!(store
         .retry_lifecycle_fact(
             b_record.event_id,
             &b_record.subscriber_id,
@@ -445,7 +445,8 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             "fixture redelivery",
         )
         .await
-        .unwrap();
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
     // Persisted disable precedes replacement graph assembly; the frozen binding must still deny.
     control_plane_contracts::ports::PluginRepository::update_desired_state(
         &store,
@@ -467,7 +468,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             .0,
         control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive
     );
-    store
+    assert!(store
         .retry_lifecycle_fact(
             c_record.event_id,
             &c_record.subscriber_id,
@@ -477,7 +478,39 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             "fixture disabled delivery",
         )
         .await
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
+    for (record, reason) in [
+        (b_record, "authority_revoked"),
+        (c_record, "installation_inactive"),
+    ] {
+        assert!(store
+            .mark_lifecycle_fact_delivered(
+                record.event_id,
+                &record.subscriber_id,
+                worker,
+                record.claim_id.unwrap(),
+            )
+            .await
+            .unwrap_err()
+            .is::<control_plane_contracts::ports::LifecycleClaimLost>());
+        let paused_and_unclaimed: bool = sqlx::query_scalar(
+            "select status='paused' and pause_reason=$3 and paused_at is not null
+                and claimed_by is null and claimed_at is null and claim_id is null
+                and claim_expires_at is null and delivered_at is null
+             from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2",
+        )
+        .bind(record.event_id)
+        .bind(&record.subscriber_id)
+        .bind(reason)
+        .fetch_one(store.pool())
+        .await
         .unwrap();
+        assert!(
+            paused_and_unclaimed,
+            "governance pause survives stale retry and ACK"
+        );
+    }
     let unavailable_id = Uuid::now_v7();
     store
         .record_lifecycle_fact(&control_plane_contracts::ports::RecordLifecycleFactInput {
@@ -503,7 +536,9 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         Arc::new(delivery),
         Arc::new(crate::ApiLifecycleDeliveryCompletion),
     );
-    assert_eq!(dispatcher.run_once().await.unwrap(), 3);
+    // B/C are already durably paused by their governance transactions. Only the fresh
+    // unavailable target is claimable; the real dispatcher pauses it without blind retries.
+    assert_eq!(dispatcher.run_once().await.unwrap(), 1);
     let paused: Vec<(String, String)> = sqlx::query_as("select subscriber_id, pause_reason from lifecycle_outbox_deliveries where status='paused' order by subscriber_id").fetch_all(store.pool()).await.unwrap();
     assert!(paused.contains(&(b_record.subscriber_id.clone(), "authority_revoked".into())));
     assert!(paused.contains(&("unavailable".into(), "frozen_graph_unavailable".into())));

@@ -509,7 +509,7 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .commit_processed_model(b_subject, b.event_id, fact.payload, deadline())
         .await
         .is_err());
-    store
+    assert!(store
         .mark_lifecycle_fact_delivered(
             b_new.event_id,
             &b_new.subscriber_id,
@@ -517,7 +517,37 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
             b_new.claim_id.unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap_err()
+        .is::<control_plane_contracts::ports::LifecycleClaimLost>());
+    let revoked_and_unclaimed: bool = sqlx::query_scalar(
+        "select status='paused' and pause_reason='authority_revoked' and paused_at is not null
+            and claimed_by is null and claimed_at is null and claim_id is null
+            and claim_expires_at is null and delivered_at is null
+         from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2",
+    )
+    .bind(b_new.event_id)
+    .bind(&b_new.subscriber_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        revoked_and_unclaimed,
+        "committed effects do not revive a revoked delivery claim"
+    );
+    let c_delivered: bool = sqlx::query_scalar(
+        "select status='delivered' and delivered_at is not null
+         from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2",
+    )
+    .bind(c.event_id)
+    .bind(&c.subscriber_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        c_delivered,
+        "B revocation preserves C's independently acknowledged delivery"
+    );
+    assert_eq!(count(&pool, "plugin_data_idempotency_receipts").await, 3);
     assert_eq!(count(&pool, "effect_mutations").await, 2);
     assert_eq!(count(&pool, &tables[0].1).await, 2);
     revoker_pool.close().await;
