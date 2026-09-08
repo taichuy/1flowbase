@@ -541,6 +541,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .find(|e| e["current"] == true)
         .unwrap()["target"]
         .clone();
+    let g2_authority_revision = authority.query(&actor, a).await.unwrap().revision;
     management
         .disable_plugin(DisablePluginCommand {
             actor_user_id: actor_id,
@@ -800,15 +801,108 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .0,
         StatusCode::OK
     );
+    assert_eq!(resume(&pending)["expected"], target_g2);
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap();
+    let new_graph = runtime.composition.snapshot(workspace).await.unwrap();
+    let a_contribution =
+        plugin_framework::extension_bus::ContributionId::new("acme.composition-a.events").unwrap();
+    let a_target = |snapshot: &crate::extension_bus::ManagedWorkspaceSnapshot| {
+        let plan = snapshot
+            .publication_plan(extension_contracts::MANAGED_CREATE_EVENT_ID, "v1")
+            .unwrap();
+        let subscriber = plan
+            .subscribers
+            .iter()
+            .find(|row| row.subscriber_id == pending.subscriber_id)
+            .unwrap();
+        ManagedFrozenExecutionTarget {
+            graph_fingerprint: plan.graph_fingerprint.clone(),
+            handler_id: subscriber.handler_id.clone(),
+            handler_version: subscriber.handler_version.clone(),
+        }
+    };
+    let new_target = a_target(&new_graph);
+    let new_a_authority = new_graph
+        .authority
+        .contributions
+        .get(&a_contribution)
+        .unwrap()
+        .clone();
+    let new_a_handle = new_graph
+        .bindings
+        .get(&a_contribution)
+        .unwrap()
+        .handle
+        .clone();
+    let b_revision = authority.query(&actor, b).await.unwrap().revision;
     assert!(
-        management
-            .enable_plugin(EnablePluginCommand {
-                actor_user_id: actor_id,
-                installation_id: b
-            })
-            .await
-            .is_err(),
-        "a new B mount cannot resurrect retired G2/A's exact target"
+        new_a_authority.revision > g2_authority_revision,
+        "revoke/regrant creates a new authorization revision"
+    );
+    assert_ne!(new_target.graph_fingerprint, pending.graph_fingerprint);
+    assert_ne!(
+        serde_json::to_value(&new_target).unwrap(),
+        target_g2,
+        "enabling B under the new revision is a different frozen graph, not resurrected G2"
+    );
+    assert!(runtime
+        .composition
+        .event_snapshot_for_graph(&pending)
+        .await
+        .unwrap()
+        .is_none());
+    let old_delivery = runtime.delivery.deliver(&pending).await.unwrap_err();
+    assert_eq!(
+        old_delivery
+            .downcast_ref::<LifecycleDeliveryBlocked>()
+            .map(|error| error.0),
+        Some(LifecycleDeliveryPauseReason::FrozenGraphUnavailable),
+        "the legal new graph cannot resolve or admit the retired G2 target"
+    );
+
+    // Prove the exact-target premise before retiring it: changing only B enablement returns
+    // to the same A target, authority, artifact/binding identity, epoch and generation.
+    management
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap();
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap();
+    let rebuilt = runtime.composition.snapshot(workspace).await.unwrap();
+    assert_eq!(a_target(&rebuilt), new_target);
+    let rebuilt_authority = rebuilt
+        .authority
+        .contributions
+        .get(&a_contribution)
+        .unwrap();
+    assert_eq!(rebuilt_authority.subject, new_a_authority.subject);
+    assert_eq!(rebuilt_authority.revision, new_a_authority.revision);
+    assert_eq!(rebuilt_authority.permissions, new_a_authority.permissions);
+    assert_eq!(
+        rebuilt.bindings.get(&a_contribution).unwrap().handle,
+        new_a_handle
+    );
+    assert_eq!(
+        authority.query(&actor, a).await.unwrap().revision,
+        new_a_authority.revision
+    );
+    assert_eq!(
+        authority.query(&actor, b).await.unwrap().revision,
+        b_revision
     );
     management
         .disable_plugin(DisablePluginCommand {
@@ -817,6 +911,53 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         })
         .await
         .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            &cookie,
+            &csrf,
+            "POST",
+            &retire_path,
+            serde_json::to_value(&new_target).unwrap()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let rejected = management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            rejected.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+            Some(control_plane::errors::ControlPlaneError::Conflict(
+                "managed_execution_retired_or_closing"
+            ))
+        ),
+        "unchanged full target must hit its retirement marker: {rejected:#}"
+    );
+    assert_eq!(
+        authority.query(&actor, a).await.unwrap().revision,
+        new_a_authority.revision
+    );
+    assert_eq!(
+        authority.query(&actor, b).await.unwrap().revision,
+        b_revision
+    );
+    management
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap();
+    drop(rebuilt);
+    drop(new_graph);
+    drop(new_a_handle);
 
     // Disable pauses existing backlog; reenabling never implicitly resumes it.
     create(&runtime.store, actor_id, workspace).await;
