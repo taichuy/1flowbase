@@ -187,6 +187,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         &[
             "extension_center.catalog.detail",
             "extension_center.catalog.view",
+            "extension_center.contribution_authorizations.grant",
+            "extension_center.contribution_authorizations.revoke",
+            "extension_center.contribution_authorizations.view",
             "extension_center.install",
             "extension_center.install.upload",
             "extension_center.installed.delete",
@@ -421,6 +424,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "extension_center.catalog.detail",
     "extension_center.catalog.view",
+    "extension_center.contribution_authorizations.grant",
+    "extension_center.contribution_authorizations.revoke",
+    "extension_center.contribution_authorizations.view",
     "extension_center.install",
     "extension_center.install.upload",
     "extension_center.installed.delete",

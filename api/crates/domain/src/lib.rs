@@ -221,3 +221,6 @@ mod attribution_exports_tests {
         );
     }
 }
+
+pub mod plugin_contribution_authority;
+pub use plugin_contribution_authority::*;

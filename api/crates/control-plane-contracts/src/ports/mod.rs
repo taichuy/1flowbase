@@ -53,3 +53,6 @@ pub use plugin::*;
 pub use runtime::*;
 pub use system_backup::*;
 pub use ui_management::*;
+
+pub mod plugin_contribution_authority;
+pub use plugin_contribution_authority::*;

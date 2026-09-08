@@ -239,6 +239,18 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("i18n_catalog.update.check", "system.i18n-catalog"),
     settings("extension_center.installed.view", "system.extension-center"),
     settings(
+        "extension_center.contribution_authorizations.grant",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.contribution_authorizations.revoke",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.contribution_authorizations.view",
+        "system.extension-center",
+    ),
+    settings(
         "extension_center.installed.select",
         "system.extension-center",
     ),

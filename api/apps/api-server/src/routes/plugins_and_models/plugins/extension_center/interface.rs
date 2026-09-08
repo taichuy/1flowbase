@@ -13,6 +13,9 @@ use crate::routes::console_interface::{
 };
 
 pub(crate) enum ExtensionCenterInput {
+    GrantContributionPermission(Uuid, GrantContributionPermissionRequest),
+    RevokeContributionPermission(Uuid, RevokeContributionPermissionRequest),
+    QueryContributionAuthorizations(Uuid),
     ListInstalled(LocalExtensionInventoryQuery),
     Select(Uuid),
     Enable(Uuid),
@@ -38,6 +41,7 @@ impl InterfaceContract for ExtensionCenterInput {
 }
 
 pub(crate) enum ExtensionCenterOutput {
+    ContributionAuthorizations(ContributionAuthorizationResponse),
     Installed(LocalExtensionInventoryPageResponse),
     Installation(LocalExtensionInventoryEntryResponse),
     Task(PluginTaskResponse),
@@ -62,6 +66,57 @@ impl ExtensionCenterAdapter {
     ) -> Result<ExtensionCenterOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ExtensionCenterInput::GrantContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                );
+                let snapshot = service
+                    .grant(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::GrantContributionPermission {
+                            contribution_id: request.contribution_id,
+                            permission: request.permission,
+                            resource_scope: request.resource_scope.into(),
+                            permission_contract_id: request.permission_contract_id,
+                            permission_contract_version: request.permission_contract_version,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
+            ExtensionCenterInput::RevokeContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                );
+                let snapshot = service
+                    .revoke(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::RevokeContributionPermission {
+                            authorization_id: request.authorization_id,
+                            expected_revision: request.expected_revision,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
+            ExtensionCenterInput::QueryContributionAuthorizations(installation_id) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                );
+                let snapshot = service.query(actor, installation_id).await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
             ExtensionCenterInput::ListInstalled(query) => {
                 let category = query
                     .category
@@ -387,6 +442,28 @@ impl ConsoleInterfacePort<ExtensionCenterInput, ExtensionCenterOutput> for Exten
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.grant",
+        binding_id: "http.console.extension-center.contribution-authorizations.grant.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.revoke",
+        binding_id: "http.console.extension-center.contribution-authorizations.revoke.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.view",
+        binding_id: "http.console.extension-center.contribution-authorizations.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: false,
+    },
+
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.installed.view",
         binding_id: "http.console.extension-center.installed.v1",

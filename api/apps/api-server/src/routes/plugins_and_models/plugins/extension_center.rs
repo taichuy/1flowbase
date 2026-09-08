@@ -74,7 +74,9 @@ async fn invoke_interface(
 
 mod builtin_mcp;
 mod catalog_page;
+mod contribution_authority;
 mod dto;
+use contribution_authority::*;
 pub(crate) mod interface;
 mod managed_schema;
 
@@ -88,6 +90,22 @@ pub(super) fn route_assembly(
     plugin_upload_max_bytes: usize,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
+        .route(
+            "/settings/extension-center/installed/:installation_id/contribution-authorizations",
+            console_post(grant_contribution_authorizations,
+                ConsoleOperation("extension_center.contribution_authorizations.grant".to_string())),
+        )
+        .route(
+            "/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+            console_post(revoke_contribution_authorizations,
+                ConsoleOperation("extension_center.contribution_authorizations.revoke".to_string())),
+        )
+        .route(
+            "/settings/extension-center/installed/:installation_id/contribution-authorizations",
+            console_get(view_contribution_authorizations,
+                ConsoleOperation("extension_center.contribution_authorizations.view".to_string())),
+        )
+
         .route(
             "/settings/extension-center/installed",
             console_get(

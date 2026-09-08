@@ -513,3 +513,6 @@ fn plugin_install_audit_detail(
     }
     audit_detail
 }
+
+mod contribution_authority;
+pub use contribution_authority::*;

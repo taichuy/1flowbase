@@ -1040,6 +1040,7 @@ dependencies = [
  "domain",
  "extension-contracts",
  "interface-runtime",
+ "plugin-framework",
  "postgres-test-support",
  "serde_json",
  "sqlx",

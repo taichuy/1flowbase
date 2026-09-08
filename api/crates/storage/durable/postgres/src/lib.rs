@@ -72,3 +72,5 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 
 #[cfg(test)]
 mod _tests;
+
+mod plugin_contribution_authority_repository;

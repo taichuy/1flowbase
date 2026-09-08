@@ -245,3 +245,112 @@ pub struct ExtensionUploadMultipartBody {
     risk_override: Option<String>,
     compatibility_override: Option<String>,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GrantContributionPermissionRequest {
+    pub contribution_id: String,
+    pub permission: String,
+    pub resource_scope: ContributionResourceScopeDto,
+    pub permission_contract_id: String,
+    pub permission_contract_version: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RevokeContributionPermissionRequest {
+    pub authorization_id: uuid::Uuid,
+    pub expected_revision: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ContributionAuthorizationResponse {
+    pub installation_id: uuid::Uuid,
+    pub workspace_id: uuid::Uuid,
+    pub revision: i64,
+    pub authorizations: Vec<ContributionPermissionAuthorizationResponse>,
+}
+
+impl From<domain::PluginContributionAuthoritySnapshot> for ContributionAuthorizationResponse {
+    fn from(value: domain::PluginContributionAuthoritySnapshot) -> Self {
+        Self {
+            installation_id: value.installation_id,
+            workspace_id: value.workspace_id,
+            revision: value.revision,
+            authorizations: value.authorizations.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ContributionResourceScopeDto {
+    Workspace,
+    OwnedCollection { collection_code: String },
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ContributionPermissionAuthorizationResponse {
+    pub id: uuid::Uuid,
+    pub installation_id: uuid::Uuid,
+    pub workspace_id: uuid::Uuid,
+    pub contribution_id: String,
+    pub point_id: String,
+    pub permission: String,
+    pub resource_scope: ContributionResourceScopeDto,
+    pub permission_contract_id: String,
+    pub permission_contract_version: String,
+    pub status: String,
+    pub granted_by: uuid::Uuid,
+    pub revoked_by: Option<uuid::Uuid>,
+    pub granted_at: String,
+    pub revoked_at: Option<String>,
+    pub revision: i64,
+}
+
+impl From<domain::PluginContributionAuthorization> for ContributionPermissionAuthorizationResponse {
+    fn from(value: domain::PluginContributionAuthorization) -> Self {
+        Self {
+            id: value.id,
+            installation_id: value.installation_id,
+            workspace_id: value.workspace_id,
+            contribution_id: value.contribution_id,
+            point_id: value.point_id,
+            permission: value.permission,
+            resource_scope: value.resource_scope.into(),
+            permission_contract_id: value.permission_contract_id,
+            permission_contract_version: value.permission_contract_version,
+            status: match value.status {
+                domain::ContributionAuthorizationStatus::Active => "active",
+                domain::ContributionAuthorizationStatus::Revoked => "revoked",
+            }
+            .into(),
+            granted_by: value.granted_by,
+            revoked_by: value.revoked_by,
+            granted_at: super::format_time(value.granted_at),
+            revoked_at: value.revoked_at.map(super::format_time),
+            revision: value.revision,
+        }
+    }
+}
+
+impl From<ContributionResourceScopeDto> for domain::ContributionResourceScope {
+    fn from(value: ContributionResourceScopeDto) -> Self {
+        match value {
+            ContributionResourceScopeDto::Workspace => Self::Workspace,
+            ContributionResourceScopeDto::OwnedCollection { collection_code } => {
+                Self::OwnedCollection { collection_code }
+            }
+        }
+    }
+}
+impl From<domain::ContributionResourceScope> for ContributionResourceScopeDto {
+    fn from(value: domain::ContributionResourceScope) -> Self {
+        match value {
+            domain::ContributionResourceScope::Workspace => Self::Workspace,
+            domain::ContributionResourceScope::OwnedCollection { collection_code } => {
+                Self::OwnedCollection { collection_code }
+            }
+        }
+    }
+}
