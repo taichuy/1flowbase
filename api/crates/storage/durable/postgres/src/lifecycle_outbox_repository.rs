@@ -672,17 +672,64 @@ pub(crate) async fn pause_managed_installation_deliveries(
     contribution_id: Option<&str>,
     reason: LifecycleDeliveryPauseReason,
 ) -> Result<()> {
-    let rows = sqlx::query("select distinct d.event_id,d.subscriber_id,d.handler_version from extension_installations i join plugin_contribution_authorization_revisions r on r.installation_id=i.id cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c join lifecycle_outbox_deliveries d on d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id') where i.id=$1 and ($2::uuid is null or r.workspace_id=$2) and ($3::text is null or c->>'contribution_id'=$3) and d.status <> 'delivered'")
-        .bind(installation_id).bind(workspace_id).bind(contribution_id).fetch_all(&mut **tx).await?;
-    for row in rows {
-        let version: String = row.try_get("handler_version")?;
-        if control_plane_contracts::ports::managed_handler_installation(&version)
-            .is_some_and(|id| id != installation_id)
-        {
+    const PAUSE_BATCH_SIZE: i64 = 256;
+    let mut after_event: Option<Uuid> = None;
+    let mut after_subscriber: Option<String> = None;
+    loop {
+        // Keyset progress includes rows owned by another installation. Paused rows remain in
+        // history, so status alone is not a cursor. The caller owns the one commit/rollback.
+        let rows = sqlx::query(r#"
+            select d.event_id,d.subscriber_id,d.handler_version
+            from lifecycle_outbox_deliveries d
+            where d.status <> 'delivered'
+              and ($4::uuid is null or (d.event_id,d.subscriber_id)>($4,$5::text))
+              and exists (
+                select 1 from extension_installations i
+                join plugin_contribution_authorization_revisions r on r.installation_id=i.id
+                cross join lateral jsonb_array_elements(i.metadata_json->'managed'->'module'->'contributions') c
+                where i.id=$1 and ($2::uuid is null or r.workspace_id=$2)
+                  and ($3::text is null or c->>'contribution_id'=$3)
+                  and d.subscriber_id='managed.'||r.workspace_id::text||'.'||(c->>'contribution_id')
+              )
+            order by d.event_id,d.subscriber_id limit $6
+        "#).bind(installation_id).bind(workspace_id).bind(contribution_id)
+            .bind(after_event).bind(after_subscriber.as_deref()).bind(PAUSE_BATCH_SIZE)
+            .fetch_all(&mut **tx).await?;
+        if rows.is_empty() {
+            break;
+        }
+        let mut event_ids = Vec::with_capacity(rows.len());
+        let mut subscriber_ids = Vec::with_capacity(rows.len());
+        let mut versions = Vec::with_capacity(rows.len());
+        // Materialize only this batch, then release the read before issuing the batch UPDATE
+        // on the same transaction connection. No simultaneous stream/read-and-write borrow.
+        for row in rows {
+            let event_id: Uuid = row.try_get("event_id")?;
+            let subscriber_id: String = row.try_get("subscriber_id")?;
+            let version: String = row.try_get("handler_version")?;
+            after_event = Some(event_id);
+            after_subscriber = Some(subscriber_id.clone());
+            if control_plane_contracts::ports::managed_handler_installation(&version)
+                .is_some_and(|id| id != installation_id)
+            {
+                continue;
+            }
+            event_ids.push(event_id);
+            subscriber_ids.push(subscriber_id);
+            versions.push(version);
+        }
+        if event_ids.is_empty() {
             continue;
         }
-        sqlx::query("update lifecycle_outbox_deliveries set status='paused',pause_reason=$3,paused_at=now(),claimed_by=null,claimed_at=null,claim_id=null,claim_expires_at=null where event_id=$1 and subscriber_id=$2 and status<>'delivered'")
-            .bind(row.try_get::<Uuid,_>("event_id")?).bind(row.try_get::<String,_>("subscriber_id")?).bind(reason.as_str()).execute(&mut **tx).await?;
+        sqlx::query(r#"
+            update lifecycle_outbox_deliveries d
+            set status='paused',pause_reason=$4,paused_at=now(),claimed_by=null,
+                claimed_at=null,claim_id=null,claim_expires_at=null
+            from unnest($1::uuid[],$2::text[],$3::text[]) batch(event_id,subscriber_id,handler_version)
+            where d.event_id=batch.event_id and d.subscriber_id=batch.subscriber_id
+              and d.handler_version=batch.handler_version and d.status <> 'delivered'
+        "#).bind(&event_ids).bind(&subscriber_ids).bind(&versions).bind(reason.as_str())
+            .execute(&mut **tx).await?;
     }
     Ok(())
 }

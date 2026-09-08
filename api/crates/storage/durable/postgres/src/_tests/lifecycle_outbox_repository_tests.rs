@@ -796,4 +796,217 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         .await
         .unwrap_err()
         .is::<ManagedLifecycleBacklogCheckBusy>());
+
+    // F07: the real revoke/disable transaction owners pause all batches atomically.
+    sqlx::query("insert into workspaces(id,tenant_id,name) values($1,$2,'Other pause scope')")
+        .bind(other_workspace)
+        .bind(tenant.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("insert into plugin_contribution_authorization_revisions(installation_id,workspace_id) values($1,$2)")
+        .bind(installation).bind(other_workspace).execute(store.pool()).await.unwrap();
+    let other_contribution = "acme.bounded.other";
+    sqlx::query("update extension_installations set metadata_json=jsonb_set(metadata_json,'{managed,module,contributions}',(metadata_json#>'{managed,module,contributions}')||jsonb_build_array(jsonb_build_object('contribution_id',$2::text))) where id=$1")
+        .bind(installation).bind(other_contribution).execute(store.pool()).await.unwrap();
+    let cross_workspace_subscriber = format!("managed.{other_workspace}.{contribution}");
+    let other_contribution_subscriber = format!("managed.{workspace}.{other_contribution}");
+    for extra_subscriber in [&cross_workspace_subscriber, &other_contribution_subscriber] {
+        sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version) values($1,$2,$2,$3)")
+            .bind(large_ids[0]).bind(extra_subscriber).bind(&version).execute(store.pool()).await.unwrap();
+    }
+    let other_installation = Uuid::now_v7();
+    let other_version = format!(
+        "{}:{other_installation}",
+        version.rsplit_once(':').unwrap().0
+    );
+    assert_eq!(
+        managed_handler_installation(&other_version),
+        Some(other_installation)
+    );
+    sqlx::query("update lifecycle_outbox_deliveries set handler_version=$3 where event_id=$1 and subscriber_id=$2")
+        .bind(large_ids[1]).bind(&subscriber).bind(&other_version).execute(store.pool()).await.unwrap();
+    // A whole later page belongs to another installation; the keyset must still advance.
+    sqlx::query("update lifecycle_outbox_deliveries set handler_version=$3 where event_id=any($1) and subscriber_id=$2")
+        .bind(&large_ids[768..1024]).bind(&subscriber).bind(&other_version).execute(store.pool()).await.unwrap();
+    let known_other_count = 257_i64;
+    sqlx::query("update lifecycle_outbox_deliveries set handler_version='legacy-unknown' where event_id=$1 and subscriber_id=$2")
+        .bind(large_ids[2]).bind(&subscriber).execute(store.pool()).await.unwrap();
+    let claimed_by = Uuid::now_v7();
+    let claim_id = Uuid::now_v7();
+    sqlx::query("update lifecycle_outbox_deliveries set status='claimed',claimed_by=$3,claimed_at=now(),claim_id=$4,claim_expires_at=now()+interval '30 seconds' where event_id=$1 and subscriber_id=$2")
+        .bind(large_ids[0]).bind(&subscriber).bind(claimed_by).bind(claim_id).execute(store.pool()).await.unwrap();
+    let authorization = Uuid::now_v7();
+    sqlx::query("update plugin_contribution_authorization_revisions set revision=1 where installation_id=$1 and workspace_id=$2")
+        .bind(installation).bind(workspace).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into plugin_contribution_authorizations(id,installation_id,workspace_id,contribution_id,point_id,permission,resource_scope,permission_contract_id,permission_contract_version,status,granted_by,revision) values($1,$2,$3,$4,'1flowbase.application.runtime-event.after-commit','event.subscribe','{\"kind\":\"workspace\"}'::jsonb,'managed-event','1','active',$5,1)")
+        .bind(authorization).bind(installation).bind(workspace).bind(contribution).bind(user)
+        .execute(store.pool()).await.unwrap();
+    let audit_id = Uuid::now_v7();
+    let revoke = RevokeContributionAuthorizationInput {
+        installation_id: installation,
+        workspace_id: workspace,
+        authorization_id: authorization,
+        expected_revision: 1,
+        actor_user_id: user,
+        audit_log: domain::AuditLogRecord {
+            id: audit_id,
+            workspace_id: Some(workspace),
+            actor_user_id: Some(user),
+            target_type: "plugin_installation".into(),
+            target_id: Some(installation),
+            event_code: "extension_center.contribution_authorizations.revoke".into(),
+            payload: serde_json::json!({}),
+            created_at: OffsetDateTime::now_utc(),
+        },
+    };
+    let failure_trigger = format!(
+        r#"
+        create function fail_later_pause_batch() returns trigger language plpgsql as $$
+        begin
+          if new.event_id='{}'::uuid and new.subscriber_id='{}' and new.status='paused' then
+            if (select count(*) from lifecycle_outbox_deliveries
+                where subscriber_id='{}' and pause_reason=new.pause_reason) < 256 then
+              raise exception 'fixture did not observe a completed earlier batch';
+            end if;
+            raise exception 'injected later pause batch failure';
+          end if;
+          return new;
+        end $$;
+        create trigger fail_later_pause_batch before update on lifecycle_outbox_deliveries
+          for each row execute function fail_later_pause_batch();
+    "#,
+        large_ids[512], subscriber, subscriber
+    );
+    let remove_trigger = "drop trigger fail_later_pause_batch on lifecycle_outbox_deliveries; drop function fail_later_pause_batch();";
+    sqlx::raw_sql(&failure_trigger)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let failed = store
+        .revoke_contribution_authorization(&revoke)
+        .await
+        .unwrap_err();
+    assert!(
+        failed
+            .to_string()
+            .contains("injected later pause batch failure"),
+        "{failed:#}"
+    );
+    let authority_state:(String,i64)=sqlx::query_as("select a.status,r.revision from plugin_contribution_authorizations a join plugin_contribution_authorization_revisions r using(installation_id,workspace_id) where a.id=$1")
+        .bind(authorization).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        authority_state,
+        ("active".into(), 1),
+        "grant and revision roll back with earlier pause batches"
+    );
+    let changed:i64=sqlx::query_scalar("select count(*) from lifecycle_outbox_deliveries where subscriber_id=$1 and pause_reason is not null")
+        .bind(&subscriber).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(changed, 0);
+    let retained_claim: Option<Uuid> = sqlx::query_scalar(
+        "select claim_id from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2",
+    )
+    .bind(large_ids[0])
+    .bind(&subscriber)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(retained_claim, Some(claim_id));
+    let audit_count: i64 = sqlx::query_scalar("select count(*) from audit_logs where id=$1")
+        .bind(audit_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(audit_count, 0);
+    sqlx::raw_sql(remove_trigger)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .revoke_contribution_authorization(&revoke)
+            .await
+            .unwrap()
+            .revision,
+        2
+    );
+    let paused:i64=sqlx::query_scalar("select count(*) from lifecycle_outbox_deliveries where event_id=any($1) and subscriber_id=$2 and status='paused' and pause_reason='authority_revoked' and claimed_by is null and claimed_at is null and claim_id is null and claim_expires_at is null")
+        .bind(&large_ids).bind(&subscriber).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        paused,
+        large_ids.len() as i64 - known_other_count,
+        "all batches pause, including legacy; known other installation stays excluded"
+    );
+    for excluded in [&cross_workspace_subscriber, &other_contribution_subscriber] {
+        let status: String = sqlx::query_scalar(
+            "select status from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2",
+        )
+        .bind(large_ids[0])
+        .bind(excluded)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            status, "pending",
+            "revoke does not cross workspace or contribution"
+        );
+    }
+    let disable = UpdatePluginDesiredStateInput {
+        installation_id: installation,
+        desired_state: domain::PluginDesiredState::Disabled,
+        actor_user_id: user,
+    };
+    sqlx::raw_sql(&failure_trigger)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let failed = store.update_desired_state(&disable).await.unwrap_err();
+    assert!(
+        failed
+            .to_string()
+            .contains("injected later pause batch failure"),
+        "{failed:#}"
+    );
+    let desired: String =
+        sqlx::query_scalar("select desired_state from extension_installations where id=$1")
+            .bind(installation)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        desired, "active_requested",
+        "disable intent rolls back with pause batches"
+    );
+    let partial:i64=sqlx::query_scalar("select count(*) from lifecycle_outbox_deliveries where pause_reason='installation_inactive'")
+        .fetch_one(store.pool()).await.unwrap();
+    assert_eq!(partial, 0);
+    sqlx::raw_sql(remove_trigger)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .update_desired_state(&disable)
+            .await
+            .unwrap()
+            .desired_state,
+        domain::PluginDesiredState::Disabled
+    );
+    let paused:i64=sqlx::query_scalar("select count(*) from lifecycle_outbox_deliveries where event_id=any($1) and status='paused' and pause_reason='installation_inactive'")
+        .bind(&large_ids).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        paused,
+        large_ids.len() as i64 - known_other_count + 2,
+        "installation disable includes both historical scopes and all contributions"
+    );
+    let other_status:(String,Option<String>)=sqlx::query_as("select status,pause_reason from lifecycle_outbox_deliveries where event_id=$1 and subscriber_id=$2")
+        .bind(large_ids[1]).bind(&subscriber).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(other_status, ("pending".into(), None));
+    let untouched:i64=sqlx::query_scalar("select count(*) from lifecycle_outbox_deliveries where event_id=any($1) and status='delivered' and pause_reason is null")
+        .bind(&ids).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        untouched,
+        ids.len() as i64,
+        "completed history remains unchanged"
+    );
 }
