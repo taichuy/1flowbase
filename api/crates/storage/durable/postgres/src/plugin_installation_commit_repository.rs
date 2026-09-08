@@ -1,5 +1,13 @@
 use anyhow::Result;
-use control_plane_contracts::ports::CommitPluginInstallationInput;
+use async_trait::async_trait;
+use control_plane_contracts::{
+    ports::{
+        CommitPluginInstallationInput, PluginInstallationAdmission,
+        PluginInstallationContentIdentity, PluginInstallationLease, UpsertPluginInstallationInput,
+    },
+    ControlPlaneContractError,
+};
+use sqlx::{pool::PoolConnection, PgConnection, Postgres, Row};
 use uuid::Uuid;
 
 use crate::{plugin_repository::map_installation, repositories::PgControlPlaneStore};
@@ -8,7 +16,165 @@ pub(crate) async fn commit_plugin_installation(
     store: &PgControlPlaneStore,
     input: &CommitPluginInstallationInput,
 ) -> Result<domain::PluginInstallationRecord> {
-    let mut tx = store.pool().begin().await?;
+    let admission = admission_for_input(&input.installation)?;
+    let mut lease = begin_plugin_installation(store, &admission).await?;
+    let result = lease.commit(input).await;
+    let _ = lease.release().await;
+    result
+}
+
+pub(crate) fn admission_for_input(
+    input: &UpsertPluginInstallationInput,
+) -> Result<PluginInstallationAdmission> {
+    Ok(PluginInstallationAdmission {
+        plugin_id: input.plugin_id.clone(),
+        content: if input
+            .metadata_json
+            .get("managed")
+            .is_some_and(|value| !value.is_null())
+        {
+            PluginInstallationContentIdentity::ManagedArchive {
+                checksum: input.expected_checksum.clone().ok_or(
+                    ControlPlaneContractError::Conflict("managed_archive_identity_missing"),
+                )?,
+            }
+        } else {
+            PluginInstallationContentIdentity::Legacy
+        },
+    })
+}
+
+pub(crate) struct PgPluginInstallationLease {
+    connection: Option<PoolConnection<Postgres>>,
+    admission: PluginInstallationAdmission,
+}
+
+impl Drop for PgPluginInstallationLease {
+    fn drop(&mut self) {
+        // Session locks and a possibly cancelled transaction must never return to the pool.
+        if let Some(connection) = self.connection.as_mut() {
+            connection.close_on_drop();
+        }
+    }
+}
+
+pub(crate) async fn begin_plugin_installation(
+    store: &PgControlPlaneStore,
+    admission: &PluginInstallationAdmission,
+) -> Result<Box<dyn PluginInstallationLease>> {
+    let mut lease = PgPluginInstallationLease {
+        connection: Some(store.pool().acquire().await?),
+        admission: admission.clone(),
+    };
+    let connection = lease
+        .connection
+        .as_mut()
+        .expect("new installation connection");
+    sqlx::query("select pg_advisory_lock(hashtextextended($1, 2007))")
+        .bind(&admission.plugin_id)
+        .execute(&mut **connection)
+        .await?;
+    validate_admission(connection, admission).await?;
+    Ok(Box::new(lease))
+}
+
+async fn validate_admission(
+    connection: &mut PgConnection,
+    admission: &PluginInstallationAdmission,
+) -> Result<()> {
+    let row = sqlx::query(
+        "select expected_checksum, metadata_json from extension_installations where plugin_id = $1",
+    )
+    .bind(&admission.plugin_id)
+    .fetch_optional(&mut *connection)
+    .await?;
+    if let Some(row) = row {
+        let metadata: serde_json::Value = row.get("metadata_json");
+        let old_managed = metadata
+            .get("managed")
+            .is_some_and(|value| !value.is_null());
+        if old_managed
+            || matches!(
+                admission.content,
+                PluginInstallationContentIdentity::ManagedArchive { .. }
+            )
+        {
+            let old_checksum: Option<String> = row.get("expected_checksum");
+            match &admission.content {
+                PluginInstallationContentIdentity::ManagedArchive { checksum }
+                    if old_managed && old_checksum.as_ref() == Some(checksum) => {}
+                _ => {
+                    return Err(ControlPlaneContractError::Conflict(
+                        "managed_archive_identity_conflict",
+                    )
+                    .into())
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[async_trait]
+impl PluginInstallationLease for PgPluginInstallationLease {
+    async fn commit(
+        &mut self,
+        input: &CommitPluginInstallationInput,
+    ) -> Result<domain::PluginInstallationRecord> {
+        if admission_for_input(&input.installation)? != self.admission {
+            return Err(
+                ControlPlaneContractError::Conflict("installation_admission_changed").into(),
+            );
+        }
+        if let PluginInstallationContentIdentity::ManagedArchive { checksum } =
+            &self.admission.content
+        {
+            if input.artifact_instance.local_checksum.as_ref() != Some(checksum) {
+                return Err(ControlPlaneContractError::Conflict(
+                    "installation_artifact_identity_changed",
+                )
+                .into());
+            }
+        }
+        let connection = self
+            .connection
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("installation lease released"))?;
+        // The same connection owns admission, the session lock and the original install body.
+        sqlx::query("BEGIN").execute(&mut **connection).await?;
+        let result = async {
+            validate_admission(connection, &self.admission).await?;
+            let record = write_installation(connection, input).await?;
+            sqlx::query("COMMIT").execute(&mut **connection).await?;
+            Ok(record)
+        }
+        .await;
+        if result.is_err() {
+            let _ = sqlx::query("ROLLBACK").execute(&mut **connection).await;
+        }
+        result
+    }
+
+    async fn release(mut self: Box<Self>) -> Result<()> {
+        let connection = self
+            .connection
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("installation lease released"))?;
+        // Also clears an aborted transaction before returning a healthy connection to the pool.
+        sqlx::query("ROLLBACK").execute(&mut **connection).await?;
+        sqlx::query("select pg_advisory_unlock(hashtextextended($1, 2007))")
+            .bind(&self.admission.plugin_id)
+            .execute(&mut **connection)
+            .await?;
+        self.connection.take();
+        Ok(())
+    }
+}
+
+async fn write_installation(
+    connection: &mut PgConnection,
+    input: &CommitPluginInstallationInput,
+) -> Result<domain::PluginInstallationRecord> {
     let installation = &input.installation;
     let row = sqlx::query(
         r#"
@@ -36,16 +202,29 @@ pub(crate) async fn commit_plugin_installation(
                 -- Artifact reinstallation restores the missing artifact; it must not reset the
                 -- durable intent that decides whether the retained configuration runs again.
                 desired_state = extension_installations.desired_state,
-                expected_checksum = excluded.expected_checksum,
+                expected_checksum = case when extension_installations.metadata_json -> 'managed' is not null
+                    and extension_installations.metadata_json -> 'managed' <> 'null'::jsonb
+                    then extension_installations.expected_checksum else excluded.expected_checksum end,
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
                 receipt = extension_installations.receipt - 'legacy_manifest_compatibility',
                 application_action = excluded.application_action,
-                metadata_json = excluded.metadata_json,
+                metadata_json = case when extension_installations.metadata_json -> 'managed' is not null
+                    and extension_installations.metadata_json -> 'managed' <> 'null'::jsonb
+                    then extension_installations.metadata_json else excluded.metadata_json end,
                 is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
+            where (
+                coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
+                and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
+            ) or (
+                coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
+                and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
+                and extension_installations.expected_checksum is not null
+                and extension_installations.expected_checksum = excluded.expected_checksum
+            )
             returning id, scope_id, category, organization, artifact_id as provider_code,
                 plugin_id, artifact_version as plugin_version, contract_version, protocol,
                 display_name, source_kind, trust_level, verification_status, desired_state,
@@ -89,7 +268,7 @@ pub(crate) async fn commit_plugin_installation(
     .bind(installation.is_system_reserved)
     .bind(installation.actor_user_id)
     .bind(installation.actor_user_id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *connection)
     .await?;
     let record = map_installation(row)?;
     let installation_id = record.id;
@@ -111,7 +290,7 @@ pub(crate) async fn commit_plugin_installation(
         );
         sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
             .bind(family_lock)
-            .execute(&mut *tx)
+            .execute(&mut *connection)
             .await?;
         sqlx::query(
             r#"
@@ -131,7 +310,7 @@ pub(crate) async fn commit_plugin_installation(
         .bind(installation.category.as_str())
         .bind(&installation.organization)
         .bind(&installation.provider_code)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     }
     sqlx::query(
@@ -168,7 +347,7 @@ pub(crate) async fn commit_plugin_installation(
     .bind(artifact.checked_at)
     .bind(&artifact.last_error)
     .bind(artifact.is_current)
-    .execute(&mut *tx)
+    .execute(&mut *connection)
     .await?;
 
     if let Some(package_catalog) = &input.package_catalog {
@@ -195,13 +374,13 @@ pub(crate) async fn commit_plugin_installation(
         .bind(package_catalog.projection_status.as_str())
         .bind(&package_catalog.last_error_message)
         .bind(package_catalog.refreshed_at)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     }
 
     sqlx::query("delete from node_contribution_registry where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     for entry in &input.node_contributions.entries {
         sqlx::query(
@@ -246,13 +425,13 @@ pub(crate) async fn commit_plugin_installation(
         .bind(entry.experimental)
         .bind(&entry.dependency_installation_kind)
         .bind(&entry.dependency_plugin_version_range)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     }
 
     sqlx::query("delete from js_dependency_registry where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     for entry in &input.js_dependencies.entries {
         sqlx::query(
@@ -279,13 +458,13 @@ pub(crate) async fn commit_plugin_installation(
         .bind(&entry.permissions.network)
         .bind(&entry.permissions.filesystem)
         .bind(&entry.permissions.env)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     }
 
     sqlx::query("delete from frontend_block_catalog where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     for entry in &input.frontend_blocks.entries {
         let context_contract = serde_json::json!({
@@ -324,7 +503,7 @@ pub(crate) async fn commit_plugin_installation(
         .bind(&entry.permissions.storage)
         .bind(&entry.permissions.secrets)
         .bind(serde_json::to_value(&entry.ui_capabilities)?)
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await?;
     }
 
@@ -343,7 +522,7 @@ pub(crate) async fn commit_plugin_installation(
         .bind(&asset.sha256)
         .bind(&asset.media_type)
         .bind(&asset.bytes)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut *connection)
         .await?;
         if inserted.is_none() {
             let matches: bool = sqlx::query_scalar(
@@ -358,7 +537,7 @@ pub(crate) async fn commit_plugin_installation(
             .bind(&asset.sha256)
             .bind(&asset.media_type)
             .bind(&asset.bytes)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut *connection)
             .await?;
             if !matches {
                 anyhow::bail!("retained frontend module asset identity conflict");
@@ -366,6 +545,5 @@ pub(crate) async fn commit_plugin_installation(
         }
     }
 
-    tx.commit().await?;
     Ok(record)
 }

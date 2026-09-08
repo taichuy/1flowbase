@@ -232,16 +232,13 @@ fn stable_sha256_json(value: &serde_json::Value) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-async fn commit_prepared_installation<R>(
-    repository: &R,
+fn prepare_installation_commit(
+    package_root: &Path,
     node_id: &str,
     mut installation: PreparedPluginInstallationInput,
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
-) -> Result<domain::PluginInstallationRecord>
-where
-    R: PluginRepository,
-{
+) -> Result<CommitPluginInstallationInput> {
     if let Some(managed) = &manifest.managed {
         installation.metadata_json["managed"] = serde_json::to_value(managed)?;
     }
@@ -285,7 +282,6 @@ where
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
     let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
     let mut retained_frontend_module_assets = Vec::new();
-    let package_root = Path::new(&installation.installed_path);
     for block in &manifest.block_contributions {
         for module in &block.code_modules {
             for asset in &module.assets {
@@ -321,17 +317,15 @@ where
         is_system_reserved: installation.source_kind == "builtin",
         actor_user_id: installation.actor_user_id,
     };
-    repository
-        .commit_plugin_installation(&CommitPluginInstallationInput {
-            installation: root,
-            artifact_instance,
-            package_catalog,
-            node_contributions,
-            js_dependencies,
-            frontend_blocks,
-            retained_frontend_module_assets,
-        })
-        .await
+    Ok(CommitPluginInstallationInput {
+        installation: root,
+        artifact_instance,
+        package_catalog,
+        node_contributions,
+        js_dependencies,
+        frontend_blocks,
+        retained_frontend_module_assets,
+    })
 }
 
 pub(super) fn extension_signature_status(value: Option<&str>) -> domain::ExtensionSignatureStatus {
@@ -449,7 +443,14 @@ where
             .join("installed")
             .join(&provider_code)
             .join(&manifest.version);
-        let mut staged_installation =
+        let lease = self
+            .repository
+            .begin_plugin_installation(&crate::ports::PluginInstallationAdmission {
+                plugin_id: plugin_id.clone(),
+                content: crate::ports::PluginInstallationContentIdentity::Legacy,
+            })
+            .await?;
+        let staged_installation =
             filesystem::StagedArtifactPath::prepare_directory(package_root, &install_path)?;
         let manifest_fingerprint =
             compute_manifest_fingerprint(&staged_installation.staged_path().join("manifest.yaml"))
@@ -467,7 +468,6 @@ where
             None,
             None,
         )?;
-        staged_installation.activate()?;
 
         let installation_input = PreparedPluginInstallationInput {
             installation_id,
@@ -503,24 +503,20 @@ where
             }),
             actor_user_id: command.actor_user_id,
         };
-        let installation_result = commit_prepared_installation(
-            &self.repository,
+        let installation_input = prepare_installation_commit(
+            staged_installation.staged_path(),
             &self.node_id,
             installation_input,
             &manifest,
             None,
+        )?;
+        let installation = super::managed_installation::publish_installation(
+            lease,
+            staged_installation,
+            None,
+            installation_input,
         )
-        .await;
-        let installation = match installation_result {
-            Ok(installation) => {
-                staged_installation.finish();
-                installation
-            }
-            Err(error) => {
-                let _ = staged_installation.rollback();
-                return Err(error);
-            }
-        };
+        .await?;
 
         Ok(installation)
     }
@@ -1223,12 +1219,26 @@ where
                 .join("packages")
                 .join(&plugin_code)
                 .join(format!("{package_id}.1flowbasepkg"));
-            let mut staged_package = source_metadata
+            let admission = crate::ports::PluginInstallationAdmission {
+                plugin_id: package_id.clone(),
+                content: if manifest.managed.is_some() {
+                    crate::ports::PluginInstallationContentIdentity::ManagedArchive {
+                        checksum: source_metadata.checksum.clone().ok_or(
+                            ControlPlaneError::Conflict("managed_archive_identity_missing"),
+                        )?,
+                    }
+                } else {
+                    crate::ports::PluginInstallationContentIdentity::Legacy
+                },
+            };
+            // Declare the lease first: staging guards restore synchronously before it drops.
+            let lease = self.repository.begin_plugin_installation(&admission).await?;
+            let staged_package = source_metadata
                 .package_bytes
                 .as_deref()
                 .map(|bytes| filesystem::StagedArtifactPath::prepare_file(bytes, &package_archive_path))
                 .transpose()?;
-            let mut staged_installation = filesystem::StagedArtifactPath::prepare_directory(
+            let staged_installation = filesystem::StagedArtifactPath::prepare_directory(
                 Path::new(&command.package_root),
                 &install_path,
             )?;
@@ -1264,19 +1274,15 @@ where
                 source_metadata.signature_algorithm.as_deref(),
                 source_metadata.signing_key_id.as_deref(),
             )?;
-            staged_installation.activate()?;
-            if let Some(package) = staged_package.as_mut() {
-                package.activate()?;
-            }
-            let database_result = async {
+            let installation_input = (|| {
                 match package_kind {
                 RoutedPluginPackageKind::HostExtension => {
                     ensure_root_actor(&actor)?;
                     ensure_uploaded_host_extensions_enabled(self.allow_uploaded_host_extensions)?;
                     let mut metadata_json = json!({"plugin_type": "host_extension"});
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
@@ -1313,24 +1319,11 @@ where
                         &manifest,
                         None,
                     )
-                    .await?;
-                    self.repository
-                        .append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, true),
-                        ))
-                        .await?;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 RoutedPluginPackageKind::ModelProviderRuntime => {
-                    let installed_package = load_provider_package(&install_path)?;
+                    let installed_package = load_provider_package(staged_installation.staged_path())?;
                     let mut metadata_json = json!({
                         "plugin_type": "model_provider",
                         "help_url": installed_package.provider.help_url,
@@ -1382,32 +1375,19 @@ where
                         last_error_message: None,
                         refreshed_at: Some(OffsetDateTime::now_utc()),
                     };
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         installation_input,
                         &manifest,
                         Some(package_catalog),
                     )
-                    .await?;
-                    self.repository
-                        .append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, false),
-                        ))
-                        .await?;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 RoutedPluginPackageKind::DataSourceRuntime => {
                     let installed_package =
-                        plugin_framework::DataSourcePackage::load_from_dir(&install_path)
+                        plugin_framework::DataSourcePackage::load_from_dir(staged_installation.staged_path())
                             .map_err(map_framework_error)?;
                     let mut metadata_json = json!({
                         "plugin_type": "data_source",
@@ -1416,8 +1396,8 @@ where
                         "capabilities": installed_package.definition.capabilities,
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
@@ -1454,25 +1434,12 @@ where
                         &manifest,
                         None,
                     )
-                    .await?;
-                    self.repository
-                        .append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, false),
-                        ))
-                        .await?;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
                     let installed_package = plugin_framework::NetworkEgressProviderPackage::load_from_dir(
-                        &install_path,
+                        staged_installation.staged_path(),
                     )
                     .map_err(map_framework_error)?;
                     let mut metadata_json = json!({
@@ -1480,8 +1447,8 @@ where
                         "slot_code": "network_egress_provider",
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
@@ -1518,35 +1485,18 @@ where
                         &manifest,
                         None,
                     )
-                    .await?;
-                    // The installation commit is the current-selection transaction. Audit is
-                    // best effort here so an audit sink outage cannot report a failed update
-                    // after the new version has already become current.
-                    let _ = self
-                        .repository
-                        .append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, false),
-                        ))
-                        .await;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 RoutedPluginPackageKind::ProviderDistributionRuleRuntime => {
-                    let manifest = load_plugin_manifest(&install_path)?;
+                    let manifest = load_plugin_manifest(staged_installation.staged_path())?;
                     let mut metadata_json = json!({
                         "plugin_type": "provider_distribution_rule",
                         "slot_code": "provider_distribution_rule",
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
@@ -1583,24 +1533,11 @@ where
                         &manifest,
                         None,
                     )
-                    .await?;
-                    self.repository
-                        .append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, false),
-                        ))
-                        .await?;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 RoutedPluginPackageKind::CapabilityPlugin | RoutedPluginPackageKind::ManagedContributions => {
-                    let manifest = load_plugin_manifest(&install_path)?;
+                    let manifest = load_plugin_manifest(staged_installation.staged_path())?;
                     let mut metadata_json = json!({
                         "plugin_type": package_kind.as_plugin_type(),
                         "node_contributions": manifest
@@ -1647,42 +1584,37 @@ where
                             metadata_json,
                             actor_user_id: command.actor_user_id,
                         };
-                    let installation = commit_prepared_installation(
-                        &self.repository,
+                    let installation = prepare_installation_commit(
+                        staged_installation.staged_path(),
                         &self.node_id,
                         installation_input,
                         &manifest,
                         None,
                     )
-                    .await?;
-                    let _ = self.repository.append_audit_log(&audit_log(
-                            Some(actor.current_workspace_id),
-                            Some(command.actor_user_id),
-                            "plugin_installation",
-                            Some(installation.id),
-                            "plugin.installed",
-                            plugin_install_audit_detail(&installation, &detail_json, false),
-                        )).await;
-                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
-                        installation,
-                        true,
-                    ))
+                    ?;
+                    Ok::<CommitPluginInstallationInput, anyhow::Error>(installation)
                 }
                 }
+            })()?;
+            let installation = super::managed_installation::publish_installation(
+                lease, staged_installation, staged_package, installation_input,
+            ).await?;
+            let audit = self.repository.append_audit_log(&audit_log(
+                Some(actor.current_workspace_id),
+                Some(command.actor_user_id),
+                "plugin_installation",
+                Some(installation.id),
+                "plugin.installed",
+                plugin_install_audit_detail(&installation, &detail_json,
+                    matches!(package_kind, RoutedPluginPackageKind::HostExtension)),
+            )).await;
+            if !matches!(package_kind,
+                RoutedPluginPackageKind::NetworkEgressProviderRuntime
+                | RoutedPluginPackageKind::CapabilityPlugin
+                | RoutedPluginPackageKind::ManagedContributions) {
+                audit?;
             }
-            .await;
-            if database_result.is_err() {
-                let _ = staged_installation.rollback();
-                if let Some(package) = staged_package.as_mut() {
-                    let _ = package.rollback();
-                }
-            } else {
-                staged_installation.finish();
-                if let Some(package) = staged_package {
-                    package.finish();
-                }
-            }
-            database_result
+            Ok((installation, true))
         }
         .await;
 

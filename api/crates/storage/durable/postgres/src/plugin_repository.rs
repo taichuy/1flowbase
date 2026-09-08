@@ -131,6 +131,14 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
+    async fn begin_plugin_installation(
+        &self,
+        admission: &control_plane_contracts::ports::PluginInstallationAdmission,
+    ) -> Result<Box<dyn control_plane_contracts::ports::PluginInstallationLease>> {
+        crate::plugin_installation_commit_repository::begin_plugin_installation(self, admission)
+            .await
+    }
+
     async fn commit_plugin_installation(
         &self,
         input: &CommitPluginInstallationInput,
@@ -192,10 +200,21 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
                 receipt = extension_installations.receipt - 'legacy_manifest_compatibility',
-                metadata_json = excluded.metadata_json,
+                metadata_json = case when extension_installations.metadata_json -> 'managed' is not null
+                    and extension_installations.metadata_json -> 'managed' <> 'null'::jsonb
+                    then extension_installations.metadata_json else excluded.metadata_json end,
                 is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
+            where (
+                coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
+                and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) = 'null'::jsonb
+            ) or (
+                coalesce(extension_installations.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
+                and coalesce(excluded.metadata_json -> 'managed', 'null'::jsonb) <> 'null'::jsonb
+                and extension_installations.expected_checksum is not null
+                and extension_installations.expected_checksum = excluded.expected_checksum
+            )
             returning
                 id,
                 scope_id,

@@ -37,6 +37,30 @@ pub struct CommitPluginInstallationInput {
     pub retained_frontend_module_assets: Vec<RetainedFrontendModuleAssetInput>,
 }
 
+/// Admission identity for one versioned installation, held through filesystem publication.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluginInstallationContentIdentity {
+    Legacy,
+    ManagedArchive { checksum: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginInstallationAdmission {
+    pub plugin_id: String,
+    pub content: PluginInstallationContentIdentity,
+}
+
+/// One installation's serialization owner. Commit uses its existing connection; callers must
+/// finish or restore filesystem staging before releasing it. Dropping closes any held lease.
+#[async_trait]
+pub trait PluginInstallationLease: Send {
+    async fn commit(
+        &mut self,
+        input: &CommitPluginInstallationInput,
+    ) -> anyhow::Result<domain::PluginInstallationRecord>;
+    async fn release(self: Box<Self>) -> anyhow::Result<()>;
+}
+
 #[derive(Debug, Clone)]
 pub struct RetainedFrontendModuleAssetInput {
     pub module_source: String,
@@ -251,6 +275,13 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn begin_plugin_installation(
+        &self,
+        _admission: &PluginInstallationAdmission,
+    ) -> anyhow::Result<Box<dyn PluginInstallationLease>> {
+        anyhow::bail!("plugin installation lease is not implemented")
+    }
+
     async fn commit_plugin_installation(
         &self,
         _input: &CommitPluginInstallationInput,

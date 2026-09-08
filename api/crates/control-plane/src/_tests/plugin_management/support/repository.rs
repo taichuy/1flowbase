@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone)]
 pub(crate) struct MemoryPluginManagementRepository {
     pub(crate) actor: ActorContext,
+    installation_lease: Arc<tokio::sync::Mutex<()>>,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
     artifact_cleanups: Arc<RwLock<HashMap<Uuid, domain::PluginArtifactCleanupRecord>>>,
@@ -34,6 +35,7 @@ impl MemoryPluginManagementRepository {
     pub(crate) fn new(actor: ActorContext) -> Self {
         Self {
             actor,
+            installation_lease: Arc::new(tokio::sync::Mutex::new(())),
             installations: Arc::new(RwLock::new(HashMap::new())),
             artifact_instances: Arc::new(RwLock::new(HashMap::new())),
             artifact_cleanups: Arc::new(RwLock::new(HashMap::new())),
@@ -487,8 +489,55 @@ impl AuthRepository for MemoryPluginManagementRepository {
     }
 }
 
+struct MemoryInstallationLease {
+    repository: MemoryPluginManagementRepository,
+    _guard: tokio::sync::OwnedMutexGuard<()>,
+}
+
+#[async_trait]
+impl crate::ports::PluginInstallationLease for MemoryInstallationLease {
+    async fn commit(
+        &mut self,
+        input: &CommitPluginInstallationInput,
+    ) -> Result<PluginInstallationRecord> {
+        self.repository.commit_plugin_installation(input).await
+    }
+    async fn release(self: Box<Self>) -> Result<()> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl PluginRepository for MemoryPluginManagementRepository {
+    async fn begin_plugin_installation(
+        &self,
+        admission: &crate::ports::PluginInstallationAdmission,
+    ) -> Result<Box<dyn crate::ports::PluginInstallationLease>> {
+        let guard = self.installation_lease.clone().lock_owned().await;
+        if let Some(existing) = self
+            .installations
+            .read()
+            .await
+            .values()
+            .find(|record| record.plugin_id == admission.plugin_id)
+        {
+            let managed = existing
+                .metadata_json
+                .get("managed")
+                .is_some_and(|value| !value.is_null());
+            match &admission.content {
+                crate::ports::PluginInstallationContentIdentity::ManagedArchive { checksum }
+                    if managed && existing.expected_checksum.as_ref() == Some(checksum) => {}
+                crate::ports::PluginInstallationContentIdentity::Legacy if !managed => {}
+                _ => anyhow::bail!("managed_archive_identity_conflict"),
+            }
+        }
+        Ok(Box::new(MemoryInstallationLease {
+            repository: self.clone(),
+            _guard: guard,
+        }))
+    }
+
     async fn commit_plugin_installation(
         &self,
         input: &CommitPluginInstallationInput,
@@ -556,6 +605,15 @@ impl PluginRepository for MemoryPluginManagementRepository {
         let desired_state = existing
             .map(|item| item.desired_state)
             .unwrap_or(input.desired_state);
+        let metadata_json = existing
+            .filter(|record| {
+                record
+                    .metadata_json
+                    .get("managed")
+                    .is_some_and(|value| !value.is_null())
+            })
+            .map(|record| record.metadata_json.clone())
+            .unwrap_or_else(|| input.metadata_json.clone());
         let record = PluginInstallationRecord {
             id,
             scope_id: domain::SYSTEM_SCOPE_ID,
@@ -576,7 +634,7 @@ impl PluginRepository for MemoryPluginManagementRepository {
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
             legacy_manifest_compatibility: None,
-            metadata_json: input.metadata_json.clone(),
+            metadata_json,
             is_system_reserved: input.is_system_reserved,
             created_by: input.actor_user_id,
             updated_by: Some(input.actor_user_id),
