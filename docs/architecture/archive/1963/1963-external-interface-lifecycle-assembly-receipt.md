@@ -1,5 +1,7 @@
 # #1963 External Interface Lifecycle Assembly Receipt
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 ## Identity
 
 - Delivery: [#1963](https://github.com/taichuy/1flowbase/issues/1963)

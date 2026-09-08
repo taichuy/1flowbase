@@ -1,5 +1,7 @@
 # Authentication entry disposition — Root #1998
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 Source audit at P5 assembly (after P4 `1977dac9224699fd6de152649fc3a65a28137b28`). This is a finite implementation inventory, not an execution plan.
 
 The inventory is 16 original direct route factory sites plus P2 WebMCP. Final source has 16 common-owner calls: the old compatibility `invoke_stream` owner was retired after its callers converged on the authenticated stream path. Every credential-authenticated resolved invocation uses `ExtensionBootSnapshot::authenticate_invocation`, the frozen factory, and `AuthenticatedInvocation::into_envelope`. The attempt ID is allocated before authentication. Rejection awaits frozen Completion with the shared 1000 ms finalization budget and publishes safe `interface_lifecycle` tracing metadata; original errors stay in the host for existing projections.

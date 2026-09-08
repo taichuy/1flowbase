@@ -1,5 +1,7 @@
 # #1944 Interface Coverage Inventory and Frozen Acceptance Matrix
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 ## Frozen input
 
 - Main: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`

@@ -1,5 +1,7 @@
 # ADR: Canonical Interface Contract 与 Invocation Lifecycle
 
+> 阅读提示：本文保留架构决策及当时的候选状态；渐进式当前说明见[架构索引](../architecture/README.md)，下文阶段状态不代表最新验收结果。
+
 ## Status
 
 Accepted architecture；implemented candidate on `beta` for #1944、#1958 与 #1963。全部外部业务入口已进入 Canonical Interface Lifecycle，但 #1963 的最终 candidate-bound GitHub Actions 验收尚未结算，因此不得表述为已完成最终交付。
@@ -11,11 +13,11 @@ Accepted architecture；implemented candidate on `beta` for #1944、#1958 与 #1
 - 产品 Assembly：`beta@50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a`
 - Fresh QA Assembly：`beta@c6728eebd509da8cd6866b00663ca5fc97d68bcc`
 - 文档 HEAD：`beta@f1d7cc5566ec13991cdd1641944d17874bc62243`
-- 正式证据：[`1944-interface-lifecycle-assembly-receipt.md`](../architecture/1944-interface-lifecycle-assembly-receipt.md)
+- 正式证据：[`1944-interface-lifecycle-assembly-receipt.md`](../architecture/archive/1944/1944-interface-lifecycle-assembly-receipt.md)
 - Compatibility Route Family 迁移：[#1958](https://github.com/taichuy/1flowbase/issues/1958)，候选证据见
-  [`1958-compatibility-interface-migration-assembly-receipt.md`](../architecture/1958-compatibility-interface-migration-assembly-receipt.md)
+  [`1958-compatibility-interface-migration-assembly-receipt.md`](../architecture/archive/1958/1958-compatibility-interface-migration-assembly-receipt.md)
 - 全量 External Interface 迁移：[#1963](https://github.com/taichuy/1flowbase/issues/1963)，候选证据见
-  [`1963-external-interface-lifecycle-assembly-receipt.md`](../architecture/1963-external-interface-lifecycle-assembly-receipt.md)
+  [`1963-external-interface-lifecycle-assembly-receipt.md`](../architecture/archive/1963/1963-external-interface-lifecycle-assembly-receipt.md)
 - 全量迁移产品候选：`beta@2792e691217f5a88078bff479bfde4058a9ced8b`
 - 最新治理证据：`beta@3a141c0e38c9c656ac0fd5b2df4fddb63a625586`；QA-7 产品行通过，但两个证据治理 blocker 触发 `NEEDS_REFRAME`
 - 最终结算方式：固定 main/beta SHA，在 GitHub Actions 分别执行完整 `quality gate(scope=ci)`；共同 scope 比较与 RuntimeExtensionHost 拓扑差异分开判定
@@ -26,7 +28,7 @@ Accepted architecture；implemented candidate on `beta` for #1944、#1958 与 #1
 
 Invocation 终态、事务 commit/rollback 与响应交付/subscriber ack 分别归各自 owner。新增验收用真实 service+PostgreSQL、COMMIT 延迟故障、取消后的已提交业务及受控 BrokenPipe writer 区分这些事实；不把 Completion 当 ack，也不声明网络 exactly-once。
 
-有限矩阵与限制见 [`1998-interface-lifecycle-acceptance.md`](../architecture/1998-interface-lifecycle-acceptance.md)。当前仅 fixture/candidate 状态，等待 Root 的冻结候选集中 QA 与同 SHA CI；本补充不把既有历史状态或本次机械编译视作验收通过。
+有限矩阵与限制见 [`1998-interface-lifecycle-acceptance.md`](../architecture/archive/1998/1998-interface-lifecycle-acceptance.md)。当前仅 fixture/candidate 状态，等待 Root 的冻结候选集中 QA 与同 SHA CI；本补充不把既有历史状态或本次机械编译视作验收通过。
 
 ## Context
 
@@ -647,6 +649,6 @@ typed phase/point 让插件的“空间”可编译，snapshot/generation/receip
 - `api/apps/api-server/src/middleware/require_settings_feature_permission.rs:78`：激活 Console Interface Route 在旧 AuthN middleware 前分流。
 - `api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs:268`：HTTP/MCP/Internal 共用 typed Interface 的生产调用。
 - `api/apps/api-server/src/_tests/authentication_activation_tests.rs:181`：HostExtension manifest → Graph → factory → Registry → Router 及单次 AuthN 的真实 fixture。
-- `docs/architecture/1944-interface-lifecycle-assembly-receipt.md`：四类生产路径、RR/ARC 与 Fresh QA 的候选结算证据。
+- `docs/architecture/archive/1944/1944-interface-lifecycle-assembly-receipt.md`：四类生产路径、RR/ARC 与 Fresh QA 的候选结算证据。
 
 本次更新只同步当前架构事实，不修改产品代码、测试、数据库、外部 contract 或运行时行为。

@@ -1,5 +1,7 @@
 # #1958 Compatibility Interface Migration Assembly Receipt
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 ## Candidate status
 
 - Delivery: [#1958](https://github.com/taichuy/1flowbase/issues/1958)

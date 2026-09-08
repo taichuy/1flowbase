@@ -1,5 +1,7 @@
 # #1954 公网 Vite 开发环境 Assembly Receipt
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 ## Candidate
 
 - Branch: `dev`

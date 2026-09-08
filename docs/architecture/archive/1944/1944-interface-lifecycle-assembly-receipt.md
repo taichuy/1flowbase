@@ -1,5 +1,7 @@
 # #1944 Interface Lifecycle Assembly and QA Receipt
 
+> 历史记录：仅对文中冻结版本和当时范围负责，不作为当前架构或最新验收状态。当前说明见[架构索引](../../README.md)，同阶段记录见[归档索引](../README.md)。
+
 ## Result and identities
 
 - Result: `QA_PASS`
@@ -131,28 +133,38 @@ QA fix packets, all inside the approved boundary:
 
 ## Four production vertical slices
 
-| Slice | Result | Preserved boundary |
-| --- | --- | --- |
-| Public login instances | PASS | Public principal, locale/order/default authenticator DTO and error behavior |
-| Console providers | PASS | User principal, Console operation permission, row scope and existing DTO/error mapping |
-| Application native run + SSE | PASS | Application/API-key/workspace/Actor identity, runtime dispatch and SSE event ordering |
-| MCP User API key | PASS | User API-key principal, JSON-RPC result/error/continuation behavior and server-delegated internal authorization without raw credentials |
+本节合并原 `1944-interface-vertical-slices.md` 与 `1944-route-equivalence-ledger.md` 的适配、typed target、协议边界及初始范围；保留本记录原候选结算。
+
+| Slice | Adapter → Principal | Typed target | Projection and equivalence boundary |
+| --- | --- | --- | --- |
+| Public login instances | HTTP headers resolve `CatalogLocale`; no credential; `PublicPrincipal` | Narrow public-login query port | Existing `ApiSuccess<PublicLoginInstancesResponse>`, localization, ordering and default authenticator logic |
+| Console providers | Existing session/API-key authentication; `UserPrincipal` | Existing host-infrastructure query port | Existing DTO, permission operation and HTTP error mapping |
+| Application native run + SSE | Bearer token authenticates once to `ApplicationApiKeyActor`; `ApplicationPrincipal` retains application/API-key/workspace/Actor | Authenticated-actor native-run port; control-plane no longer needs the token on this path | Existing 201 response modes, blocking execution, SSE event sender/order and runtime dispatch; runtime MCP delegation is actor-based |
+| MCP User API Key | Existing `require_session`; only User API Key accepted; `UserPrincipal::UserApiKey` | Typed MCP method enum and bounded tool-arguments wrapper over the existing Virtual UI dispatch port | Existing JSON-RPC ids, status codes, error codes/data, response-size cap, tool list and call result projection |
+
+The four slices above passed in this receipt's candidate. The original #1944 migration inserted the typed lifecycle after authentication/protocol parsing and before the existing application target; Receipt projection remained adapter-owned, not a Domain Event.
+
+The original `1944-route-equivalence-ledger.md` scoped migration to these four routes. Its machine fixture `api/apps/api-server/src/_tests/fixtures/interface_route_equivalence.1944.json` binds Kernel/principal sources to regression sources for allow/deny, row scope, mutation, DTO, status/error, stream order, transaction/outbox, Runtime dispatch, audit and Receipt. At that stage compatibility HTTP/WebSocket, `/api/ex`, public sign-in, Internal/Background and dynamic route expansion were gaps covered only by existing regression evidence; no production double write, legacy fallback or second route registration was introduced. This is the original scope, not the current coverage claim.
 
 Compatibility APIs、`/api/ex`、WebSocket variants 与 sign-in mutation 已由后续 Delivery
 [#1958](https://github.com/taichuy/1flowbase/issues/1958) 装配为 Canonical Interface 候选；其
 candidate-bound QA 和结算状态只以
-[`1958-compatibility-interface-migration-assembly-receipt.md`](1958-compatibility-interface-migration-assembly-receipt.md)
+[`1958-compatibility-interface-migration-assembly-receipt.md`](../1958/1958-compatibility-interface-migration-assembly-receipt.md)
 为准。Internal/background workers 继续 HOLD，未伪造 Principal、retry 或 acknowledgement
 语义。
 
 ## Interface Extension Space
 
-| Tier | Definition | Authentication | AuthZ/Admission/hooks | Handler | Isolation |
-| --- | --- | --- | --- | --- | --- |
-| Built-in | allowed | allowed | typed facts; explicit mutation permission | allowed, exactly one | trusted in-process |
-| HostExtension | allowed | allowed | typed facts; explicit mutation permission | allowed, exactly one | trusted in-process |
-| RuntimeExtension | permission-scoped | forbidden | permission/scoped typed facts | permission-scoped | process/wire |
-| CapabilityPlugin | permission-scoped | forbidden | permission/scoped typed facts | permission-scoped | process/wire |
+本节合并原 `1944-interface-extension-space.md` 的分阶段权限表及 typed fact / mutation 限制；属于 #1944 当时的契约记录，不代表三级插件当前已全部开放。
+
+| Tier | Definition | Authentication adapter | Authorization / Admission | Before / After | Handler | Failure / Completion | Isolation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Built-in | allowed | allowed | allowed | allowed; mutation permission explicit | allowed; exactly one effective target | allowed | trusted in-process |
+| HostExtension | allowed | allowed | allowed | allowed; mutation permission explicit | allowed; exactly one effective target | allowed | trusted in-process |
+| RuntimeExtension | allowed with permission | forbidden | allowed with typed facts | allowed with permission | allowed with permission | allowed with typed facts | process/wire |
+| CapabilityPlugin | allowed with permission | forbidden | allowed with typed facts | allowed with permission | allowed with permission | allowed with typed facts | process/wire |
+
+Every registration compiles a point, permission, interface scope, isolation mode and a subset of point-specific typed facts. Authentication receives no generally distributable fact set: raw credentials stay inside the trusted adapter implementation. `interface.before` can mutate only with `MutateInput`; observation permission cannot mutate. Handler compilation rejects zero or multiple effective targets. Completion receives terminal/invocation facts only and has no Domain Event or outbox port.
 
 The approved points are `interface.definition`, `interface.authentication_adapter`,
 `interface.authorization`, `interface.admission`, `interface.before`, `interface.handler`,
