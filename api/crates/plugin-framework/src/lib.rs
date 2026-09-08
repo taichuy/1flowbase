@@ -34,6 +34,9 @@ pub use data_model_template_contract::*;
 pub use data_source_contract::*;
 pub use data_source_package::*;
 pub use error::*;
+pub use extension_package_runtime::managed_manifest::{
+    ManagedContributionExecutionBinding, ManagedContributionPayload, ManagedManifest,
+};
 pub use frontend_module_asset::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{

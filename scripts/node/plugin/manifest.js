@@ -3,10 +3,14 @@ const path = require('node:path');
 
 const { getPluginName, sanitizeCode } = require('./fs.js');
 
-function createManifestTemplate({ pluginCode, pluginName }) {
+function createManifestTemplate({ pluginCode, pluginName, managed }) {
+  if (managed !== undefined) {
+    return createManagedManifestTemplate({ pluginCode, pluginName, managed });
+  }
   return `manifest_version: 1
 plugin_id: ${pluginCode}
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: ${pluginName}
 description: OpenAI-compatible provider runtime extension
@@ -36,6 +40,29 @@ runtime:
     memory_bytes: 268435456
 node_contributions: []
 `;
+}
+
+// ModuleDescriptor and execution_bindings retain their backend field names. The package
+// intake validator owns semantic checks; generation must not infer handlers from slot names.
+function createManagedManifestTemplate({ pluginCode, pluginName, managed }) {
+  if (!managed || !managed.module || !Array.isArray(managed.execution_bindings)) {
+    throw new Error('managed.module and managed.execution_bindings are required');
+  }
+  const consumptionKind = { runtime: 'runtime_extension', capability: 'capability_plugin', trusted_host: 'host_extension' }[managed.module.module_kind];
+  if (!consumptionKind) throw new Error('managed module governance is not installable');
+  if (managed.module.module_id !== pluginCode || managed.module.module_version !== '0.1.0') {
+    throw new Error('managed module identity must match the generated package');
+  }
+  let template = createManifestTemplate({ pluginCode, pluginName })
+    .replace('manifest_version: 1', 'manifest_version: 2')
+    .replace('schema_version: 1flowbase.plugin.manifest/v1', 'schema_version: 1flowbase.plugin.manifest/v2')
+    .replace('consumption_kind: runtime_extension', `consumption_kind: ${consumptionKind}`)
+    .replace('slot_codes:\n  - model_provider', 'slot_codes: []')
+    .replace('contract_version: 1flowbase.provider/v2', 'contract_version: 1flowbase.extension-bus/v1');
+  if (consumptionKind === 'host_extension') {
+    template = template.replace('binding_targets:\n  - workspace', 'binding_targets: []');
+  }
+  return `${template}managed: ${JSON.stringify(managed)}\n`;
 }
 
 function createProviderYamlTemplate({ pluginCode, pluginName }) {
@@ -194,6 +221,7 @@ module.exports = {
   createExampleModelYaml,
   createI18nTemplate,
   createManifestTemplate,
+  createManagedManifestTemplate,
   createProviderYamlTemplate,
   createReadmeTemplate,
   createRustMainTemplate,

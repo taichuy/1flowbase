@@ -131,6 +131,7 @@ where
                         "provider_distribution_rule"
                     }
                     RoutedPluginPackageKind::CapabilityPlugin => "capability_plugin",
+                    RoutedPluginPackageKind::ManagedContributions => "managed_contributions",
                 };
                 let desired_state = if package_kind == RoutedPluginPackageKind::HostExtension {
                     domain::PluginDesiredState::PendingRestart
@@ -141,6 +142,13 @@ where
                     receipt.signature_status.as_deref(),
                     Some("verified" | "builtin")
                 );
+                let mut metadata_json = json!({
+                    "install_kind": "local_receipt_rebuild",
+                    "plugin_type": plugin_type,
+                });
+                if let Some(managed) = &manifest.managed {
+                    metadata_json["managed"] = serde_json::to_value(managed)?;
+                }
                 let installation = self
                     .repository
                     .upsert_installation(&UpsertPluginInstallationInput {
@@ -154,6 +162,19 @@ where
                             | RoutedPluginPackageKind::NetworkEgressProviderRuntime
                             | RoutedPluginPackageKind::ProviderDistributionRuleRuntime => {
                                 domain::ExtensionCategory::RuntimeExtensions
+                            }
+                            RoutedPluginPackageKind::ManagedContributions => {
+                                match manifest.consumption_kind {
+                                    PluginConsumptionKind::HostExtension => {
+                                        domain::ExtensionCategory::HostExtensions
+                                    }
+                                    PluginConsumptionKind::RuntimeExtension => {
+                                        domain::ExtensionCategory::RuntimeExtensions
+                                    }
+                                    PluginConsumptionKind::CapabilityPlugin => {
+                                        domain::ExtensionCategory::CapabilityPlugins
+                                    }
+                                }
                             }
                             RoutedPluginPackageKind::CapabilityPlugin => {
                                 domain::ExtensionCategory::CapabilityPlugins
@@ -187,10 +208,7 @@ where
                         ),
                         signature_algorithm: receipt.signature_algorithm,
                         signing_key_id: receipt.signing_key_id,
-                        metadata_json: json!({
-                            "install_kind": "local_receipt_rebuild",
-                            "plugin_type": plugin_type,
-                        }),
+                        metadata_json,
                         is_system_reserved: false,
                         actor_user_id,
                     })

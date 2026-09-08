@@ -30,7 +30,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginExecutionMode {
     InProcess,
@@ -64,7 +64,7 @@ pub struct PluginPermissionManifest {
     pub credit: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PluginRuntimeLimits {
     #[serde(default)]
@@ -79,7 +79,7 @@ pub struct PluginRuntimeLimits {
     pub memory_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginRuntimeManifest {
     pub protocol: String,
@@ -242,6 +242,9 @@ pub struct FrontendBlockContributionManifest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
+    #[serde(default)]
+    pub managed: Option<crate::managed_manifest::ManagedManifest>,
+
     pub manifest_version: u32,
     pub plugin_id: String,
     pub version: String,
@@ -382,14 +385,16 @@ fn validate_plugin_manifest(
     manifest: &PluginManifestV1,
     contract_policy: ManifestContractPolicy,
 ) -> FrameworkResult<()> {
-    if manifest.manifest_version != 1 {
+    if !matches!(manifest.manifest_version, 1 | 2) {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "manifest_version must be 1",
+            "manifest_version must be 1 or 2",
         ));
     }
-    if manifest.schema_version != "1flowbase.plugin.manifest/v1" {
+    if manifest.schema_version
+        != format!("1flowbase.plugin.manifest/v{}", manifest.manifest_version)
+    {
         return Err(PluginFrameworkError::invalid_provider_package(
-            "schema_version must be 1flowbase.plugin.manifest/v1",
+            "schema_version must match manifest_version",
         ));
     }
 
@@ -406,7 +411,9 @@ fn validate_plugin_manifest(
     validate_non_empty(&manifest.selection_mode, "selection_mode")?;
     validate_non_empty(&manifest.minimum_host_version, "minimum_host_version")?;
     validate_non_empty(&manifest.contract_version, "contract_version")?;
-    validate_contract_version_for_policy(manifest, contract_policy)?;
+    if manifest.manifest_version == 1 {
+        validate_contract_version_for_policy(manifest, contract_policy)?;
+    }
     validate_allowed(
         &manifest.source_kind,
         "source_kind",
@@ -436,8 +443,17 @@ fn validate_plugin_manifest(
         &["stdio_json", "stdio_json_worker", "native_host"],
     )?;
     validate_execution_runtime_pair(manifest)?;
-    validate_provider_runtime_capabilities(manifest, contract_policy)?;
     validate_permission_values(&manifest.permissions)?;
+    validate_binding_targets(&manifest.binding_targets)?;
+    if manifest.manifest_version == 2 {
+        return crate::managed_manifest::validate_managed_manifest(manifest);
+    }
+    if manifest.managed.is_some() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "managed requires manifest_version=2",
+        ));
+    }
+    validate_provider_runtime_capabilities(manifest, contract_policy)?;
     if !manifest.data_models.is_empty() && manifest.permissions.storage != "host_managed" {
         return Err(PluginFrameworkError::invalid_provider_package(
             "data_models requires permissions.storage=host_managed",
@@ -466,7 +482,6 @@ fn validate_plugin_manifest(
             "permissions.credit is only available to verified_official process_per_call capability plugins",
         ));
     }
-    validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
     validate_network_egress_provider_manifest(manifest)?;
     validate_provider_distribution_rule_manifest(manifest)?;
@@ -518,80 +533,7 @@ fn validate_plugin_manifest(
         .iter()
         .any(|slot| slot == "node_contribution")
     {
-        if manifest.node_contributions.is_empty() {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "capability_plugin must declare node_contributions",
-            ));
-        }
-
-        for node_contribution in &manifest.node_contributions {
-            validate_non_empty(
-                &node_contribution.contribution_code,
-                "node_contributions[].contribution_code",
-            )?;
-            validate_non_empty(
-                &node_contribution.node_shell,
-                "node_contributions[].node_shell",
-            )?;
-            validate_non_empty(&node_contribution.category, "node_contributions[].category")?;
-            validate_non_empty(&node_contribution.title, "node_contributions[].title")?;
-            validate_non_empty(
-                &node_contribution.description,
-                "node_contributions[].description",
-            )?;
-            validate_non_empty(&node_contribution.icon, "node_contributions[].icon")?;
-            validate_non_empty(
-                &node_contribution.schema_version,
-                "node_contributions[].schema_version",
-            )?;
-            validate_allowed(
-                &node_contribution.node_shell,
-                "node_contributions[].node_shell",
-                &["action"],
-            )?;
-            validate_allowed(
-                &node_contribution.schema_version,
-                "node_contributions[].schema_version",
-                &["1flowbase.node-contribution/v2"],
-            )?;
-            validate_allowed(
-                &node_contribution.side_effect_policy,
-                "node_contributions[].side_effect_policy",
-                &["none", "external_read", "external_write", "durable_write"],
-            )?;
-            validate_node_contribution_schema_ui(&node_contribution.schema_ui)?;
-            validate_node_contribution_output_schema(&node_contribution.output_schema)?;
-            validate_node_contribution_infra_contracts(&node_contribution.infra_contracts)?;
-            validate_required_auth(&node_contribution.required_auth)?;
-            validate_allowed(
-                &node_contribution.visibility,
-                "node_contributions[].visibility",
-                &["public"],
-            )?;
-            validate_allowed(
-                &node_contribution.dependency.installation_kind,
-                "node_contributions[].dependency.installation_kind",
-                &["optional", "required"],
-            )?;
-            validate_non_empty(
-                &node_contribution.dependency.installation_kind,
-                "node_contributions[].dependency.installation_kind",
-            )?;
-            validate_non_empty(
-                &node_contribution.dependency.plugin_version_range,
-                "node_contributions[].dependency.plugin_version_range",
-            )?;
-            if node_contribution.schema_ui.is_null() {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "node_contributions[].schema_ui cannot be null",
-                ));
-            }
-            if node_contribution.output_schema.is_null() {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "node_contributions[].output_schema cannot be null",
-                ));
-            }
-        }
+        validate_node_contributions(&manifest.node_contributions)?;
     }
 
     if manifest
@@ -687,7 +629,7 @@ const FRONTEND_BLOCK_ALLOWED_UI_CAPABILITIES: &[&str] =
     &["responsive", "configurable", "theming", "data_binding"];
 const FRONTEND_BLOCK_HOST_MODULE_SOURCES: &[&str] = &["react", "antd"];
 
-fn validate_frontend_block_contributions(
+pub(crate) fn validate_frontend_block_contributions(
     contributions: &[FrontendBlockContributionManifest],
 ) -> FrameworkResult<()> {
     if contributions.is_empty() {
@@ -1365,7 +1307,9 @@ fn validate_provider_distribution_rule_manifest(
     Ok(())
 }
 
-fn validate_js_dependencies(dependencies: &[JsDependencyManifest]) -> FrameworkResult<()> {
+pub(crate) fn validate_js_dependencies(
+    dependencies: &[JsDependencyManifest],
+) -> FrameworkResult<()> {
     if dependencies.is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(
             "js_dependency_pack requires at least one js_dependencies entry",
@@ -1675,6 +1619,86 @@ fn validate_provider_runtime_capabilities(
             PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
             PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
         )));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_node_contributions(
+    contributions: &[NodeContributionManifest],
+) -> FrameworkResult<()> {
+    if contributions.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "capability_plugin must declare node_contributions",
+        ));
+    }
+
+    for node_contribution in contributions {
+        validate_non_empty(
+            &node_contribution.contribution_code,
+            "node_contributions[].contribution_code",
+        )?;
+        validate_non_empty(
+            &node_contribution.node_shell,
+            "node_contributions[].node_shell",
+        )?;
+        validate_non_empty(&node_contribution.category, "node_contributions[].category")?;
+        validate_non_empty(&node_contribution.title, "node_contributions[].title")?;
+        validate_non_empty(
+            &node_contribution.description,
+            "node_contributions[].description",
+        )?;
+        validate_non_empty(&node_contribution.icon, "node_contributions[].icon")?;
+        validate_non_empty(
+            &node_contribution.schema_version,
+            "node_contributions[].schema_version",
+        )?;
+        validate_allowed(
+            &node_contribution.node_shell,
+            "node_contributions[].node_shell",
+            &["action"],
+        )?;
+        validate_allowed(
+            &node_contribution.schema_version,
+            "node_contributions[].schema_version",
+            &["1flowbase.node-contribution/v2"],
+        )?;
+        validate_allowed(
+            &node_contribution.side_effect_policy,
+            "node_contributions[].side_effect_policy",
+            &["none", "external_read", "external_write", "durable_write"],
+        )?;
+        validate_node_contribution_schema_ui(&node_contribution.schema_ui)?;
+        validate_node_contribution_output_schema(&node_contribution.output_schema)?;
+        validate_node_contribution_infra_contracts(&node_contribution.infra_contracts)?;
+        validate_required_auth(&node_contribution.required_auth)?;
+        validate_allowed(
+            &node_contribution.visibility,
+            "node_contributions[].visibility",
+            &["public"],
+        )?;
+        validate_allowed(
+            &node_contribution.dependency.installation_kind,
+            "node_contributions[].dependency.installation_kind",
+            &["optional", "required"],
+        )?;
+        validate_non_empty(
+            &node_contribution.dependency.installation_kind,
+            "node_contributions[].dependency.installation_kind",
+        )?;
+        validate_non_empty(
+            &node_contribution.dependency.plugin_version_range,
+            "node_contributions[].dependency.plugin_version_range",
+        )?;
+        if node_contribution.schema_ui.is_null() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "node_contributions[].schema_ui cannot be null",
+            ));
+        }
+        if node_contribution.output_schema.is_null() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "node_contributions[].output_schema cannot be null",
+            ));
+        }
     }
     Ok(())
 }

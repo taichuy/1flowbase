@@ -10,6 +10,7 @@ pub enum RoutedPluginPackageKind {
     NetworkEgressProviderRuntime,
     ProviderDistributionRuleRuntime,
     CapabilityPlugin,
+    ManagedContributions,
 }
 
 impl RoutedPluginPackageKind {
@@ -21,6 +22,7 @@ impl RoutedPluginPackageKind {
             Self::NetworkEgressProviderRuntime => "network_egress_provider",
             Self::ProviderDistributionRuleRuntime => "provider_distribution_rule",
             Self::CapabilityPlugin => "capability_plugin",
+            Self::ManagedContributions => "managed_contributions",
         }
     }
 }
@@ -28,6 +30,18 @@ impl RoutedPluginPackageKind {
 pub fn route_plugin_package(
     manifest: &PluginManifestV1,
 ) -> anyhow::Result<RoutedPluginPackageKind> {
+    if manifest.manifest_version == 2 {
+        if manifest.managed.is_none() {
+            return Err(ControlPlaneError::InvalidInput("managed_manifest").into());
+        }
+        return Ok(
+            if manifest.consumption_kind == PluginConsumptionKind::HostExtension {
+                RoutedPluginPackageKind::HostExtension
+            } else {
+                RoutedPluginPackageKind::ManagedContributions
+            },
+        );
+    }
     match manifest.consumption_kind {
         PluginConsumptionKind::HostExtension => Ok(RoutedPluginPackageKind::HostExtension),
         PluginConsumptionKind::CapabilityPlugin => Ok(RoutedPluginPackageKind::CapabilityPlugin),
