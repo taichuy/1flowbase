@@ -1204,7 +1204,7 @@ where
             )
             .await?;
 
-        let installation_result = async {
+        let installation_result: anyhow::Result<(domain::PluginInstallationRecord, bool)> = async {
             let manifest = load_plugin_manifest(&command.package_root)?;
             let package_kind = route_plugin_package(&manifest)?;
             let plugin_code = plugin_code_from_plugin_id(&manifest.plugin_id)?;
