@@ -17,6 +17,7 @@ pub(super) async fn exchange(
     binding: &LoadedManagedBinding,
     frame: &ManagedEventHostFrame,
     payload: Vec<u8>,
+    lease: std::sync::Arc<crate::plugin_scope::PluginScopeLease>,
 ) -> FrameworkResult<ManagedEventOutcome> {
     let mut command = Command::new(&binding.runtime_executable);
     command
@@ -39,9 +40,11 @@ pub(super) async fn exchange(
             });
         }
     }
-    let mut child = command
+    let child = command
         .spawn()
         .map_err(|_| invalid("managed event worker could not start"))?;
+    let mut owner = super::process::ManagedChild::new(child, lease);
+    let child = owner.child();
     let mut stdin = child
         .stdin
         .take()

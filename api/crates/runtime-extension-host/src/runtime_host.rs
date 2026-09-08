@@ -86,6 +86,7 @@ pub struct RuntimeExtensionHost {
     active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
     plugin_data: Arc<dyn PluginDataPort>,
+    managed_hash_budget: Arc<tokio::sync::Semaphore>,
 }
 
 impl std::fmt::Debug for RuntimeExtensionHost {
@@ -166,6 +167,7 @@ impl RuntimeExtensionHost {
             active_requests: Arc::new(Mutex::new(HashMap::new())),
             artifact_resolver,
             plugin_data,
+            managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
         })
     }
 
@@ -234,6 +236,30 @@ impl RuntimeExtensionHost {
 
     pub async fn stop(&self) -> Result<(), RuntimeBackendError> {
         self.drain().await?;
+        let budget = std::time::Duration::from_secs(5);
+        let _hashes = tokio::time::timeout(
+            budget,
+            self.managed_hash_budget.clone().acquire_many_owned(4),
+        )
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed executable hash tasks unfinished".into())
+        })?
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed executable hash gate unavailable".into())
+        })?;
+        let managed_scopes = self.managed_workers.read().await.scopes();
+        tokio::time::timeout(budget, async {
+            for scope in &managed_scopes {
+                scope.dispose().await?;
+            }
+            Ok::<_, extension_package_runtime::PluginFrameworkError>(())
+        })
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed worker scopes unfinished".into())
+        })??;
+        self.managed_workers.write().await.clear_disposed();
         let mut first_error = None;
         if let Err(error) = self.provider_host.write().await.stop_all().await {
             first_error = Some(RuntimeBackendError::from(error));
@@ -246,12 +272,6 @@ impl RuntimeExtensionHost {
         }
         if let Err(error) = self.network_egress_host.write().await.stop_all().await {
             first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
-        }
-        let managed_scopes = self.managed_workers.write().await.take_scopes();
-        for scope in managed_scopes {
-            if let Err(error) = scope.dispose().await {
-                first_error.get_or_insert_with(|| RuntimeBackendError::from(error));
-            }
         }
         let mut lifecycle = self.lifecycle.write().map_err(|_| {
             RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".to_string())
@@ -713,26 +733,49 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
 }
 
 impl RuntimeExtensionHost {
+    fn admit_managed_hash(&self) -> Result<tokio::sync::OwnedSemaphorePermit, RuntimeBackendError> {
+        let lifecycle = self.lifecycle.read().map_err(|_| {
+            RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+        })?;
+        if !matches!(
+            *lifecycle,
+            RuntimeBackendLifecycle::Starting | RuntimeBackendLifecycle::Ready
+        ) {
+            return Err(RuntimeBackendError::Unavailable(*lifecycle));
+        }
+        self.managed_hash_budget
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                RuntimeBackendError::InvalidRequest(
+                    "managed executable hash capacity exhausted".into(),
+                )
+            })
+    }
     async fn verify_managed_executable(
         &self,
         handle: &extension_contracts::ManagedExecutionHandle,
     ) -> Result<(), RuntimeBackendError> {
+        let hash_permit = self.admit_managed_hash()?;
         let binding = self
             .managed_workers
             .read()
             .await
             .executable_for_handle(handle)
             .map_err(RuntimeBackendError::from)?;
-        tokio::task::spawn_blocking(move || binding.verify_executable())
-            .await
-            .map_err(|_| {
-                RuntimeBackendError::from(
-                    extension_package_runtime::PluginFrameworkError::invalid_provider_package(
-                        "managed executable validation unavailable",
-                    ),
-                )
-            })?
-            .map_err(RuntimeBackendError::from)
+        tokio::task::spawn_blocking(move || {
+            let _permit = hash_permit;
+            binding.verify_executable()
+        })
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::from(
+                extension_package_runtime::PluginFrameworkError::invalid_provider_package(
+                    "managed executable validation unavailable",
+                ),
+            )
+        })?
+        .map_err(RuntimeBackendError::from)
     }
 }
 
@@ -760,9 +803,11 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                 "managed artifact must belong to the bound installation".into(),
             ));
         }
+        let hash_permit = self.admit_managed_hash()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
         let identity = request.identity.clone();
         let binding = tokio::task::spawn_blocking(move || {
+            let _permit = hash_permit;
             crate::package_loader::PackageLoader::load_managed(package_root, &request)
         })
         .await
@@ -796,7 +841,9 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             .await
             .unmount(handle)
             .map_err(RuntimeBackendError::from)?;
-        scope.dispose().await.map_err(RuntimeBackendError::from)
+        scope.dispose().await.map_err(RuntimeBackendError::from)?;
+        self.managed_workers.write().await.finish_unmount(handle);
+        Ok(())
     }
 
     async fn admit_managed_capability_execute(
@@ -1273,3 +1320,7 @@ impl RuntimeObservationPort for RuntimeExtensionHost {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/managed_hash_budget.rs"]
+mod managed_hash_budget_tests;

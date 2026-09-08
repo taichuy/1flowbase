@@ -44,6 +44,8 @@ pub struct LifecycleOutboxDispatcher<R> {
     claim_lease: Duration,
     delivery_deadline: StdDuration,
     poll_interval: StdDuration,
+    batch: Arc<tokio::sync::Mutex<()>>,
+    closed: Arc<std::sync::Mutex<bool>>,
 }
 
 impl<R> LifecycleOutboxDispatcher<R>
@@ -64,14 +66,27 @@ where
             claim_lease: Duration::seconds(30),
             delivery_deadline: StdDuration::from_secs(10),
             poll_interval: StdDuration::from_millis(500),
+            batch: Arc::new(tokio::sync::Mutex::new(())),
+            closed: Arc::new(std::sync::Mutex::new(false)),
         }
     }
 
     pub async fn run_once(&self) -> Result<usize> {
+        let _batch = self
+            .batch
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("lifecycle dispatcher batch already active"))?;
+        // This check reserves the one active batch before any asynchronous repository work.
+        if *self.closed.lock().unwrap_or_else(|e| e.into_inner()) {
+            return Ok(0);
+        }
         let facts = self
             .repository
             .claim_lifecycle_facts(self.worker_id, self.claim_limit, self.claim_lease)
             .await?;
+        if facts.len() > self.claim_limit as usize {
+            anyhow::bail!("lifecycle repository exceeded claim batch capacity");
+        }
         let count = facts.len();
         // Start the bounded claimed batch together; no queued claim expires behind slow siblings.
         let mut attempts = tokio::task::JoinSet::new();
@@ -192,13 +207,58 @@ where
         Ok(())
     }
 
-    pub async fn run(self) {
+    pub fn spawn(self) -> LifecycleOutboxWorker {
+        let (stop, receiver) = tokio::sync::watch::channel(false);
+        let closed = self.closed.clone();
+        let task = tokio::spawn(self.run_until_closed(receiver));
+        LifecycleOutboxWorker {
+            stop,
+            closed,
+            task: tokio::sync::Mutex::new(Some(task)),
+        }
+    }
+
+    async fn run_until_closed(self, mut stop: tokio::sync::watch::Receiver<bool>) {
         loop {
+            if *stop.borrow() {
+                break;
+            }
+            // Never select cancellation against a claimed batch: it finishes its durable updates.
             if let Err(error) = self.run_once().await {
                 tracing::error!(%error, worker_id = %self.worker_id, "lifecycle outbox dispatch failed");
             }
-            tokio::time::sleep(self.poll_interval).await;
+            tokio::select! {
+                _ = stop.changed() => { if *stop.borrow() { break; } }
+                _ = tokio::time::sleep(self.poll_interval) => {}
+            }
         }
+    }
+}
+
+pub struct LifecycleOutboxWorker {
+    stop: tokio::sync::watch::Sender<bool>,
+    closed: Arc<std::sync::Mutex<bool>>,
+    task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+impl LifecycleOutboxWorker {
+    pub fn close(&self) {
+        *self.closed.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.stop.send_replace(true);
+    }
+    pub async fn wait(&self, budget: StdDuration) -> Result<()> {
+        let mut slot = self.task.lock().await;
+        if let Some(task) = slot.as_mut() {
+            tokio::time::timeout(budget, task).await.map_err(|_| {
+                anyhow::anyhow!("lifecycle dispatcher batch unfinished; durable backlog preserved")
+            })??;
+            *slot = None;
+        }
+        Ok(())
+    }
+}
+impl Drop for LifecycleOutboxWorker {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -209,9 +269,9 @@ mod tests {
     use std::sync::Mutex;
 
     #[derive(Clone)]
-    struct MemoryRepository {
-        record: LifecycleOutboxRecord,
-        completed: Arc<Mutex<Option<LifecycleOutboxStatus>>>,
+    pub(super) struct MemoryRepository {
+        pub(super) record: LifecycleOutboxRecord,
+        pub(super) completed: Arc<Mutex<Option<LifecycleOutboxStatus>>>,
     }
 
     #[async_trait]
@@ -296,7 +356,7 @@ mod tests {
         }
     }
 
-    fn repository() -> MemoryRepository {
+    pub(super) fn repository() -> MemoryRepository {
         MemoryRepository {
             record: LifecycleOutboxRecord {
                 event_id: Uuid::now_v7(),
@@ -514,3 +574,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/lifecycle_outbox_budgets.rs"]
+mod budget_tests;

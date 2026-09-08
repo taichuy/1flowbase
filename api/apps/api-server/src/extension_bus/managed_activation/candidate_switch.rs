@@ -11,8 +11,12 @@ impl ManagedExtensionComposition {
         audit: domain::AuditLogRecord,
         task: domain::PluginTaskRecord,
     ) -> Result<domain::PluginTaskRecord> {
+        let permit = self
+            .operations
+            .admit(control_plane_contracts::ports::ManagedOwnedOperation::Candidate)?;
         let owner = self.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             let result = owner.switch_candidate(workspace_id, current, target, audit).await;
             let mut detail = task.detail_json.clone();
             detail["migrated_instance_count"] = serde_json::json!(0);
@@ -136,6 +140,9 @@ impl ManagedExtensionComposition {
             let lease = self.store.lock_managed_installation_switch(&input).await?;
             Self::validate_candidate(&expected, lease.authority())?;
             let mut visible = self.snapshots.lock().await;
+            visible.ensure_publication_capacity(
+                &[(workspace_id, candidate.clone())].into_iter().collect(),
+            )?;
             // All fallible compilation/activation/drain work precedes this short durable commit.
             // The owned task cannot be cancelled by a dropped request while committing.
             lease.commit(audit).await?;

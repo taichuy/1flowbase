@@ -74,9 +74,13 @@ pub(super) async fn create_model_definition(
     store: &PgControlPlaneStore,
     input: &CreateModelDefinitionInput,
 ) -> Result<domain::ModelDefinitionRecord> {
+    let permit = store
+        .managed_operations
+        .admit(control_plane_contracts::ports::ManagedOwnedOperation::Create)?;
     let owner = store.clone();
     let input = input.clone();
     tokio::spawn(async move {
+        let _permit = permit;
         let result = create_model_definition_owned(&owner, &input).await;
         if let Err(error) = &result {
             tracing::warn!(%error, "Create transaction owner failed");

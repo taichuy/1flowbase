@@ -1,8 +1,10 @@
 mod binding;
+mod capability;
 mod event;
 mod event_stdio;
 mod hook;
 mod hook_stdio;
+mod process;
 pub(crate) use binding::LoadedManagedBinding;
 
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -13,7 +15,7 @@ use runtime_core::runtime_backend::RuntimeManagedCapabilityRequest;
 use serde_json::{json, Value};
 
 use crate::{
-    capability_stdio::{call_executable, CapabilityStdioMethod, CapabilityStdioRequest},
+    capability_stdio::{CapabilityStdioMethod, CapabilityStdioRequest},
     plugin_scope::PluginScope,
 };
 
@@ -24,10 +26,21 @@ struct MountedContribution {
     scope: Arc<PluginScope>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ManagedWorkers {
     mounted: BTreeMap<ManagedExecutionIdentity, MountedContribution>,
     next_generation: u64,
+    budget: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for ManagedWorkers {
+    fn default() -> Self {
+        Self {
+            mounted: BTreeMap::new(),
+            next_generation: 0,
+            budget: Arc::new(tokio::sync::Semaphore::new(128)),
+        }
+    }
 }
 
 struct ManagedDrain(Vec<crate::plugin_scope::PluginScopeDrain>);
@@ -80,6 +93,9 @@ impl ManagedWorkers {
             }
             return Ok(mounted.handle.clone());
         }
+        if self.mounted.len() >= 4096 {
+            return Err(invalid("managed runtime identity capacity exhausted"));
+        }
         let generation = self
             .next_generation
             .checked_add(1)
@@ -92,7 +108,7 @@ impl ManagedWorkers {
             MountedContribution {
                 handle: handle.clone(),
                 binding,
-                scope: PluginScope::mounted(generation.get()),
+                scope: PluginScope::managed(generation.get(), self.budget.clone()),
             },
         );
         Ok(handle)
@@ -102,13 +118,19 @@ impl ManagedWorkers {
         &mut self,
         handle: &ManagedExecutionHandle,
     ) -> FrameworkResult<Arc<PluginScope>> {
-        self.exact_mount(handle)?;
-        let mounted = self
-            .mounted
-            .remove(handle.identity())
-            .ok_or_else(|| invalid("managed contribution is not mounted"))?;
+        let mounted = self.exact_mount(handle)?;
         mounted.scope.close_admission()?;
-        Ok(mounted.scope)
+        Ok(mounted.scope.clone())
+    }
+
+    pub(crate) fn finish_unmount(&mut self, handle: &ManagedExecutionHandle) {
+        if self
+            .mounted
+            .get(handle.identity())
+            .is_some_and(|m| &m.handle == handle)
+        {
+            self.mounted.remove(handle.identity());
+        }
     }
 
     pub(crate) fn close_admission(&self) -> FrameworkResult<()> {
@@ -118,11 +140,14 @@ impl ManagedWorkers {
         Ok(())
     }
 
-    pub(crate) fn take_scopes(&mut self) -> Vec<Arc<PluginScope>> {
-        std::mem::take(&mut self.mounted)
-            .into_values()
-            .map(|mounted| mounted.scope)
+    pub(crate) fn scopes(&self) -> Vec<Arc<PluginScope>> {
+        self.mounted
+            .values()
+            .map(|mounted| mounted.scope.clone())
             .collect()
+    }
+    pub(crate) fn clear_disposed(&mut self) {
+        self.mounted.clear();
     }
 
     pub(crate) fn loaded_count(&self) -> usize {
@@ -132,8 +157,10 @@ impl ManagedWorkers {
     pub(crate) fn execute(
         &self,
         request: RuntimeManagedCapabilityRequest,
-    ) -> FrameworkResult<impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static>
-    {
+    ) -> Result<
+        impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static,
+        runtime_core::runtime_backend::RuntimeBackendError,
+    > {
         let mounted = self.exact_mount(&request.handle)?;
         // Hook bindings must use their finite typed transport, never opaque capability JSON.
         if mounted
@@ -143,9 +170,7 @@ impl ManagedWorkers {
             .iter()
             .any(|p| matches!(p.as_str(), "event.subscribe" | "event.publish"))
         {
-            return Err(invalid(
-                "managed event binding requires typed event admission",
-            ));
+            return Err(invalid("managed event binding requires typed event admission").into());
         }
         if mounted
             .binding
@@ -154,19 +179,18 @@ impl ManagedWorkers {
             .as_str()
             .starts_with("1flowbase.model-definitions.create.")
         {
-            return Err(invalid(
-                "managed Hook binding requires typed Hook admission",
-            ));
+            return Err(invalid("managed Hook binding requires typed Hook admission").into());
         }
         if request.principal.workspace_id != request.handle.identity().workspace_id().as_str() {
-            return Err(invalid(
-                "managed execution workspace does not match the mounted identity",
-            ));
+            return Err(
+                invalid("managed execution workspace does not match the mounted identity").into(),
+            );
         }
         if mounted.binding.execution_mode != PluginExecutionMode::ProcessPerCall {
             return Err(invalid(
                 "managed contribution is not a process_per_call capability binding",
-            ));
+            )
+            .into());
         }
         let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let remaining_ms = i128::from(request.principal.deadline_unix_ms) - now_ms;
@@ -186,7 +210,7 @@ impl ManagedWorkers {
                 .min(remaining_ms),
         );
         Ok(async move {
-            let _lease = lease;
+            let lease = Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining_ms =
                 u64::try_from(i128::from(request.principal.deadline_unix_ms) - now_ms)
@@ -207,7 +231,7 @@ impl ManagedWorkers {
                 std::time::Duration::from_millis(
                     remaining_ms.min(binding.limits.timeout_ms.unwrap_or(30_000)),
                 ),
-                call_executable(&binding.runtime_executable, &request, &binding.limits),
+                capability::exchange(&binding, &request, lease),
             )
             .await
             .map_err(|_| invalid("managed execution deadline elapsed"))?

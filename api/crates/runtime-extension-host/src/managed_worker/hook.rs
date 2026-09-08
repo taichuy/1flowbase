@@ -14,21 +14,22 @@ impl ManagedWorkers {
     pub(crate) fn admit_hook(
         &self,
         request: RuntimeManagedHookRequest,
-    ) -> FrameworkResult<
+    ) -> Result<
         impl std::future::Future<Output = FrameworkResult<ManagedHookOutcome>> + Send + 'static,
+        runtime_core::runtime_backend::RuntimeBackendError,
     > {
         let mounted = self.exact_mount(&request.handle)?;
         let binding = &mounted.binding;
         if request.principal.workspace_id != request.handle.identity().workspace_id().as_str() {
-            return Err(invalid("managed hook workspace mismatch"));
+            return Err(invalid("managed hook workspace mismatch").into());
         }
         if binding.execution_mode != PluginExecutionMode::ProcessPerCall
             || binding.contribution.point_id.as_str() != request.input.point_id()
             || binding.contribution.contract_version.as_str() != "1"
         {
-            return Err(invalid(
-                "managed hook phase is not declared by the bound contribution",
-            ));
+            return Err(
+                invalid("managed hook phase is not declared by the bound contribution").into(),
+            );
         }
         let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let remaining = u64::try_from(i128::from(request.principal.deadline_unix_ms) - now_ms)
@@ -70,14 +71,14 @@ impl ManagedWorkers {
         let payload = serde_json::to_vec(&frame)
             .map_err(|_| invalid("managed hook frame cannot be encoded"))?;
         if payload.len() > extension_contracts::MANAGED_HOOK_MAX_FRAME_BYTES {
-            return Err(invalid("managed hook request exceeds frame limit"));
+            return Err(invalid("managed hook request exceeds frame limit").into());
         }
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;
         let binding = binding.clone();
         Ok(async move {
-            let _lease = lease;
+            let lease = std::sync::Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining = u64::try_from(i128::from(deadline_unix_ms) - now_ms)
                 .ok()
@@ -86,7 +87,7 @@ impl ManagedWorkers {
             // Includes spawn, stdin, stdout, child exit and decode. Drop also kills the child.
             tokio::time::timeout(
                 std::time::Duration::from_millis(remaining),
-                hook_stdio::exchange(&binding, &frame, payload),
+                hook_stdio::exchange(&binding, &frame, payload, lease),
             )
             .await
             .map_err(|_| invalid("managed hook deadline elapsed"))?

@@ -209,6 +209,8 @@ impl ManagedExtensionComposition {
         }
         let assembly = self.assembly.lock().await;
         let visible = self.snapshots.lock().await;
+        let retirement_key = serde_json::to_string(&expected)?;
+        visible.ensure_retirement_capacity(&retirement_key)?;
         let matches = |snapshot: &ManagedWorkspaceSnapshot| {
             snapshot.bindings.values().any(|binding| {
                 binding.installation.id == installation_id
@@ -234,6 +236,24 @@ impl ManagedExtensionComposition {
                 "managed_retained_target_missing",
             )
             .into());
+        }
+        let mut retirement_markers = BTreeMap::new();
+        for snapshot in &snapshots {
+            for binding in snapshot.bindings.values() {
+                retirement_markers.insert(
+                    serde_json::to_string(&target(snapshot, binding, self.execution_epoch))?,
+                    snapshot.lifetime.clone(),
+                );
+            }
+        }
+        if visible.retired_targets.len()
+            + retirement_markers
+                .keys()
+                .filter(|key| !visible.retired_targets.contains_key(*key))
+                .count()
+            > MAX_RETIRED_TARGETS
+        {
+            bail!("managed retired target capacity exhausted");
         }
         let shared_handles = visible
             .current
@@ -339,7 +359,6 @@ impl ManagedExtensionComposition {
                 }
             }
         }
-        let retirement_key = serde_json::to_string(&expected)?;
         let mut visible = self.snapshots.lock().await;
         for retained in visible.retained.values_mut() {
             retained.retain(|s| {
@@ -360,9 +379,7 @@ impl ManagedExtensionComposition {
         for retirement in &retirements {
             retirement.retire();
         }
-        visible
-            .retired_targets
-            .insert(retirement_key, lifetimes[0].clone());
+        visible.retired_targets.extend(retirement_markers);
         drop(visible);
         for handle in handles.into_iter().filter(|h| !still_owned.contains(h)) {
             self.backend
@@ -398,8 +415,12 @@ impl ManagedExecutionGovernancePort for Arc<ManagedExtensionComposition> {
         installation_id: Uuid,
         target: ManagedFrozenExecutionTarget,
     ) -> Result<ManagedExecutionState> {
+        let permit = self
+            .operations
+            .admit(control_plane_contracts::ports::ManagedOwnedOperation::Retirement)?;
         let owner = self.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             let result=owner.retire_execution(workspace_id, installation_id, target).await;
             if let Err(error)=&result { tracing::warn!(%workspace_id,%installation_id,%error,"managed retirement owner failed"); }
             result
@@ -414,6 +435,9 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
         &self,
         installation_ids: &[Uuid],
     ) -> Result<Box<dyn Send + Sync>> {
+        let operation = self
+            .operations
+            .admit(control_plane_contracts::ports::ManagedOwnedOperation::Retirement)?;
         let assembly = self.assembly.clone().lock_owned().await;
         let visible = self.snapshots.lock().await;
         if visible
@@ -452,6 +476,6 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
                 }
             }
         }
-        Ok(Box::new(assembly))
+        Ok(Box::new((assembly, operation)))
     }
 }

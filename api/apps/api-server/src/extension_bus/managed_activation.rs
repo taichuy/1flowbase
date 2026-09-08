@@ -36,11 +36,11 @@ pub(crate) struct ManagedWorkspaceSnapshot {
 #[derive(Clone, Default)]
 struct ManagedSnapshots {
     // Identity-only gates outlive retired snapshots, so shared handles cannot resurrect an exact
-    // retired graph on a later rebuild. P10 owns bounded retention without unsafe eviction.
+    // retired graph on a later rebuild. Saturation refuses new work without live eviction.
     retired_targets: BTreeMap<String, Arc<SnapshotLifetime>>,
     current: BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
     // Publication and retention share one lock: no delivery can see a new graph before its
-    // predecessor is retained. P09 owns explicit retirement after backlog/in-flight disposition.
+    // predecessor is retained. Explicit retirement requires backlog/in-flight disposition.
     retained: BTreeMap<String, Vec<Arc<ManagedWorkspaceSnapshot>>>,
 }
 
@@ -62,6 +62,7 @@ pub(crate) struct ManagedExtensionComposition {
     snapshots: Mutex<ManagedSnapshots>,
     execution_epoch: Uuid,
     assembly: Arc<Mutex<()>>,
+    operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
 }
 
 impl ManagedExtensionComposition {
@@ -71,6 +72,7 @@ impl ManagedExtensionComposition {
         backend: Arc<dyn RuntimeBackend>,
         base_modules: Vec<ModuleDescriptor>,
     ) -> Self {
+        let operations = store.new_managed_operation_lifetime();
         Self {
             store,
             node_id,
@@ -81,6 +83,7 @@ impl ManagedExtensionComposition {
             snapshots: Mutex::new(ManagedSnapshots::default()),
             execution_epoch: Uuid::now_v7(),
             assembly: Arc::new(Mutex::new(())),
+            operations,
         }
     }
 
@@ -97,6 +100,9 @@ impl ManagedExtensionComposition {
     }
 
     pub(crate) async fn rebuild_installation(&self, installation_id: Uuid) -> Result<()> {
+        let _operation = self
+            .operations
+            .admit(control_plane_contracts::ports::ManagedOwnedOperation::Candidate)?;
         let _assembly = self.assembly.lock().await;
         let previous_state = self.snapshots.lock().await.clone();
         let mut published = previous_state.current.clone();
@@ -186,6 +192,10 @@ impl ManagedExtensionComposition {
             Self::validate_candidate(&expected, lease.as_ref())?;
             // The authority batch remains locked until the complete candidate set is visible.
             // Readers continue using the prior immutable snapshot during preparation.
+            self.snapshots
+                .lock()
+                .await
+                .ensure_publication_capacity(&candidates)?;
             let previous = candidates
                 .keys()
                 .filter_map(|workspace| {
@@ -343,6 +353,7 @@ impl ManagedExtensionComposition {
         }
         let lifecycle_plan = self.compile_event_plan(&graph, &bindings)?;
         let visible = self.snapshots.lock().await;
+        visible.ensure_candidate_capacity(workspace_id)?;
         let lifetime = visible
             .current
             .values()

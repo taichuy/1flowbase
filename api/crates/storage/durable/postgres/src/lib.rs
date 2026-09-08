@@ -1,3 +1,4 @@
+mod managed_operation_lifetime;
 extern crate self as storage_durable_postgres;
 
 pub mod application_public_api_repository;

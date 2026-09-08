@@ -145,3 +145,48 @@ async fn root_2007_ac_005_event_authority_untrusted_output() {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[tokio::test]
+async fn root_2007_ac_010_lane_budgets_event_cancel_and_reap() {
+    use std::time::Duration;
+    let (mut workers, handle, root) = fixture("fixture_barrier", false);
+    let operation = tokio::spawn(workers.admit_event(request(handle.clone())).unwrap());
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !root.join("worker.started").is_file() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    workers.close_admission().unwrap();
+    assert!(workers.admit_event(request(handle.clone())).is_err());
+    let scope = workers.unmount(&handle).unwrap();
+    assert!(tokio::time::timeout(Duration::ZERO, scope.dispose())
+        .await
+        .is_err());
+    operation.abort();
+    assert!(operation.await.unwrap_err().is_cancelled());
+    tokio::time::timeout(Duration::from_secs(3), scope.dispose())
+        .await
+        .unwrap()
+        .unwrap();
+    workers.finish_unmount(&handle);
+    assert_eq!(workers.loaded_count(), 0);
+    std::fs::remove_dir_all(root).unwrap();
+    let (mut workers, handle, root) = fixture("attack.flood", false);
+    assert!(workers
+        .admit_event(request(handle.clone()))
+        .unwrap()
+        .await
+        .is_err());
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        workers.unmount(&handle).unwrap().dispose(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    workers.finish_unmount(&handle);
+    assert_eq!(workers.loaded_count(), 0);
+    std::fs::remove_dir_all(root).unwrap();
+}

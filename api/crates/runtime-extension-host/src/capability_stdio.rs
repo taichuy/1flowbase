@@ -84,7 +84,7 @@ pub async fn call_executable(
     parse_stdio_response(executable_path, &output.stdout, &output.stderr)
 }
 
-fn parse_stdio_response(
+pub(crate) fn parse_stdio_response(
     executable_path: &Path,
     stdout: &[u8],
     stderr: &[u8],

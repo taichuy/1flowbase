@@ -19,6 +19,8 @@ use crate::mappers::role_mapper::StoredRoleRow;
 #[derive(Clone)]
 pub struct PgControlPlaneStore {
     pool: PgPool,
+    pub(crate) managed_operations:
+        std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     actor_override: Option<ActorContext>,
     pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
     pub(crate) lifecycle_publication_catalog: std::sync::Arc<LifecyclePublicationCatalog>,
@@ -28,6 +30,9 @@ impl PgControlPlaneStore {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
+            managed_operations: std::sync::Arc::new(
+                crate::managed_operation_lifetime::ManagedOperationOwner::default(),
+            ),
             actor_override: None,
             runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
             lifecycle_publication_catalog: std::sync::Arc::new(
@@ -55,6 +60,7 @@ impl PgControlPlaneStore {
     pub fn for_actor(&self, actor: ActorContext) -> Self {
         Self {
             pool: self.pool.clone(),
+            managed_operations: self.managed_operations.clone(),
             actor_override: Some(actor),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
             lifecycle_publication_catalog: std::sync::Arc::clone(
@@ -91,6 +97,19 @@ impl PgControlPlaneStore {
             return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
         }
         Ok(Some(actor.clone()))
+    }
+
+    /// A separate finite gate for composition-owned candidates and retirement in this process.
+    pub fn new_managed_operation_lifetime(
+        &self,
+    ) -> std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime> {
+        std::sync::Arc::new(crate::managed_operation_lifetime::ManagedOperationOwner::default())
+    }
+
+    pub fn managed_operation_lifetime(
+        &self,
+    ) -> std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime> {
+        self.managed_operations.clone()
     }
 
     pub fn pool(&self) -> &PgPool {

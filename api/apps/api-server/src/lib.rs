@@ -460,18 +460,17 @@ pub async fn app_from_env() -> Result<Router> {
 pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     app_and_runtime_host_from_config(config)
         .await
-        .map(|(router, _)| router)
+        .map(|(router, owner)| router.layer(axum::Extension(Arc::new(owner))))
 }
 
-pub async fn app_and_runtime_host_from_env(
-) -> Result<(Router, Arc<runtime_extension_host::RuntimeExtensionHost>)> {
+pub async fn app_and_runtime_host_from_env() -> Result<(Router, ApiRuntimeShutdown)> {
     let config = ApiConfig::from_env()?;
     app_and_runtime_host_from_config(&config).await
 }
 
 async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
-) -> Result<(Router, Arc<runtime_extension_host::RuntimeExtensionHost>)> {
+) -> Result<(Router, ApiRuntimeShutdown)> {
     let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -653,14 +652,13 @@ async fn app_and_runtime_host_from_config(
         extension_bus::ManagedWorkspacePublicationSource(Arc::downgrade(&managed_composition)),
     ))?;
     let lifecycle_delivery = lifecycle_delivery.with_managed(&managed_composition);
-    tokio::spawn(
+    let lifecycle_worker =
         control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
             store.clone(),
             Arc::new(lifecycle_delivery),
             Arc::new(ApiLifecycleDeliveryCompletion),
         )
-        .run(),
-    );
+        .spawn();
     extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
@@ -833,7 +831,7 @@ async fn app_and_runtime_host_from_config(
         #[cfg(test)]
         test_resources: None,
         console_policy_reader: Arc::new(store.clone()),
-        store,
+        store: store.clone(),
         system_backup,
         system_maintenance,
         authenticator_registry,
@@ -844,7 +842,7 @@ async fn app_and_runtime_host_from_config(
         console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
         runtime_engine,
-        provider_runtime,
+        provider_runtime: provider_runtime.clone(),
         process_started_at,
         runtime_activity,
         assistant_conversation_events,
@@ -911,7 +909,12 @@ async fn app_and_runtime_host_from_config(
             compiled_console_plan.route_assembly,
             &external_openapi_document,
         ),
-        runtime_extension_host,
+        ApiRuntimeShutdown {
+            host: runtime_extension_host,
+            services: provider_runtime,
+            operations: store.managed_operation_lifetime(),
+            lifecycle_worker,
+        },
     ))
 }
 
@@ -1080,3 +1083,34 @@ mod _tests;
 
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;
+
+/// Actual server shutdown owner. A timeout preserves closed admission and all unfinished owners.
+pub struct ApiRuntimeShutdown {
+    host: Arc<runtime_extension_host::RuntimeExtensionHost>,
+    services: Arc<ApiRuntimeServices>,
+    operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
+    lifecycle_worker: control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxWorker,
+}
+impl ApiRuntimeShutdown {
+    pub async fn stop(&self) -> Result<()> {
+        self.lifecycle_worker.close();
+        self.lifecycle_worker
+            .wait(std::time::Duration::from_secs(15))
+            .await?;
+        let composition = self.services.managed_composition()?;
+        composition.close_owned_admission();
+        composition
+            .wait_owned_shutdown(std::time::Duration::from_secs(15))
+            .await?;
+        self.operations.close();
+        self.operations
+            .wait(std::time::Duration::from_secs(15))
+            .await?;
+        composition
+            .wait_for_shutdown(std::time::Duration::from_secs(15))
+            .await?;
+        self.host.stop().await?;
+        composition.cleanup_after_shutdown().await;
+        Ok(())
+    }
+}

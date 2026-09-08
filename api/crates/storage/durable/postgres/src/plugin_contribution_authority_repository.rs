@@ -19,6 +19,8 @@ use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 struct PgContributionAuthorityLease {
+    managed_operations:
+        std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     transaction: Transaction<'static, Postgres>,
     snapshots: Vec<PluginContributionAuthoritySnapshot>,
     installations: std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>,
@@ -197,7 +199,11 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
         >,
     > {
         Box::pin(async move {
+            let permit = self
+                .managed_operations
+                .admit(control_plane_contracts::ports::ManagedOwnedOperation::DerivedPublication)?;
             tokio::spawn(async move {
+                let _permit = permit;
                 let event_id = input.event_id;
                 let result = async move {
                     let record =
@@ -514,6 +520,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         }
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
+                managed_operations: self.managed_operations.clone(),
                 transaction,
                 snapshots,
                 installations,
@@ -555,6 +562,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             snapshots.push(snapshot(&mut transaction, installation_id, workspace_id, None).await?);
         }
         Ok(Box::new(PgContributionAuthorityLease {
+            managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots,
             installations,
@@ -574,6 +582,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
             installations: [(installation_id, installation)].into_iter().collect(),
@@ -685,6 +694,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         .await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
             installations: [(installation_id, installation)].into_iter().collect(),

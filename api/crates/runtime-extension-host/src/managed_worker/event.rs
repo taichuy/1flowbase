@@ -9,8 +9,9 @@ impl ManagedWorkers {
     pub(crate) fn admit_event(
         &self,
         request: RuntimeManagedEventRequest,
-    ) -> FrameworkResult<
+    ) -> Result<
         impl std::future::Future<Output = FrameworkResult<ManagedEventOutcome>> + Send + 'static,
+        runtime_core::runtime_backend::RuntimeBackendError,
     > {
         let mounted = self.exact_mount(&request.handle)?;
         let binding = &mounted.binding;
@@ -36,9 +37,9 @@ impl ManagedWorkers {
                 .iter()
                 .any(|p| p.as_str() == "event.subscribe")
         {
-            return Err(invalid(
-                "managed event binding, workspace or subscription mismatch",
-            ));
+            return Err(
+                invalid("managed event binding, workspace or subscription mismatch").into(),
+            );
         }
         let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let remaining = u64::try_from(i128::from(request.deadline_unix_ms) - now_ms)
@@ -68,14 +69,14 @@ impl ManagedWorkers {
         let payload =
             serde_json::to_vec(&frame).map_err(|_| invalid("managed event cannot be encoded"))?;
         if payload.len() > extension_contracts::MANAGED_EVENT_MAX_FRAME_BYTES {
-            return Err(invalid("managed event request exceeds frame limit"));
+            return Err(invalid("managed event request exceeds frame limit").into());
         }
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;
         let binding = binding.clone();
         Ok(async move {
-            let _lease = lease;
+            let lease = std::sync::Arc::new(lease);
             let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
             let remaining = u64::try_from(i128::from(deadline_unix_ms) - now_ms)
                 .ok()
@@ -83,7 +84,7 @@ impl ManagedWorkers {
                 .ok_or_else(|| invalid("managed event deadline has expired"))?;
             let result = tokio::time::timeout(
                 std::time::Duration::from_millis(remaining),
-                event_stdio::exchange(&binding, &frame, payload),
+                event_stdio::exchange(&binding, &frame, payload, lease),
             )
             .await
             .map_err(|_| invalid("managed event deadline elapsed"))??;

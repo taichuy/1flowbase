@@ -210,6 +210,7 @@ async fn root_2007_ac_003_004_hook_transport_scope_generation_phase_and_deadline
         })
         .is_err());
     workers.unmount(&handle).unwrap().dispose().await.unwrap();
+    workers.finish_unmount(&handle);
     let replacement = workers.mount(identity(), binding).unwrap();
     assert_ne!(handle.generation(), replacement.generation());
     assert!(workers
@@ -408,4 +409,179 @@ async fn root_2007_ac_008_snapshot_restart_exact_worker_versions() {
         }
     );
     workers.unmount(&g2).unwrap().dispose().await.unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn root_2007_ac_010_lane_budgets_worker_cancel_and_reap() {
+    use std::sync::Arc;
+    let fixture = WorkerFixture::new();
+    let mut workers = ManagedWorkers::default();
+    let handle = workers
+        .mount(identity(), fixture.binding(&before("model"), "sleep"))
+        .unwrap();
+    let mut admitted = Vec::new();
+    for _ in 0..32 {
+        admitted.push(
+            workers
+                .admit_hook(request(handle.clone(), before("model")))
+                .unwrap(),
+        );
+    }
+    let full = workers
+        .admit_hook(request(handle.clone(), before("model")))
+        .err()
+        .unwrap();
+    assert!(matches!(
+        full,
+        runtime_core::runtime_backend::RuntimeBackendError::Execution { .. }
+    ));
+    drop(admitted.pop());
+    admitted.push(
+        workers
+            .admit_hook(request(handle.clone(), before("model")))
+            .unwrap(),
+    );
+    let operation = tokio::spawn(admitted.pop().unwrap());
+    let pid = fixture.pid().await;
+    workers.close_admission().unwrap();
+    assert!(workers
+        .admit_hook(request(handle.clone(), before("model")))
+        .is_err());
+    let scope = workers.unmount(&handle).unwrap();
+    assert!(tokio::time::timeout(Duration::ZERO, scope.dispose())
+        .await
+        .is_err());
+    assert_eq!(
+        workers.loaded_count(),
+        1,
+        "unfinished scopes stay registered"
+    );
+    operation.abort();
+    let _ = operation.await;
+    drop(admitted);
+    tokio::time::timeout(Duration::from_secs(3), scope.dispose())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_process_exited(pid).await;
+    workers.finish_unmount(&handle);
+    assert_eq!(workers.loaded_count(), 0);
+
+    // A global managed budget counts admitted work, including never-polled futures.
+    let budget = Arc::new(tokio::sync::Semaphore::new(128));
+    let scopes = (0..5)
+        .map(|i| crate::plugin_scope::PluginScope::managed(i, budget.clone()))
+        .collect::<Vec<_>>();
+    let leases = scopes[..4]
+        .iter()
+        .flat_map(|scope| (0..32).map(move |_| scope.admit().unwrap()))
+        .collect::<Vec<_>>();
+    assert!(scopes[4].admit().is_err());
+    drop(leases);
+    assert!(scopes[4].admit().is_ok());
+
+    let flood = WorkerFixture::new();
+    let mut flooded = ManagedWorkers::default();
+    let flooded_handle = flooded
+        .mount(identity(), flood.binding(&before("model"), "attack.flood"))
+        .unwrap();
+    assert!(flooded
+        .admit_hook(request(flooded_handle.clone(), before("model")))
+        .unwrap()
+        .await
+        .is_err());
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        flooded.unmount(&flooded_handle).unwrap().dispose(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    flooded.finish_unmount(&flooded_handle);
+
+    // Identity capacity is independent of active calls and never evicts an old handle.
+    let binding = fixture.binding(&before("model"), "sleep");
+    let mut identities = ManagedWorkers::default();
+    let mut first = None;
+    for i in 0..4096 {
+        let id = ManagedExecutionIdentity::new(
+            ManagedInstallationId::new(format!("installation-{i}")).unwrap(),
+            ManagedWorkspaceId::new("workspace-1").unwrap(),
+            ContributionId::new("hook").unwrap(),
+            ManagedArtifactFingerprint::from_bytes(b"artifact"),
+            ManagedBindingFingerprint::from_bytes(b"binding"),
+        );
+        let handle = identities.mount(id, binding.clone()).unwrap();
+        if first.is_none() {
+            first = Some(handle);
+        }
+    }
+    assert!(identities.mount(identity(), binding).is_err());
+    assert!(identities
+        .admit_hook(request(first.unwrap(), before("model")))
+        .is_ok());
+    assert_eq!(identities.loaded_count(), 4096);
+    identities.close_admission().unwrap();
+    for scope in identities.scopes() {
+        scope.dispose().await.unwrap();
+    }
+    identities.clear_disposed();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn root_2007_ac_010_lane_budgets_capability_output_and_reap() {
+    use std::os::unix::fs::PermissionsExt;
+    for flood in [false, true] {
+        let fixture = WorkerFixture::new();
+        // This finite capability wire has no SDK managed Hook envelope. Exercise its actual
+        // process path using an exec-only hostile peer, without changing the ordinary host path.
+        std::fs::write(
+            &fixture.executable,
+            if flood {
+                "#!/bin/sh\nprintf '%s' \"$$\" > \"$0.pid\"\nexec cat /dev/zero\n"
+            } else {
+                "#!/bin/sh\nprintf '%s' \"$$\" > \"$0.pid\"\nexec sleep 30\n"
+            },
+        )
+        .unwrap();
+        std::fs::set_permissions(&fixture.executable, std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        let mut binding = fixture.binding(&before("model"), "execute");
+        binding.contribution.point_id = ExtensionPointId::new("acme.capability.execute").unwrap();
+        let mut workers = ManagedWorkers::default();
+        let handle = workers.mount(identity(), binding).unwrap();
+        let operation = workers
+            .execute(RuntimeManagedCapabilityRequest {
+                handle: handle.clone(),
+                principal: request(handle.clone(), before("model")).principal,
+                config_payload: serde_json::json!({}),
+                input_payload: serde_json::json!({}),
+            })
+            .unwrap();
+        let operation = tokio::spawn(operation);
+        let pid = fixture.pid().await;
+        if flood {
+            assert!(tokio::time::timeout(Duration::from_secs(3), operation)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err());
+        } else {
+            workers.close_admission().unwrap();
+            operation.abort();
+            assert!(operation.await.unwrap_err().is_cancelled());
+        }
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            workers.unmount(&handle).unwrap().dispose(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_process_exited(pid).await;
+        workers.finish_unmount(&handle);
+        assert_eq!(workers.loaded_count(), 0);
+    }
 }
