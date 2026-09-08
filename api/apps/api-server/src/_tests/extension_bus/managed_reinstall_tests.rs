@@ -95,7 +95,7 @@ impl Fixture {
         .unwrap()
         .installation
     }
-    async fn activate(&self, id: Uuid) {
+    async fn activate(&self, id: Uuid) -> Uuid {
         self.management
             .assign_plugin(AssignPluginCommand {
                 actor_user_id: self.actor.user_id,
@@ -116,6 +116,28 @@ impl Fixture {
             })
             .await
             .unwrap();
+        // A publishes processed events; the production publication owner requires a real target.
+        // Keep B active across A's version switch so both actual A workers can publish.
+        let subscriber = self.install(&package(&manifest("b"))).await.id;
+        self.management
+            .assign_plugin(AssignPluginCommand {
+                actor_user_id: self.actor.user_id,
+                installation_id: subscriber,
+            })
+            .await
+            .unwrap();
+        self.authority()
+            .grant(&self.actor, subscriber, grant("b", "event.subscribe"))
+            .await
+            .unwrap();
+        self.management
+            .enable_plugin(EnablePluginCommand {
+                actor_user_id: self.actor.user_id,
+                installation_id: subscriber,
+            })
+            .await
+            .unwrap();
+        subscriber
     }
     async fn artifact(&self, id: Uuid) -> domain::PluginArtifactInstanceRecord {
         self.runtime
@@ -298,8 +320,10 @@ async fn root_2007_ir_f01_changed_reinstall_preserves_history() {
     let bytes = package(&manifest("a"));
     let installed = fixture.install(&bytes).await;
     let id = installed.id;
-    fixture.activate(id).await;
+    let subscriber = fixture.activate(id).await;
     let old = fixture.backlog(id).await;
+    // B depends on A's event point: stop new B bindings first, retaining its durable backlog.
+    fixture.disable(subscriber).await;
     fixture.disable(id).await;
     let before = fixture.stable_state(id).await;
     let artifact = fixture.artifact(id).await;
@@ -444,8 +468,10 @@ async fn root_2007_ir_f01_identical_archive_restores_artifact() {
     let bytes = package(&manifest("a"));
     let installed = fixture.install(&bytes).await;
     let id = installed.id;
-    fixture.activate(id).await;
+    let subscriber = fixture.activate(id).await;
     let old = fixture.backlog(id).await;
+    // B depends on A's event point: stop new B bindings first, retaining its durable backlog.
+    fixture.disable(subscriber).await;
     fixture.disable(id).await;
     let before = fixture.stable_state(id).await;
     let artifact = fixture.artifact(id).await;
