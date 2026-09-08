@@ -96,9 +96,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    let actor = runtime
-        .store
-        .load_actor_context_for_user(actor_id)
+    let actor = AuthRepository::load_actor_context_for_user(&runtime.store, actor_id)
         .await
         .unwrap();
     let workspace = actor.current_workspace_id;
@@ -115,7 +113,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     )
     .with_node_id(&state.api_node_id);
     let mut a_manifest = manifest("a");
-    a_manifest.managed.as_mut().unwrap().execution_bindings[0].handler = "fixture_barrier".into();
+    a_manifest["managed"]["execution_bindings"][0]["handler"] = "fixture_barrier".into();
     let a = management
         .install_uploaded_plugin(InstallUploadedPluginCommand {
             actor_user_id: actor_id,
@@ -563,10 +561,8 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .unwrap();
     let restarted = RuntimeFixture::new(&state);
     restarted.composition.rebuild_installation(a).await.unwrap();
-    let restarted_service = ManagedExecutionService::new(
-        runtime.store.clone(),
-        Arc::new(restarted.composition.clone()),
-    );
+    let restarted_service =
+        ManagedExecutionService::new(runtime.store.clone(), restarted.composition.governance());
     let exact: ResumeManagedLifecycleDelivery = serde_json::from_value(resume(&pending)).unwrap();
     assert!(
         restarted_service.resume(&actor, a, exact).await.is_err(),

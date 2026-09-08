@@ -49,7 +49,15 @@ fn delivery_projection(record: &LifecycleOutboxRecord) -> ManagedLifecycleDelive
         .into(),
     }
 }
+// This local port owner retains the shared composition across detached retirement work.
+// Implementing the foreign port on Arc<ManagedExtensionComposition> violates orphan rules.
+struct ManagedCompositionGovernance(Arc<ManagedExtensionComposition>);
+
 impl ManagedExtensionComposition {
+    pub(crate) fn governance(self: &Arc<Self>) -> Arc<dyn ManagedExecutionGovernancePort> {
+        Arc::new(ManagedCompositionGovernance(self.clone()))
+    }
+
     async fn installation_deliveries(
         &self,
         workspace_id: Uuid,
@@ -392,13 +400,13 @@ impl ManagedExtensionComposition {
     }
 }
 #[async_trait::async_trait]
-impl ManagedExecutionGovernancePort for Arc<ManagedExtensionComposition> {
+impl ManagedExecutionGovernancePort for ManagedCompositionGovernance {
     async fn managed_execution_state(
         &self,
         workspace_id: Uuid,
         installation_id: Uuid,
     ) -> Result<ManagedExecutionState> {
-        self.execution_state(workspace_id, installation_id).await
+        self.0.execution_state(workspace_id, installation_id).await
     }
     async fn resume_managed_delivery(
         &self,
@@ -406,7 +414,8 @@ impl ManagedExecutionGovernancePort for Arc<ManagedExtensionComposition> {
         installation_id: Uuid,
         input: ResumeManagedLifecycleDelivery,
     ) -> Result<ManagedExecutionState> {
-        self.resume_delivery(workspace_id, installation_id, input)
+        self.0
+            .resume_delivery(workspace_id, installation_id, input)
             .await
     }
     async fn retire_managed_execution(
@@ -416,9 +425,10 @@ impl ManagedExecutionGovernancePort for Arc<ManagedExtensionComposition> {
         target: ManagedFrozenExecutionTarget,
     ) -> Result<ManagedExecutionState> {
         let permit = self
+            .0
             .operations
             .admit(control_plane_contracts::ports::ManagedOwnedOperation::Retirement)?;
-        let owner = self.clone();
+        let owner = self.0.clone();
         tokio::spawn(async move {
             let _permit = permit;
             let result=owner.retire_execution(workspace_id, installation_id, target).await;

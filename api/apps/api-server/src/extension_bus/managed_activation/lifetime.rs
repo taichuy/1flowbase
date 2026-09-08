@@ -128,7 +128,7 @@ pub(super) const MAX_CURRENT_WORKSPACES: usize = 256;
 pub(super) const MAX_RETAINED_SNAPSHOTS: usize = 256;
 pub(super) const MAX_RETIRED_TARGETS: usize = 4096;
 impl ManagedSnapshots {
-    fn ensure_candidate_capacity(&self, workspace: Uuid) -> Result<()> {
+    pub(super) fn ensure_candidate_capacity(&self, workspace: Uuid) -> Result<()> {
         if self.retired_targets.len() >= MAX_RETIRED_TARGETS {
             bail!("managed retired target capacity exhausted");
         }
@@ -137,7 +137,7 @@ impl ManagedSnapshots {
         }
         Ok(())
     }
-    fn ensure_retirement_capacity(&self, target: &str) -> Result<()> {
+    pub(super) fn ensure_retirement_capacity(&self, target: &str) -> Result<()> {
         if !self.retired_targets.contains_key(target)
             && self.retired_targets.len() >= MAX_RETIRED_TARGETS
         {
@@ -145,7 +145,7 @@ impl ManagedSnapshots {
         }
         Ok(())
     }
-    fn ensure_publication_capacity(
+    pub(super) fn ensure_publication_capacity(
         &self,
         candidates: &BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
     ) -> Result<()> {

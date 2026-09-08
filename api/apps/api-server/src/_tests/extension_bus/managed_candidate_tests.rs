@@ -22,9 +22,7 @@ impl Fixture {
             .fetch_one(state.store.pool())
             .await
             .unwrap();
-        let actor = state
-            .store
-            .load_actor_context_for_user(actor_id)
+        let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
             .await
             .unwrap();
         let runtime = RuntimeFixture::new(&state);
@@ -54,11 +52,11 @@ impl Fixture {
         .with_node_id(&self.state.api_node_id)
     }
     async fn install(&self, name: &str, version: &str, handler: &str) -> (Uuid, PathBuf) {
-        let base = plugin_framework::parse_plugin_manifest(include_str!(
+        // Mutate the author document; PluginManifestV1 is a validated read model, not a serializer.
+        let mut value: serde_json::Value = serde_yaml::from_str(include_str!(
             "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
         ))
         .unwrap();
-        let mut value = serde_json::to_value(base).unwrap();
         let module = format!("acme.composition-{name}");
         value["plugin_id"] = module.clone().into();
         value["version"] = version.into();
@@ -73,8 +71,7 @@ impl Fixture {
         binding["contribution_id"] = format!("{module}.first").into();
         binding["handler"] = handler.into();
         value["managed"]["execution_bindings"] = serde_json::json!([binding]);
-        let manifest: plugin_framework::PluginManifestV1 = serde_json::from_value(value).unwrap();
-        let bytes = serde_yaml::to_string(&manifest).unwrap().into_bytes();
+        let bytes = serde_yaml::to_string(&value).unwrap().into_bytes();
         plugin_framework::parse_plugin_manifest(std::str::from_utf8(&bytes).unwrap()).unwrap();
         let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
             Vec::new(),

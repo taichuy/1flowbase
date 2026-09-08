@@ -32,9 +32,7 @@ async fn root_2007_ac_010_lane_budgets_owned_transactions_shutdown() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    let actor = runtime
-        .store
-        .load_actor_context_for_user(actor_id)
+    let actor = AuthRepository::load_actor_context_for_user(&runtime.store, actor_id)
         .await
         .unwrap();
     let workspace = actor.current_workspace_id;

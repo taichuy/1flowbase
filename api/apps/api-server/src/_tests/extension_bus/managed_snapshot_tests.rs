@@ -88,30 +88,35 @@ impl RuntimeFixture {
 
 fn mixed_package() -> Vec<u8> {
     let mut a = manifest("a");
-    let original = plugin_framework::parse_plugin_manifest(include_str!(
+    let original: serde_json::Value = serde_yaml::from_str(include_str!(
         "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
-    .unwrap()
-    .managed
     .unwrap();
-    let managed = a.managed.as_mut().unwrap();
-    managed.module.contributions.push(
-        original
-            .module
-            .contributions
-            .iter()
-            .find(|c| c.contribution_id.as_str() == "acme.composition-a.first")
-            .unwrap()
-            .clone(),
-    );
-    let mut hook = original
-        .execution_bindings
+    let original = &original["managed"];
+    a["managed"]["module"]["contributions"]
+        .as_array_mut()
+        .unwrap()
+        .push(
+            original["module"]["contributions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["contribution_id"] == "acme.composition-a.first")
+                .unwrap()
+                .clone(),
+        );
+    let mut hook = original["execution_bindings"]
+        .as_array()
+        .unwrap()
         .iter()
-        .find(|b| b.contribution_id.as_str() == "acme.composition-a.first")
+        .find(|b| b["contribution_id"] == "acme.composition-a.first")
         .unwrap()
         .clone();
-    hook.runtime.entry = "bin/hook".into();
-    managed.execution_bindings.push(hook);
+    hook["runtime"]["entry"] = "bin/hook".into();
+    a["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(hook);
     let bytes = serde_yaml::to_string(&a).unwrap().into_bytes();
     plugin_framework::parse_plugin_manifest(std::str::from_utf8(&bytes).unwrap()).unwrap();
     let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -185,9 +190,7 @@ async fn root_2007_ac_008_snapshot_restart() {
         .fetch_one(state.store.pool())
         .await
         .unwrap();
-    let actor = state
-        .store
-        .load_actor_context_for_user(actor_id)
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
         .await
         .unwrap();
     let workspace = actor.current_workspace_id;

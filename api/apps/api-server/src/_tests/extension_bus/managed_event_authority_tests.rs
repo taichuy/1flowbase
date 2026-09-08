@@ -11,12 +11,12 @@ use serde_json::json;
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
-pub(super) fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
-    let base = plugin_framework::parse_plugin_manifest(include_str!(
+pub(super) fn manifest(name: &str) -> serde_json::Value {
+    // Keep author YAML separate from the parser's non-serializable validated read model.
+    let mut value: serde_json::Value = serde_yaml::from_str(include_str!(
         "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
     .unwrap();
-    let mut value = serde_json::to_value(base).unwrap();
     let module = format!("acme.composition-{name}");
     let contribution = format!("{module}.events");
     value["plugin_id"] = module.clone().into();
@@ -34,9 +34,9 @@ pub(super) fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
             "scope":"workspace","cardinality":"many","ordering":"lexicographic","failure":"isolate_contribution","delivery":"after_commit_durable","lifecycle":"workspace_assignment","allowed_permissions":["event.subscribe","event.publish"],"override_policy":"sealed"
         }]);
     }
-    serde_json::from_value(value).unwrap()
+    value
 }
-pub(super) fn package(manifest: &plugin_framework::PluginManifestV1) -> Vec<u8> {
+pub(super) fn package(manifest: &serde_json::Value) -> Vec<u8> {
     let bytes = serde_yaml::to_string(manifest).unwrap().into_bytes();
     // The exact author artifact must pass the official parser before archive intake.
     plugin_framework::parse_plugin_manifest(std::str::from_utf8(&bytes).unwrap()).unwrap();
@@ -73,26 +73,25 @@ pub(super) fn grant(name: &str, permission: &str) -> GrantContributionPermission
 #[test]
 fn root_2007_ac_005_event_authority_static_namespace_and_contract() {
     let a = manifest("a");
-    let managed = a.managed.clone().unwrap();
+    let managed = plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&a).unwrap())
+        .unwrap()
+        .managed
+        .unwrap();
     assert!(
         managed.module.extension_points[0].is_managed_composition_event(&managed.module.module_id)
     );
     let mut wrong = a.clone();
-    wrong.managed.as_mut().unwrap().module.extension_points[0].point_id =
-        ExtensionPointId::new("acme.other.processed").unwrap();
+    wrong["managed"]["module"]["extension_points"][0]["point_id"] = "acme.other.processed".into();
     assert!(
         plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&wrong).unwrap()).is_err()
     );
     let mut wrong = a.clone();
-    wrong.managed.as_mut().unwrap().module.extension_points[0].point_kind =
-        ExtensionPointKind::Pipeline;
+    wrong["managed"]["module"]["extension_points"][0]["point_kind"] = "pipeline".into();
     assert!(
         plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&wrong).unwrap()).is_err()
     );
     let mut wrong = a;
-    wrong.managed.as_mut().unwrap().module.extension_points[0]
-        .contract
-        .contract_version = ContractVersion::new("2").unwrap();
+    wrong["managed"]["module"]["extension_points"][0]["contract"]["contract_version"] = "2".into();
     assert!(
         plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&wrong).unwrap()).is_err()
     );

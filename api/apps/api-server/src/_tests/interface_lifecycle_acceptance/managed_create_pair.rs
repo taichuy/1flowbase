@@ -16,7 +16,6 @@ use crate::{
 use axum::{http::StatusCode, Router};
 use control_plane::{plugin_management::*, ports::AuthRepository};
 use extension_contracts::ManagedHookHostFrame;
-use plugin_framework::extension_bus::*;
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},

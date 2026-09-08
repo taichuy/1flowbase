@@ -73,7 +73,7 @@ impl ExtensionCenterAdapter {
             ExtensionCenterInput::QueryManagedExecution(installation_id) => {
                 let service = control_plane::plugin_management::ManagedExecutionService::new(
                     self.0.store.for_actor(actor.clone()),
-                    Arc::new(self.0.provider_runtime.managed_composition()?),
+                    self.0.provider_runtime.managed_composition()?.governance(),
                 );
                 Ok(ExtensionCenterOutput::ManagedExecution(
                     service.query(actor, installation_id).await?,
@@ -82,7 +82,7 @@ impl ExtensionCenterAdapter {
             ExtensionCenterInput::ResumeManagedDelivery(installation_id, body) => {
                 let service = control_plane::plugin_management::ManagedExecutionService::new(
                     self.0.store.for_actor(actor.clone()),
-                    Arc::new(self.0.provider_runtime.managed_composition()?),
+                    self.0.provider_runtime.managed_composition()?.governance(),
                 );
                 Ok(ExtensionCenterOutput::ManagedExecution(
                     service.resume(actor, installation_id, body.into()).await?,
@@ -91,7 +91,7 @@ impl ExtensionCenterAdapter {
             ExtensionCenterInput::RetireManagedExecution(installation_id, body) => {
                 let service = control_plane::plugin_management::ManagedExecutionService::new(
                     self.0.store.for_actor(actor.clone()),
-                    Arc::new(self.0.provider_runtime.managed_composition()?),
+                    self.0.provider_runtime.managed_composition()?.governance(),
                 );
                 Ok(ExtensionCenterOutput::ManagedExecution(
                     service.retire(actor, installation_id, body.into()).await?,

@@ -1032,9 +1032,15 @@ pub(crate) fn production_interface_contributions(
                     state.api_node_id.clone(),
                     state.provider_install_root.clone(),
                 ),
-                GraphFingerprint::new(state.extension_boot_snapshot.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("managed Create bridge requires the boot graph"))?
-                    .graph().fingerprint().as_str())?,
+                GraphFingerprint::new(
+                    state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+                        RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                            InterfaceId::new("model_definitions.create").expect("static interface id"),
+                        )
+                    })?.graph().fingerprint().as_str(),
+                ).map_err(|_| RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                    InterfaceId::new("model_definitions.create").expect("static interface id"),
+                ))?,
             )?,
         ),
         InterfaceRegistryContribution::new(
