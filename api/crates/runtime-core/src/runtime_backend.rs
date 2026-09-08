@@ -250,6 +250,67 @@ impl RuntimeArtifactReference {
     }
 }
 
+/// Trusted installation/activation input. The composition owner supplies current authority;
+/// the Runtime Host binds this identity to verified artifact bytes and a concrete generation.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedActivation {
+    pub plugin_id: String,
+    pub artifact: RuntimeArtifactReference,
+    pub identity: extension_contracts::extension_bus::ManagedExecutionIdentity,
+}
+
+/// Execution whose generation admission has already completed. Dropping cancels its scope lease.
+pub type AdmittedManagedExecution = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Value, RuntimeBackendError>> + Send + 'static>,
+>;
+
+/// An already-admitted typed Hook execution. Dropping cancels the worker and its mount lease.
+pub type AdmittedManagedHook = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<extension_contracts::ManagedHookOutcome, RuntimeBackendError>,
+            > + Send
+            + 'static,
+    >,
+>;
+
+/// Trusted invocation input. Runtime Host supplies the worker correlation and bound identity.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedHookRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub principal: RuntimeExecutionPrincipal,
+    pub invocation: extension_contracts::ManagedHookInvocation,
+    pub input: extension_contracts::ManagedCreateHookInput,
+}
+
+pub type AdmittedManagedEvent = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<extension_contracts::ManagedEventOutcome, RuntimeBackendError>,
+            > + Send
+            + 'static,
+    >,
+>;
+
+/// Host-bound subscriber service identity. No original actor is delegated to this request.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedEventRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub graph_fingerprint: String,
+    pub authority_revision: i64,
+    pub deadline_unix_ms: i64,
+    pub delivery: extension_contracts::ManagedEventDelivery,
+}
+
+/// Host-only request. Neither the handle nor principal is taken from worker JSON.
+#[derive(Debug, Clone)]
+pub struct RuntimeManagedCapabilityRequest {
+    pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
+    pub principal: RuntimeExecutionPrincipal,
+    pub config_payload: Value,
+    pub input_payload: Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimePackageActivation {
     pub plugin_id: String,
@@ -432,6 +493,16 @@ pub trait DataSourceRuntimePort: Send + Sync {
     ) -> Result<Value, RuntimeBackendError>;
 }
 
+/// Closes exact runtime generations until dropped. Dropping after timeout/cancellation reopens
+/// only still-mounted scopes; disposal cannot be undone. No durable authority is implied.
+pub trait RuntimeManagedDrain: Send + Sync {
+    fn wait_drained(
+        &self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), RuntimeBackendError>> + Send + '_>,
+    >;
+}
+
 #[async_trait]
 /// Capability operations are mandatory for every Runtime Backend.
 ///
@@ -441,6 +512,43 @@ pub trait DataSourceRuntimePort: Send + Sync {
 /// impl CapabilityRuntimePort for IncompleteCapabilityBackend {}
 /// ```
 pub trait CapabilityRuntimePort: Send + Sync {
+    async fn drain_managed_contributions(
+        &self,
+        handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn RuntimeManagedDrain>, RuntimeBackendError>;
+    /// Bind a trusted installation identity to an exact contribution. This does not grant permission.
+    async fn activate_managed_contribution(
+        &self,
+        request: RuntimeManagedActivation,
+    ) -> Result<extension_contracts::extension_bus::ManagedExecutionHandle, RuntimeBackendError>;
+    async fn deactivate_managed_contribution(
+        &self,
+        handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError>;
+    /// Returns only after validating the handle/deadline and acquiring its execution scope lease.
+    /// The caller holds its current authority lease until this returns, then releases it before
+    /// awaiting the worker. This must not merely wrap a not-yet-admitted async call.
+    async fn admit_managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<AdmittedManagedExecution, RuntimeBackendError>;
+    /// Holds current contribution authority until the exact Hook binding obtains its scope lease.
+    async fn admit_managed_event(
+        &self,
+        request: RuntimeManagedEventRequest,
+    ) -> Result<AdmittedManagedEvent, RuntimeBackendError>;
+
+    async fn admit_managed_hook(
+        &self,
+        request: RuntimeManagedHookRequest,
+    ) -> Result<AdmittedManagedHook, RuntimeBackendError>;
+    /// The composition owner must admit each call against current contribution authority.
+    /// Worker output is an opaque result and never grants credit or other host permissions.
+    async fn managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<Value, RuntimeBackendError>;
+
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,

@@ -532,6 +532,16 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         input: &UpdatePluginDesiredStateInput,
     ) -> Result<domain::PluginInstallationRecord> {
+        let mut transaction = self.pool().begin().await?;
+        let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 order by workspace_id")
+            .bind(input.installation_id).fetch_all(&mut *transaction).await?;
+        for workspace in workspaces {
+            crate::plugin_contribution_authority_repository::lock_managed_workspace(
+                &mut transaction,
+                workspace,
+            )
+            .await?;
+        }
         let row = sqlx::query(
             r#"
             update extension_installations
@@ -571,13 +581,27 @@ impl PluginRepository for PgControlPlaneStore {
         .bind(input.installation_id)
         .bind(input.desired_state.as_str())
         .bind(input.actor_user_id)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *transaction)
         .await?;
 
-        match row {
-            Some(row) => map_installation(row),
-            None => bail!(ControlPlaneError::NotFound("plugin_installation")),
+        let installation = row
+            .map(map_installation)
+            .transpose()?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        if installation.contract_version == "1flowbase.extension-bus/v1"
+            && input.desired_state == domain::PluginDesiredState::Disabled
+        {
+            crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
+                &mut transaction,
+                input.installation_id,
+                None,
+                None,
+                control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive,
+            )
+            .await?;
         }
+        transaction.commit().await?;
+        Ok(installation)
     }
 
     async fn upsert_artifact_instance(
@@ -963,6 +987,12 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         input: &CreatePluginAssignmentInput,
     ) -> Result<domain::PluginAssignmentRecord> {
+        let mut transaction = self.pool().begin().await?;
+        crate::plugin_contribution_authority_repository::lock_managed_workspace(
+            &mut transaction,
+            input.workspace_id,
+        )
+        .await?;
         let row = sqlx::query(
             r#"
             insert into plugin_assignments (
@@ -990,10 +1020,12 @@ impl PluginRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(&input.provider_code)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
 
-        map_assignment(row)
+        let assignment = map_assignment(row)?;
+        transaction.commit().await?;
+        Ok(assignment)
     }
 
     async fn list_assignments(

@@ -1,3 +1,6 @@
+#[path = "model_definitions_managed_hooks.rs"]
+pub(crate) mod managed_hooks;
+
 use std::sync::Arc;
 
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -13,7 +16,7 @@ use crate::{
     },
 };
 
-pub(super) enum ModelDefinitionsInput {
+pub(crate) enum ModelDefinitionsInput {
     List {
         query: ListModelsQuery,
         locale: ConsoleLocaleHints,
@@ -66,7 +69,7 @@ impl InterfaceContract for ModelDefinitionsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(super) enum ModelDefinitionsOutput {
+pub(crate) enum ModelDefinitionsOutput {
     Models(Vec<ModelDefinitionResponse>),
     Templates(Vec<CompatibleTemplateCatalogEntryResponse>),
     AgentFlowOptions(Vec<AgentFlowDataModelOptionResponse>),
@@ -669,14 +672,25 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 
 pub(crate) fn compile_registry(
     dependencies: ModelDefinitionDependencies,
+    graph: interface_runtime::GraphFingerprint,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_registry(
+    let base = console_interface::compile_registry(
         "api-server.console-model-definitions",
         "graph:console-model-definitions-v1",
         DECLARATIONS,
         Arc::new(ModelDefinitionsAdapter { dependencies }),
-    )
+    )?;
+    let mut compiler = interface_runtime::RegistryCompiler::new(
+        graph.clone(),
+        base.definitions()
+            .map(|definition| definition.authorization_operation().clone()),
+        base.definitions()
+            .map(|definition| definition.owner().clone()),
+    );
+    compiler.absorb_snapshot(&base)?;
+    managed_hooks::bind(&mut compiler, graph)?;
+    compiler.compile()
 }

@@ -201,6 +201,8 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 
 接口管理可以用受控 typed registration 验证执行契约。三级插件开放则需真实 declaration → loader/activation → graph/registry → invocation，覆盖依赖、冲突、停用、版本切换和在途隔离。native HostExtension 的 restart-scoped 管理不能被快照测试解释成 Rust 热卸载。
 
+当前有限受管链路见[插件组合与事件交付](plugin-composition.md)：真实 `model_definitions.create` 开放 Authorization、Admission、Before、After、Failure、Completion 六阶段。该 Create 的 Before 只读且可否决，不继承通用 Prepared 坐标可能允许的输入修改。认证适配器仍是可信宿主边界；受管声明不自动获得任何阶段或事件权限。
+
 源码与局部规则：[interface-runtime/AGENTS.md](../../api/crates/interface-runtime/AGENTS.md)。
 
 

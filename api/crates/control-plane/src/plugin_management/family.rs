@@ -358,10 +358,13 @@ where
         if !supports_workspace_assignment(&installation) {
             return Err(ControlPlaneError::Conflict("plugin_assignment_not_supported").into());
         }
+        // Managed installation scope must exist before its first host grant and activation.
+        // Assignment establishes that scope; it does not start a worker or grant permissions.
         if matches!(
             installation.desired_state,
             domain::PluginDesiredState::Disabled
-        ) {
+        ) && installation.contract_version != "1flowbase.extension-bus/v1"
+        {
             return Err(ControlPlaneError::Conflict("plugin_installation_disabled").into());
         }
 
@@ -518,6 +521,20 @@ where
                 );
             }
         }
+        let managed_ids = installations
+            .iter()
+            .filter(|installation| installation.contract_version == "1flowbase.extension-bus/v1")
+            .map(|installation| installation.id)
+            .collect::<Vec<_>>();
+        let _managed_removal = if managed_ids.is_empty() {
+            None
+        } else {
+            Some(
+                self.runtime
+                    .guard_managed_artifact_removal(&managed_ids)
+                    .await?,
+            )
+        };
         let current_installation_id = self
             .repository
             .list_assignments(actor.current_workspace_id)
@@ -582,6 +599,7 @@ where
             let runtime_restore = artifacts
                 .iter()
                 .filter_map(|(installation, artifact)| {
+                    if installation.contract_version == "1flowbase.extension-bus/v1" { return None; }
                     artifact
                         .as_ref()
                         .filter(|artifact| {
@@ -597,7 +615,9 @@ where
             // Runtime scopes own their resources. Dispose all of them before staging any
             // artifact, so an unloaded family cannot retain a callable contribution.
             for installation in &installations {
-                self.runtime.deactivate_plugin(installation).await?;
+                // Managed artifacts already have no runtime references; the removal guard owns
+                // assembly until DB completion. Re-entering rebuild here would deadlock it.
+                if installation.contract_version != "1flowbase.extension-bus/v1" { self.runtime.deactivate_plugin(installation).await?; }
             }
             let mut removals = match stage_artifact_removals(artifact_paths) {
                 Ok(removals) => removals,
@@ -895,6 +915,11 @@ where
             )
             .await?;
 
+        if current.contract_version == "1flowbase.extension-bus/v1" {
+            return self.runtime.switch_managed_installation(actor.current_workspace_id, current.id, target.id,
+                audit_log(Some(actor.current_workspace_id), Some(actor_user_id), "plugin_assignment", Some(target.id), "plugin.version_switched",
+                    json!({"previous_installation_id":current.id,"target_installation_id":target.id,"provider_code":provider_code})), running_task).await;
+        }
         let switch_result = async {
             let mut local_artifact = self.refresh_current_node_artifact_snapshot(target).await?;
             if !local_artifact.artifact_status.is_ready() {
@@ -1037,6 +1062,9 @@ pub(super) fn supports_workspace_assignment(
 ) -> bool {
     matches!(
         installation.contract_version.as_str(),
-        CURRENT_PROVIDER_CONTRACT | "1flowbase.data_source/v1" | "1flowbase.capability/v1"
+        CURRENT_PROVIDER_CONTRACT
+            | "1flowbase.data_source/v1"
+            | "1flowbase.capability/v1"
+            | "1flowbase.extension-bus/v1"
     )
 }

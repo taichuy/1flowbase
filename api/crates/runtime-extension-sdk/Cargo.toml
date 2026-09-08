@@ -8,3 +8,11 @@ license.workspace = true
 extension-contracts = { path = "../extension-contracts" }
 serde_json.workspace = true
 thiserror.workspace = true
+
+[[example]]
+name = "managed_hook_worker"
+path = "src/_tests/managed_hook_worker.rs"
+
+[[example]]
+name = "managed_event_worker"
+path = "src/_tests/managed_event_worker.rs"

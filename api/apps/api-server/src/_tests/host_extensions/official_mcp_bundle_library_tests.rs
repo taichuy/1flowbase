@@ -329,6 +329,7 @@ impl TestExtensionInstallationRepository {
             .lock()
             .unwrap()
             .push(domain::ExtensionInstallationRecord {
+                contract_version: None,
                 id: Uuid::now_v7(),
                 identity: domain::ExtensionInstallationIdentity {
                     category: domain::ExtensionCategory::Mcp,
@@ -389,6 +390,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
         }
         let now = time::OffsetDateTime::now_utc();
         let record = domain::ExtensionInstallationRecord {
+            contract_version: None,
             id: input.installation_id,
             identity: input.identity.clone(),
             source_kind: input.source_kind.clone(),

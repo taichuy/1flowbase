@@ -38,6 +38,8 @@ impl InterfaceObserverRecord {
     }
 }
 
+pub(crate) struct ObserverRecordToken(usize);
+
 #[derive(Default)]
 pub(crate) struct InvocationFinalization {
     deadline: Option<Instant>,
@@ -49,7 +51,7 @@ impl InvocationFinalization {
         plugin: &PluginIdentity,
         point: InterfaceExtensionPoint,
         construct: impl FnOnce() -> F,
-    ) {
+    ) -> ObserverRecordToken {
         let deadline = *self
             .deadline
             .get_or_insert_with(|| Instant::now() + Duration::from_millis(1000));
@@ -81,11 +83,22 @@ impl InvocationFinalization {
                 }
             }
         };
+        let token = ObserverRecordToken(self.records.len());
         self.records.push(InterfaceObserverRecord {
             plugin: plugin.clone(),
             point,
             status,
             reason,
         });
+        token
+    }
+
+    pub(crate) fn record_reported_failure(&mut self, token: ObserverRecordToken) {
+        if let Some(record) = self.records.get_mut(token.0) {
+            if record.status == InterfaceObserverStatus::Executed {
+                record.status = InterfaceObserverStatus::Failed;
+                record.reason = Some("observer-reported-failure");
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use control_plane_contracts::{
     ports::{CreateModelDefinitionInput, ModelDefinitionCommittedFact, RecordLifecycleFactInput},
     ControlPlaneContractError as ControlPlaneError,
@@ -74,6 +74,27 @@ pub(super) async fn create_model_definition(
     store: &PgControlPlaneStore,
     input: &CreateModelDefinitionInput,
 ) -> Result<domain::ModelDefinitionRecord> {
+    let permit = store
+        .managed_operations
+        .admit(control_plane_contracts::ports::ManagedOwnedOperation::Create)?;
+    let owner = store.clone();
+    let input = input.clone();
+    tokio::spawn(async move {
+        let _permit = permit;
+        let result = create_model_definition_owned(&owner, &input).await;
+        if let Err(error) = &result {
+            tracing::warn!(%error, "Create transaction owner failed");
+        }
+        result
+    })
+    .await
+    .context("Create transaction owner terminated")?
+}
+
+async fn create_model_definition_owned(
+    store: &PgControlPlaneStore,
+    input: &CreateModelDefinitionInput,
+) -> Result<domain::ModelDefinitionRecord> {
     ensure_workspace_data_source_belongs_to_scope(store, input).await?;
 
     let registered_table_name = registered_system_table_name(
@@ -146,21 +167,25 @@ pub(super) async fn create_model_definition(
         );
         let publication = store
             .lifecycle_publication_catalog
-            .plan_for(
+            .frozen_plan_for_workspace(
+                (model.scope_kind == domain::DataModelScopeKind::Workspace)
+                    .then_some(model.scope_id),
                 ModelDefinitionCommittedFact::CONTRACT_ID,
                 ModelDefinitionCommittedFact::CONTRACT_VERSION,
             )
-            .cloned();
+            .await?;
         let canonical_payload = serde_json::to_vec(&fact)?;
-        let fact_input = publication.map(|publication| RecordLifecycleFactInput {
-            event_id,
-            transaction_id,
-            contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
-            contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
-            canonical_payload,
-            occurred_at,
-            publication,
-        });
+        let fact_input = publication
+            .as_ref()
+            .map(|publication| RecordLifecycleFactInput {
+                event_id,
+                transaction_id,
+                contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
+                contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
+                canonical_payload,
+                occurred_at,
+                publication: publication.plan.clone(),
+            });
 
         let transactional_result = async {
             insert_model_definition(
@@ -209,10 +234,12 @@ pub(super) async fn create_model_definition(
         match transactional_result {
             Ok(()) => {
                 tx.commit().await?;
+                drop(publication);
                 return Ok(model);
             }
             Err(error) if retry_generated_name && is_runtime_table_name_conflict(&error) => {
                 tx.rollback().await?;
+                drop(publication);
                 if attempt < generation_attempts {
                     continue;
                 }
@@ -238,6 +265,7 @@ pub(super) async fn create_model_definition(
             }
             Err(error) => {
                 tx.rollback().await?;
+                drop(publication);
                 insert_model_definition_after_failure(
                     store.pool(),
                     &model,

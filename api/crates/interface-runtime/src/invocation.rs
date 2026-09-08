@@ -305,6 +305,7 @@ where
     authentication_activation: AuthenticationActivationIdentity,
     principal: P,
     controls: InvocationControls,
+    extension_context: Option<crate::hook::InvocationExtensionContext>,
     input: I,
 }
 
@@ -361,8 +362,25 @@ where
             authentication_activation,
             principal,
             controls,
+            extension_context: None,
             input,
         }
+    }
+
+    pub fn input(&self) -> &I {
+        &self.input
+    }
+
+    /// The trusted adapter freezes one typed context before Kernel resolve. A second freeze fails.
+    pub fn freeze_extension_context<T: std::any::Any + Send + Sync>(
+        mut self,
+        context: Arc<T>,
+    ) -> Result<Self, InterfaceInvocationError> {
+        if self.extension_context.is_some() {
+            return Err(InterfaceInvocationError::ContractMismatch);
+        }
+        self.extension_context = Some(crate::hook::InvocationExtensionContext(context));
+        Ok(self)
     }
 
     pub fn lineage(&self) -> &InvocationLineage {
@@ -1092,6 +1110,7 @@ where
             authentication_activation,
             principal,
             controls,
+            extension_context,
             mut input,
         } = envelope;
         let mut receipt = ReceiptBuilder::new(
@@ -1102,6 +1121,7 @@ where
             principal.summary(),
             &controls,
         );
+        receipt.extension_context = extension_context.clone();
         if let Some(plan) = snapshot.plan(&binding_id) {
             receipt.resolve(plan);
         }
@@ -1147,7 +1167,8 @@ where
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
-        );
+        )
+        .with_extension_context(extension_context);
         receipt.resolve(&plan);
         receipt.stage(InterfaceInvocationStage::Resolved);
         if binding.projection().protocol() != protocol {
@@ -1260,6 +1281,7 @@ where
                     definition.clone(),
                     binding.clone(),
                     protocol,
+                    hook_context.clone(),
                 )),
             )
             .await
@@ -1339,6 +1361,7 @@ where
                     binding.clone(),
                     protocol,
                     authorization_decision,
+                    hook_context.clone(),
                 )),
             )
             .await
@@ -1547,6 +1570,7 @@ where
             authentication_activation,
             principal,
             controls,
+            extension_context,
             mut input,
         } = envelope;
         let mut receipt = ReceiptBuilder::new(
@@ -1557,12 +1581,14 @@ where
             principal.summary(),
             &controls,
         );
+        receipt.extension_context = extension_context.clone();
         let hook_context = InterfaceHookContext::new(
             principal.summary(),
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
-        );
+        )
+        .with_extension_context(extension_context);
         if let Some(plan) = snapshot.plan(&binding_id) {
             receipt.resolve(plan);
         }
@@ -1714,6 +1740,7 @@ where
                     definition.clone(),
                     binding.clone(),
                     protocol,
+                    hook_context.clone(),
                 )),
             )
             .await;
@@ -1793,6 +1820,7 @@ where
                     binding.clone(),
                     protocol,
                     authorization_decision,
+                    hook_context.clone(),
                 )),
             )
             .await;
@@ -1944,6 +1972,7 @@ async fn run_failure_hooks<I, O>(
 }
 
 struct ReceiptBuilder {
+    extension_context: Option<crate::hook::InvocationExtensionContext>,
     finalization: InvocationFinalization,
     frozen_plan: Option<crate::CompiledInvocationPlan>,
     invocation_id: InvocationId,
@@ -1970,6 +1999,7 @@ impl ReceiptBuilder {
         controls: &InvocationControls,
     ) -> Self {
         Self {
+            extension_context: None,
             finalization: InvocationFinalization::default(),
             frozen_plan: None,
             invocation_id,
@@ -2046,7 +2076,8 @@ impl ReceiptBuilder {
                 self.invocation_id,
                 self.graph_fingerprint.clone(),
                 self.registry_fingerprint.clone(),
-            );
+            )
+            .with_extension_context(self.extension_context.clone());
             hooks
                 .run_completion(&mut self.finalization, &context, terminal)
                 .await;

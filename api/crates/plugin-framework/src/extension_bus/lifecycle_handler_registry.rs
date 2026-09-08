@@ -209,6 +209,10 @@ pub fn compile_lifecycle_handler_registry(
 }
 
 impl EffectiveLifecycleHandlerRegistry {
+    pub fn graph_fingerprint(&self) -> &str {
+        &self.graph_fingerprint
+    }
+
     pub async fn deliver(
         &self,
         graph_fingerprint: &str,

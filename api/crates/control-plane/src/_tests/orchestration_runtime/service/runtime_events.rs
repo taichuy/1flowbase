@@ -1829,3 +1829,6 @@ async fn successful_live_debug_run_emits_flow_lifecycle_and_closes_runtime_strea
         )]
     );
 }
+
+#[path = "runtime_events/resource_budgets.rs"]
+mod resource_budgets;

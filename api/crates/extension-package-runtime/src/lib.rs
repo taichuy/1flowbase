@@ -13,6 +13,7 @@ pub mod error {
         ExtensionContractErrorKind as PluginFrameworkErrorKind,
     };
 }
+pub mod managed_manifest;
 pub mod manifest_v1;
 pub mod network_egress_provider_package;
 pub mod provider_count_tokens_estimator;
@@ -26,6 +27,7 @@ pub use extension_contracts::error::{
     ExtensionContractErrorKind as PluginFrameworkErrorKind,
 };
 pub use extension_contracts::*;
+pub use managed_manifest::*;
 pub use manifest_v1::*;
 pub use network_egress_provider_package::*;
 pub use provider_count_tokens_estimator::*;

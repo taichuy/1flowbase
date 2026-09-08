@@ -276,7 +276,9 @@ pub fn spawn_runtime_debug_event_persister_with_after_commit<R>(
 where
     R: OrchestrationRuntimeRepository + Send + Sync + 'static,
 {
+    let scope_owner = after_commit.scope_owner();
     tokio::spawn(async move {
+        let _scope_owner = scope_owner;
         let Ok(mut subscription) = stream.subscribe(run_id, Some(0)).await else {
             warn!(
                 flow_run_id = %run_id,

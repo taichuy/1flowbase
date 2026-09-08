@@ -117,3 +117,39 @@ fn router_rejects_conflicting_runtime_slots() {
     let error = route_plugin_package(&manifest).expect_err("conflicting slots must fail closed");
     assert!(error.to_string().contains("runtime_slot"));
 }
+
+// Root #2007 AC-001/AC-002: v2 routes through the real package router, v1 remains unchanged.
+#[test]
+fn root_2007_ac_001_002_manifest_routes() {
+    let raw = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../extension-package-runtime/src/_tests/managed_manifest.yaml"
+    ));
+    let manifest = parse_plugin_manifest(raw).expect("managed fixture should parse");
+    assert_eq!(
+        route_plugin_package(&manifest).expect("managed route"),
+        RoutedPluginPackageKind::ManagedContributions
+    );
+    let capability = raw
+        .replace(
+            "consumption_kind: runtime_extension",
+            "consumption_kind: capability_plugin",
+        )
+        .replace("module_kind: runtime", "module_kind: capability");
+    assert_eq!(
+        route_plugin_package(
+            &parse_plugin_manifest(&capability).expect("capability may execute contributions")
+        )
+        .expect("managed route"),
+        RoutedPluginPackageKind::ManagedContributions
+    );
+    let legacy = parse_plugin_manifest(&manifest_with_slot(
+        "model_provider",
+        "1flowbase.provider/v2",
+    ))
+    .expect("legacy package");
+    assert_eq!(
+        route_plugin_package(&legacy).expect("legacy route"),
+        RoutedPluginPackageKind::ModelProviderRuntime
+    );
+}

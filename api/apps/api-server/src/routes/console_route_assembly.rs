@@ -714,6 +714,12 @@ fn static_english_interface_summary(interface_id: &str) -> String {
             "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
         ),
         "extension_center.installed.disable" => Some("Disable an installed executable extension"),
+        "extension_center.contribution_authorizations.grant" => Some("Grant exact installed contribution permissions in the current workspace"),
+        "extension_center.contribution_authorizations.revoke" => Some("Revoke exact installed contribution permissions in the current workspace"),
+        "extension_center.managed_execution.view" => Some("View managed executions and durable lifecycle deliveries in the current workspace"),
+        "extension_center.lifecycle_deliveries.resume" => Some("Resume an exact paused lifecycle delivery after current authority and original executable validation"),
+        "extension_center.managed_executions.retire" => Some("Retire a frozen managed execution only after publication, invocation and durable delivery references are gone"),
+        "extension_center.contribution_authorizations.view" => Some("View exact installed contribution permissions in the current workspace"),
         "extension_center.installed.enable" => Some("Enable an installed executable extension"),
         "extension_center.installed.select" => Some("Select an installed extension version"),
         "mcp.bundle_library.current.switch" => Some("Switch MCP bundle library release"),
@@ -838,10 +844,16 @@ fn compile_console_interface_metadata(
             }
         };
         let summary = static_english_interface_summary(&interface_id);
+        let description = match interface_id.as_str() {
+            "extension_center.managed_execution.view" => "Read exact retained and current execution targets, frozen reference counts and durable delivery status for the installed extension in the current workspace.".to_string(),
+            "extension_center.lifecycle_deliveries.resume" => "Resume one paused delivery only when its full frozen target, original executable and current contribution authorization remain valid.".to_string(),
+            "extension_center.managed_executions.retire" => "Reject retirement while the target is current or retains frozen invocations, future publications, admitted work or unfinished durable deliveries; preserve every delivery record.".to_string(),
+            _ => format!("{summary} in the system backend."),
+        };
         interfaces.push(ConsoleInterfaceRegistration {
             interface_id,
             route: binding.route.clone(),
-            description: format!("{summary} in the system backend."),
+            description,
             summary,
         });
     }

@@ -74,3 +74,7 @@ fn public_fixture_does_not_require_untyped_maps() {
     let _typed_placeholder: BTreeMap<String, extension_contracts::PluginDataValue> =
         BTreeMap::new();
 }
+#[path = "_tests/managed_hook_tests.rs"]
+mod managed_hook_tests;
+
+mod managed_event_tests;

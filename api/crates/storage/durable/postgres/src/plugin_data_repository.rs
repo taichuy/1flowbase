@@ -44,17 +44,20 @@ async fn execute_request(
     binding: &PluginDataBinding,
     request: &PluginDataRequest,
 ) -> Result<PluginDataResponse, PluginDataError> {
-    validate_binding(binding)?;
-    request.validate()?;
-    for operation in &request.operations {
-        if !binding.permissions.contains(&operation.permission()) {
-            return Err(error(
-                PluginDataErrorKind::PermissionDenied,
-                "plugin_data_permission",
-                false,
-            ));
-        }
-    }
+    validate_request(binding, request)?;
+    let mut transaction = store.pool().begin().await.map_err(storage_error)?;
+    let response = execute_request_in_transaction(&mut transaction, binding, request).await?;
+    transaction.commit().await.map_err(storage_error)?;
+    Ok(response)
+}
+
+/// Shares the authority lease transaction; receipt and all effects commit together.
+pub(crate) async fn execute_request_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    binding: &PluginDataBinding,
+    request: &PluginDataRequest,
+) -> Result<PluginDataResponse, PluginDataError> {
+    validate_request(binding, request)?;
 
     let workspace_id = Uuid::parse_str(&binding.workspace_id)
         .map_err(|_| PluginDataError::invalid("plugin_data_workspace"))?;
@@ -63,11 +66,10 @@ async fn execute_request(
         &serde_json::to_vec(request)
             .map_err(|_| PluginDataError::invalid("plugin_data_request_encoding"))?,
     );
-    let mut transaction = store.pool().begin().await.map_err(storage_error)?;
 
     if let Some(key) = request.idempotency_key.as_deref() {
         if let Some((stored_hash, response)) = load_receipt(
-            &mut transaction,
+            transaction,
             &owner_id,
             workspace_id,
             &binding.provider_instance_id,
@@ -82,7 +84,6 @@ async fn execute_request(
                     false,
                 ));
             }
-            transaction.commit().await.map_err(storage_error)?;
             return Ok(PluginDataResponse {
                 replayed: true,
                 ..response
@@ -94,7 +95,7 @@ async fn execute_request(
     for operation in &request.operations {
         results.push(
             execute_operation(
-                &mut transaction,
+                transaction,
                 &owner_id,
                 &binding.plugin_version,
                 workspace_id,
@@ -109,7 +110,7 @@ async fn execute_request(
     };
     if let Some(key) = request.idempotency_key.as_deref() {
         store_receipt(
-            &mut transaction,
+            transaction,
             &owner_id,
             workspace_id,
             &binding.provider_instance_id,
@@ -119,8 +120,25 @@ async fn execute_request(
         )
         .await?;
     }
-    transaction.commit().await.map_err(storage_error)?;
     Ok(response)
+}
+
+fn validate_request(
+    binding: &PluginDataBinding,
+    request: &PluginDataRequest,
+) -> Result<(), PluginDataError> {
+    validate_binding(binding)?;
+    request.validate()?;
+    for operation in &request.operations {
+        if !binding.permissions.contains(&operation.permission()) {
+            return Err(error(
+                PluginDataErrorKind::PermissionDenied,
+                "plugin_data_permission",
+                false,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_binding(binding: &PluginDataBinding) -> Result<(), PluginDataError> {

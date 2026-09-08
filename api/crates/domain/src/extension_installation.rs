@@ -254,6 +254,7 @@ pub struct ExtensionInstallationReceipt {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtensionInstallationRecord {
+    pub contract_version: Option<String>,
     pub id: Uuid,
     pub identity: ExtensionInstallationIdentity,
     pub source_kind: String,

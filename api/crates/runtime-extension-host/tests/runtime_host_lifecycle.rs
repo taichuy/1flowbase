@@ -306,3 +306,217 @@ impl runtime_core::runtime_backend::RuntimeStreamEventSink for RecordingSink {
 fn d_010_sdk_facing_contract_does_not_require_host_internals() {
     let _: Arc<dyn runtime_core::runtime_backend::RuntimeStreamEventSink> = Arc::new(RecordingSink);
 }
+
+// Root #2007 AC-002 / AUTH-04, AUTH-09. Real stdio executables share one package,
+// while host-created contribution identities, cached bindings and generations remain distinct.
+#[cfg(unix)]
+#[tokio::test]
+async fn root_2007_ac_002_contribution_execution_identity() {
+    use extension_contracts::extension_bus::{
+        ContributionId, ManagedArtifactFingerprint, ManagedExecutionHandle,
+        ManagedExecutionIdentity, ManagedInstallationId, ManagedWorkspaceId,
+    };
+    use runtime_core::runtime_backend::{
+        CapabilityRuntimePort, RuntimeExecutionPrincipal, RuntimeManagedActivation,
+        RuntimeManagedCapabilityRequest,
+    };
+    use std::os::unix::fs::PermissionsExt;
+
+    let package = LifecycleProviderPackage::new();
+    let raw = include_str!("../../extension-package-runtime/src/_tests/managed_manifest.yaml")
+        .replace(
+            "execution_mode: declarative_only",
+            "execution_mode: process_per_call",
+        )
+        .replace(
+            "entry: bin/fixture\n      handler: compute",
+            "entry: bin/first\n      handler: compute",
+        )
+        .replace("entry: ui/render.json", "entry: bin/second");
+    fs::write(package.path().join("manifest.yaml"), &raw).unwrap();
+    for (name, source) in [
+        (
+            "first",
+            include_str!("_fixtures/managed_execution/first.sh"),
+        ),
+        (
+            "second",
+            include_str!("_fixtures/managed_execution/second.sh"),
+        ),
+    ] {
+        let path = package.path().join("bin").join(name);
+        fs::write(&path, source).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let parsed = extension_package_runtime::parse_plugin_manifest(&raw).unwrap();
+    let managed = parsed.managed.as_ref().unwrap();
+    let activation = |contribution: &str, workspace: &str| {
+        let contribution_id = ContributionId::new(contribution).unwrap();
+        RuntimeManagedActivation {
+            plugin_id: "managed_fixture@0.1.0".to_string(),
+            artifact: RuntimeArtifactReference::new("installation-a").unwrap(),
+            identity: ManagedExecutionIdentity::new(
+                ManagedInstallationId::new("installation-a").unwrap(),
+                ManagedWorkspaceId::new(workspace).unwrap(),
+                contribution_id.clone(),
+                ManagedArtifactFingerprint::from_bytes(raw.as_bytes()),
+                managed
+                    .execution_binding_fingerprint(&contribution_id)
+                    .unwrap(),
+            ),
+        }
+    };
+    let host = RuntimeExtensionHost::new_with_artifact_resolver(
+        OffsetDateTime::now_utc(),
+        Arc::new(FixtureArtifactResolver(package.path().to_path_buf())),
+    )
+    .unwrap();
+    host.mark_ready().unwrap();
+    let first_activation = activation("managed_fixture.compute", "workspace-a");
+    let first = host
+        .activate_managed_contribution(first_activation.clone())
+        .await
+        .unwrap();
+    let second = host
+        .activate_managed_contribution(activation("managed_fixture.render", "workspace-a"))
+        .await
+        .unwrap();
+    assert_ne!(first.identity(), second.identity());
+    assert_eq!(
+        host.activate_managed_contribution(first_activation.clone())
+            .await
+            .unwrap(),
+        first
+    );
+    let request = |handle: ManagedExecutionHandle, workspace: &str| {
+        RuntimeManagedCapabilityRequest {
+            handle,
+            principal: RuntimeExecutionPrincipal {
+                workspace_id: workspace.to_string(),
+                actor_id: Some("host-actor".into()),
+                deadline_unix_ms: (OffsetDateTime::now_utc() + time::Duration::seconds(30))
+                    .unix_timestamp_nanos() as i64
+                    / 1_000_000,
+            },
+            config_payload: serde_json::json!({}),
+            input_payload: serde_json::json!({"workspace_id": "forged", "contribution_id": "forged", "granted_permissions": ["admin"]}),
+        }
+    };
+    let first_output = host
+        .managed_capability_execute(request(first.clone(), "workspace-a"))
+        .await
+        .unwrap();
+    let second_output = host
+        .managed_capability_execute(request(second.clone(), "workspace-a"))
+        .await
+        .unwrap();
+    assert_eq!(first_output["worker"], "first");
+    assert_eq!(second_output["worker"], "second");
+    assert_eq!(
+        first_output["request"]["input"]["contribution_code"],
+        "compute"
+    );
+    assert_eq!(
+        second_output["request"]["input"]["contribution_code"],
+        "render"
+    );
+    assert!(host
+        .managed_capability_execute(request(first.clone(), "workspace-b"))
+        .await
+        .is_err());
+    let forged = ManagedExecutionHandle::new(first.identity().clone(), first.generation());
+    assert!(host
+        .managed_capability_execute(request(forged, "workspace-a"))
+        .await
+        .is_err());
+    let other_workspace = host
+        .activate_managed_contribution(activation("managed_fixture.compute", "workspace-b"))
+        .await
+        .unwrap();
+    assert_ne!(other_workspace.identity(), first.identity());
+    assert!(host
+        .managed_capability_execute(request(other_workspace.clone(), "workspace-a"))
+        .await
+        .is_err());
+    host.deactivate_managed_contribution(&first).await.unwrap();
+    let replacement = host
+        .activate_managed_contribution(first_activation)
+        .await
+        .unwrap();
+    assert_ne!(replacement.generation(), first.generation());
+    assert!(host
+        .managed_capability_execute(request(first.clone(), "workspace-a"))
+        .await
+        .is_err());
+    assert!(host.deactivate_managed_contribution(&first).await.is_err());
+    assert_eq!(
+        host.managed_capability_execute(request(replacement.clone(), "workspace-a"))
+            .await
+            .unwrap()["worker"],
+        "first"
+    );
+    assert_eq!(
+        host.managed_capability_execute(request(second.clone(), "workspace-a"))
+            .await
+            .unwrap()["worker"],
+        "second"
+    );
+    let mut bad_artifact = activation("managed_fixture.compute", "workspace-a");
+    bad_artifact.artifact = RuntimeArtifactReference::new("another-installation").unwrap();
+    assert!(host
+        .activate_managed_contribution(bad_artifact)
+        .await
+        .is_err());
+    let mut bad_package = activation("managed_fixture.compute", "workspace-a");
+    bad_package.plugin_id = "another-package@0.1.0".into();
+    assert!(host
+        .activate_managed_contribution(bad_package)
+        .await
+        .is_err());
+    let mut wrong_binding = activation("managed_fixture.compute", "workspace-a");
+    wrong_binding.identity = ManagedExecutionIdentity::new(
+        wrong_binding.identity.installation_id().clone(),
+        wrong_binding.identity.workspace_id().clone(),
+        wrong_binding.identity.contribution_id().clone(),
+        wrong_binding.identity.artifact_fingerprint().clone(),
+        managed
+            .execution_binding_fingerprint(&ContributionId::new("managed_fixture.render").unwrap())
+            .unwrap(),
+    );
+    assert!(host
+        .activate_managed_contribution(wrong_binding)
+        .await
+        .is_err());
+    let mut wrong_artifact = activation("managed_fixture.compute", "workspace-a");
+    wrong_artifact.identity = ManagedExecutionIdentity::new(
+        wrong_artifact.identity.installation_id().clone(),
+        wrong_artifact.identity.workspace_id().clone(),
+        wrong_artifact.identity.contribution_id().clone(),
+        ManagedArtifactFingerprint::from_bytes(b"different artifact version"),
+        wrong_artifact.identity.binding_fingerprint().clone(),
+    );
+    assert!(host
+        .activate_managed_contribution(wrong_artifact)
+        .await
+        .is_err());
+    let mut expired = request(second.clone(), "workspace-a");
+    expired.principal.deadline_unix_ms = 0;
+    assert!(host.managed_capability_execute(expired).await.is_err());
+    // The old package entry must not activate v2 and bypass per-contribution admission.
+    assert!(host
+        .activate_capability(RuntimePackageActivation {
+            plugin_id: "managed_fixture@0.1.0".into(),
+            artifact: RuntimeArtifactReference::new("installation-a").unwrap(),
+            source_identity: None,
+            legacy_eligibility: None,
+        })
+        .await
+        .is_err());
+    assert_eq!(host.snapshot().await.unwrap().registries.capabilities, 3);
+    host.stop().await.unwrap();
+    assert_eq!(host.snapshot().await.unwrap().registries.capabilities, 0);
+    assert!(host
+        .managed_capability_execute(request(replacement, "workspace-a"))
+        .await
+        .is_err());
+}

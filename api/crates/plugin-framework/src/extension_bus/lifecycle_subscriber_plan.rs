@@ -20,6 +20,8 @@ pub struct LifecycleSubscriberBinding {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveLifecycleSubscriber {
+    pub contribution_id: ContributionId,
+    pub point_id: ExtensionPointId,
     pub subscriber_id: String,
     pub contributor_module_id: String,
     pub contributor_module_kind: ModuleKind,
@@ -107,7 +109,27 @@ pub fn compile_lifecycle_subscriber_plan(
             }
             let module_kind = contribution.provenance().module_kind();
             let lifecycle = point.descriptor().lifecycle;
-            if !allows_lifecycle(module_kind, lifecycle) {
+            let managed = matches!(module_kind, ModuleKind::Runtime | ModuleKind::Capability);
+            let managed_contract = match binding.point_id.as_str() {
+                extension_contracts::MANAGED_CREATE_EVENT_POINT => {
+                    binding.fact_contract_id == extension_contracts::MANAGED_CREATE_EVENT_ID
+                        && binding.fact_contract_version == "v1"
+                }
+                extension_contracts::MANAGED_PROCESSED_EVENT_ID => {
+                    binding.fact_contract_id == extension_contracts::MANAGED_PROCESSED_EVENT_ID
+                        && binding.fact_contract_version == "1"
+                }
+                _ => false,
+            };
+            if !allows_lifecycle(module_kind, lifecycle)
+                || (managed
+                    && (!managed_contract
+                        || !contribution
+                            .descriptor()
+                            .required_permissions
+                            .iter()
+                            .any(|p| p.as_str() == "event.subscribe")))
+            {
                 return Err(LifecycleSubscriberPlanError::LifecycleEscalation {
                     subscription_id: binding.subscription_id.clone(),
                     module_kind,
@@ -115,6 +137,8 @@ pub fn compile_lifecycle_subscriber_plan(
                 });
             }
             subscribers.push(EffectiveLifecycleSubscriber {
+                contribution_id: contribution_id.clone(),
+                point_id: binding.point_id.clone(),
                 subscriber_id: binding.subscription_id.clone(),
                 contributor_module_id: contribution.provenance().module_id().as_str().to_string(),
                 contributor_module_kind: module_kind,
@@ -173,9 +197,27 @@ fn allows_lifecycle(module_kind: ModuleKind, lifecycle: LifecycleSemantics) -> b
             lifecycle,
             LifecycleSemantics::BootSnapshot | LifecycleSemantics::Invocation
         ),
-        // Runtime and Capability packages do not yet have an approved typed lifecycle
-        // transport. Accepting their descriptors here would manufacture an activation
-        // promise that the Runtime Host cannot bind without changing its stable wire.
-        ModuleKind::Runtime | ModuleKind::Capability | ModuleKind::User => false,
+        ModuleKind::Runtime | ModuleKind::Capability => matches!(
+            lifecycle,
+            LifecycleSemantics::Invocation | LifecycleSemantics::WorkspaceAssignment
+        ),
+        ModuleKind::User => false,
+    }
+}
+
+impl EffectiveLifecycleSubscriberPlan {
+    pub fn bindings(&self) -> Vec<LifecycleSubscriberBinding> {
+        self.subscribers
+            .iter()
+            .map(|s| LifecycleSubscriberBinding {
+                contribution_id: s.contribution_id.clone(),
+                subscription_id: s.subscriber_id.clone(),
+                point_id: s.point_id.clone(),
+                fact_contract_id: s.fact_contract_id.clone(),
+                fact_contract_version: s.fact_contract_version.clone(),
+                handler_id: s.handler_id.clone(),
+                handler_version: s.handler_version.clone(),
+            })
+            .collect()
     }
 }

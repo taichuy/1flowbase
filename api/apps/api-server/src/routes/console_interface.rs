@@ -479,27 +479,21 @@ where
         .await
         .map_err(ApiError::from)?;
     let kernel = console_invocation_kernel(&state, admission);
+    let envelope = crate::routes::model_definitions::interface::managed_hooks::freeze(
+        &state,
+        &snapshot,
+        authenticated.into_envelope(input),
+    )
+    .await?;
     match kernel
-        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, authenticated.into_envelope(input))
+        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
         .await
     {
         Ok(outcome) => {
             let _receipt = outcome.receipt().clone().projected();
             Ok(outcome.into_value())
         }
-        Err(failure) => match failure.into_error() {
-            interface_runtime::InterfaceInvocationError::TargetFailed(error) => Err(error
-                .into_source::<ConsoleInterfaceTargetError>()
-                .map(|error| error.0)
-                .unwrap_or_else(|| anyhow::anyhow!("Console target contract mismatch").into())),
-            interface_runtime::InterfaceInvocationError::AuthorizationRejected(error) => Err(error
-                .into_source::<ApiError>()
-                .unwrap_or_else(|| anyhow::anyhow!("Console authorization failed").into())),
-            interface_runtime::InterfaceInvocationError::AdmissionRejected(error) => Err(error
-                .into_source::<ApiError>()
-                .unwrap_or_else(|| anyhow::anyhow!("Console admission failed").into())),
-            _ => Err(anyhow::anyhow!("Console interface invocation failed").into()),
-        },
+        Err(failure) => Err(console_invocation_error(failure.into_error())),
     }
 }
 
@@ -523,20 +517,22 @@ where
         &state,
         crate::extension_bus::ConsoleProtocolAdmission::allowed(),
     );
+    let envelope = InvocationEnvelope::with_principal(
+        InvocationLineage::root(InvocationId::now_v7()),
+        binding_id,
+        InterfaceProtocol::Http,
+        activated.adapter().clone(),
+        activated.activation().clone(),
+        principal,
+        None,
+        input,
+    );
+    let envelope = crate::routes::model_definitions::interface::managed_hooks::freeze(
+        &state, &snapshot, envelope,
+    )
+    .await?;
     match kernel
-        .invoke::<I, O, ConsoleInterfaceTargetError>(
-            snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
-        )
+        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
         .await
     {
         Ok(outcome) => Ok(outcome.into_value()),
@@ -611,7 +607,7 @@ fn activated_authentication(
         .ok_or_else(|| anyhow::anyhow!("Console authentication activation is unavailable").into())
 }
 
-fn console_invocation_kernel(
+pub(crate) fn console_invocation_kernel(
     state: &ApiState,
     admission: crate::extension_bus::ConsoleProtocolAdmission,
 ) -> Arc<interface_runtime::InterfaceInvocationKernel<UserPrincipal>> {
@@ -624,6 +620,24 @@ fn console_invocation_kernel(
 
 fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) -> ApiError {
     match error {
+        interface_runtime::InterfaceInvocationError::AuthorizationContributionRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
+        interface_runtime::InterfaceInvocationError::AdmissionContributionRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
+        interface_runtime::InterfaceInvocationError::BeforeHookRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
         interface_runtime::InterfaceInvocationError::TargetFailed(error) => error
             .into_source::<ConsoleInterfaceTargetError>()
             .map(|error| error.0)

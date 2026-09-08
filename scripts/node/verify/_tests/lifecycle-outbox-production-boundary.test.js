@@ -20,7 +20,7 @@ test('claim query recovers stale workers through a bounded lease', () => {
     'api/crates/storage/durable/postgres/src/lifecycle_outbox_repository.rs'
   );
   assert.match(repository, /claim_lease/u);
-  assert.match(repository, /status = 'claimed' and claimed_at <= \$3/u);
+  assert.match(repository, /status = 'claimed' and claim_expires_at <= now\(\)/u);
   assert.match(repository, /attempt_count = attempt_count \+ 1/u);
 });
 
@@ -64,12 +64,14 @@ test('composition resolves active HostExtension entrypoint factories before regi
   assert.doesNotMatch(registry, /serde_json::Value/u);
 });
 
-test('durable lifecycle subscription is HostExtension-only until other transports exist', () => {
+test('durable lifecycle subscriptions admit only the finite managed lifecycle transport', () => {
   const plan = read(
     'api/crates/plugin-framework/src/extension_bus/lifecycle_subscriber_plan.rs'
   );
   assert.match(plan, /ModuleKind::TrustedHost/u);
-  assert.match(plan, /ModuleKind::Runtime \| ModuleKind::Capability \| ModuleKind::User => false/u);
+  assert.match(plan, /ModuleKind::Runtime \| ModuleKind::Capability => matches!/u);
+  assert.match(plan, /LifecycleSemantics::Invocation \| LifecycleSemantics::WorkspaceAssignment/u);
+  assert.match(plan, /ModuleKind::User => false/u);
   assert.match(plan, /LifecycleEscalation/u);
 });
 
@@ -103,4 +105,18 @@ test('dispatcher emits a typed completion on the production delivery path', () =
   assert.match(dispatcher, /CompletionOutcome::new/u);
   assert.match(dispatcher, /mark_lifecycle_fact_delivered/u);
   assert.match(dispatcher, /retry_lifecycle_fact/u);
+});
+
+test('managed resources close and wait before shutdown cleanup without deleting backlog', () => {
+  const api = read('api/apps/api-server/src/lib.rs');
+  const shutdown = api.slice(api.indexOf('impl ApiRuntimeShutdown'));
+  for (const marker of ['impl ApiRuntimeShutdown', 'lifecycle_worker', 'close_owned_admission', 'self.operations.close()', 'wait_for_shutdown', 'self.host.stop()', 'cleanup_after_shutdown']) assert.ok(shutdown.includes(marker), marker);
+  assert.ok(shutdown.indexOf('lifecycle_worker') < shutdown.indexOf('close_owned_admission'));
+  assert.ok(shutdown.indexOf('self.operations.close()') < shutdown.indexOf('wait_for_shutdown'));
+  assert.ok(shutdown.indexOf('self.host.stop()') < shutdown.indexOf('cleanup_after_shutdown'));
+  assert.doesNotMatch(shutdown, /delete from|truncate /iu);
+  const dispatcher = read('api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs');
+  assert.match(dispatcher, /claim_id/u);
+  assert.match(dispatcher, /pause_lifecycle_fact/u);
+  assert.match(dispatcher, /pub fn close/u);
 });

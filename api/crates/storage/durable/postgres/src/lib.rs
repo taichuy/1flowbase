@@ -1,3 +1,4 @@
+mod managed_operation_lifetime;
 extern crate self as storage_durable_postgres;
 
 pub mod application_public_api_repository;
@@ -72,3 +73,5 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 
 #[cfg(test)]
 mod _tests;
+
+mod plugin_contribution_authority_repository;

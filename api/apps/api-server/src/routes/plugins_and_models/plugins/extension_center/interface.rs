@@ -13,6 +13,12 @@ use crate::routes::console_interface::{
 };
 
 pub(crate) enum ExtensionCenterInput {
+    QueryManagedExecution(Uuid),
+    ResumeManagedDelivery(Uuid, ResumeManagedDeliveryBody),
+    RetireManagedExecution(Uuid, ManagedExecutionTargetBody),
+    GrantContributionPermission(Uuid, GrantContributionPermissionRequest),
+    RevokeContributionPermission(Uuid, RevokeContributionPermissionRequest),
+    QueryContributionAuthorizations(Uuid),
     ListInstalled(LocalExtensionInventoryQuery),
     Select(Uuid),
     Enable(Uuid),
@@ -38,6 +44,8 @@ impl InterfaceContract for ExtensionCenterInput {
 }
 
 pub(crate) enum ExtensionCenterOutput {
+    ManagedExecution(control_plane_contracts::ports::ManagedExecutionState),
+    ContributionAuthorizations(ContributionAuthorizationResponse),
     Installed(LocalExtensionInventoryPageResponse),
     Installation(LocalExtensionInventoryEntryResponse),
     Task(PluginTaskResponse),
@@ -62,6 +70,84 @@ impl ExtensionCenterAdapter {
     ) -> Result<ExtensionCenterOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ExtensionCenterInput::QueryManagedExecution(installation_id) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.query(actor, installation_id).await?,
+                ))
+            }
+            ExtensionCenterInput::ResumeManagedDelivery(installation_id, body) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.resume(actor, installation_id, body.into()).await?,
+                ))
+            }
+            ExtensionCenterInput::RetireManagedExecution(installation_id, body) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.retire(actor, installation_id, body.into()).await?,
+                ))
+            }
+            ExtensionCenterInput::GrantContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service
+                    .grant(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::GrantContributionPermission {
+                            contribution_id: request.contribution_id,
+                            permission: request.permission,
+                            resource_scope: request.resource_scope.into(),
+                            permission_contract_id: request.permission_contract_id,
+                            permission_contract_version: request.permission_contract_version,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
+            ExtensionCenterInput::RevokeContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service
+                    .revoke(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::RevokeContributionPermission {
+                            authorization_id: request.authorization_id,
+                            expected_revision: request.expected_revision,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
+            ExtensionCenterInput::QueryContributionAuthorizations(installation_id) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service.query(actor, installation_id).await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.into(),
+                ))
+            }
             ExtensionCenterInput::ListInstalled(query) => {
                 let category = query
                     .category
@@ -123,10 +209,41 @@ impl ExtensionCenterAdapter {
                             }
                         }
                     }
+                    let managed_ids = response
+                        .installed_versions
+                        .iter()
+                        .filter(|version| {
+                            version.contract_version.as_deref()
+                                == Some("1flowbase.extension-bus/v1")
+                        })
+                        .map(|version| Uuid::parse_str(&version.id))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| {
+                            control_plane::errors::ControlPlaneError::InvalidInput(
+                                "extension_installation_id",
+                            )
+                        })?;
+                    let managed_removal_blocked = if managed_ids.is_empty() {
+                        false
+                    } else {
+                        match self.0.provider_runtime.managed_composition() {
+                            Ok(composition) => control_plane_contracts::ports::ManagedArtifactRemovalGuard::guard_managed_artifact_removal(composition.as_ref(),&managed_ids).await.is_err(),
+                            Err(_) => true,
+                        }
+                    };
                     for version in &mut response.installed_versions {
                         if let Some(decision) = control_plane::ports::ExtensionInstallationRepository::extension_deletion_decision(&self.0.store, &self.0.api_node_id, Uuid::parse_str(&version.id).map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("extension_installation_id"))?).await? {
                             version.deletable = decision.deletable;
                             version.delete_reasons = decision.reasons;
+                        }
+                        if managed_removal_blocked
+                            && version.contract_version.as_deref()
+                                == Some("1flowbase.extension-bus/v1")
+                        {
+                            version.deletable = false;
+                            version
+                                .delete_reasons
+                                .push("managed_execution_references_or_backlog".into());
                         }
                     }
                     response.application_status = status.to_string();
@@ -142,6 +259,39 @@ impl ExtensionCenterAdapter {
                 ))
             }
             ExtensionCenterInput::Select(installation_id) => {
+                if let Some(target) = control_plane::ports::PluginRepository::get_installation(
+                    &self.0.store,
+                    installation_id,
+                )
+                .await?
+                {
+                    if target.contract_version == "1flowbase.extension-bus/v1" {
+                        let assigned = control_plane::ports::PluginRepository::list_assignments(
+                            &self.0.store,
+                            actor.current_workspace_id,
+                        )
+                        .await?;
+                        if !assigned
+                            .iter()
+                            .any(|assignment| assignment.installation_id == installation_id)
+                        {
+                            service(&self.0, actor, "extension_center.installed.select")
+                                .switch_version(
+                                    control_plane::plugin_management::SwitchPluginVersionCommand {
+                                        actor_user_id: actor.user_id,
+                                        provider_code: target.provider_code,
+                                        target_installation_id: installation_id,
+                                    },
+                                )
+                                .await?;
+                        }
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        return Ok(ExtensionCenterOutput::Installation(
+                            to_local_inventory_entry(selected),
+                        ));
+                    }
+                }
                 let installation = extension_installation_service(&self.0)
                     .select_current_installation(&self.0.api_node_id, installation_id)
                     .await?
@@ -387,6 +537,31 @@ impl ConsoleInterfacePort<ExtensionCenterInput, ExtensionCenterOutput> for Exten
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_execution.view",binding_id:"http.console.extension-center.managed-execution.view.v1",method:"GET",path:"/api/console/settings/extension-center/installed/:installation_id/managed-execution",mutating:false },
+    ConsoleInterfaceDeclaration { interface_id:"extension_center.lifecycle_deliveries.resume",binding_id:"http.console.extension-center.lifecycle-deliveries.resume.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",mutating:true },
+    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_executions.retire",binding_id:"http.console.extension-center.managed-executions.retire.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",mutating:true },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.grant",
+        binding_id: "http.console.extension-center.contribution-authorizations.grant.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.revoke",
+        binding_id: "http.console.extension-center.contribution-authorizations.revoke.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.view",
+        binding_id: "http.console.extension-center.contribution-authorizations.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: false,
+    },
+
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.installed.view",
         binding_id: "http.console.extension-center.installed.v1",

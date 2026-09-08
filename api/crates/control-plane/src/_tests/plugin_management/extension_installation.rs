@@ -56,6 +56,7 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             .map(|record| record.created_at)
             .unwrap_or(now);
         let record = domain::ExtensionInstallationRecord {
+            contract_version: None,
             id: input.installation_id,
             identity: input.identity.clone(),
             source_kind: input.source_kind.clone(),
@@ -474,6 +475,7 @@ fn installed_record(
     updated_at: OffsetDateTime,
 ) -> domain::ExtensionInstallationRecord {
     domain::ExtensionInstallationRecord {
+        contract_version: None,
         id: Uuid::now_v7(),
         identity: domain::ExtensionInstallationIdentity {
             category: domain::ExtensionCategory::RuntimeExtensions,

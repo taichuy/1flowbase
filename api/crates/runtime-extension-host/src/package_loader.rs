@@ -45,6 +45,93 @@ pub struct LoadedProviderDistributionPackage {
 pub struct PackageLoader;
 
 impl PackageLoader {
+    pub(crate) fn load_managed(
+        package_root: impl AsRef<Path>,
+        request: &runtime_core::runtime_backend::RuntimeManagedActivation,
+    ) -> FrameworkResult<crate::managed_worker::LoadedManagedBinding> {
+        use extension_contracts::extension_bus::ManagedArtifactFingerprint;
+        let package_root = fs::canonicalize(package_root.as_ref()).map_err(|error| {
+            PluginFrameworkError::io(Some(package_root.as_ref()), error.to_string())
+        })?;
+        let manifest_path = package_root.join("manifest.yaml");
+        let manifest_raw = fs::read_to_string(&manifest_path)
+            .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
+        if &ManagedArtifactFingerprint::from_bytes(manifest_raw.as_bytes())
+            != request.identity.artifact_fingerprint()
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed artifact fingerprint does not match the bound installation",
+            ));
+        }
+        let manifest = extension_package_runtime::parse_plugin_manifest(&manifest_raw)?;
+        if manifest.versioned_plugin_id()? != request.plugin_id {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed artifact plugin identity does not match activation",
+            ));
+        }
+        let managed = manifest.managed.as_ref().ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package(
+                "managed activation requires an explicit managed manifest",
+            )
+        })?;
+        if &managed.execution_binding_fingerprint(request.identity.contribution_id())?
+            != request.identity.binding_fingerprint()
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed contribution binding fingerprint does not match activation",
+            ));
+        }
+        let binding = managed
+            .execution_bindings
+            .iter()
+            .find(|binding| &binding.contribution_id == request.identity.contribution_id())
+            .ok_or_else(|| {
+                PluginFrameworkError::invalid_provider_package(
+                    "managed contribution has no execution binding",
+                )
+            })?;
+        if !matches!(
+            binding.execution_mode,
+            PluginExecutionMode::ProcessPerCall | PluginExecutionMode::DeclarativeOnly
+        ) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed execution mode does not have an installed runtime adapter",
+            ));
+        }
+        let runtime_executable = fs::canonicalize(package_root.join(&binding.runtime.entry))
+            .map_err(|error| PluginFrameworkError::io(Some(&package_root), error.to_string()))?;
+        if !runtime_executable.starts_with(&package_root) || !runtime_executable.is_file() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed execution entry must be a file inside the installed artifact",
+            ));
+        }
+        Ok(crate::managed_worker::LoadedManagedBinding {
+            plugin_id: request.plugin_id.clone(),
+            executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
+                &fs::read(&runtime_executable).map_err(|error| {
+                    PluginFrameworkError::io(Some(&runtime_executable), error.to_string())
+                })?,
+            ),
+            runtime_executable,
+            execution_mode: binding.execution_mode,
+            limits: binding.runtime.limits.clone(),
+            handler: binding.handler.clone(),
+            contribution: managed
+                .module
+                .contributions
+                .iter()
+                .find(|contribution| {
+                    &contribution.contribution_id == request.identity.contribution_id()
+                })
+                .ok_or_else(|| {
+                    PluginFrameworkError::invalid_provider_package(
+                        "managed contribution declaration missing",
+                    )
+                })?
+                .clone(),
+        })
+    }
+
     pub fn load_provider_distribution(
         package_root: impl AsRef<Path>,
     ) -> FrameworkResult<LoadedProviderDistributionPackage> {
@@ -57,6 +144,11 @@ impl PackageLoader {
         let manifest_raw = fs::read_to_string(&manifest_path)
             .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
         let manifest = extension_package_runtime::parse_plugin_manifest(&manifest_raw)?;
+        if manifest.managed.is_some() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed packages require contribution-bound runtime activation",
+            ));
+        }
         if manifest.provider_distribution_rules.len() != 1 {
             return Err(PluginFrameworkError::invalid_provider_package(
                 "provider distribution package must declare exactly one rule",
@@ -265,6 +357,12 @@ fn parse_capability_manifest(raw: &str) -> FrameworkResult<PluginManifestV1> {
 }
 
 fn validate_capability_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+    if manifest.managed.is_some() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "managed packages require contribution-bound runtime activation",
+        ));
+    }
+
     if manifest.consumption_kind != PluginConsumptionKind::CapabilityPlugin {
         return Err(PluginFrameworkError::invalid_provider_package(
             "capability package must declare consumption_kind=capability_plugin",

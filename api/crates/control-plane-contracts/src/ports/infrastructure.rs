@@ -1,3 +1,5 @@
+mod managed_operation_lifetime;
+pub use managed_operation_lifetime::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

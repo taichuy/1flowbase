@@ -89,6 +89,7 @@ pub use model_provider_slot::{
 
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
+    managed_composition: Option<Arc<crate::extension_bus::ManagedExtensionComposition>>,
     runtime_backend: Arc<dyn RuntimeBackend>,
     orchestration_backend: orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend,
     data_model_template_catalog:
@@ -167,6 +168,31 @@ impl runtime_extension_host::RuntimeArtifactResolver for TestRuntimeArtifactReso
 }
 
 impl ApiRuntimeServices {
+    pub(crate) fn with_managed_composition(
+        mut self,
+        store: MainDurableStore,
+        node_id: String,
+        base_modules: Vec<plugin_framework::extension_bus::ModuleDescriptor>,
+    ) -> Self {
+        self.managed_composition = Some(Arc::new(
+            crate::extension_bus::ManagedExtensionComposition::new(
+                store,
+                node_id,
+                self.runtime_backend.clone(),
+                base_modules,
+            ),
+        ));
+        self
+    }
+
+    pub(crate) fn managed_composition(
+        &self,
+    ) -> anyhow::Result<Arc<crate::extension_bus::ManagedExtensionComposition>> {
+        self.managed_composition
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("managed contribution composition is not configured"))
+    }
+
     #[cfg(test)]
     pub fn new(
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
@@ -198,6 +224,7 @@ impl ApiRuntimeServices {
                 runtime_execution,
             );
         Ok(Self {
+            managed_composition: None,
             runtime_backend,
             orchestration_backend,
             data_model_template_catalog:
@@ -235,6 +262,7 @@ impl ApiRuntimeServices {
                 runtime_execution,
             );
         Self {
+            managed_composition: None,
             runtime_backend,
             orchestration_backend,
             data_model_template_catalog:
@@ -588,11 +616,41 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .map_err(map_runtime_backend_error)
     }
 
+    async fn guard_managed_artifact_removal(
+        &self,
+        installation_ids: &[Uuid],
+    ) -> anyhow::Result<Box<dyn Send + Sync>> {
+        control_plane_contracts::ports::ManagedArtifactRemovalGuard::guard_managed_artifact_removal(
+            self.services.managed_composition()?.as_ref(),
+            installation_ids,
+        )
+        .await
+    }
+    async fn switch_managed_installation(
+        &self,
+        workspace_id: Uuid,
+        current: Uuid,
+        target: Uuid,
+        audit: domain::AuditLogRecord,
+        task: domain::PluginTaskRecord,
+    ) -> anyhow::Result<domain::PluginTaskRecord> {
+        self.services
+            .managed_composition()?
+            .switch_installation(workspace_id, current, target, audit, task)
+            .await
+    }
+
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         match installation.contract_version.as_str() {
+            "1flowbase.extension-bus/v1" => {
+                self.services
+                    .managed_composition()?
+                    .rebuild_installation(installation.id)
+                    .await
+            }
             plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => {
                 let binding = self.resolve_model_provider_binding(installation)?;
                 self.ensure_provider_loaded(&binding).await
@@ -616,6 +674,12 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::PluginInstallationRecord,
     ) -> anyhow::Result<()> {
         match installation.contract_version.as_str() {
+            "1flowbase.extension-bus/v1" => {
+                self.services
+                    .managed_composition()?
+                    .rebuild_installation(installation.id)
+                    .await
+            }
             plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => self
                 .services
                 .runtime_backend

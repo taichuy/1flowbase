@@ -295,6 +295,50 @@ impl DataSourceRuntimePort for CompleteFakeBackend {
 
 #[async_trait]
 impl CapabilityRuntimePort for CompleteFakeBackend {
+    async fn drain_managed_contributions(
+        &self,
+        _handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn crate::runtime_backend::RuntimeManagedDrain>, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn activate_managed_contribution(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedActivation,
+    ) -> Result<extension_contracts::extension_bus::ManagedExecutionHandle, RuntimeBackendError>
+    {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn deactivate_managed_contribution(
+        &self,
+        _handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn admit_managed_capability_execute(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedCapabilityRequest,
+    ) -> Result<crate::runtime_backend::AdmittedManagedExecution, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn admit_managed_event(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedEventRequest,
+    ) -> Result<crate::runtime_backend::AdmittedManagedEvent, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn admit_managed_hook(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedHookRequest,
+    ) -> Result<crate::runtime_backend::AdmittedManagedHook, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+    async fn managed_capability_execute(
+        &self,
+        _request: crate::runtime_backend::RuntimeManagedCapabilityRequest,
+    ) -> Result<Value, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+
     async fn activate_capability(
         &self,
         _request: RuntimePackageActivation,

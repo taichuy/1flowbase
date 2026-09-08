@@ -10,6 +10,10 @@ on:
         description: Target branch
         type: string
         default: latest
+      candidate_sha:
+        description: Frozen full SHA required for plugin-composition-2007 (dispatch workflow from the same candidate ref)
+        type: string
+        required: false
       scope:
         description: Quality gate scope
         type: choice
@@ -57,6 +61,7 @@ on:
           - coverage-backend-storage-postgres
           - coverage-backend-api-server
           - container-images
+          - plugin-composition-2007
       report_type:
         description: Report type
         type: choice
@@ -114,7 +119,7 @@ jobs:
       lane: project-health
 
   single-scope-gate:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' && inputs.scope != 'plugin-composition-2007' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -214,6 +219,58 @@ jobs:
             tmp/test-governance/quality-gate-report.json
             tmp/test-governance/quality-gate-report.md
             tmp/test-governance/quality-gate.latest.log
+
+  plugin-composition-2007:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'plugin-composition-2007' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PLUGIN_COMPOSITION_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/plugin-composition-2007/target
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/plugin-composition-2007/target
+          key: rust-plugin-composition-2007-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: |
+            rust-plugin-composition-2007-nodebug-${{ runner.os }}-
+      - name: Run the frozen finite batch serially
+        run: node scripts/node/plugin-composition-test-batch/runner.js
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: plugin-composition-2007-${{ inputs.candidate_sha }}
+          if-no-files-found: error
+          path: tmp/test-governance/2007
 
   repo-tooling-gate:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}

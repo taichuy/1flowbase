@@ -235,13 +235,16 @@ fn stable_sha256_json(value: &serde_json::Value) -> String {
 async fn commit_prepared_installation<R>(
     repository: &R,
     node_id: &str,
-    installation: PreparedPluginInstallationInput,
+    mut installation: PreparedPluginInstallationInput,
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<domain::PluginInstallationRecord>
 where
     R: PluginRepository,
 {
+    if let Some(managed) = &manifest.managed {
+        installation.metadata_json["managed"] = serde_json::to_value(managed)?;
+    }
     let package_kind = route_plugin_package(manifest)?;
     let category = match &package_kind {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
@@ -252,6 +255,11 @@ where
             domain::ExtensionCategory::RuntimeExtensions
         }
         RoutedPluginPackageKind::CapabilityPlugin => domain::ExtensionCategory::CapabilityPlugins,
+        RoutedPluginPackageKind::ManagedContributions => match manifest.consumption_kind {
+            PluginConsumptionKind::RuntimeExtension => domain::ExtensionCategory::RuntimeExtensions,
+            PluginConsumptionKind::CapabilityPlugin => domain::ExtensionCategory::CapabilityPlugins,
+            PluginConsumptionKind::HostExtension => domain::ExtensionCategory::HostExtensions,
+        },
     };
     let artifact_instance = UpsertPluginArtifactInstanceInput {
         node_id: node_id.to_string(),
@@ -1224,6 +1232,22 @@ where
                 Path::new(&command.package_root),
                 &install_path,
             )?;
+            if let Some(managed) = &manifest.managed {
+                let package_root = tokio::fs::canonicalize(staged_installation.staged_path()).await?;
+                for binding in &managed.execution_bindings {
+                    let entry = staged_installation.staged_path().join(&binding.runtime.entry);
+                    let entry = tokio::fs::canonicalize(entry).await
+                        .map_err(|_| ControlPlaneError::InvalidInput("managed_execution_entry"))?;
+                    if !entry.starts_with(&package_root) {
+                        return Err(ControlPlaneError::InvalidInput("managed_execution_entry").into());
+                    }
+                    let metadata = tokio::fs::metadata(&entry).await
+                        .map_err(|_| ControlPlaneError::InvalidInput("managed_execution_entry"))?;
+                    if !metadata.is_file() {
+                        return Err(ControlPlaneError::InvalidInput("managed_execution_entry").into());
+                    }
+                }
+            }
             let manifest_fingerprint =
                 compute_manifest_fingerprint(&staged_installation.staged_path().join("manifest.yaml"))
                     .await
@@ -1575,10 +1599,10 @@ where
                         true,
                     ))
                 }
-                RoutedPluginPackageKind::CapabilityPlugin => {
+                RoutedPluginPackageKind::CapabilityPlugin | RoutedPluginPackageKind::ManagedContributions => {
                     let manifest = load_plugin_manifest(&install_path)?;
                     let mut metadata_json = json!({
-                        "plugin_type": "capability_plugin",
+                        "plugin_type": package_kind.as_plugin_type(),
                         "node_contributions": manifest
                             .node_contributions
                             .iter()

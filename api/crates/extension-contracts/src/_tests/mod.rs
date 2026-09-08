@@ -1,6 +1,7 @@
 mod adapter_descriptor_tests;
 mod data_source_contract_tests;
 mod lifecycle_contract_tests;
+mod managed_hook_contract_tests;
 mod plugin_data_contract_tests;
 mod plugin_data_model_contract_tests;
 mod provider_contract_tests;

@@ -1032,6 +1032,15 @@ pub(crate) fn production_interface_contributions(
                     state.api_node_id.clone(),
                     state.provider_install_root.clone(),
                 ),
+                GraphFingerprint::new(
+                    state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+                        RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                            InterfaceId::new("model_definitions.create").expect("static interface id"),
+                        )
+                    })?.graph().fingerprint().as_str(),
+                ).map_err(|_| RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                    InterfaceId::new("model_definitions.create").expect("static interface id"),
+                ))?,
             )?,
         ),
         InterfaceRegistryContribution::new(
@@ -1288,6 +1297,14 @@ pub(crate) fn production_interface_contributions(
                 "extension_center.installed.view",
                 "extension_center.installed.select",
                 "extension_center.installed.enable",
+                "extension_center.contribution_authorizations.grant",
+                "extension_center.contribution_authorizations.revoke",
+                "extension_center.contribution_authorizations.view",
+                "extension_center.managed_execution.view",
+                "extension_center.lifecycle_deliveries.resume",
+                "extension_center.managed_executions.retire",
+
+
                 "extension_center.installed.disable",
                 "extension_center.installed.delete",
                 "extension_center.catalog.view",

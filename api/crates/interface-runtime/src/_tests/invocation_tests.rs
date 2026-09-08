@@ -994,3 +994,6 @@ async fn explicit_cancellation_terminates_without_dispatch() {
 
 #[path = "snapshot_acceptance_tests.rs"]
 mod snapshot_acceptance_tests;
+
+#[path = "managed_context_tests.rs"]
+mod managed_context_tests;

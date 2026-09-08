@@ -1,6 +1,7 @@
 //! Root #1998 AC-007. Real service + PostgreSQL transaction, with controlled Kernel
 //! registration and a failing protocol writer. No production plugin-loader or network
 //! exactly-once claim; test execution is deferred to the candidate-bound CI partitions.
+mod contribution_authority;
 mod fixture;
 use fixture::*;
 use interface_runtime::*;

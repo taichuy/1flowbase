@@ -14,7 +14,8 @@ use plugin_framework::extension_bus::{
     LifecycleSemantics, ModuleKind, OrderingSemantics, OverridePolicy, ScopeSemantics,
 };
 use serde::Serialize;
-use tokio::sync::{mpsc, Mutex};
+use std::sync::Mutex;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::runtime_events::{RuntimeEventDurability, RuntimeEventEnvelope};
@@ -154,6 +155,10 @@ impl RuntimeEventDiagnosticLane {
         Self { sender, counters }
     }
 
+    pub fn snapshot(&self) -> RuntimeEventDiagnosticDeliverySnapshot {
+        self.counters.snapshot()
+    }
+
     pub fn try_send(&self, event: RuntimeEventEnvelope) -> RuntimeEventDiagnosticDeliveryReceipt {
         let event_id = event.event_id.clone();
         let sequence = event.sequence;
@@ -242,6 +247,8 @@ struct OrderedAfterCommitSubscriber {
 pub enum RuntimeEventAfterCommitFailureReason {
     SubscriberError,
     Timeout,
+    CapacityExhausted,
+    ScopeClosed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -279,13 +286,55 @@ enum RuntimeEventAfterCommitClaimState {
     Completed,
 }
 
+const AFTER_COMMIT_CLAIM_CAPACITY: usize = 4096;
+#[derive(Default)]
+struct AfterCommitClaims {
+    closed: bool,
+    entries: BTreeMap<RuntimeEventAfterCommitIdempotencyKey, RuntimeEventAfterCommitClaimState>,
+}
+#[derive(Default)]
+struct AfterCommitScope {
+    claims: Mutex<AfterCommitClaims>,
+    changed: tokio::sync::Notify,
+}
+struct AfterCommitClaim {
+    scope: Arc<AfterCommitScope>,
+    key: RuntimeEventAfterCommitIdempotencyKey,
+}
+impl AfterCommitClaim {
+    fn complete(&self, successful: bool) {
+        let mut claims = self.scope.claims.lock().unwrap_or_else(|e| e.into_inner());
+        if successful && !claims.closed {
+            claims.entries.insert(
+                self.key.clone(),
+                RuntimeEventAfterCommitClaimState::Completed,
+            );
+        } else {
+            claims.entries.remove(&self.key);
+        }
+    }
+}
+impl Drop for AfterCommitClaim {
+    fn drop(&mut self) {
+        let mut claims = self.scope.claims.lock().unwrap_or_else(|e| e.into_inner());
+        if claims.entries.get(&self.key) == Some(&RuntimeEventAfterCommitClaimState::InFlight) {
+            claims.entries.remove(&self.key);
+        }
+        drop(claims);
+        self.scope.changed.notify_waiters();
+    }
+}
+pub(crate) struct RuntimeEventAfterCommitScopeOwner(RuntimeEventAfterCommitLane);
+impl Drop for RuntimeEventAfterCommitScopeOwner {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
 #[derive(Clone)]
 pub struct RuntimeEventAfterCommitLane {
     graph_fingerprint: Option<String>,
     subscribers: Vec<OrderedAfterCommitSubscriber>,
-    claims: Arc<
-        Mutex<BTreeMap<RuntimeEventAfterCommitIdempotencyKey, RuntimeEventAfterCommitClaimState>>,
-    >,
+    scope: Arc<AfterCommitScope>,
 }
 
 impl Default for RuntimeEventAfterCommitLane {
@@ -293,12 +342,58 @@ impl Default for RuntimeEventAfterCommitLane {
         Self {
             graph_fingerprint: None,
             subscribers: Vec::new(),
-            claims: Arc::new(Mutex::new(BTreeMap::new())),
+            scope: Arc::new(AfterCommitScope::default()),
         }
     }
 }
 
 impl RuntimeEventAfterCommitLane {
+    pub(crate) fn scope_owner(&self) -> RuntimeEventAfterCommitScopeOwner {
+        RuntimeEventAfterCommitScopeOwner(self.clone())
+    }
+    pub fn close(&self) {
+        let mut claims = self.scope.claims.lock().unwrap_or_else(|e| e.into_inner());
+        claims.closed = true;
+        claims
+            .entries
+            .retain(|_, state| *state == RuntimeEventAfterCommitClaimState::InFlight);
+        drop(claims);
+        self.scope.changed.notify_waiters();
+    }
+    pub fn retained_claim_count(&self) -> usize {
+        self.scope
+            .claims
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .len()
+    }
+    pub async fn wait_closed(&self, budget: Duration) -> Result<()> {
+        tokio::time::timeout(budget, async {
+            loop {
+                let notified = self.scope.changed.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                {
+                    let claims = self.scope.claims.lock().unwrap_or_else(|e| e.into_inner());
+                    if !claims.closed {
+                        anyhow::bail!("runtime after-commit scope must close before wait");
+                    }
+                    if claims.entries.is_empty() {
+                        return Ok(());
+                    }
+                }
+                notified.await;
+            }
+        })
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "runtime after-commit scope unfinished: {}",
+                self.retained_claim_count()
+            )
+        })?
+    }
     pub fn empty() -> Self {
         Self::default()
     }
@@ -374,7 +469,7 @@ impl RuntimeEventAfterCommitLane {
         Ok(Self {
             graph_fingerprint: Some(graph.fingerprint().as_str().to_string()),
             subscribers,
-            claims: Arc::new(Mutex::new(BTreeMap::new())),
+            scope: Arc::new(AfterCommitScope::default()),
         })
     }
 
@@ -399,27 +494,44 @@ impl RuntimeEventAfterCommitLane {
                 sequence: event.sequence,
                 subscriber_id: subscriber.registration.subscriber_id.clone(),
             };
-            let claimed = {
-                let mut claims = self.claims.lock().await;
-                if claims.contains_key(&key) {
-                    false
+            let claim = {
+                let mut claims = self.scope.claims.lock().unwrap_or_else(|e| e.into_inner());
+                if claims.closed {
+                    Err(RuntimeEventAfterCommitFailureReason::ScopeClosed)
+                } else if claims.entries.contains_key(&key) {
+                    Ok(None)
+                } else if claims.entries.len() >= AFTER_COMMIT_CLAIM_CAPACITY {
+                    Err(RuntimeEventAfterCommitFailureReason::CapacityExhausted)
                 } else {
-                    claims.insert(key.clone(), RuntimeEventAfterCommitClaimState::InFlight);
-                    true
+                    claims
+                        .entries
+                        .insert(key.clone(), RuntimeEventAfterCommitClaimState::InFlight);
+                    Ok(Some(AfterCommitClaim {
+                        scope: self.scope.clone(),
+                        key: key.clone(),
+                    }))
                 }
             };
-            if !claimed {
-                receipts.push(RuntimeEventAfterCommitSubscriberReceipt {
-                    contribution_id: subscriber.contribution_id.clone(),
-                    subscriber_id: subscriber.registration.subscriber_id.clone(),
-                    idempotency_key: key,
-                    status: RuntimeEventAfterCommitDeliveryStatus::DuplicateSuppressed,
-                    attempts: 0,
-                    duration_micros: 0,
-                    failure_reason: None,
-                });
-                continue;
-            }
+            let claim = match claim {
+                Ok(Some(claim)) => claim,
+                other => {
+                    let failure_reason = other.err();
+                    receipts.push(RuntimeEventAfterCommitSubscriberReceipt {
+                        contribution_id: subscriber.contribution_id.clone(),
+                        subscriber_id: subscriber.registration.subscriber_id.clone(),
+                        idempotency_key: key,
+                        status: if failure_reason.is_some() {
+                            RuntimeEventAfterCommitDeliveryStatus::Failed
+                        } else {
+                            RuntimeEventAfterCommitDeliveryStatus::DuplicateSuppressed
+                        },
+                        attempts: 0,
+                        duration_micros: 0,
+                        failure_reason,
+                    });
+                    continue;
+                }
+            };
 
             let started = Instant::now();
             let mut attempts = 0;
@@ -446,14 +558,8 @@ impl RuntimeEventAfterCommitLane {
                     Err(_) => failure_reason = Some(RuntimeEventAfterCommitFailureReason::Timeout),
                 }
             }
-            {
-                let mut claims = self.claims.lock().await;
-                if failure_reason.is_none() {
-                    claims.insert(key.clone(), RuntimeEventAfterCommitClaimState::Completed);
-                } else if claims.get(&key) == Some(&RuntimeEventAfterCommitClaimState::InFlight) {
-                    claims.remove(&key);
-                }
-            }
+            claim.complete(failure_reason.is_none());
+            drop(claim);
             receipts.push(RuntimeEventAfterCommitSubscriberReceipt {
                 contribution_id: subscriber.contribution_id.clone(),
                 subscriber_id: subscriber.registration.subscriber_id.clone(),

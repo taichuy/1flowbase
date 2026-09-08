@@ -65,6 +65,7 @@ control-plane-contracts = { path = "../control-plane-contracts" }
 control-plane-test-support = { path = "../control-plane-test-support" }
 domain = { path = "../domain" }
 extension-contracts = { path = "../extension-contracts" }
+plugin-framework = { path = "../plugin-framework" }
 interface-runtime = { path = "../interface-runtime" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true

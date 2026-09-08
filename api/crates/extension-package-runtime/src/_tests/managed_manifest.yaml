@@ -1,0 +1,56 @@
+manifest_version: 2
+plugin_id: managed_fixture
+version: 0.1.0
+publisher_namespace: acme
+vendor: acme
+display_name: Managed fixture
+description: Explicit mixed contribution package
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: []
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.extension-bus/v1
+schema_version: 1flowbase.plugin.manifest/v2
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/fixture
+managed:
+  module:
+    bus_version: v1
+    module_id: managed_fixture
+    module_version: 0.1.0
+    module_kind: runtime
+    contributions:
+      - contribution_id: managed_fixture.compute
+        contributor_module_id: managed_fixture
+        point_id: acme.compute
+        contract_version: acme.compute/v1
+        mode: append
+      - contribution_id: managed_fixture.render
+        contributor_module_id: managed_fixture
+        point_id: acme.render
+        contract_version: acme.render/v1
+        mode: append
+  execution_bindings:
+    - contribution_id: managed_fixture.compute
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/fixture
+      handler: compute
+    - contribution_id: managed_fixture.render
+      execution_mode: declarative_only
+      runtime:
+        protocol: stdio_json
+        entry: ui/render.json
+      handler: render

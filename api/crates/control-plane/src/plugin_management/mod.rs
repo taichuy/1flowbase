@@ -1,3 +1,5 @@
+mod managed_execution;
+pub use managed_execution::*;
 mod artifact_instance;
 mod backup_export;
 mod backup_restore;
@@ -513,3 +515,6 @@ fn plugin_install_audit_detail(
     }
     audit_detail
 }
+
+mod contribution_authority;
+pub use contribution_authority::*;

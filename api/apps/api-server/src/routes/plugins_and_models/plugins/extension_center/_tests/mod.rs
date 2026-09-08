@@ -238,6 +238,7 @@ fn installation_record(
     updated_at: OffsetDateTime,
 ) -> domain::ExtensionInstallationRecord {
     domain::ExtensionInstallationRecord {
+        contract_version: None,
         id: Uuid::now_v7(),
         identity: domain::ExtensionInstallationIdentity {
             category: domain::ExtensionCategory::RuntimeExtensions,

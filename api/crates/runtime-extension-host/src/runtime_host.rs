@@ -13,9 +13,9 @@ use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSnapshot,
     RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
     RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeLegacyManifestEligibility,
-    RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
-    RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot, RuntimeRequestId,
-    RuntimeStreamEventSink, RuntimeStreamSinks,
+    RuntimeManagedActivation, RuntimeManagedCapabilityRequest, RuntimeNetworkEgressActivation,
+    RuntimeObservationPort, RuntimePackageActivation, RuntimeProviderDistributionRequest,
+    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
 };
 
 #[async_trait]
@@ -77,6 +77,7 @@ use crate::{
 pub struct RuntimeExtensionHost {
     provider_host: Arc<RwLock<ProviderHost>>,
     capability_host: Arc<RwLock<CapabilityHost>>,
+    managed_workers: Arc<RwLock<crate::managed_worker::ManagedWorkers>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
     network_egress_host: Arc<RwLock<NetworkEgressHost>>,
     provider_distribution_host: Arc<RwLock<ProviderDistributionHost>>,
@@ -85,6 +86,7 @@ pub struct RuntimeExtensionHost {
     active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
     plugin_data: Arc<dyn PluginDataPort>,
+    managed_hash_budget: Arc<tokio::sync::Semaphore>,
 }
 
 impl std::fmt::Debug for RuntimeExtensionHost {
@@ -154,6 +156,9 @@ impl RuntimeExtensionHost {
         Ok(Self {
             provider_host,
             capability_host,
+            managed_workers: Arc::new(
+                RwLock::new(crate::managed_worker::ManagedWorkers::default()),
+            ),
             data_source_host,
             network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
             provider_distribution_host: Arc::new(RwLock::new(ProviderDistributionHost::default())),
@@ -162,6 +167,7 @@ impl RuntimeExtensionHost {
             active_requests: Arc::new(Mutex::new(HashMap::new())),
             artifact_resolver,
             plugin_data,
+            managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
         })
     }
 
@@ -210,6 +216,11 @@ impl RuntimeExtensionHost {
             }
         }
 
+        self.managed_workers
+            .read()
+            .await
+            .close_admission()
+            .map_err(RuntimeBackendError::from)?;
         let handles = self
             .active_requests
             .lock()
@@ -225,6 +236,30 @@ impl RuntimeExtensionHost {
 
     pub async fn stop(&self) -> Result<(), RuntimeBackendError> {
         self.drain().await?;
+        let budget = std::time::Duration::from_secs(5);
+        let _hashes = tokio::time::timeout(
+            budget,
+            self.managed_hash_budget.clone().acquire_many_owned(4),
+        )
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed executable hash tasks unfinished".into())
+        })?
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed executable hash gate unavailable".into())
+        })?;
+        let managed_scopes = self.managed_workers.read().await.scopes();
+        tokio::time::timeout(budget, async {
+            for scope in &managed_scopes {
+                scope.dispose().await?;
+            }
+            Ok::<_, extension_package_runtime::PluginFrameworkError>(())
+        })
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::InvalidRequest("managed worker scopes unfinished".into())
+        })??;
+        self.managed_workers.write().await.clear_disposed();
         let mut first_error = None;
         if let Err(error) = self.provider_host.write().await.stop_all().await {
             first_error = Some(RuntimeBackendError::from(error));
@@ -697,8 +732,193 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
     }
 }
 
+impl RuntimeExtensionHost {
+    fn admit_managed_hash(&self) -> Result<tokio::sync::OwnedSemaphorePermit, RuntimeBackendError> {
+        let lifecycle = self.lifecycle.read().map_err(|_| {
+            RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+        })?;
+        if !matches!(
+            *lifecycle,
+            RuntimeBackendLifecycle::Starting | RuntimeBackendLifecycle::Ready
+        ) {
+            return Err(RuntimeBackendError::Unavailable(*lifecycle));
+        }
+        self.managed_hash_budget
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                RuntimeBackendError::InvalidRequest(
+                    "managed executable hash capacity exhausted".into(),
+                )
+            })
+    }
+    async fn verify_managed_executable(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        let hash_permit = self.admit_managed_hash()?;
+        let binding = self
+            .managed_workers
+            .read()
+            .await
+            .executable_for_handle(handle)
+            .map_err(RuntimeBackendError::from)?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = hash_permit;
+            binding.verify_executable()
+        })
+        .await
+        .map_err(|_| {
+            RuntimeBackendError::from(
+                extension_package_runtime::PluginFrameworkError::invalid_provider_package(
+                    "managed executable validation unavailable",
+                ),
+            )
+        })?
+        .map_err(RuntimeBackendError::from)
+    }
+}
+
 #[async_trait]
 impl CapabilityRuntimePort for RuntimeExtensionHost {
+    async fn drain_managed_contributions(
+        &self,
+        handles: &[extension_contracts::ManagedExecutionHandle],
+    ) -> Result<Box<dyn runtime_core::runtime_backend::RuntimeManagedDrain>, RuntimeBackendError>
+    {
+        self.managed_workers
+            .write()
+            .await
+            .drain(handles)
+            .map_err(Into::into)
+    }
+    async fn activate_managed_contribution(
+        &self,
+        request: RuntimeManagedActivation,
+    ) -> Result<extension_contracts::extension_bus::ManagedExecutionHandle, RuntimeBackendError>
+    {
+        self.ensure_activating()?;
+        if request.artifact.as_str() != request.identity.installation_id().as_str() {
+            return Err(RuntimeBackendError::InvalidRequest(
+                "managed artifact must belong to the bound installation".into(),
+            ));
+        }
+        let hash_permit = self.admit_managed_hash()?;
+        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let identity = request.identity.clone();
+        let binding = tokio::task::spawn_blocking(move || {
+            let _permit = hash_permit;
+            crate::package_loader::PackageLoader::load_managed(package_root, &request)
+        })
+        .await
+        .map_err(|error| RuntimeBackendError::Execution {
+            target_id: identity.contribution_id().as_str().to_string(),
+            message: error.to_string(),
+        })?
+        .map_err(RuntimeBackendError::from)?;
+        let mut workers = self.managed_workers.write().await;
+        let lifecycle = self.lifecycle.read().map_err(|_| {
+            RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+        })?;
+        if !matches!(
+            *lifecycle,
+            RuntimeBackendLifecycle::Starting | RuntimeBackendLifecycle::Ready
+        ) {
+            return Err(RuntimeBackendError::Unavailable(*lifecycle));
+        }
+        workers
+            .mount(identity, binding)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn deactivate_managed_contribution(
+        &self,
+        handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        let scope = self
+            .managed_workers
+            .write()
+            .await
+            .unmount(handle)
+            .map_err(RuntimeBackendError::from)?;
+        scope.dispose().await.map_err(RuntimeBackendError::from)?;
+        self.managed_workers.write().await.finish_unmount(handle);
+        Ok(())
+    }
+
+    async fn admit_managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<runtime_core::runtime_backend::AdmittedManagedExecution, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
+        let operation = {
+            let workers = self.managed_workers.read().await;
+            let lifecycle = self.lifecycle.read().map_err(|_| {
+                RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+            })?;
+            if *lifecycle != RuntimeBackendLifecycle::Ready {
+                return Err(RuntimeBackendError::Unavailable(*lifecycle));
+            }
+            workers
+                .execute(request)
+                .map_err(RuntimeBackendError::from)?
+        };
+        Ok(Box::pin(async move {
+            operation.await.map_err(RuntimeBackendError::from)
+        }))
+    }
+
+    async fn admit_managed_event(
+        &self,
+        request: runtime_core::runtime_backend::RuntimeManagedEventRequest,
+    ) -> Result<runtime_core::runtime_backend::AdmittedManagedEvent, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
+        let operation = {
+            let workers = self.managed_workers.read().await;
+            let lifecycle = self.lifecycle.read().map_err(|_| {
+                RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+            })?;
+            if *lifecycle != RuntimeBackendLifecycle::Ready {
+                return Err(RuntimeBackendError::Unavailable(*lifecycle));
+            }
+            workers
+                .admit_event(request)
+                .map_err(RuntimeBackendError::from)?
+        };
+        Ok(Box::pin(async move {
+            operation.await.map_err(RuntimeBackendError::from)
+        }))
+    }
+
+    async fn admit_managed_hook(
+        &self,
+        request: runtime_core::runtime_backend::RuntimeManagedHookRequest,
+    ) -> Result<runtime_core::runtime_backend::AdmittedManagedHook, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
+        let operation = {
+            let workers = self.managed_workers.read().await;
+            let lifecycle = self.lifecycle.read().map_err(|_| {
+                RuntimeBackendError::InvalidRequest("runtime lifecycle lock is poisoned".into())
+            })?;
+            if *lifecycle != RuntimeBackendLifecycle::Ready {
+                return Err(RuntimeBackendError::Unavailable(*lifecycle));
+            }
+            workers
+                .admit_hook(request)
+                .map_err(RuntimeBackendError::from)?
+        };
+        Ok(Box::pin(async move {
+            operation.await.map_err(RuntimeBackendError::from)
+        }))
+    }
+
+    async fn managed_capability_execute(
+        &self,
+        request: RuntimeManagedCapabilityRequest,
+    ) -> Result<serde_json::Value, RuntimeBackendError> {
+        self.admit_managed_capability_execute(request).await?.await
+    }
+
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,
@@ -1076,6 +1296,7 @@ impl RuntimeObservationPort for RuntimeExtensionHost {
     async fn snapshot(&self) -> Result<RuntimeBackendSnapshot, RuntimeBackendError> {
         let providers = self.provider_host.read().await.loaded_count();
         let capabilities = self.capability_host.read().await.loaded_count();
+        let capabilities = capabilities + self.managed_workers.read().await.loaded_count();
         let data_sources = self.data_source_host.read().await.loaded_count();
         let network_egress_providers = self.network_egress_host.read().await.loaded_count();
         let mut active_request_ids = self
@@ -1099,3 +1320,7 @@ impl RuntimeObservationPort for RuntimeExtensionHost {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/managed_hash_budget.rs"]
+mod managed_hash_budget_tests;
