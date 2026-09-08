@@ -5,8 +5,8 @@ import type {
   NativeBlockContextApiCallObservation,
   NativeBlockContextCapabilityDiagnostic,
   NativeBlockContextEventInput
-} from '@1flowbase/page-runtime';
-import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime/browser';
 import type { BlockContextOutputs } from '@1flowbase/page-protocol';
 
 import { getAuthApiBaseUrl } from '../api/session';

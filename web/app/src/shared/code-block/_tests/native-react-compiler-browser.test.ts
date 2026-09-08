@@ -32,6 +32,37 @@ class FakeBrowserWorker implements NativeReactBrowserCompilerWorker {
 }
 
 describe('Native React browser compiler adapter', () => {
+  test('I2012-AC-002 aborts a stalled Worker and ignores its late result', async () => {
+    const controller = new AbortController();
+    const worker: NativeReactBrowserCompilerWorker = {
+      onmessage: null,
+      onerror: null,
+      postMessage: vi.fn(),
+      terminate: vi.fn()
+    };
+    const compilation = compileNativeReactComponentInBrowser({
+      requestId: 'cancelled',
+      source: 'export default () => null;',
+      moduleDefinitions: [],
+      workerFactory: () => worker,
+      signal: controller.signal
+    });
+    controller.abort();
+    expect(await compilation).toMatchObject({ ok: false });
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(worker.onmessage).toBeNull();
+    const factory = vi.fn(() => worker);
+    expect(
+      await compileNativeReactComponentInBrowser({
+        requestId: 'already-cancelled',
+        source: '',
+        moduleDefinitions: [],
+        workerFactory: factory,
+        signal: controller.signal
+      })
+    ).toMatchObject({ ok: false });
+    expect(factory).not.toHaveBeenCalled();
+  });
   test('D1-AC-001 uses the real bundled Worker URL and module Worker contract', async () => {
     FakeBrowserWorker.instances = [];
     const workerFactory = createNativeReactBrowserCompilerWorkerFactory({

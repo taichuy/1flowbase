@@ -27,6 +27,7 @@ vi.mock('../api/session', async () => {
 });
 
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
+import { createPublicAuthCompilation } from '../lib/public-auth-compilation';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../frontstage/lib/native-trusted-block-runtime-factory';
 
@@ -39,6 +40,46 @@ describe('PublicAuthBlock Native Host composition', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  test('I2012-AC-002 shares artifacts across mounts without sharing entry inputs or event callbacks', async () => {
+    const source = `export default function Auth({ ctx }) {
+      return <button onClick={() => ctx.events.emit('authenticator_selector_requested')}>{ctx.inputs.login_entry_id}</button>;
+    }`;
+    const nativeCompiler = compiler(source);
+    const compilation = createPublicAuthCompilation(nativeCompiler);
+    const first = vi.fn();
+    const second = vi.fn();
+    render(
+      <>
+        <PublicAuthBlock
+          instance={{ ...instance(source), id: 'first-entry' }}
+          nativeCompiler={compilation.compile}
+          onAuthenticated={vi.fn()}
+          loginEntrySelector={{ request: first }}
+        />
+        <PublicAuthBlock
+          instance={{ ...instance(source), id: 'second-entry' }}
+          nativeCompiler={compilation.compile}
+          onAuthenticated={vi.fn()}
+          loginEntrySelector={{ request: second }}
+        />
+      </>
+    );
+    await waitFor(() => {
+      const roots = document.querySelectorAll(
+        '[data-testid="native-react-public-auth-root"]'
+      );
+      expect(roots[0]?.shadowRoot?.textContent).toContain('first-entry');
+      expect(roots[1]?.shadowRoot?.textContent).toContain('second-entry');
+    });
+    const roots = document.querySelectorAll(
+      '[data-testid="native-react-public-auth-root"]'
+    );
+    fireEvent.click(roots[1].shadowRoot!.querySelector('button')!);
+    expect(second).toHaveBeenCalledOnce();
+    expect(first).not.toHaveBeenCalled();
+    expect(nativeCompiler).toHaveBeenCalledOnce();
   });
 
   test('AC-002 exposes the selector capability to the Block and handles its event', async () => {

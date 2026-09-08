@@ -4,7 +4,7 @@ import {
   sha256Text,
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import Space from 'antd/es/space';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,11 +24,9 @@ import {
 } from '../../frontstage/lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
-import type {
-  PasswordSignInResponse,
-  PublicLoginEntry
-} from '../api/session';
+import type { PasswordSignInResponse, PublicLoginEntry } from '../api/session';
 import { BuiltinPasswordSignIn } from './BuiltinPasswordSignIn';
+import { publicAuthCompilation } from '../lib/public-auth-compilation';
 import {
   createPublicAuthInputs,
   createPublicAuthNativeBlockContextCapabilities,
@@ -81,7 +79,7 @@ export function PublicAuthBlock({
   instance,
   loginEntrySelector = null,
   onAuthenticated,
-  nativeCompiler = compileNativeReactComponentInBrowser,
+  nativeCompiler = publicAuthCompilation.compile,
   nativeCompilerWorkerFactory,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
   onPhaseChange

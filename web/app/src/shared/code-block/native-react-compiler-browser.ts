@@ -8,7 +8,7 @@ import {
   type NativeReactCompilerResponse,
   type NativeReactComponentArtifact,
   type NativeReactModuleDefinition
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import nativeReactCompilerWorkerUrl from './native-react-compiler.worker?worker&url';
 
@@ -59,14 +59,20 @@ export function compileNativeReactComponentInBrowser({
   source,
   requestId,
   moduleDefinitions,
+  signal,
   workerFactory = createNativeReactBrowserCompilerWorkerFactory()
 }: {
   source: string;
   requestId: string;
   moduleDefinitions: readonly NativeReactModuleDefinition[];
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
+  signal?: AbortSignal;
 }): Promise<NativeReactBrowserCompileResult> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(compilerFailure('Native React compilation cancelled.'));
+      return;
+    }
     let worker: NativeReactBrowserCompilerWorker;
     try {
       worker = workerFactory();
@@ -75,20 +81,21 @@ export function compileNativeReactComponentInBrowser({
       return;
     }
 
+    let settled = false;
+    const cancel = () =>
+      finish(compilerFailure('Native React compilation cancelled.'));
     const finish = (result: NativeReactBrowserCompileResult) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', cancel);
       worker.onmessage = null;
       worker.onerror = null;
       worker.terminate();
       resolve(result);
     };
+    signal?.addEventListener('abort', cancel, { once: true });
     worker.onmessage = (event) => {
-      finish(
-        readCompilerResponse(
-          event.data,
-          requestId,
-          source
-        )
-      );
+      finish(readCompilerResponse(event.data, requestId, source));
     };
     worker.onerror = (event) => {
       finish(

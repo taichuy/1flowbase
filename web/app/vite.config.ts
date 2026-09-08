@@ -156,6 +156,11 @@ export default defineConfig(({ command, mode }) => {
       include: [
         ...DEV_CRITICAL_INTEROP_SPECIFIERS,
         '@ant-design/icons',
+        // Native icon helpers otherwise trigger re-optimization on first mount.
+        '@ant-design/icons/es/components/Context',
+        '@ant-design/icons/es/components/Icon',
+        '@ant-design/icons/es/components/IconFont',
+        '@ant-design/icons/es/components/twoTonePrimaryColor',
         '@ant-design/x/es/bubble',
         '@ant-design/x/es/conversations',
         '@ant-design/x/es/sender',
@@ -217,6 +222,9 @@ export default defineConfig(({ command, mode }) => {
         clientFiles: [
           './src/bootstrap.ts',
           './src/main.tsx',
+          './src/features/auth/pages/SignInPage.tsx',
+          './src/features/auth/components/PublicAuthBlock.tsx',
+          './src/shared/code-block/native-react-compiler.worker.ts',
           './src/app/router.tsx',
           './src/features/frontstage/pages/FrontStagePage.tsx',
           './src/features/settings/pages/SettingsPage.tsx'
@@ -305,6 +313,18 @@ export default defineConfig(({ command, mode }) => {
         '@1flowbase/page-runtime/source-contract': fileURLToPath(
           new URL(
             '../packages/page-runtime/src/native-react-compiler/source-contract.ts',
+            import.meta.url
+          )
+        ),
+        '@1flowbase/page-runtime/browser': fileURLToPath(
+          new URL(
+            '../packages/page-runtime/src/entrypoints/browser.ts',
+            import.meta.url
+          )
+        ),
+        '@1flowbase/page-runtime/compiler-worker': fileURLToPath(
+          new URL(
+            '../packages/page-runtime/src/entrypoints/compiler-worker.ts',
             import.meta.url
           )
         ),

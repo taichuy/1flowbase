@@ -8,7 +8,7 @@ import {
   type NativeReactResolvedModuleAsset,
   type NativeReactRuntimeDiagnostic,
   type NativeTrustedBlockComponent
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import {
   compileNativeReactComponentInBrowser,

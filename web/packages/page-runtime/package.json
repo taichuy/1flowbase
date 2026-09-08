@@ -15,6 +15,14 @@
     "./source-contract": {
       "types": "./dist/native-react-compiler/source-contract.d.ts",
       "default": "./src/native-react-compiler/source-contract.ts"
+    },
+    "./browser": {
+      "types": "./dist/entrypoints/browser.d.ts",
+      "default": "./src/entrypoints/browser.ts"
+    },
+    "./compiler-worker": {
+      "types": "./dist/entrypoints/compiler-worker.d.ts",
+      "default": "./src/entrypoints/compiler-worker.ts"
     }
   },
   "dependencies": {

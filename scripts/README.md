@@ -315,6 +315,19 @@ node scripts/node/page-debug/cli.js login --account <account> --password <passwo
 - `--wait-for-selector <selector>`: 等待指定元素
 - `--wait-for-url <url>`: 等待目标 URL
 
+### `node scripts/node/page-debug/public-auth-performance.js <label> <origin> [limited|normal]`
+
+匿名登录首载性能取证；默认选择第一个登录入口、验证输入框可填写，不提交表单，不创建认证 session。完成后尝试返回入口并再次进入，记录产物复用和 Worker 次数。
+
+```bash
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome node scripts/node/page-debug/public-auth-performance.js public-cold https://1flowbase.taichuy.cn limited
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome node scripts/node/page-debug/public-auth-performance.js local-normal http://127.0.0.1:3100 normal
+```
+
+`limited` 使用仅该测试浏览器连接的临时代理：下载 200000 B/s、上传 93750 B/s，共享 16 KiB 突发预算，每个方向额外延迟 75ms。HTTPS 使用透明 CONNECT，主页面、静态资源与 Worker 共享预算；本地 HTTP 的响应体限速，响应头不计入字节预算。代理延迟是传输分片延迟模拟，不等同于链路层精确 RTT。`normal` 不附加限速。
+
+计时前最多等待源站就绪 90 秒；每次启动全新浏览器上下文，不把服务构建中的 503 当作页面加载样本。不会重启 Vite，也不会清理服务器缓存。对比时保持源码/配置稳定并记录服务端是否已经预热；出现 Vite generation 变化、页面重载或隧道错误的样本应单独标注。默认最多等待表单 120 秒。证据写入 `tmp/test-governance/auth-loading/<label>/`，包含截图、页面/Worker 网络事件、首次输入与重复进入耗时、编译 Worker 生命周期耗时及预期的匿名 session 401。`fallback` 非零不能作为配置表单成功证据。`peak` 是页面目标在途请求峰值，不代表 TCP 连接数或全部 Worker 请求峰值。
+
 ### `node scripts/node/cli/runtime-gate.js <page-debug args>`
 
 运行时页面检查入口，本质上是对 `page-debug` 的门禁封装。

@@ -41,6 +41,12 @@
       "@1flowbase/embed-sdk": ["packages/embed-sdk/src/index.ts"],
       "@1flowbase/embedded-contracts": [
         "packages/embedded-contracts/src/index.ts"
+      ],
+      "@1flowbase/page-runtime/browser": [
+        "packages/page-runtime/src/entrypoints/browser.ts"
+      ],
+      "@1flowbase/page-runtime/compiler-worker": [
+        "packages/page-runtime/src/entrypoints/compiler-worker.ts"
       ]
     }
   }

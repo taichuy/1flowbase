@@ -34,7 +34,7 @@ import {
   type NativeTrustedBlockPortalSurface,
   type NativeTrustedBlockPreparePlan,
   type NativeReactResolvedModuleAsset
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import { i18nText } from '../../../shared/i18n/text';
 

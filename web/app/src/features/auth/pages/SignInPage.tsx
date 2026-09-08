@@ -28,11 +28,16 @@ const HeroAnimation = lazy(() =>
 );
 
 const PublicAuthBlock = lazy(() =>
-  import('../components/PublicAuthBlock').then((module) => ({
+  loadPublicAuthBlock().then((module) => ({
     default: module.PublicAuthBlock
   }))
 );
 
+import {
+  loadPublicAuthBlock,
+  prefetchPublicAuthEntry,
+  preloadPublicAuthRuntime
+} from '../lib/public-auth-loading';
 import './sign-in-page.css';
 
 interface SignInPageProps {
@@ -60,6 +65,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
 
   useEffect(() => {
     let active = true;
+    preloadPublicAuthRuntime();
     fetchLoginEntries()
       .then((payload) => {
         if (!active) return;
@@ -152,6 +158,12 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
                   key={instance.id}
                   className="auth-sign-in-selector-button"
                   type="button"
+                  onPointerEnter={() =>
+                    prefetchPublicAuthEntry(instance.public_ui_block)
+                  }
+                  onFocus={() =>
+                    prefetchPublicAuthEntry(instance.public_ui_block)
+                  }
                   onClick={() =>
                     void navigate({
                       to: '/sign-in',

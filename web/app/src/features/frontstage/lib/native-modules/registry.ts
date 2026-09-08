@@ -26,7 +26,7 @@ import {
   type NativeReactModuleDefinition,
   type NativeReactModuleRegistry,
   type NativeTrustedBlockInjectedModuleMap
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import {
   ANT_DESIGN_COLORS_EXPORTS,

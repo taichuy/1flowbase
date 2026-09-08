@@ -13,7 +13,7 @@ import type {
 import {
   canonicalizeNativeReactComponentArtifact,
   type NativeReactComponentArtifact
-} from './artifact';
+} from './artifact-contract';
 import {
   NativeReactModuleRegistryError,
   type NativeReactModuleRegistry
