@@ -148,7 +148,7 @@ async fn request(
     (status, body)
 }
 async fn allow(app: &axum::Router, cookie: &str, csrf: &str, role: &str, operation: &str) {
-    let (status,body)=request(app,cookie,csrf,"PUT",&format!("/api/console/settings/roles/{role}/console-policy"),json!({"groups":[{"kind":"settings_feature","group_id":"system.extension-center","enabled":true,"strategy":"custom","operations":[operation]}]})).await;
+    let (status,body)=request(app,cookie,csrf,"PUT",&format!("/api/console/settings/roles/{role}/console-policy"),json!({"groups":[{"kind":"settings_feature","group_id":"system.extension-center","enabled":true,"strategy":"custom","operations":[{"kind":"simple","operation_id":operation,"enabled":true}]}]})).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
 }
 async fn acknowledge(runtime: &RuntimeFixture, record: &LifecycleOutboxRecord, worker: Uuid) {
