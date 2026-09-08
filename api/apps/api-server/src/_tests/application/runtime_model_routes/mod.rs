@@ -1186,5 +1186,6 @@ fn quote_test_identifier(value: &str) -> String {
 
 mod api_key_access;
 mod crud_dispatch;
+mod delete_callable;
 mod ordered_tree_lifecycle;
 mod status_scope;

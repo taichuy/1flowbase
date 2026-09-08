@@ -1,5 +1,14 @@
+import { App } from 'antd';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi
+} from 'vitest';
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -149,6 +158,8 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
   }
 }));
 
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
+
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
@@ -156,7 +167,9 @@ import { UiManagementPanel } from '../../components/ui-management/UiManagementPa
 function renderPanel() {
   return render(
     <AppProviders>
-      <UiManagementPanel canManage />
+      <App>
+        <UiManagementPanel canManage />
+      </App>
     </AppProviders>
   );
 }
@@ -166,6 +179,10 @@ function studioSourceText(source: string) {
 }
 
 describe('UiManagementPanel code templates', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
+
   beforeEach(() => {
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-token',
@@ -188,6 +205,15 @@ describe('UiManagementPanel code templates', () => {
           is_default: true
         }
       ],
+      default_template: {
+        provider_code: '1flowbase',
+        contribution_code: 'frontstage.js-ui-block',
+        title: '官方区块',
+        source: officialSource,
+        language: 'tsx',
+        version: '1.0.0',
+        is_default: true
+      },
       managed: [
         {
           id: 'managed-1',
@@ -322,16 +348,9 @@ describe('UiManagementPanel code templates', () => {
 
     expect(screen.getByTestId('ui-code-template-studio')).toBeInTheDocument();
     expect(screen.getByTestId('studio-editor-header')).toBeEmptyDOMElement();
-    expect(screen.getByTestId('studio-resource-panel')).toContainElement(
-      screen.getByLabelText('所属区块')
-    );
-    expect(screen.getByLabelText('所属区块')).toBeInTheDocument();
-    expect(screen.queryByLabelText('提供方代码')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('贡献代码')).not.toBeInTheDocument();
-
-    fireEvent.mouseDown(screen.getByLabelText('所属区块'));
-    fireEvent.click(
-      await screen.findByText('官方区块 · 1flowbase/frontstage.js-ui-block')
+    expect(screen.queryByLabelText('所属区块')).not.toBeInTheDocument();
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(officialSource)
     );
     fireEvent.change(screen.getByLabelText('名称'), {
       target: { value: '新模板' }
@@ -344,6 +363,115 @@ describe('UiManagementPanel code templates', () => {
           contribution_code: 'frontstage.js-ui-block',
           name: '新模板',
           source: officialSource,
+          language: 'tsx'
+        },
+        'csrf-token'
+      )
+    );
+  });
+
+  test('does not open a new template before an available type is loaded', async () => {
+    let resolveTemplates!: (value: {
+      official: [];
+      managed: [];
+      default_template: null;
+    }) => void;
+    uiManagementApi.fetchSettingsUiTemplates.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTemplates = resolve;
+      })
+    );
+    renderPanel();
+    expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
+    resolveTemplates({ official: [], managed: [], default_template: null });
+    await waitFor(() =>
+      expect(
+        document.querySelector('.ant-spin-spinning')
+      ).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
+  });
+
+  test('does not infer a default from a single available type', async () => {
+    const initial = await uiManagementApi.fetchSettingsUiTemplates();
+    uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue({
+      ...initial,
+      default_template: null
+    });
+    renderPanel();
+    await screen.findByText('官方区块');
+    expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();
+  });
+
+  test('uses the backend default even when multiple types are available', async () => {
+    const initial = await uiManagementApi.fetchSettingsUiTemplates();
+    uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue({
+      ...initial,
+      official: [
+        {
+          ...initial.official[0],
+          provider_code: 'other',
+          contribution_code: 'other',
+          title: '其他区块'
+        },
+        ...initial.official
+      ]
+    });
+    renderPanel();
+    await screen.findByText('官方区块');
+    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(officialSource)
+    );
+    fireEvent.change(screen.getByLabelText('名称'), {
+      target: { value: '默认代码区块' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await waitFor(() =>
+      expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_code: initial.default_template.provider_code,
+          contribution_code: initial.default_template.contribution_code
+        }),
+        'csrf-token'
+      )
+    );
+  });
+
+  test('multiple contribution types allow overriding the backend default and save that identity', async () => {
+    const initial = await uiManagementApi.fetchSettingsUiTemplates();
+    uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue({
+      ...initial,
+      official: [
+        ...initial.official,
+        {
+          ...initial.official[0],
+          provider_code: 'other-provider',
+          contribution_code: 'other-block',
+          title: '另一种区块',
+          source: managedSource
+        }
+      ]
+    });
+    renderPanel();
+    await screen.findByText('官方区块');
+    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    expect(screen.getByLabelText('所属区块')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByLabelText('所属区块'));
+    fireEvent.click(
+      await screen.findByText('另一种区块 · other-provider/other-block')
+    );
+    fireEvent.change(screen.getByLabelText('名称'), {
+      target: { value: '多类型模板' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
+    await waitFor(() =>
+      expect(uiManagementApi.createSettingsUiTemplate).toHaveBeenCalledWith(
+        {
+          provider_code: 'other-provider',
+          contribution_code: 'other-block',
+          name: '多类型模板',
+          source: managedSource,
           language: 'tsx'
         },
         'csrf-token'

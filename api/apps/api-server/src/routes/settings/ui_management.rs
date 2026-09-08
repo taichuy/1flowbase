@@ -44,12 +44,24 @@ pub struct ListTemplatesQuery {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TemplateBody {
+    #[serde(default = "default_template_provider_code")]
+    #[schema(default = default_template_provider_code)]
     pub provider_code: String,
+    #[serde(default = "default_template_contribution_code")]
+    #[schema(default = default_template_contribution_code)]
     pub contribution_code: String,
     pub name: String,
     pub source: String,
     #[schema(value_type = String)]
     pub language: UiCodeTemplateLanguage,
+}
+
+fn default_template_provider_code() -> String {
+    control_plane::ui_management::DEFAULT_UI_TEMPLATE_PROVIDER_CODE.to_owned()
+}
+
+fn default_template_contribution_code() -> String {
+    control_plane::ui_management::DEFAULT_UI_TEMPLATE_CONTRIBUTION_CODE.to_owned()
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -144,6 +156,7 @@ pub struct OfficialTemplateResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TemplateListResponse {
+    pub default_template: Option<OfficialTemplateResponse>,
     pub official: Vec<OfficialTemplateResponse>,
     pub managed: Vec<ManagedTemplateResponse>,
 }

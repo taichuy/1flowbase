@@ -129,13 +129,22 @@ impl UiManagementAdapter {
         let actor_user_id = principal.actor().user_id;
         match input {
             UiManagementInput::ListTemplates(query) => {
-                let (official, managed) = self
+                let templates = self
                     .management_service()
                     .list_templates(query.include_archived)
                     .await?;
                 Ok(UiManagementOutput::Templates(TemplateListResponse {
-                    official: official.into_iter().map(official_response).collect(),
-                    managed: managed.into_iter().map(template_response).collect(),
+                    official: templates
+                        .official
+                        .into_iter()
+                        .map(official_response)
+                        .collect(),
+                    default_template: templates.default_template.map(official_response),
+                    managed: templates
+                        .managed
+                        .into_iter()
+                        .map(template_response)
+                        .collect(),
                 }))
             }
             UiManagementInput::CreateTemplate(body) => {

@@ -128,18 +128,20 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     [query.data]
   );
 
-  const openCreate = () =>
+  const openCreate = () => {
+    const template = query.data?.default_template;
     setStudio({
       mode: 'create',
       templateId: null,
       initialValue: {
-        provider_code: '',
-        contribution_code: '',
+        provider_code: template?.provider_code ?? '',
+        contribution_code: template?.contribution_code ?? '',
         name: '',
-        source: '',
-        language: 'tsx'
+        source: template?.source ?? '',
+        language: template?.language ?? 'tsx'
       }
     });
+  };
   const openOfficial = (row: OfficialRow, mode: 'view' | 'copy') =>
     setStudio({
       mode,
@@ -173,7 +175,11 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     <SettingsSectionSurface
       toolbar={
         <Space wrap>
-          <Button type="primary" disabled={!canManage} onClick={openCreate}>
+          <Button
+            type="primary"
+            disabled={!canManage || !query.data?.default_template}
+            onClick={openCreate}
+          >
             {t('new_template')}
           </Button>
           <Button onClick={() => setIncludeArchived((value) => !value)}>

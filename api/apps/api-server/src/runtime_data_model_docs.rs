@@ -728,7 +728,18 @@ fn runtime_responses(schema_ref: &str, list: bool) -> Value {
 
 fn runtime_delete_responses() -> Value {
     json!({
-        "200": { "description": "Deleted" },
+        "200": {
+            "description": "Deleted",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["deleted"],
+                        "properties": { "deleted": { "type": "boolean" } }
+                    }
+                }
+            }
+        },
         "401": { "description": "Missing or invalid API key" },
         "403": { "description": "API key, action permission, or scope grant denied" },
         "404": { "description": "Data Model or record not found" },
@@ -855,6 +866,29 @@ fn record_schema_name(code: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_delete_response_contract_projects_json_result() {
+        let model = model_fixture();
+        let templates = DataModelTemplateCatalog::core();
+        let catalog = build_category_operations(std::slice::from_ref(&model), &templates);
+        let operation = catalog
+            .operations
+            .iter()
+            .find(|operation| operation.method == "DELETE")
+            .unwrap();
+        let spec = build_operation_openapi(&model, "delete_record", &templates).unwrap();
+        let entry =
+            crate::openapi_interface::catalog_entry_from_operation(operation, &spec).unwrap();
+        assert_eq!(
+            entry.response_media_type.as_deref(),
+            Some("application/json")
+        );
+        let validator = jsonschema::validator_for(&entry.response_schema).unwrap();
+        assert!(validator.is_valid(&json!({"deleted": true})));
+        assert!(!validator.is_valid(&json!({})));
+        assert!(!validator.is_valid(&json!({"deleted": "true"})));
+    }
 
     #[test]
     fn data_model_template_descriptor_drives_catalog_openapi_and_system_fields() {

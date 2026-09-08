@@ -220,37 +220,40 @@ export function UiCodeTemplateStudio({
     <div className="frontstage-jsx-studio__resource-scroll">
       <section className="frontstage-jsx-studio__resource-section">
         <Form layout="vertical">
-          <Form.Item label={t('template_contribution')} required>
-            <Select
-              aria-label={t('template_contribution')}
-              disabled={mode !== 'create'}
-              value={contributionIdentity || undefined}
-              options={officialTemplates.map((template) => ({
-                value: templateIdentity(
-                  template.provider_code,
-                  template.contribution_code
-                ),
-                label: `${template.title} · ${template.provider_code}/${template.contribution_code}`
-              }))}
-              onChange={(identity) => {
-                const template = officialTemplates.find(
-                  (candidate) =>
-                    templateIdentity(
-                      candidate.provider_code,
-                      candidate.contribution_code
-                    ) === identity
-                );
-                if (!template) return;
-                setDraft((current) => ({
-                  ...current,
-                  provider_code: template.provider_code,
-                  contribution_code: template.contribution_code,
-                  source: template.source,
-                  language: template.language
-                }));
-              }}
-            />
-          </Form.Item>
+          {officialTemplates.length > 1 && (
+            <Form.Item label={t('template_contribution')} required>
+              <Select
+                aria-label={t('template_contribution')}
+                getPopupContainer={(trigger) => trigger.parentElement!}
+                disabled={mode !== 'create'}
+                value={contributionIdentity || undefined}
+                options={officialTemplates.map((template) => ({
+                  value: templateIdentity(
+                    template.provider_code,
+                    template.contribution_code
+                  ),
+                  label: `${template.title} · ${template.provider_code}/${template.contribution_code}`
+                }))}
+                onChange={(identity) => {
+                  const template = officialTemplates.find(
+                    (candidate) =>
+                      templateIdentity(
+                        candidate.provider_code,
+                        candidate.contribution_code
+                      ) === identity
+                  );
+                  if (!template) return;
+                  setDraft((current) => ({
+                    ...current,
+                    provider_code: template.provider_code,
+                    contribution_code: template.contribution_code,
+                    source: template.source,
+                    language: template.language
+                  }));
+                }}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('name')} required>
             <Input
               aria-label={t('name')}
@@ -267,6 +270,7 @@ export function UiCodeTemplateStudio({
           <Form.Item label={t('language')} required>
             <Select
               aria-label={t('language')}
+              getPopupContainer={(trigger) => trigger.parentElement!}
               disabled={readOnly}
               value={draft.language}
               options={[

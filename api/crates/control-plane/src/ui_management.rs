@@ -9,6 +9,16 @@ use crate::ports::{
 };
 use crate::ports::{FrontendBlockCatalogRepository, UiManagementRepository};
 
+pub const DEFAULT_UI_TEMPLATE_PROVIDER_CODE: &str = "1flowbase";
+pub const DEFAULT_UI_TEMPLATE_CONTRIBUTION_CODE: &str = "frontstage.js-ui-block";
+
+#[derive(Debug, Clone)]
+pub struct UiCodeTemplateList {
+    pub official: Vec<OfficialUiCodeTemplate>,
+    pub managed: Vec<UiCodeTemplate>,
+    pub default_template: Option<OfficialUiCodeTemplate>,
+}
+
 #[derive(Debug, Clone)]
 pub struct OfficialUiCodeTemplate {
     pub provider_code: String,
@@ -66,10 +76,7 @@ where
         }
     }
 
-    pub async fn list_templates(
-        &self,
-        include_archived: bool,
-    ) -> Result<(Vec<OfficialUiCodeTemplate>, Vec<UiCodeTemplate>)> {
+    pub async fn list_templates(&self, include_archived: bool) -> Result<UiCodeTemplateList> {
         let blocks = self
             .repository
             .list_system_frontend_blocks(&self.node_id)
@@ -107,7 +114,18 @@ where
                     && template.contribution_code == baseline.contribution_code
             });
         }
-        Ok((official, managed))
+        let default_template = official
+            .iter()
+            .find(|template| {
+                template.provider_code == DEFAULT_UI_TEMPLATE_PROVIDER_CODE
+                    && template.contribution_code == DEFAULT_UI_TEMPLATE_CONTRIBUTION_CODE
+            })
+            .cloned();
+        Ok(UiCodeTemplateList {
+            official,
+            managed,
+            default_template,
+        })
     }
 
     pub async fn list_published_templates_for_workspace(

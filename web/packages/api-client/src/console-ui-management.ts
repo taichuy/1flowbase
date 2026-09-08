@@ -29,6 +29,7 @@ export interface ConsoleUiOfficialTemplate {
   is_default: boolean;
 }
 export interface ConsoleUiTemplateList {
+  default_template: ConsoleUiOfficialTemplate | null;
   official: ConsoleUiOfficialTemplate[];
   managed: ConsoleUiManagedTemplate[];
 }
@@ -161,7 +162,10 @@ export const fetchConsoleUiTemplates = (
     baseUrl
   });
 export const createConsoleUiTemplate = (
-  input: ConsoleUiTemplateInput,
+  input: Omit<ConsoleUiTemplateInput, 'provider_code' | 'contribution_code'> &
+    Partial<
+      Pick<ConsoleUiTemplateInput, 'provider_code' | 'contribution_code'>
+    >,
   csrfToken: string,
   baseUrl?: string
 ) =>
