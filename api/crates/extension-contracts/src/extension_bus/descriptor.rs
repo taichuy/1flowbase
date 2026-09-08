@@ -339,10 +339,12 @@ impl ExtensionPointDescriptor {
             && self.failure == FailureSemantics::IsolateContribution
             && self.lifecycle == LifecycleSemantics::WorkspaceAssignment
             && self.override_policy == OverridePolicy::Sealed
-            && self
-                .allowed_permissions
-                .iter()
-                .all(|p| p.as_str() == "event.subscribe" || p.as_str() == "event.publish")
+            && self.allowed_permissions.iter().all(|p| {
+                matches!(
+                    p.as_str(),
+                    "event.subscribe" | "event.publish" | "plugin_data.owned.write"
+                )
+            })
             && self
                 .allowed_permissions
                 .iter()

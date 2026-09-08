@@ -9,7 +9,8 @@ use extension_contracts::{
 use crate::RuntimeExtensionSdkError;
 
 /// Reads exactly one bounded host request and emits a correlated, contract-checked response.
-/// Authors acknowledge a delivery or request one finite publication; the host checks publish rights.
+/// Authors acknowledge, publish, or request the finite processed-model effect. The host checks
+/// current contribution authority and commits effects before acknowledging delivery.
 pub fn serve_managed_event<R: Read, W: Write>(
     reader: R,
     mut writer: W,

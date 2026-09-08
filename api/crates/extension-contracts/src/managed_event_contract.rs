@@ -116,6 +116,9 @@ pub struct ManagedEventHostFrame {
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ManagedEventOutcome {
     Acknowledged,
+    ApplyProcessed {
+        effect: ManagedEventPayload,
+    },
     Publish {
         publication: ManagedEventPublication,
     },
@@ -172,6 +175,18 @@ impl ManagedEventWorkerFrame {
             return Err(ManagedEventContractError("uncorrelated response"));
         }
         match &self.result {
+            ManagedEventOutcome::ApplyProcessed { effect } => {
+                if frame.delivery.contract_id != MANAGED_PROCESSED_EVENT_ID
+                    || frame.delivery.contract_version != "1"
+                    || effect != &frame.delivery.payload
+                    || effect.status != ManagedEventStatus::Processed
+                {
+                    return Err(ManagedEventContractError(
+                        "effect must match delivered processed fact",
+                    ));
+                }
+                validate_payload(effect)?;
+            }
             ManagedEventOutcome::Publish { publication } => {
                 publication.validate()?;
                 if publication.payload.model_id != frame.delivery.payload.model_id {

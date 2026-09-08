@@ -653,7 +653,44 @@ impl ManagedExtensionComposition {
             })?;
         lease.release().await?;
         match admitted.await? {
-            extension_contracts::ManagedEventOutcome::Acknowledged => {}
+            extension_contracts::ManagedEventOutcome::Acknowledged => {
+                if binding
+                    .descriptor
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "plugin_data.owned.write")
+                {
+                    bail!("managed event owned effect required before acknowledgement");
+                }
+            }
+            extension_contracts::ManagedEventOutcome::ApplyProcessed { effect } => {
+                if delivery.contract_id != extension_contracts::MANAGED_PROCESSED_EVENT_ID
+                    || delivery.contract_version != "1"
+                    || effect != delivery.payload
+                    || !binding
+                        .descriptor
+                        .required_permissions
+                        .iter()
+                        .any(|p| p.as_str() == "plugin_data.owned.write")
+                {
+                    bail!("managed event processed effect contract mismatch");
+                }
+                let lease = self
+                    .store
+                    .lock_contribution_authority(binding.handle.identity().subject())
+                    .await?;
+                self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
+                lease
+                    .commit_processed_model(
+                        binding.handle.identity().subject().clone(),
+                        Uuid::parse_str(&delivery.event_id)?,
+                        effect,
+                        ((time::OffsetDateTime::now_utc() + time::Duration::seconds(10))
+                            .unix_timestamp_nanos()
+                            / 1_000_000) as i64,
+                    )
+                    .await?;
+            }
             extension_contracts::ManagedEventOutcome::Failed { classification } => {
                 bail!("managed event handler failed: {classification}")
             }
@@ -677,13 +714,8 @@ impl ManagedExtensionComposition {
                     .lock_contribution_authority(binding.handle.identity().subject())
                     .await?;
                 self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
-                let installation = lease
-                    .installation(binding.installation.id)
-                    .context("managed publisher installation missing")?;
                 control_plane::managed_event_publication::publish_managed_event(
-                    &self.store,
-                    installation,
-                    lease.snapshot(),
+                    lease,
                     binding.handle.identity(),
                     &binding.descriptor,
                     &delivery,
@@ -691,7 +723,6 @@ impl ManagedExtensionComposition {
                     plan,
                 )
                 .await?;
-                lease.release().await?;
             }
         }
         Ok(true)

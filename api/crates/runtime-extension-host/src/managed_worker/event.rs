@@ -98,6 +98,17 @@ impl ManagedWorkers {
                     "managed event contribution has no declared publish permission",
                 ));
             }
+            if matches!(&result, ManagedEventOutcome::ApplyProcessed { .. })
+                && !binding
+                    .contribution
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "plugin_data.owned.write")
+            {
+                return Err(invalid(
+                    "managed event contribution has no declared owned write permission",
+                ));
+            }
             Ok(result)
         })
     }

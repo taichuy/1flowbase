@@ -1,0 +1,59 @@
+manifest_version: 2
+schema_version: 1flowbase.plugin.manifest/v2
+plugin_id: acme.composition-a
+version: 1.0.0
+publisher_namespace: acme
+vendor: Acme
+display_name: Composition A
+description: Explicit managed contribution activation fixture
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: []
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.extension-bus/v1
+permissions:
+  network: none
+  secrets: none
+  storage: host_managed
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/worker.py
+  limits:
+    timeout_ms: 30000
+managed:
+  module:
+    bus_version: v1
+    module_id: acme.composition-a
+    module_version: 1.0.0
+    module_kind: runtime
+    extension_points:
+      - point_id: acme.composition-a.processed
+        owner_module_id: acme.composition-a
+        point_kind: event_stream
+        contract: {contract_id: acme.composition-a.processed, contract_version: '1'}
+        scope: workspace
+        cardinality: many
+        ordering: lexicographic
+        failure: isolate_contribution
+        delivery: after_commit_durable
+        lifecycle: workspace_assignment
+        allowed_permissions: [event.subscribe, event.publish, plugin_data.owned.write]
+        override_policy: sealed
+    contributions:
+      - contribution_id: acme.composition-a.events
+        contributor_module_id: acme.composition-a
+        point_id: 1flowbase.application.runtime-event.after-commit
+        contract_version: '1'
+        required_permissions: [event.subscribe, event.publish]
+        mode: append
+  execution_bindings:
+    - contribution_id: acme.composition-a.events
+      execution_mode: process_per_call
+      runtime: {protocol: stdio_json, entry: bin/worker.py}
+      handler: publish

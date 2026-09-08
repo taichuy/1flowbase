@@ -36,6 +36,19 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
+    /// Commit the sealed subscriber effect and its receipt under the current authority lock.
+    fn commit_processed_model(
+        self: Box<Self>,
+        subject: ManagedContributionSubject,
+        event_id: Uuid,
+        effect: extension_contracts::ManagedEventPayload,
+        deadline_unix_ms: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<extension_contracts::PluginDataResponse>> + Send>>;
+    /// Commit a validated derived fact using the connection already owned by this lease.
+    fn commit_derived_lifecycle_fact(
+        self: Box<Self>,
+        input: super::RecordLifecycleFactInput,
+    ) -> Pin<Box<dyn Future<Output = Result<super::LifecycleOutboxRecord>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
 

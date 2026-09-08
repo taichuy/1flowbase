@@ -32,6 +32,133 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
         self.installations.get(&installation_id)
     }
+    fn commit_processed_model(
+        mut self: Box<Self>,
+        subject: ManagedContributionSubject,
+        event_id: Uuid,
+        effect: extension_contracts::ManagedEventPayload,
+        deadline_unix_ms: i64,
+    ) -> Pin<Box<dyn Future<Output = Result<extension_contracts::PluginDataResponse>> + Send>> {
+        Box::pin(async move {
+            use extension_contracts::{
+                PluginDataBinding, PluginDataOperation, PluginDataPermission, PluginDataRequest,
+                PluginDataTarget, PluginDataValue,
+            };
+            let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
+            let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
+            let installation = self
+                .installations
+                .get(&installation_id)
+                .ok_or(Error::PermissionDenied("managed_effect_installation"))?;
+            let authority = self
+                .snapshots
+                .iter()
+                .find(|snapshot| {
+                    snapshot.installation_id == installation_id
+                        && snapshot.workspace_id == workspace_id
+                })
+                .ok_or(Error::PermissionDenied("managed_effect_scope"))?;
+            if installation.organization != "acme"
+                || !matches!(
+                    installation.provider_code.as_str(),
+                    "acme.composition-b" | "acme.composition-c"
+                )
+                || installation.desired_state != domain::PluginDesiredState::ActiveRequested
+                || !authority.authorizations.iter().any(|grant| {
+                    grant.contribution_id == subject.contribution_id().as_str()
+                        && grant.point_id == extension_contracts::MANAGED_PROCESSED_EVENT_ID
+                        && grant.permission == "plugin_data.owned.write"
+                        && grant.permission_contract_id == "plugin-data"
+                        && grant.permission_contract_version == "1"
+                        && grant.resource_scope
+                            == domain::ContributionResourceScope::OwnedCollection {
+                                collection_code: "processed_models".into(),
+                            }
+                        && grant.status == domain::ContributionAuthorizationStatus::Active
+                })
+            {
+                return Err(Error::PermissionDenied(
+                    "managed_effect_same_contribution_write_required",
+                )
+                .into());
+            }
+            extension_contracts::ManagedEventPublication {
+                contract_id: extension_contracts::MANAGED_PROCESSED_EVENT_ID.into(),
+                contract_version: "1".into(),
+                payload: effect.clone(),
+            }
+            .validate()?;
+            Uuid::parse_str(&effect.model_id)?;
+            let binding = PluginDataBinding {
+                publisher_namespace: installation.organization.clone(),
+                plugin_code: installation.provider_code.clone(),
+                plugin_version: installation.plugin_version.clone(),
+                storage_binding: "main".into(),
+                workspace_id: workspace_id.to_string(),
+                actor_id: None,
+                // Stable host subject, deliberately independent of worker generation/artifact.
+                provider_instance_id: format!(
+                    "managed-event:{}:{}:{}",
+                    installation_id,
+                    workspace_id,
+                    subject.contribution_id().as_str()
+                ),
+                permissions: [PluginDataPermission::Write].into_iter().collect(),
+                deadline_unix_ms,
+            };
+            let request = PluginDataRequest {
+                idempotency_key: Some(format!("managed-event/v1/{event_id}")),
+                operations: vec![PluginDataOperation::Upsert {
+                    target: PluginDataTarget::OwnedCollection {
+                        collection_code: "processed_models".into(),
+                    },
+                    identity: [("model_id".into(), PluginDataValue::Uuid(effect.model_id))]
+                        .into_iter()
+                        .collect(),
+                    values: [
+                        ("status".into(), PluginDataValue::String("processed".into())),
+                        (
+                            "result_reference".into(),
+                            effect
+                                .result_reference
+                                .map(PluginDataValue::String)
+                                .unwrap_or(PluginDataValue::Null),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                }],
+            };
+            let response = crate::plugin_data_repository::execute_request_in_transaction(
+                &mut self.transaction,
+                &binding,
+                &request,
+            )
+            .await?;
+            self.transaction.commit().await?;
+            Ok(response)
+        })
+    }
+    fn commit_derived_lifecycle_fact(
+        mut self: Box<Self>,
+        input: control_plane_contracts::ports::RecordLifecycleFactInput,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<control_plane_contracts::ports::LifecycleOutboxRecord>>
+                + Send,
+        >,
+    > {
+        Box::pin(async move {
+            let record =
+                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
+                    &mut self.transaction,
+                    &input,
+                )
+                .await?;
+            self.transaction.commit().await?;
+            Ok(record)
+        })
+    }
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         Box::pin(async move {
             self.transaction.commit().await?;

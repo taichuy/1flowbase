@@ -417,38 +417,46 @@ impl control_plane_contracts::ports::DerivedLifecyclePublicationRepository for P
         input: &RecordLifecycleFactInput,
     ) -> Result<LifecycleOutboxRecord> {
         let mut transaction = self.pool().begin().await?;
-        // The same stable source/subscriber/output cannot race two first-publication snapshots.
-        // A transaction advisory lock complements the existing event_id primary key, without
-        // allocating another idempotency table or changing native Create's transaction owner.
-        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(format!("managed-derived-publication:{}", input.event_id))
-            .execute(&mut *transaction)
-            .await?;
-        let targets = sqlx::query("select subscriber_id, handler_id, handler_version from lifecycle_outbox_deliveries where event_id = $1 order by subscriber_id")
-            .bind(input.event_id).fetch_all(&mut *transaction).await?;
-        let mut frozen = input.clone();
-        if let Some(first) = targets.first() {
-            let subscriber_id: String = first.try_get("subscriber_id")?;
-            let stored = find_delivery(&mut *transaction, input.event_id, &subscriber_id)
-                .await?
-                .ok_or_else(|| anyhow!("derived lifecycle publication disappeared"))?;
-            // Input content still goes through the complete existing fact equality check below.
-            // Only the originally frozen host time and plan are reused on repeated publication.
-            frozen.occurred_at = stored.occurred_at;
-            frozen.publication.graph_fingerprint = stored.graph_fingerprint;
-            frozen.publication.subscribers = targets
-                .iter()
-                .map(|row| {
-                    Ok(control_plane_contracts::ports::LifecycleSubscriberTarget {
-                        subscriber_id: row.try_get("subscriber_id")?,
-                        handler_id: row.try_get("handler_id")?,
-                        handler_version: row.try_get("handler_version")?,
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-        }
-        let record = record_lifecycle_fact_in_transaction(&mut transaction, &frozen).await?;
+        let record = record_derived_lifecycle_fact_in_transaction(&mut transaction, input).await?;
         transaction.commit().await?;
         Ok(record)
     }
+}
+
+pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    input: &RecordLifecycleFactInput,
+) -> Result<LifecycleOutboxRecord> {
+    // The same stable source/subscriber/output cannot race two first-publication snapshots.
+    // A transaction advisory lock complements the existing event_id primary key, without
+    // allocating another idempotency table or changing native Create's transaction owner.
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("managed-derived-publication:{}", input.event_id))
+        .execute(&mut **transaction)
+        .await?;
+    let targets = sqlx::query("select subscriber_id, handler_id, handler_version from lifecycle_outbox_deliveries where event_id = $1 order by subscriber_id")
+            .bind(input.event_id).fetch_all(&mut **transaction).await?;
+    let mut frozen = input.clone();
+    if let Some(first) = targets.first() {
+        let subscriber_id: String = first.try_get("subscriber_id")?;
+        let stored = find_delivery(&mut **transaction, input.event_id, &subscriber_id)
+            .await?
+            .ok_or_else(|| anyhow!("derived lifecycle publication disappeared"))?;
+        // Input content still goes through the complete existing fact equality check below.
+        // Only the originally frozen host time and plan are reused on repeated publication.
+        frozen.occurred_at = stored.occurred_at;
+        frozen.publication.graph_fingerprint = stored.graph_fingerprint;
+        frozen.publication.subscribers = targets
+            .iter()
+            .map(|row| {
+                Ok(control_plane_contracts::ports::LifecycleSubscriberTarget {
+                    subscriber_id: row.try_get("subscriber_id")?,
+                    handler_id: row.try_get("handler_id")?,
+                    handler_version: row.try_get("handler_version")?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+    }
+    let record = record_lifecycle_fact_in_transaction(transaction, &frozen).await?;
+    Ok(record)
 }

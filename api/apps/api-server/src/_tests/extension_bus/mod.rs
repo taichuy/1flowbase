@@ -5,3 +5,5 @@ mod interface_operation_tests;
 
 mod managed_activation_tests;
 mod managed_event_authority_tests;
+
+mod managed_event_effect_tests;

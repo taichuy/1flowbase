@@ -292,3 +292,80 @@ async fn pdp_004_005_extension_projection_exposes_only_identity_and_owned_fields
         PluginDataErrorKind::OwnershipDenied
     );
 }
+
+#[tokio::test]
+async fn root_2007_ac_007_receipt_commit_failure_rolls_back_effect() {
+    let (store, pool) = store().await;
+    store
+        .apply_managed_schema(&plan(
+            "receipt-atomic",
+            vec![
+                ManagedSchemaOperation::EnsureOwnedCollection {
+                    logical_collection: "affinity".into(),
+                    physical_table: "plg_receipt_atomic".into(),
+                },
+                ManagedSchemaOperation::EnsureOwnedField {
+                    logical_collection: "affinity".into(),
+                    logical_field: "value".into(),
+                    physical_table: "plg_receipt_atomic".into(),
+                    physical_column: "value".into(),
+                    field_type: ManagedSchemaFieldType::String,
+                    nullable: false,
+                },
+            ],
+        ))
+        .await
+        .unwrap();
+    sqlx::query("create function reject_receipt_commit() returns trigger language plpgsql as $$ begin raise exception 'fixture receipt commit rejection'; end $$")
+        .execute(&pool).await.unwrap();
+    sqlx::query("create constraint trigger reject_receipt_commit after insert on plugin_data_idempotency_receipts deferrable initially deferred for each row execute function reject_receipt_commit()")
+        .execute(&pool).await.unwrap();
+    let binding = binding(Uuid::now_v7());
+    let request = PluginDataRequest {
+        idempotency_key: Some("event-subscriber-stable".into()),
+        operations: vec![PluginDataOperation::Insert {
+            target: owned_target(),
+            values: [("value".into(), PluginDataValue::String("effect".into()))]
+                .into_iter()
+                .collect(),
+        }],
+    };
+    assert!(store.execute(&binding, &request).await.is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from plg_receipt_atomic")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from plugin_data_idempotency_receipts")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    sqlx::query("drop trigger reject_receipt_commit on plugin_data_idempotency_receipts")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let applied = store.execute(&binding, &request).await.unwrap();
+    assert!(!applied.replayed);
+    let replay = store.execute(&binding, &request).await.unwrap();
+    assert!(replay.replayed);
+    assert_eq!(applied.results, replay.results);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from plg_receipt_atomic")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from plugin_data_idempotency_receipts")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+}

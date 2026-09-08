@@ -36,7 +36,7 @@ fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
     }
     serde_json::from_value(value).unwrap()
 }
-fn package(manifest: &plugin_framework::PluginManifestV1) -> Vec<u8> {
+pub(super) fn package(manifest: &plugin_framework::PluginManifestV1) -> Vec<u8> {
     let bytes = serde_yaml::to_string(manifest).unwrap().into_bytes();
     // The exact author artifact must pass the official parser before archive intake.
     plugin_framework::parse_plugin_manifest(std::str::from_utf8(&bytes).unwrap()).unwrap();

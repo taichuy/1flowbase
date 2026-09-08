@@ -1,9 +1,9 @@
 //! Publication command for the sealed composition event. The caller holds the current
-//! contribution-authority lease until this independent host Outbox transaction commits.
+//! contribution-authority lease through the host Outbox commit on that same connection.
 use crate::plugin_management::HostContributionGrantPolicy;
 use anyhow::{bail, Result};
 use control_plane_contracts::ports::{
-    DerivedLifecyclePublicationRepository, LifecyclePublicationPlan, RecordLifecycleFactInput,
+    ContributionAuthorityLease, LifecyclePublicationPlan, RecordLifecycleFactInput,
 };
 use extension_contracts::{
     extension_bus::*, ManagedEventDelivery, ManagedEventFact, ManagedEventPublication,
@@ -56,16 +56,18 @@ pub fn validate_managed_event_publication(
     Ok(())
 }
 
-pub async fn publish_managed_event<R: DerivedLifecyclePublicationRepository>(
-    repository: &R,
-    installation: &domain::PluginInstallationRecord,
-    authority: &domain::PluginContributionAuthoritySnapshot,
+pub async fn publish_managed_event(
+    lease: Box<dyn ContributionAuthorityLease>,
     identity: &ManagedExecutionIdentity,
     contribution: &ContributionDescriptor,
     cause: &ManagedEventDelivery,
     publication: ManagedEventPublication,
     plan: LifecyclePublicationPlan,
 ) -> Result<Uuid> {
+    let installation = lease
+        .installation(Uuid::parse_str(identity.installation_id().as_str())?)
+        .ok_or_else(|| anyhow::anyhow!("managed publisher installation missing"))?;
+    let authority = lease.snapshot();
     validate_managed_event_publication(
         installation,
         authority,
@@ -92,8 +94,8 @@ pub async fn publish_managed_event<R: DerivedLifecyclePublicationRepository>(
         correlation_id: cause.correlation_id.clone(),
         payload: publication.payload,
     };
-    repository
-        .record_derived_lifecycle_fact(&RecordLifecycleFactInput {
+    lease
+        .commit_derived_lifecycle_fact(RecordLifecycleFactInput {
             event_id,
             transaction_id,
             contract_id: publication.contract_id,

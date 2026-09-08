@@ -1,4 +1,4 @@
-//! Real SDK process used by Root #2007 AC-005. No host identity is accepted in worker output.
+//! Real SDK process used by Root #2007 AC-005/007. No host identity is accepted in worker output.
 use runtime_extension_sdk::{
     serve_managed_event, ManagedEventOutcome, ManagedEventPublication, ManagedEventStatus,
 };
@@ -50,6 +50,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     contract_version: "1".into(),
                     payload,
                 },
+            }
+        } else if frame.handler == "apply_processed" {
+            ManagedEventOutcome::ApplyProcessed {
+                effect: frame.delivery.payload.clone(),
             }
         } else {
             ManagedEventOutcome::Acknowledged
