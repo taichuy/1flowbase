@@ -30,6 +30,9 @@ fn fixture(
             identity.clone(),
             LoadedManagedBinding {
                 plugin_id: "acme.composition-a".into(),
+                executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
+                    &std::fs::read(&executable).unwrap(),
+                ),
                 runtime_executable: executable,
                 execution_mode: PluginExecutionMode::ProcessPerCall,
                 limits: PluginRuntimeLimits::default(),

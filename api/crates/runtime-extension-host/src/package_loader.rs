@@ -107,6 +107,11 @@ impl PackageLoader {
         }
         Ok(crate::managed_worker::LoadedManagedBinding {
             plugin_id: request.plugin_id.clone(),
+            executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
+                &fs::read(&runtime_executable).map_err(|error| {
+                    PluginFrameworkError::io(Some(&runtime_executable), error.to_string())
+                })?,
+            ),
             runtime_executable,
             execution_mode: binding.execution_mode,
             limits: binding.runtime.limits.clone(),

@@ -37,6 +37,9 @@ impl ManagedWorkers {
         binding: LoadedManagedBinding,
     ) -> FrameworkResult<ManagedExecutionHandle> {
         if let Some(mounted) = self.mounted.get(&identity) {
+            if mounted.binding.executable_fingerprint != binding.executable_fingerprint {
+                return Err(invalid("frozen managed executable bytes changed"));
+            }
             return Ok(mounted.handle.clone());
         }
         let generation = self
@@ -171,6 +174,13 @@ impl ManagedWorkers {
             .await
             .map_err(|_| invalid("managed execution deadline elapsed"))?
         })
+    }
+
+    pub(crate) fn executable_for_handle(
+        &self,
+        handle: &ManagedExecutionHandle,
+    ) -> FrameworkResult<LoadedManagedBinding> {
+        Ok(self.exact_mount(handle)?.binding.clone())
     }
 
     fn exact_mount(

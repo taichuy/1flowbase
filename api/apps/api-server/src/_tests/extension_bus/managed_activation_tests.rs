@@ -60,7 +60,7 @@ fn package_bytes(root: &Path) -> Vec<u8> {
     archive.into_inner().unwrap().finish().unwrap()
 }
 
-fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
+pub(super) fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
     RuntimeExecutionPrincipal {
         workspace_id: workspace.to_string(),
         actor_id: Some(actor.to_string()),
@@ -69,7 +69,7 @@ fn principal(workspace: Uuid, actor: Uuid) -> RuntimeExecutionPrincipal {
             / 1_000_000) as i64,
     }
 }
-fn hook_input(code: &str) -> ManagedCreateHookInput {
+pub(super) fn hook_input(code: &str) -> ManagedCreateHookInput {
     ManagedCreateHookInput::Before {
         create: ManagedCreateView {
             code: code.into(),
@@ -79,7 +79,7 @@ fn hook_input(code: &str) -> ManagedCreateHookInput {
         },
     }
 }
-fn hook_invocation(
+pub(super) fn hook_invocation(
     snapshot: &crate::extension_bus::ManagedWorkspaceSnapshot,
 ) -> ManagedHookInvocation {
     ManagedHookInvocation {

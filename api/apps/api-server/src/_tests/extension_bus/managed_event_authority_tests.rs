@@ -11,7 +11,7 @@ use serde_json::json;
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
-fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
+pub(super) fn manifest(name: &str) -> plugin_framework::PluginManifestV1 {
     let base = plugin_framework::parse_plugin_manifest(include_str!(
         "../../../../../plugins/fixtures/acme.composition-a/manifest.yaml"
     ))
@@ -60,7 +60,7 @@ pub(super) fn package(manifest: &plugin_framework::PluginManifestV1) -> Vec<u8> 
         .unwrap();
     archive.into_inner().unwrap().finish().unwrap()
 }
-fn grant(name: &str, permission: &str) -> GrantContributionPermission {
+pub(super) fn grant(name: &str, permission: &str) -> GrantContributionPermission {
     GrantContributionPermission {
         contribution_id: format!("acme.composition-{name}.events"),
         permission: permission.into(),

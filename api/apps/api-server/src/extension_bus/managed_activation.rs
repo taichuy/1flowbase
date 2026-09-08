@@ -28,6 +28,14 @@ pub(crate) struct ManagedWorkspaceSnapshot {
     pub(crate) lifecycle_plan: Option<EffectiveLifecycleSubscriberPlan>,
 }
 
+#[derive(Clone, Default)]
+struct ManagedSnapshots {
+    current: BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
+    // Publication and retention share one lock: no delivery can see a new graph before its
+    // predecessor is retained. P09 owns explicit retirement after backlog/in-flight disposition.
+    retained: BTreeMap<String, Vec<Arc<ManagedWorkspaceSnapshot>>>,
+}
+
 struct PreparedPackage {
     installation: domain::PluginInstallationRecord,
     manifest: ManagedManifest,
@@ -43,7 +51,8 @@ pub(crate) struct ManagedExtensionComposition {
     policy: HostContributionGrantPolicy,
     native_lifecycle_plan: std::sync::OnceLock<EffectiveLifecycleSubscriberPlan>,
     /// One assembly owner; immutable snapshots remain valid while callers hold their Arc.
-    snapshots: Mutex<BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>>,
+    snapshots: Mutex<ManagedSnapshots>,
+    execution_epoch: Uuid,
     assembly: Mutex<()>,
 }
 
@@ -61,7 +70,8 @@ impl ManagedExtensionComposition {
             base_modules,
             policy: HostContributionGrantPolicy::root_composition(),
             native_lifecycle_plan: Default::default(),
-            snapshots: Mutex::new(BTreeMap::new()),
+            snapshots: Mutex::new(ManagedSnapshots::default()),
+            execution_epoch: Uuid::now_v7(),
             assembly: Mutex::new(()),
         }
     }
@@ -70,12 +80,30 @@ impl ManagedExtensionComposition {
         &self,
         workspace_id: Uuid,
     ) -> Option<Arc<ManagedWorkspaceSnapshot>> {
-        self.snapshots.lock().await.get(&workspace_id).cloned()
+        self.snapshots
+            .lock()
+            .await
+            .current
+            .get(&workspace_id)
+            .cloned()
     }
 
     pub(crate) async fn rebuild_installation(&self, installation_id: Uuid) -> Result<()> {
         let _assembly = self.assembly.lock().await;
-        let mut published = self.snapshots.lock().await.clone();
+        let previous_state = self.snapshots.lock().await.clone();
+        let mut published = previous_state.current.clone();
+        let owned_handles = previous_state
+            .current
+            .values()
+            .chain(previous_state.retained.values().flatten())
+            .flat_map(|snapshot| {
+                snapshot
+                    .bindings
+                    .values()
+                    .map(|binding| binding.handle.clone())
+            })
+            .collect::<Vec<_>>();
+        drop(previous_state);
         let workspaces = self
             .store
             .contribution_authority_workspaces(installation_id)
@@ -169,12 +197,7 @@ impl ManagedExtensionComposition {
                                 identity,
                             })
                             .await?;
-                        let retained = published.get(&workspace_id).is_some_and(|old| {
-                            old.bindings
-                                .values()
-                                .any(|binding| binding.handle == handle)
-                        });
-                        if !retained {
+                        if !owned_handles.contains(&handle) {
                             new_handles.push(handle.clone());
                         }
                         bindings.insert(
@@ -237,7 +260,25 @@ impl ManagedExtensionComposition {
             }
             let mut visible = self.snapshots.lock().await;
             let original = visible.clone();
-            *visible = published.clone();
+            for old in previous.values() {
+                if candidates
+                    .values()
+                    .any(|candidate| candidate.same_execution_snapshot(old))
+                {
+                    continue;
+                }
+                let retained = visible
+                    .retained
+                    .entry(old.graph.fingerprint().as_str().into())
+                    .or_default();
+                if !retained
+                    .iter()
+                    .any(|snapshot| snapshot.same_execution_snapshot(old))
+                {
+                    retained.push(old.clone());
+                }
+            }
+            visible.current = published.clone();
             if let Err(error) = lease.release().await {
                 *visible = original;
                 return Err(error);
@@ -256,30 +297,7 @@ impl ManagedExtensionComposition {
                 }
                 Err(error)
             }
-            Ok(previous) => {
-                // Replacing a published graph does not revoke already-admitted work. The runtime
-                // scope owns its bounded drain; new calls obtain the newly published binding.
-                let retained = published
-                    .values()
-                    .flat_map(|snapshot| {
-                        snapshot
-                            .bindings
-                            .values()
-                            .map(|binding| binding.handle.clone())
-                    })
-                    .collect::<Vec<_>>();
-                drop(published);
-                for old in previous.values() {
-                    for binding in old.bindings.values() {
-                        if !retained.contains(&binding.handle) {
-                            self.backend
-                                .deactivate_managed_contribution(&binding.handle)
-                                .await?;
-                        }
-                    }
-                }
-                Ok(())
-            }
+            Ok(_) => Ok(()),
         }
     }
 
@@ -551,7 +569,8 @@ impl ManagedExtensionComposition {
                 fact_contract_version: contract_version.into(),
                 handler_id: id,
                 handler_version: format!(
-                    "{}:{}:{}",
+                    "{}:{}:{}:{}",
+                    self.execution_epoch,
                     binding.handle.identity().artifact_fingerprint().as_str(),
                     binding.handle.identity().binding_fingerprint().as_str(),
                     binding.handle.generation()
@@ -564,17 +583,50 @@ impl ManagedExtensionComposition {
         )?))
     }
 
-    /// P08 extends this exact lookup to retained executable generations. No latest-version fallback.
+    /// Resolve the complete persisted target, never a handler from the currently published graph.
+    /// An epoch in handler_version prevents a restarted host's mount counter from impersonating
+    /// an old executable generation. Missing historical graphs remain durably paused by P06.
     pub(crate) async fn event_snapshot_for_graph(
         &self,
-        fingerprint: &str,
-    ) -> Option<Arc<ManagedWorkspaceSnapshot>> {
-        self.snapshots
-            .lock()
-            .await
+        record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+    ) -> Result<Option<Arc<ManagedWorkspaceSnapshot>>> {
+        use control_plane_contracts::ports::{
+            LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason,
+        };
+        let snapshots = self.snapshots.lock().await;
+        let candidates = snapshots
+            .current
             .values()
-            .find(|s| s.graph.fingerprint().as_str() == fingerprint)
-            .cloned()
+            .chain(
+                snapshots
+                    .retained
+                    .get(&record.graph_fingerprint)
+                    .into_iter()
+                    .flatten(),
+            )
+            .filter(|snapshot| snapshot.graph.fingerprint().as_str() == record.graph_fingerprint);
+        let mut graph_available = false;
+        for snapshot in candidates {
+            graph_available = true;
+            if snapshot.lifecycle_plan.as_ref().is_some_and(|plan| {
+                plan.subscribers().iter().any(|s| {
+                    s.subscriber_id == record.subscriber_id
+                        && s.handler_id == record.handler_id
+                        && s.handler_version == record.handler_version
+                        && s.fact_contract_id == record.contract_id
+                        && s.fact_contract_version == record.contract_version
+                })
+            }) {
+                return Ok(Some(snapshot.clone()));
+            }
+        }
+        if graph_available {
+            return Err(LifecycleDeliveryBlocked(
+                LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
+            )
+            .into());
+        }
+        Ok(None)
     }
 
     /// A record can reach a native handler only after its exact target is found in the frozen
@@ -730,6 +782,17 @@ impl ManagedExtensionComposition {
 }
 
 impl ManagedWorkspaceSnapshot {
+    fn same_execution_snapshot(&self, other: &Self) -> bool {
+        self.graph.fingerprint() == other.graph.fingerprint()
+            && self.bindings.len() == other.bindings.len()
+            && self.bindings.iter().all(|(id, binding)| {
+                other
+                    .bindings
+                    .get(id)
+                    .is_some_and(|old| old.handle == binding.handle)
+            })
+    }
+
     pub(crate) fn publication_plan(
         &self,
         contract_id: &str,

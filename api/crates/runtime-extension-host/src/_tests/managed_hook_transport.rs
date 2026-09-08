@@ -34,6 +34,9 @@ impl WorkerFixture {
     fn binding(&self, input: &ManagedCreateHookInput, handler: &str) -> LoadedManagedBinding {
         LoadedManagedBinding {
             plugin_id: "publisher/plugin/1".into(),
+            executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
+                &std::fs::read(&self.executable).unwrap(),
+            ),
             runtime_executable: self.executable.clone(),
             execution_mode: PluginExecutionMode::ProcessPerCall,
             limits: PluginRuntimeLimits::default(),
@@ -325,4 +328,84 @@ async fn root_2007_ac_003_004_hook_transport_cancel_timeout_and_scope_cleanup() 
         .await
         .unwrap()
         .unwrap();
+}
+
+/// AC-008: actual per-call SDK workers can coexist without substituting a new artifact/handler
+/// into an already admitted generation. The filesystem marker fixes the interleaving.
+#[tokio::test]
+async fn root_2007_ac_008_snapshot_restart_exact_worker_versions() {
+    let first = WorkerFixture::new();
+    let second = WorkerFixture::new();
+    let mut workers = ManagedWorkers::default();
+    let g1 = workers
+        .mount(identity(), first.binding(&before("model"), "first"))
+        .unwrap();
+    let running = tokio::spawn(
+        workers
+            .admit_hook(request(g1.clone(), before("fixture_barrier")))
+            .unwrap(),
+    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !first.executable.with_extension("started").is_file() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let old_identity = identity();
+    let g2_identity = ManagedExecutionIdentity::new(
+        old_identity.installation_id().clone(),
+        old_identity.workspace_id().clone(),
+        old_identity.contribution_id().clone(),
+        ManagedArtifactFingerprint::from_bytes(b"artifact-2"),
+        ManagedBindingFingerprint::from_bytes(b"binding-2"),
+    );
+    let g2 = workers
+        .mount(g2_identity, second.binding(&before("model"), "second"))
+        .unwrap();
+    let mut new_request = request(g2.clone(), before("identify"));
+    new_request.invocation.graph_fingerprint = "graph-g2".into();
+    assert_eq!(
+        workers.admit_hook(new_request).unwrap().await.unwrap(),
+        ManagedHookOutcome::Deny {
+            classification: "fixture.second".into()
+        }
+    );
+    assert!(!running.is_finished());
+    std::fs::write(first.executable.with_extension("release"), "release").unwrap();
+    assert_eq!(
+        running.await.unwrap().unwrap(),
+        ManagedHookOutcome::Continue
+    );
+    assert_eq!(
+        workers
+            .admit_hook(request(g1.clone(), before("identify")))
+            .unwrap()
+            .await
+            .unwrap(),
+        ManagedHookOutcome::Deny {
+            classification: "fixture.first".into()
+        }
+    );
+    assert_ne!(g1.generation(), g2.generation());
+    assert_eq!(workers.loaded_count(), 2);
+    let frozen = workers.executable_for_handle(&g1).unwrap();
+    std::fs::remove_file(&first.executable).unwrap();
+    assert!(
+        frozen.verify_executable().is_err(),
+        "old artifact absence must not resolve G2"
+    );
+    workers.unmount(&g1).unwrap().dispose().await.unwrap();
+    assert!(workers.admit_hook(request(g1, before("identify"))).is_err());
+    assert_eq!(
+        workers
+            .admit_hook(request(g2.clone(), before("identify")))
+            .unwrap()
+            .await
+            .unwrap(),
+        ManagedHookOutcome::Deny {
+            classification: "fixture.second".into()
+        }
+    );
+    workers.unmount(&g2).unwrap().dispose().await.unwrap();
 }

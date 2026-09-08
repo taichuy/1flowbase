@@ -712,6 +712,30 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
     }
 }
 
+impl RuntimeExtensionHost {
+    async fn verify_managed_executable(
+        &self,
+        handle: &extension_contracts::ManagedExecutionHandle,
+    ) -> Result<(), RuntimeBackendError> {
+        let binding = self
+            .managed_workers
+            .read()
+            .await
+            .executable_for_handle(handle)
+            .map_err(RuntimeBackendError::from)?;
+        tokio::task::spawn_blocking(move || binding.verify_executable())
+            .await
+            .map_err(|_| {
+                RuntimeBackendError::from(
+                    extension_package_runtime::PluginFrameworkError::invalid_provider_package(
+                        "managed executable validation unavailable",
+                    ),
+                )
+            })?
+            .map_err(RuntimeBackendError::from)
+    }
+}
+
 #[async_trait]
 impl CapabilityRuntimePort for RuntimeExtensionHost {
     async fn activate_managed_contribution(
@@ -768,6 +792,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         &self,
         request: RuntimeManagedCapabilityRequest,
     ) -> Result<runtime_core::runtime_backend::AdmittedManagedExecution, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
         let operation = {
             let workers = self.managed_workers.read().await;
             let lifecycle = self.lifecycle.read().map_err(|_| {
@@ -789,6 +814,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         &self,
         request: runtime_core::runtime_backend::RuntimeManagedEventRequest,
     ) -> Result<runtime_core::runtime_backend::AdmittedManagedEvent, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
         let operation = {
             let workers = self.managed_workers.read().await;
             let lifecycle = self.lifecycle.read().map_err(|_| {
@@ -810,6 +836,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         &self,
         request: runtime_core::runtime_backend::RuntimeManagedHookRequest,
     ) -> Result<runtime_core::runtime_backend::AdmittedManagedHook, RuntimeBackendError> {
+        self.verify_managed_executable(&request.handle).await?;
         let operation = {
             let workers = self.managed_workers.read().await;
             let lifecycle = self.lifecycle.read().map_err(|_| {

@@ -147,10 +147,7 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
             let owner = owner.upgrade().ok_or_else(|| {
                 LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
             })?;
-            if let Some(snapshot) = owner
-                .event_snapshot_for_graph(&fact.graph_fingerprint)
-                .await
-            {
+            if let Some(snapshot) = owner.event_snapshot_for_graph(fact).await? {
                 if owner.deliver_event_record(&snapshot, fact).await? {
                     return Ok(());
                 }
