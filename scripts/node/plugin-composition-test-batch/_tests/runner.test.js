@@ -131,3 +131,17 @@ test('R3 Host continuation selects only the previously compile-blocked exact pro
   const names = data.required.map(row => row.name);
   assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
 });
+
+
+test('R3 observer diagnostic stays on the installed host-chain exact test', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-observer-manifest.json').data;
+  assert.equal(data.required.length, 1);
+  assert.equal(data.targets.length, 1);
+  assert.equal(data.node.length, 0);
+  assert.equal(data.browserBinary, undefined);
+  validateSources(root, data);
+  const names = data.required.map(row => row.name);
+  assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
+});

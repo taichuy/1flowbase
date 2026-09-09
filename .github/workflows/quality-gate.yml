@@ -22,6 +22,7 @@ on:
           - full
           - r3-probe
           - r3-probe-host
+          - r3-observer
       scope:
         description: Quality gate scope
         type: choice
@@ -300,7 +301,7 @@ jobs:
           --health-cmd "pg_isready -U postgres -d 1flowbase"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      PLUGIN_COMPOSITION_MANIFEST: ${{ inputs.batch_mode == 'r3-probe-host' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-host-manifest.json' || inputs.batch_mode == 'r3-probe' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-manifest.json' || 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json' }}
+      PLUGIN_COMPOSITION_MANIFEST: ${{ inputs.batch_mode == 'r3-observer' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-observer-manifest.json' || inputs.batch_mode == 'r3-probe-host' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-host-manifest.json' || inputs.batch_mode == 'r3-probe' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-manifest.json' || 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json' }}
       PLUGIN_COMPOSITION_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/plugin-composition-2014/target
       CARGO_PROFILE_DEV_DEBUG: "0"
