@@ -895,6 +895,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-ui-management",
             &[
+                "ui_management.plugin_settings_page.view",
                 "ui_management.templates.list",
                 "ui_management.templates.create",
                 "ui_management.templates.default.reset",
