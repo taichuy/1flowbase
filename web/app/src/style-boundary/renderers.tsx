@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { Menu } from 'antd';
 
 import { AnonymousAppRuntime } from '../app/AnonymousAppRuntime';
@@ -8,6 +8,11 @@ import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
 import { VariableGroupsField } from '../features/agent-flow/components/bindings/VariableGroupsField';
 import type { FlowSelectorOption } from '../features/agent-flow/lib/selector-options';
+import { useWindowWorkspace } from '../shared/ui/window-workspace/WindowWorkspaceProvider';
+import {
+  ASSISTANT_WINDOW_ID,
+  initialAssistantWindowRect
+} from '../features/agent-flow/components/embedded-assistant/assistant-window-geometry';
 import { EmbeddedAgentAssistantPreview } from '../features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
@@ -47,6 +52,28 @@ function getAccountPopupChildren() {
   }
 
   return firstItem.children;
+}
+
+function AssistantPreviewScene() {
+  const { open, close } = useWindowWorkspace();
+  useLayoutEffect(() => {
+    open({
+      id: ASSISTANT_WINDOW_ID,
+      owner: 'embedded-agent-assistant',
+      parent_id: null,
+      rect: initialAssistantWindowRect(),
+      dirty: false
+    });
+    return () => close(ASSISTANT_WINDOW_ID);
+  }, [open, close]);
+
+  return (
+    <EmbeddedAgentAssistantPreview
+      open
+      pageKey="/style-boundary/embedded-agent-assistant-preview"
+      onClose={() => close(ASSISTANT_WINDOW_ID)}
+    />
+  );
 }
 
 function renderShellScene(pathname: string, page: ReactNode) {
@@ -161,14 +188,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   'component.embedded-agent-assistant-preview': () => {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();
-
-    return (
-      <EmbeddedAgentAssistantPreview
-        open
-        pageKey="/style-boundary/embedded-agent-assistant-preview"
-        onClose={() => undefined}
-      />
-    );
+    return <AssistantPreviewScene />;
   },
   'component.account-popup': () => (
     <div className="app-shell-account-popup">

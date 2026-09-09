@@ -3,6 +3,8 @@ import { lazy, Suspense, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConsoleAssistantClientTools } from '@1flowbase/api-client';
 
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
+import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
@@ -108,7 +110,7 @@ export function EmbeddedAgentAssistant({
                     }
                     bodyClassName="embedded-agent-assistant-window-shell__body"
                     className="embedded-agent-assistant-window-shell"
-                    dragHandleSelector="[data-assistant-loading-drag-handle]"
+                    dragHandleSelector=".agent-flow-editor__dock-panel-header"
                     initialRect={() => windowEntry.rect}
                     minHeight={320}
                     minWidth={400}
@@ -119,11 +121,14 @@ export function EmbeddedAgentAssistant({
                     title={label}
                     zIndex={1050 + windowEntry.z_index}
                     onActivate={() => activate(ASSISTANT_WINDOW_ID)}
-                    onRectChange={(rect) =>
-                      setRect(ASSISTANT_WINDOW_ID, rect)
-                    }
+                    onRectChange={(rect) => setRect(ASSISTANT_WINDOW_ID, rect)}
                   >
-                    <div aria-busy="true" />
+                    <AgentFlowDockPanel
+                      title={label}
+                      onClose={() => setOpen(false)}
+                    >
+                      <LoadingState compact className="loading-state--panel" />
+                    </AgentFlowDockPanel>
                   </WindowWorkspaceWindow>,
                   document.body
                 )

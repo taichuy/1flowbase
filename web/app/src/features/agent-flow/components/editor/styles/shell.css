@@ -398,62 +398,6 @@
   background: rgba(66, 121, 93, 0.38);
 }
 
-.agent-flow-editor__dock-panel {
-  display: flex;
-  container-type: inline-size;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid #e8edf5;
-  border-radius: 1.125rem;
-  background: #f8fafd;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
-}
-
-.agent-flow-editor__dock-panel-body {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-  background: #f8fafd;
-}
-
-.agent-flow-editor__dock-panel-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(0.5rem, 2cqw, 0.75rem);
-  min-height: auto;
-  padding: clamp(0.75rem, 3.5cqw, 0.875rem) clamp(0.875rem, 4cqw, 1.125rem)
-    clamp(0.5rem, 2cqw, 0.625rem);
-  background: #f8fafd;
-}
-
-.agent-flow-editor__dock-panel-title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.agent-flow-editor__dock-panel-title .ant-typography {
-  margin: 0;
-}
-
-.agent-flow-editor__dock-panel-title-stack {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-.agent-flow-editor__dock-panel-title-stack .ant-typography {
-  overflow-wrap: anywhere;
-}
-
 .agent-flow-editor__history-panel-body {
   overflow: auto;
   padding: 12px;

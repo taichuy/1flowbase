@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import { SchemaDockPanel } from '../../../../shared/schema-ui/v1/overlay-shell/SchemaDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 
+import './styles/dock-panel.css';
+
 interface AgentFlowDockPanelProps {
   actions?: ReactNode;
   ariaLabel?: string;

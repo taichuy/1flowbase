@@ -35,24 +35,11 @@
   display: none;
 }
 
-/* Keep the assistant visually aligned with the console's warm emerald theme
- * without changing the reusable Agent Flow debug console. */
+/* The floating window owns its border; the shared panel owns conversation styling. */
 .embedded-agent-assistant-preview .agent-flow-editor__dock-panel {
   border: 0;
   border-radius: 0;
-  background: var(--bg-elevated);
   box-shadow: none;
-}
-
-.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-body,
-.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-header,
-.embedded-agent-assistant-preview .agent-flow-editor__debug-conversation-pane,
-.embedded-agent-assistant-preview .agent-flow-editor__debug-composer {
-  background: var(--bg-elevated);
-}
-
-.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-header {
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .embedded-agent-assistant-preview__subtitle,
@@ -95,13 +82,6 @@
   height: 1.25rem;
   padding: 0;
   color: var(--text-tertiary);
-}
-
-.embedded-agent-assistant-preview
-  .agent-flow-editor__debug-composer-send.ant-btn {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
 }
 
 .embedded-agent-assistant-preview__runtime-preferences
@@ -480,5 +460,6 @@
 }
 
 .embedded-agent-assistant-window-shell__body {
+  display: flex;
   background: inherit;
 }

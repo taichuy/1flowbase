@@ -1154,7 +1154,7 @@ describe('EmbeddedAgentAssistant', () => {
     ).not.toHaveClass('ant-menu-item-selected');
   });
 
-  test('AC-004 projects primary Assistant WebSocket events through the Preview conversation', async () => {
+  test('#2018 AC-003 keeps the configured published application when opened from another application page', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -1185,7 +1185,7 @@ describe('EmbeddedAgentAssistant', () => {
 
     render(
       <AppProviders>
-        <EmbeddedAgentAssistant />
+        <EmbeddedAgentAssistant pageKey="/applications/current-draft/orchestration" />
       </AppProviders>
     );
     fireEvent.click(

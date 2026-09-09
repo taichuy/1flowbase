@@ -1163,7 +1163,11 @@ export function EmbeddedAgentAssistantPreview({
               className="embedded-agent-assistant-preview__conversation"
               hidden={(mobile || historyFullView) && sidePanelOpen}
             >
-              <Suspense fallback={<LoadingState compact />}>
+              <Suspense
+                fallback={
+                  <LoadingState compact className="loading-state--panel" />
+                }
+              >
                 <AgentFlowDebugConsole
                   assistantMessageMainRender={renderAssistantMessageMain}
                   clearDisabled={!session.canEditCurrentConversation}

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { suspendedPreview } = vi.hoisted(() => ({
@@ -47,19 +53,38 @@ describe('EmbeddedAgentAssistant loading window', () => {
       'embedded-agent-assistant-window-shell'
     );
 
+    // #2018 AC-002: the shared panel has feedback and can close while suspended.
+    expect(
+      within(loadingWindow).getByRole('status', { name: 'thinking' })
+    ).toBeInTheDocument();
+
     expect(loadingWindow.parentElement).toBe(document.body);
     expect(
-      container.querySelector('[data-testid="embedded-agent-assistant-window-shell"]')
+      container.querySelector(
+        '[data-testid="embedded-agent-assistant-window-shell"]'
+      )
     ).toBeNull();
     await waitFor(() => {
-      expect(Number.parseFloat(loadingWindow.style.left)).toBeGreaterThanOrEqual(
-        0
-      );
+      expect(
+        Number.parseFloat(loadingWindow.style.left)
+      ).toBeGreaterThanOrEqual(0);
       expect(Number.parseFloat(loadingWindow.style.top)).toBeGreaterThanOrEqual(
         0
       );
       expect(Number.parseFloat(loadingWindow.style.width)).toBeGreaterThan(0);
       expect(Number.parseFloat(loadingWindow.style.height)).toBeGreaterThan(0);
     });
+    fireEvent.click(
+      within(loadingWindow).getByRole('button', {
+        name: i18nText('agentFlow', 'auto.close', {
+          value1: i18nText('appShell', 'auto.assistant')
+        })
+      })
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('embedded-agent-assistant-window-shell')
+      ).not.toBeInTheDocument()
+    );
   });
 });

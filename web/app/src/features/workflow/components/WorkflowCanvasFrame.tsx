@@ -23,6 +23,7 @@ import type {
 import '../register';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   applicationDetailQueryKey,
@@ -469,7 +470,14 @@ export function WorkflowCanvasFrame({
               role="separator"
               tabIndex={0}
             />
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <NodeDetailPanel
                 activeTab={nodeDetailTab}
                 applicationId={applicationId}
@@ -489,7 +497,14 @@ export function WorkflowCanvasFrame({
             width={ENVIRONMENT_DOCK_WIDTH}
             onResizeStart={() => undefined}
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <ApplicationEnvironmentVariablesPanel
                 loading={environmentVariablesMutation.isPending}
                 variables={environmentVariables}
@@ -511,7 +526,14 @@ export function WorkflowCanvasFrame({
             width={HISTORY_DOCK_WIDTH}
             onResizeStart={() => undefined}
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <VersionHistoryPanel
                 versions={versions}
                 userProtectionLimit={userProtectionLimit}

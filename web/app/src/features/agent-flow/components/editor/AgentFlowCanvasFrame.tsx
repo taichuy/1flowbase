@@ -77,6 +77,7 @@ import { AgentFlowSideDock } from './AgentFlowSideDock';
 import { ApplicationEnvironmentVariablesPanel } from './ApplicationEnvironmentVariablesPanel';
 import { ConversationVariablesPanel } from './ConversationVariablesPanel';
 import { SystemVariablesPanel } from './SystemVariablesPanel';
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import { i18nText } from '../../../../shared/i18n/text';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import {
@@ -1057,7 +1058,14 @@ export function AgentFlowCanvasFrame({
               role="separator"
               tabIndex={0}
             />
-            <DemandIsland>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <NodeDetailPanel
                 activeTab={nodeDetailTab}
                 onTabChange={setNodeDetailTab}
@@ -1075,7 +1083,7 @@ export function AgentFlowCanvasFrame({
                 previewActionsDisabled={nodePreviewMutation.isPending}
                 runLoading={nodePreviewAction === 'run'}
               />
-            </DemandIsland>
+            </Suspense>
           </div>
         ) : null}
         {variableCacheOpen ? (
@@ -1115,7 +1123,14 @@ export function AgentFlowCanvasFrame({
             width={boundedConversationLogWidth}
             onResizeStart={handleConversationLogResizeStart}
           >
-            <DemandIsland>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <ConversationLogPanel
                 message={conversationLogMessage}
                 onClose={() => setConversationLogMessageId(null)}
@@ -1126,7 +1141,7 @@ export function AgentFlowCanvasFrame({
                   fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
                 }
               />
-            </DemandIsland>
+            </Suspense>
           </AgentFlowSideDock>
         ) : null}
         {debugConsoleOpen ? (
@@ -1138,7 +1153,14 @@ export function AgentFlowCanvasFrame({
             width={boundedDebugConsoleWidth}
             onResizeStart={handleDebugConsoleResizeStart}
           >
-            <DemandIsland>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <AgentFlowDebugConsole
                 messages={debugSession.messages}
                 runContext={debugSession.runContext}
@@ -1166,7 +1188,7 @@ export function AgentFlowCanvasFrame({
                   void debugSession.submitPrompt(prompt);
                 }}
               />
-            </DemandIsland>
+            </Suspense>
           </AgentFlowSideDock>
         ) : null}
         {historyOpen ? (
@@ -1181,7 +1203,14 @@ export function AgentFlowCanvasFrame({
             width={boundedHistoryDockWidth}
             onResizeStart={handleHistoryDockResizeStart}
           >
-            <DemandIsland>
+            <Suspense
+              fallback={
+                <LoadingState
+                  compact
+                  className="loading-state--panel"
+                />
+              }
+            >
               <VersionHistoryPanel
                 versions={versions}
                 userProtectionLimit={userProtectionLimit}
@@ -1197,7 +1226,7 @@ export function AgentFlowCanvasFrame({
                   versionMetadataMutation.mutateAsync({ versionId, input })
                 }
               />
-            </DemandIsland>
+            </Suspense>
           </AgentFlowSideDock>
         ) : null}
       </div>
