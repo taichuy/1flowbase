@@ -33,6 +33,7 @@ impl ManagedInterfaceFactory {
     }
     pub(crate) fn bind_registry(&self, registry: &CompiledInterfaceRegistry) -> anyhow::Result<()> {
         let mut contracts = BTreeMap::new();
+        let mut schema_failures = Vec::new();
         for entry in registry.managed_contracts() {
             let contract = ManagedProjectionContract {
                 contract_id: entry.contract.contract_id().into(),
@@ -42,9 +43,24 @@ impl ManagedInterfaceFactory {
                     .clone()
                     .ok_or_else(|| anyhow::anyhow!("compiled managed schema missing"))?,
             };
-            contract.compile()?;
+            if let Err(error) = contract.compile() {
+                schema_failures.push(format!(
+                    "contract_id={} version={} rust_type={} schema_bytes={}: {}",
+                    contract.contract_id,
+                    contract.contract_version,
+                    entry.rust_type,
+                    serde_json::to_vec(&contract.schema)?.len(),
+                    error,
+                ));
+            }
             contracts.insert(entry.contract.clone(), contract);
         }
+        anyhow::ensure!(
+            schema_failures.is_empty(),
+            "managed schema compilation rejected {} contract(s):\n{}",
+            schema_failures.len(),
+            schema_failures.join("\n")
+        );
         for definition in registry.definitions() {
             for identity in [
                 Some(definition.input_contract()),

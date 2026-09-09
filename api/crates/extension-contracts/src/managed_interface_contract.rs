@@ -16,7 +16,7 @@ pub const MANAGED_INTERFACE_MAX_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("managed interface contract violation: {0}")]
-pub struct ManagedInterfaceContractError(pub &'static str);
+pub struct ManagedInterfaceContractError(pub String);
 
 type ContractResult<T = ()> = Result<T, ManagedInterfaceContractError>;
 
@@ -33,20 +33,26 @@ pub struct ManagedProjectionContract {
 impl ManagedProjectionContract {
     pub fn compile(&self) -> ContractResult<CompiledManagedProjection> {
         if !identity(&self.contract_id) || !identity(&self.contract_version) {
-            return Err(ManagedInterfaceContractError("invalid projection identity"));
+            return Err(ManagedInterfaceContractError(
+                "invalid projection identity".into(),
+            ));
         }
-        if serde_json::to_vec(&self.schema)
-            .map_err(|_| invalid_schema())?
-            .len()
-            > MANAGED_INTERFACE_MAX_SCHEMA_BYTES
-        {
-            return Err(invalid_schema());
+        let schema_bytes = serde_json::to_vec(&self.schema)
+            .map_err(|_| schema_violation("$", "serialization failed"))?
+            .len();
+        if schema_bytes > MANAGED_INTERFACE_MAX_SCHEMA_BYTES {
+            return Err(schema_violation(
+                "$",
+                &format!(
+                "serialized_bytes actual={schema_bytes} limit={MANAGED_INTERFACE_MAX_SCHEMA_BYTES}"
+            ),
+            ));
         }
-        validate_schema_shape(&self.schema, 0)?;
+        validate_schema_shape(&self.schema, 0, "$")?;
         let validator = jsonschema::options()
             .with_draft(jsonschema::Draft::Draft202012)
             .build(&self.schema)
-            .map_err(|_| invalid_schema())?;
+            .map_err(|_| schema_violation("$", "draft202012 compilation failed"))?;
         let mut canonical = self.schema.clone();
         canonical.sort_all_objects();
         let fingerprint = format!(
@@ -170,7 +176,7 @@ impl ManagedInterfaceHostFrame {
                 > MANAGED_INTERFACE_MAX_FRAME_BYTES
         {
             return Err(ManagedInterfaceContractError(
-                "invalid host context or frame budget",
+                "invalid host context or frame budget".into(),
             ));
         }
         self.input.validate()
@@ -193,7 +199,9 @@ impl ManagedInterfaceWorkerFrame {
             || self.call_id != request.call_id
             || self.phase != request.input.phase()
         {
-            return Err(ManagedInterfaceContractError("uncorrelated response"));
+            return Err(ManagedInterfaceContractError(
+                "uncorrelated response".into(),
+            ));
         }
         let veto_phase = matches!(self.phase, HookPhase::Authorization | HookPhase::Admission);
         let permitted = match &self.outcome {
@@ -206,7 +214,7 @@ impl ManagedInterfaceWorkerFrame {
         };
         if !permitted {
             return Err(ManagedInterfaceContractError(
-                "outcome is not permitted for this phase",
+                "outcome is not permitted for this phase".into(),
             ));
         }
         Ok(())
@@ -214,10 +222,10 @@ impl ManagedInterfaceWorkerFrame {
 }
 
 fn invalid_schema() -> ManagedInterfaceContractError {
-    ManagedInterfaceContractError("schema must be closed and bounded")
+    ManagedInterfaceContractError("schema must be closed and bounded".into())
 }
 fn invalid_value() -> ManagedInterfaceContractError {
-    ManagedInterfaceContractError("projection violates schema or resource budget")
+    ManagedInterfaceContractError("projection violates schema or resource budget".into())
 }
 fn identity(s: &str) -> bool {
     !s.trim().is_empty() && s.len() <= 512
@@ -243,11 +251,20 @@ fn bounded_value(value: &Value, depth: usize) -> bool {
         _ => true,
     }
 }
-fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
+fn schema_violation(path: &str, rule: &str) -> ManagedInterfaceContractError {
+    ManagedInterfaceContractError(format!("schema path={path}: {rule}"))
+}
+
+fn validate_schema_shape(schema: &Value, depth: usize, path: &str) -> ContractResult {
     if depth > MANAGED_INTERFACE_MAX_DEPTH {
-        return Err(invalid_schema());
+        return Err(schema_violation(
+            path,
+            &format!("depth actual={depth} limit={MANAGED_INTERFACE_MAX_DEPTH}"),
+        ));
     }
-    let object = schema.as_object().ok_or_else(invalid_schema)?;
+    let object = schema
+        .as_object()
+        .ok_or_else(|| schema_violation(path, "schema node must be an object"))?;
     const KEYS: &[&str] = &[
         "type",
         "properties",
@@ -265,17 +282,26 @@ fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
         "minimum",
         "maximum",
     ];
-    if object.keys().any(|k| !KEYS.contains(&k.as_str())) {
-        return Err(invalid_schema());
+    if let Some(key) = object.keys().find(|k| !KEYS.contains(&k.as_str())) {
+        return Err(schema_violation(path, &format!("unknown keyword={key}")));
     }
     for key in ["oneOf", "anyOf"] {
         if let Some(branches) = object.get(key) {
-            let branches = branches.as_array().ok_or_else(invalid_schema)?;
+            let branches = branches
+                .as_array()
+                .ok_or_else(|| schema_violation(path, "union branches must be an array"))?;
             if object.len() != 1 || branches.is_empty() || branches.len() > 128 {
-                return Err(invalid_schema());
+                return Err(schema_violation(
+                    path,
+                    &format!(
+                        "union keys actual={} limit=1; branches actual={} range=1..128",
+                        object.len(),
+                        branches.len()
+                    ),
+                ));
             }
-            for branch in branches {
-                validate_schema_shape(branch, depth + 1)?;
+            for (index, branch) in branches.iter().enumerate() {
+                validate_schema_shape(branch, depth + 1, &format!("{path}/{key}/{index}"))?;
             }
             return Ok(());
         }
@@ -283,7 +309,7 @@ fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
     let kind = object
         .get("type")
         .and_then(Value::as_str)
-        .ok_or_else(invalid_schema)?;
+        .ok_or_else(|| schema_violation(path, "type must be a string"))?;
     let applicable: &[&str] = match kind {
         "object" => &[
             "type",
@@ -297,53 +323,68 @@ fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
         "string" => &["type", "maxLength", "minLength", "enum", "const"],
         "integer" | "number" => &["type", "minimum", "maximum", "enum", "const"],
         "null" | "boolean" => &["type", "enum", "const"],
-        _ => return Err(invalid_schema()),
+        _ => return Err(schema_violation(path, "unsupported type")),
     };
-    // JSON Schema compiles even inapplicable applicators. Do not let e.g. `items` on a
-    // string conceal a reference outside the recursively checked schema vocabulary.
-    if object.keys().any(|key| !applicable.contains(&key.as_str())) {
-        return Err(invalid_schema());
+    // Inapplicable applicators must not conceal unchecked references.
+    if let Some(key) = object
+        .keys()
+        .find(|key| !applicable.contains(&key.as_str()))
+    {
+        return Err(schema_violation(
+            path,
+            &format!("inapplicable keyword={key} type={kind}"),
+        ));
     }
     match kind {
         "object" => {
             if object.get("additionalProperties") != Some(&Value::Bool(false)) {
-                return Err(invalid_schema());
+                return Err(schema_violation(path, "additionalProperties must be false"));
             }
             let properties = object
                 .get("properties")
                 .and_then(Value::as_object)
-                .ok_or_else(invalid_schema)?;
+                .ok_or_else(|| schema_violation(path, "properties must be an object"))?;
             if properties.len() > 128 {
-                return Err(invalid_schema());
+                return Err(schema_violation(
+                    path,
+                    &format!("properties actual={} limit=128", properties.len()),
+                ));
             }
             for (name, child) in properties {
                 if name.len() > 128 {
-                    return Err(invalid_schema());
+                    return Err(schema_violation(
+                        path,
+                        &format!("property name bytes actual={} limit=128", name.len()),
+                    ));
                 }
-                validate_schema_shape(child, depth + 1)?;
+                let pointer = name.replace('~', "~0").replace('/', "~1");
+                validate_schema_shape(child, depth + 1, &format!("{path}/properties/{pointer}"))?;
             }
         }
         "array" => {
-            if !object
-                .get("maxItems")
-                .and_then(Value::as_u64)
-                .is_some_and(|n| n <= 256)
-            {
-                return Err(invalid_schema());
+            let maximum = object.get("maxItems").and_then(Value::as_u64);
+            if !maximum.is_some_and(|n| n <= 256) {
+                return Err(schema_violation(
+                    path,
+                    &format!("maxItems actual={maximum:?} limit=256 required=true"),
+                ));
             }
-            validate_schema_shape(object.get("items").ok_or_else(invalid_schema)?, depth + 1)?;
+            let items = object
+                .get("items")
+                .ok_or_else(|| schema_violation(path, "items is required"))?;
+            validate_schema_shape(items, depth + 1, &format!("{path}/items"))?;
         }
         "string" => {
-            if !object
-                .get("maxLength")
-                .and_then(Value::as_u64)
-                .is_some_and(|n| n <= 16_384)
-            {
-                return Err(invalid_schema());
+            let maximum = object.get("maxLength").and_then(Value::as_u64);
+            if !maximum.is_some_and(|n| n <= 16_384) {
+                return Err(schema_violation(
+                    path,
+                    &format!("maxLength actual={maximum:?} limit=16384 required=true"),
+                ));
             }
         }
         "null" | "boolean" | "integer" | "number" => {}
-        _ => return Err(invalid_schema()),
+        _ => return Err(schema_violation(path, "unsupported type")),
     }
     Ok(())
 }
