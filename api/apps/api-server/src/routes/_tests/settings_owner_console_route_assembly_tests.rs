@@ -108,6 +108,11 @@ fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
                 "ui_management.templates.update",
             ),
             (
+                "DELETE",
+                "/api/console/settings/ui-management/templates/:id",
+                "ui_management.templates.delete",
+            ),
+            (
                 "POST",
                 "/api/console/settings/ui-management/templates/:id/publish",
                 "ui_management.templates.publish",
@@ -116,11 +121,6 @@ fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
                 "PUT",
                 "/api/console/settings/ui-management/templates/:id/default",
                 "ui_management.templates.default.set",
-            ),
-            (
-                "PUT",
-                "/api/console/settings/ui-management/templates/:id/archive",
-                "ui_management.templates.archive",
             ),
             (
                 "GET",

@@ -159,7 +159,7 @@ pub trait UiComponentCatalogRepository: Send + Sync {
 
 #[async_trait]
 pub trait UiManagementRepository: Send + Sync {
-    async fn list_ui_code_templates(&self, include_archived: bool) -> Result<Vec<UiCodeTemplate>>;
+    async fn list_ui_code_templates(&self) -> Result<Vec<UiCodeTemplate>>;
     async fn get_ui_code_template(&self, template_id: Uuid) -> Result<Option<UiCodeTemplate>>;
     async fn create_ui_code_template(
         &self,
@@ -185,12 +185,7 @@ pub trait UiManagementRepository: Send + Sync {
         provider_code: &str,
         contribution_code: &str,
     ) -> Result<()>;
-    async fn set_ui_code_template_archived(
-        &self,
-        template_id: Uuid,
-        archived: bool,
-        actor_user_id: Uuid,
-    ) -> Result<UiCodeTemplate>;
+    async fn delete_ui_code_template(&self, template_id: Uuid) -> Result<bool>;
 
     async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>>;
     async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>>;

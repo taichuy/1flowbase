@@ -218,7 +218,7 @@ async fn ac_001_ui_management_api_requires_its_list_operation_grant() {
         &["ui_management_limited"],
     )
     .await;
-    let (member_cookie, _) =
+    let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "ui-management-member", "temp-pass").await;
 
     assert_eq!(
@@ -228,6 +228,13 @@ async fn ac_001_ui_management_api_requires_its_list_operation_grant() {
 
     grant_template_list_operation(&app, &root_cookie, &root_csrf).await;
     assert_eq!(list_templates(&app, &member_cookie).await, StatusCode::OK);
+    // A list-only grant must never authorize permanent deletion.
+    let denied = app.clone().oneshot(Request::builder()
+        .method("DELETE")
+        .uri("/api/console/settings/ui-management/templates/00000000-0000-0000-0000-000000000001")
+        .header("cookie", &member_cookie).header("x-csrf-token", &member_csrf)
+        .body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -321,6 +328,93 @@ async fn template_creation_uses_backend_code_block_default() {
         .fetch_one(&pool)
         .await
         .unwrap();
+        for (method, suffix, body) in [
+            ("POST", "publish", Some(json!({"revision": 1}))),
+            ("PUT", "default", None),
+        ] {
+            let request = Request::builder()
+                .method(method)
+                .uri(format!(
+                    "/api/console/settings/ui-management/templates/{id}/{suffix}"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(body.map_or_else(Body::empty, |value| Body::from(value.to_string())))
+                .unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert!(response.status().is_success());
+        }
+        // AC-DELETE-001: authentication/CSRF and durable deletion use the real route.
+        let uri = format!("/api/console/settings/ui-management/templates/{id}");
+        for (credentials, token, expected) in [
+            (None, None, StatusCode::UNAUTHORIZED),
+            (Some(cookie.as_str()), None, StatusCode::UNAUTHORIZED),
+            (
+                Some(cookie.as_str()),
+                Some(csrf.as_str()),
+                StatusCode::NO_CONTENT,
+            ),
+            (
+                Some(cookie.as_str()),
+                Some(csrf.as_str()),
+                StatusCode::NOT_FOUND,
+            ),
+        ] {
+            let mut request = Request::builder().method("DELETE").uri(&uri);
+            if let Some(value) = credentials {
+                request = request.header("cookie", value);
+            }
+            if let Some(value) = token {
+                request = request.header("x-csrf-token", value);
+            }
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+        }
+        for (table, column) in [
+            ("ui_code_templates", "id"),
+            ("ui_code_template_revisions", "template_id"),
+            ("ui_code_template_defaults", "template_id"),
+        ] {
+            let count: i64 =
+                sqlx::query_scalar(&format!("select count(*) from {table} where {column} = $1"))
+                    .bind(Uuid::parse_str(id).unwrap())
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(count, 0, "deleted template must leave no rows in {table}");
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/console/settings/ui-management/templates")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let listed: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert!(listed["data"]["managed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["id"] != id));
+        assert!(listed["data"]["official"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(
+                |row| row["provider_code"] == created["data"]["provider_code"]
+                    && row["is_default"] == true
+            ));
         assert_eq!(stored.0, created["data"]["provider_code"].as_str().unwrap());
         assert_eq!(
             stored.1,

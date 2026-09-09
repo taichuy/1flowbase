@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
   createConsoleUiComponent,
+  deleteConsoleUiTemplate,
   downloadConsoleUiCatalogComponent,
   deleteConsoleUiComponent,
   fetchConsoleUiComponent,
@@ -23,8 +24,19 @@ describe('console UI management client', () => {
   );
 
   test('uses the distinct template management URL', async () => {
-    await expect(fetchConsoleUiTemplates(true)).resolves.toMatchObject({
-      path: '/api/console/settings/ui-management/templates?include_archived=true'
+    await expect(fetchConsoleUiTemplates()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/templates'
+    });
+  });
+
+  test('permanently deletes a template by ID with CSRF and no archive body', async () => {
+    await expect(
+      deleteConsoleUiTemplate('template-1', 'csrf')
+    ).resolves.toEqual({
+      path: '/api/console/settings/ui-management/templates/template-1',
+      method: 'DELETE',
+      csrfToken: 'csrf',
+      baseUrl: undefined
     });
   });
 

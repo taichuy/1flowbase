@@ -1,3 +1,4 @@
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import {
   fireEvent,
   render,
@@ -5,7 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -19,6 +20,9 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
     select({ location: { pathname: router.pathname } })
 }));
 
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     beforeMount,
@@ -82,7 +86,7 @@ const uiManagementApi = vi.hoisted(() => ({
   searchSettingsUiCatalog: vi.fn(),
   downloadSettingsUiCatalogComponent: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
-  archiveSettingsUiTemplate: vi.fn(),
+  deleteSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
   publishSettingsUiTemplate: vi.fn(),
   resetSettingsUiTemplateDefault: vi.fn(),
@@ -127,6 +131,9 @@ const custom = {
 };
 
 describe('UiManagementPanel component records', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');
     useAuthStore.setState({ csrfToken: 'csrf' });
@@ -246,7 +253,7 @@ describe('UiManagementPanel component records', () => {
     fireEvent.change(screen.getByLabelText('记录版本'), {
       target: { value: '1.0.0' }
     });
-    const editors = screen.getAllByTestId('block-source-editor');
+    const editors = await screen.findAllByTestId('block-source-editor');
     fireEvent.change(screen.getByRole('textbox', { name: '导入代码' }), {
       target: { value: 'opaque import {{{' }
     });

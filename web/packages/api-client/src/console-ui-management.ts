@@ -17,7 +17,6 @@ export interface ConsoleUiManagedTemplate {
   latest_revision: ConsoleUiTemplateRevision;
   published_revision: ConsoleUiTemplateRevision | null;
   is_default: boolean;
-  is_archived: boolean;
 }
 export interface ConsoleUiOfficialTemplate {
   provider_code: string;
@@ -153,12 +152,9 @@ export interface ConsoleUiCatalogUpdateStatus {
 }
 
 const root = '/api/console/settings/ui-management';
-export const fetchConsoleUiTemplates = (
-  includeArchived = false,
-  baseUrl?: string
-) =>
+export const fetchConsoleUiTemplates = (baseUrl?: string) =>
   apiFetch<ConsoleUiTemplateList>({
-    path: `${root}/templates?include_archived=${includeArchived}`,
+    path: `${root}/templates`,
     baseUrl
   });
 export const createConsoleUiTemplate = (
@@ -225,16 +221,14 @@ export const resetConsoleUiTemplateDefault = (
     csrfToken,
     baseUrl
   });
-export const archiveConsoleUiTemplate = (
+export const deleteConsoleUiTemplate = (
   id: string,
-  archived: boolean,
   csrfToken: string,
   baseUrl?: string
 ) =>
-  apiFetch<ConsoleUiManagedTemplate>({
-    path: `${root}/templates/${id}/archive`,
-    method: 'PUT',
-    body: { archived },
+  apiFetch<void>({
+    path: `${root}/templates/${id}`,
+    method: 'DELETE',
     csrfToken,
     baseUrl
   });

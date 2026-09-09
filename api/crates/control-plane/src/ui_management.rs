@@ -76,15 +76,12 @@ where
         }
     }
 
-    pub async fn list_templates(&self, include_archived: bool) -> Result<UiCodeTemplateList> {
+    pub async fn list_templates(&self) -> Result<UiCodeTemplateList> {
         let blocks = self
             .repository
             .list_system_frontend_blocks(&self.node_id)
             .await?;
-        let managed = self
-            .repository
-            .list_ui_code_templates(include_archived)
-            .await?;
+        let managed = self.repository.list_ui_code_templates().await?;
         let mut official = blocks
             .into_iter()
             .filter_map(|block| {
@@ -136,7 +133,7 @@ where
             .repository
             .list_workspace_frontend_blocks(&self.node_id, workspace_id)
             .await?;
-        let managed = self.repository.list_ui_code_templates(false).await?;
+        let managed = self.repository.list_ui_code_templates().await?;
         let mut templates = Vec::new();
         for block in blocks {
             let (Some(source), Some(language), Some(version)) = (
@@ -272,15 +269,12 @@ where
             .await
     }
 
-    pub async fn set_template_archived(
-        &self,
-        template_id: Uuid,
-        archived: bool,
-        actor_user_id: Uuid,
-    ) -> Result<UiCodeTemplate> {
-        self.repository
-            .set_ui_code_template_archived(template_id, archived, actor_user_id)
-            .await
+    pub async fn delete_template(&self, template_id: Uuid) -> Result<()> {
+        if self.repository.delete_ui_code_template(template_id).await? {
+            Ok(())
+        } else {
+            Err(ControlPlaneError::NotFound("ui_code_template").into())
+        }
     }
 
     pub async fn list_component_records(&self) -> Result<Vec<UiComponentRecord>> {

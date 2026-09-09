@@ -285,3 +285,50 @@ async fn wp_d3_rejects_mixed_identity_before_authoritative_replace() {
     assert!(error.to_string().contains("source/group"));
     assert_eq!(store.list_ui_component_records().await.unwrap(), before);
 }
+
+#[tokio::test]
+async fn template_archive_removal_migration_preserves_content_and_restores_visibility() {
+    let store = store().await;
+    let actor = Uuid::now_v7();
+    let template = store
+        .create_ui_code_template(&CreateUiCodeTemplateInput {
+            provider_code: "1flowbase".into(),
+            contribution_code: "frontstage.js-ui-block".into(),
+            name: "Previously archived".into(),
+            source: "export default function Block() { return null }".into(),
+            language: UiCodeTemplateLanguage::Tsx,
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+    // Reconstruct the old archive column/index around a real persisted template.
+    sqlx::raw_sql("drop index ui_code_templates_name_idx; alter table ui_code_templates add column archived_at timestamptz; create unique index ui_code_templates_active_name_idx on ui_code_templates(scope_id,provider_code,contribution_code,lower(name)) where archived_at is null;")
+        .execute(store.pool()).await.unwrap();
+    sqlx::query("update ui_code_templates set archived_at = now() where id = $1")
+        .bind(template.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../migrations/20260909170000_replace_ui_template_archive_with_delete.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let restored = store.list_ui_code_templates().await.unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(restored[0].id, template.id);
+    assert_eq!(restored[0].name, template.name);
+    assert_eq!(
+        restored[0].latest_revision.source,
+        template.latest_revision.source
+    );
+    assert!(store.delete_ui_code_template(template.id).await.unwrap());
+    assert!(store
+        .get_ui_code_template(template.id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store.list_ui_code_templates().await.unwrap().is_empty());
+    assert!(!store.delete_ui_code_template(template.id).await.unwrap());
+}

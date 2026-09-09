@@ -376,7 +376,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "ui_management.catalog.update_status",
         "system.ui-management",
     ),
-    settings("ui_management.templates.archive", "system.ui-management"),
+    settings("ui_management.templates.delete", "system.ui-management"),
     settings("ui_management.templates.create", "system.ui-management"),
     settings(
         "ui_management.templates.default.reset",

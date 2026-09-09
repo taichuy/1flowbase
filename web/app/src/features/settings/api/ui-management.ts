@@ -1,5 +1,5 @@
 export {
-  archiveConsoleUiTemplate as archiveSettingsUiTemplate,
+  deleteConsoleUiTemplate as deleteSettingsUiTemplate,
   createConsoleUiComponent as createSettingsUiComponent,
   createConsoleUiTemplate as createSettingsUiTemplate,
   deleteConsoleUiComponent as deleteSettingsUiComponent,

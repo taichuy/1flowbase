@@ -14,13 +14,12 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::ui_management::{
-    ArchiveTemplateBody, CatalogComponentResponse, CatalogGroupUpdateResponse,
-    CatalogIndexResponse, CatalogPageResponse, CatalogSearchEntryResponse, CatalogSearchQuery,
-    CatalogSearchResponse, CatalogSyncResponse, CatalogUpdateStatusResponse,
-    ComponentRecordResponse, ComponentUpstreamBody, CreateComponentBody, ListTemplatesQuery,
-    ManagedTemplateResponse, OfficialTemplateResponse, PublishTemplateBody,
-    ResetDefaultTemplateBody, TemplateBody, TemplateListResponse, TemplateRevisionResponse,
-    UpdateComponentBody, UpdateTemplateBody,
+    CatalogComponentResponse, CatalogGroupUpdateResponse, CatalogIndexResponse,
+    CatalogPageResponse, CatalogSearchEntryResponse, CatalogSearchQuery, CatalogSearchResponse,
+    CatalogSyncResponse, CatalogUpdateStatusResponse, ComponentRecordResponse,
+    ComponentUpstreamBody, CreateComponentBody, ManagedTemplateResponse, OfficialTemplateResponse,
+    PublishTemplateBody, ResetDefaultTemplateBody, TemplateBody, TemplateListResponse,
+    TemplateRevisionResponse, UpdateComponentBody, UpdateTemplateBody,
 };
 use crate::{
     error_response::ApiError,
@@ -32,7 +31,7 @@ use crate::{
 };
 
 pub(crate) enum UiManagementInput {
-    ListTemplates(ListTemplatesQuery),
+    ListTemplates,
     CreateTemplate(TemplateBody),
     UpdateTemplate {
         id: String,
@@ -46,9 +45,8 @@ pub(crate) enum UiManagementInput {
         id: String,
     },
     ResetDefaultTemplate(ResetDefaultTemplateBody),
-    ArchiveTemplate {
+    DeleteTemplate {
         id: String,
-        body: ArchiveTemplateBody,
     },
     ListComponents,
     GetComponent {
@@ -128,11 +126,8 @@ impl UiManagementAdapter {
     ) -> Result<UiManagementOutput, ApiError> {
         let actor_user_id = principal.actor().user_id;
         match input {
-            UiManagementInput::ListTemplates(query) => {
-                let templates = self
-                    .management_service()
-                    .list_templates(query.include_archived)
-                    .await?;
+            UiManagementInput::ListTemplates => {
+                let templates = self.management_service().list_templates().await?;
                 Ok(UiManagementOutput::Templates(TemplateListResponse {
                     official: templates
                         .official
@@ -193,16 +188,11 @@ impl UiManagementAdapter {
                     .await?;
                 Ok(UiManagementOutput::NoContent)
             }
-            UiManagementInput::ArchiveTemplate { id, body } => {
-                Ok(UiManagementOutput::Template(template_response(
-                    self.management_service()
-                        .set_template_archived(
-                            parse_template_id(&id)?,
-                            body.archived,
-                            actor_user_id,
-                        )
-                        .await?,
-                )))
+            UiManagementInput::DeleteTemplate { id } => {
+                self.management_service()
+                    .delete_template(parse_template_id(&id)?)
+                    .await?;
+                Ok(UiManagementOutput::NoContent)
             }
             UiManagementInput::ListComponents => Ok(UiManagementOutput::Components(
                 self.management_service()
@@ -406,7 +396,6 @@ fn template_response(value: UiCodeTemplate) -> ManagedTemplateResponse {
                 is_published: true,
             }),
         is_default: value.is_default,
-        is_archived: value.archived_at.is_some(),
     }
 }
 
@@ -549,10 +538,10 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "ui_management.templates.archive",
-        binding_id: "http.console.ui-management.templates.archive.put.v1",
-        method: "PUT",
-        path: "/api/console/settings/ui-management/templates/:id/archive",
+        interface_id: "ui_management.templates.delete",
+        binding_id: "http.console.ui-management.templates.delete.delete.v1",
+        method: "DELETE",
+        path: "/api/console/settings/ui-management/templates/:id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

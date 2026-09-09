@@ -399,6 +399,16 @@
         "authorization_operation_id": "ui_management.templates.default.reset"
       },
       {
+        "interface_id": "ui_management.templates.delete",
+        "route": {
+          "method": "DELETE",
+          "path": "/api/console/settings/ui-management/templates/:id"
+        },
+        "summary": "Delete UI management templates",
+        "description": "Delete UI management templates in the system backend.",
+        "authorization_operation_id": "ui_management.templates.delete"
+      },
+      {
         "interface_id": "list_applications",
         "route": {
           "method": "GET",
@@ -4327,16 +4337,6 @@
         "summary": "Update UI management templates",
         "description": "Update UI management templates in the system backend.",
         "authorization_operation_id": "ui_management.templates.update"
-      },
-      {
-        "interface_id": "ui_management.templates.archive",
-        "route": {
-          "method": "PUT",
-          "path": "/api/console/settings/ui-management/templates/:id/archive"
-        },
-        "summary": "UI management templates archive",
-        "description": "UI management templates archive in the system backend.",
-        "authorization_operation_id": "ui_management.templates.archive"
       },
       {
         "interface_id": "ui_management.templates.default.set",
@@ -13428,29 +13428,6 @@
         }
       },
       {
-        "operation_id": "ui_management.templates.archive",
-        "authorization_profile_id": "ui_management.templates.archive",
-        "owner": {
-          "kind": "core",
-          "owner_id": "boot-core",
-          "version": "0.4.1"
-        },
-        "lifecycle": "active",
-        "policy_group": {
-          "settings_feature": "system.ui-management"
-        },
-        "order": 179,
-        "routes": [
-          {
-            "method": "PUT",
-            "path": "/api/console/settings/ui-management/templates/:id/archive"
-          }
-        ],
-        "authorization": {
-          "kind": "simple"
-        }
-      },
-      {
         "operation_id": "ui_management.templates.create",
         "authorization_profile_id": "ui_management.templates.create",
         "owner": {
@@ -13513,6 +13490,29 @@
           {
             "method": "PUT",
             "path": "/api/console/settings/ui-management/templates/:id/default"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.delete",
+        "authorization_profile_id": "ui_management.templates.delete",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.4.1"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 185,
+        "routes": [
+          {
+            "method": "DELETE",
+            "path": "/api/console/settings/ui-management/templates/:id"
           }
         ],
         "authorization": {
@@ -18012,6 +18012,16 @@
     },
     {
       "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/ui-management/templates/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.delete"
+      }
+    },
+    {
+      "route": {
         "method": "POST",
         "path": "/api/console/settings/ui-management/templates/:id/publish"
       },
@@ -18028,16 +18038,6 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "ui_management.templates.default.set"
-      }
-    },
-    {
-      "route": {
-        "method": "PUT",
-        "path": "/api/console/settings/ui-management/templates/:id/archive"
-      },
-      "ownership": {
-        "kind": "console_operation",
-        "operation_id": "ui_management.templates.archive"
       }
     },
     {

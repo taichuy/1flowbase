@@ -226,6 +226,12 @@
       "Reset UI management templates default"
     ],
     [
+      "ui_management.templates.delete",
+      "DELETE",
+      "/api/console/settings/ui-management/templates/:id",
+      "Delete UI management templates"
+    ],
+    [
       "list_applications",
       "GET",
       "/api/console/applications",
@@ -2168,12 +2174,6 @@
       "PUT",
       "/api/console/settings/ui-management/templates/:id",
       "Update UI management templates"
-    ],
-    [
-      "ui_management.templates.archive",
-      "PUT",
-      "/api/console/settings/ui-management/templates/:id/archive",
-      "UI management templates archive"
     ],
     [
       "ui_management.templates.default.set",

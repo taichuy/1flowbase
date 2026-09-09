@@ -57,7 +57,6 @@ pub struct UiCodeTemplate {
     pub latest_revision: UiCodeTemplateRevision,
     pub published_revision: Option<UiCodeTemplateRevision>,
     pub is_default: bool,
-    pub archived_at: Option<OffsetDateTime>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

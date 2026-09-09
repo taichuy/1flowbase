@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
-  archiveSettingsUiTemplate,
+  deleteSettingsUiTemplate,
   createSettingsUiTemplate,
   fetchSettingsUiTemplates,
   publishSettingsUiTemplate,
@@ -36,7 +36,6 @@ type OfficialRow = SettingsUiOfficialTemplate & {
   name: string;
   revision: string;
   status: 'published';
-  is_archived: false;
 };
 
 type ManagedRow = SettingsUiManagedTemplate & {
@@ -55,17 +54,16 @@ function requireToken(token: string | null): string {
 
 export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
   const { t } = useTranslation('settingsUiManagement');
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id ?? null
   );
   const queryClient = useQueryClient();
   const [studio, setStudio] = useState<StudioSession | null>(null);
-  const [includeArchived, setIncludeArchived] = useState(false);
   const query = useQuery({
-    queryKey: [...settingsUiTemplatesQueryKey, includeArchived],
-    queryFn: () => fetchSettingsUiTemplates(includeArchived)
+    queryKey: settingsUiTemplatesQueryKey,
+    queryFn: () => fetchSettingsUiTemplates()
   });
   const save = useMutation({
     mutationFn: async (value: SettingsUiTemplateInput) => {
@@ -96,8 +94,17 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
   });
   const action = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: settingsUiTemplatesQueryKey }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: settingsUiTemplatesQueryKey
+        }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === 'frontstage' && queryKey[2] === 'ui-templates'
+        })
+      ]);
+    },
     onError: (error) =>
       void message.error(
         error instanceof Error ? error.message : t('template_action_failed')
@@ -112,8 +119,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
         ...row,
         name: row.title,
         revision: row.version,
-        status: 'published' as const,
-        is_archived: false as const
+        status: 'published' as const
       })) ?? []),
       ...(query.data?.managed.map((row) => ({
         key: row.id,
@@ -182,9 +188,6 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
           >
             {t('new_template')}
           </Button>
-          <Button onClick={() => setIncludeArchived((value) => !value)}>
-            {includeArchived ? t('hide_archived') : t('show_archived')}
-          </Button>
         </Space>
       }
     >
@@ -216,7 +219,6 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                   {t(row.status)}
                 </Tag>
                 {row.is_default ? <Tag color="blue">{t('default')}</Tag> : null}
-                {row.is_archived ? <Tag>{t('archived')}</Tag> : null}
               </Space>
             )
           },
@@ -235,7 +237,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                 ) : (
                   <Button
                     size="small"
-                    disabled={!canManage || row.is_archived}
+                    disabled={!canManage}
                     onClick={() => openManaged(row, 'edit')}
                   >
                     {t('edit')}
@@ -243,7 +245,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                 )}
                 <Button
                   size="small"
-                  disabled={!canManage || row.is_archived}
+                  disabled={!canManage}
                   onClick={() =>
                     row.kind === 'official'
                       ? openOfficial(row, 'copy')
@@ -255,11 +257,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                 {row.kind === 'managed' ? (
                   <Button
                     size="small"
-                    disabled={
-                      !canManage ||
-                      row.latest_revision.is_published ||
-                      row.is_archived
-                    }
+                    disabled={!canManage || row.latest_revision.is_published}
                     onClick={() =>
                       action.mutate(() =>
                         publishSettingsUiTemplate(
@@ -278,7 +276,6 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                   disabled={
                     !canManage ||
                     row.is_default ||
-                    row.is_archived ||
                     (row.kind === 'managed' && !row.published_revision)
                   }
                   onClick={() =>
@@ -303,19 +300,28 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
                 {row.kind === 'managed' ? (
                   <Button
                     size="small"
-                    danger={!row.is_archived}
-                    disabled={!canManage}
-                    onClick={() =>
-                      action.mutate(() =>
-                        archiveSettingsUiTemplate(
-                          row.id,
-                          !row.is_archived,
-                          requireToken(csrfToken)
-                        )
-                      )
-                    }
+                    danger
+                    disabled={!canManage || !csrfToken || action.isPending}
+                    onClick={async () => {
+                      await modal.confirm({
+                        title: t('delete_template_title'),
+                        content: t('delete_template_description', {
+                          name: row.name
+                        }),
+                        okText: t('delete'),
+                        cancelText: t('cancel'),
+                        okButtonProps: { danger: true },
+                        onOk: () =>
+                          action.mutateAsync(() =>
+                            deleteSettingsUiTemplate(
+                              row.id,
+                              requireToken(csrfToken)
+                            )
+                          )
+                      });
+                    }}
                   >
-                    {row.is_archived ? t('restore') : t('archive')}
+                    {t('delete')}
                   </Button>
                 ) : null}
               </Space>

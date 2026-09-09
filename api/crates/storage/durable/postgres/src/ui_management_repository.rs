@@ -55,7 +55,6 @@ fn map_template(row: sqlx::postgres::PgRow) -> Result<UiCodeTemplate> {
         },
         published_revision,
         is_default: row.get("is_default"),
-        archived_at: row.get("archived_at"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
@@ -64,7 +63,7 @@ fn map_template(row: sqlx::postgres::PgRow) -> Result<UiCodeTemplate> {
 }
 
 const TEMPLATE_SELECT: &str = r#"
-select t.id, t.scope_id, t.provider_code, t.contribution_code, t.name, t.archived_at,
+select t.id, t.scope_id, t.provider_code, t.contribution_code, t.name,
     t.created_by, t.updated_by, t.created_at, t.updated_at,
     latest.id latest_revision_id, latest.revision latest_revision, latest.source latest_source,
     latest.language latest_language, latest.is_published latest_is_published,
@@ -240,11 +239,9 @@ async fn replace_official_group_in_transaction(
 
 #[async_trait]
 impl UiManagementRepository for PgControlPlaneStore {
-    async fn list_ui_code_templates(&self, include_archived: bool) -> Result<Vec<UiCodeTemplate>> {
-        let query =
-            format!("{TEMPLATE_SELECT} where ($1 or t.archived_at is null) order by t.name, t.id");
+    async fn list_ui_code_templates(&self) -> Result<Vec<UiCodeTemplate>> {
+        let query = format!("{TEMPLATE_SELECT} order by t.name, t.id");
         sqlx::query(&query)
-            .bind(include_archived)
             .fetch_all(self.pool())
             .await?
             .into_iter()
@@ -347,7 +344,7 @@ impl UiManagementRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let row = sqlx::query("select t.provider_code, t.contribution_code from ui_code_templates t join ui_code_template_revisions r on r.template_id=t.id and r.is_published where t.id=$1 and t.archived_at is null")
+        let row = sqlx::query("select t.provider_code, t.contribution_code from ui_code_templates t join ui_code_template_revisions r on r.template_id=t.id and r.is_published where t.id=$1")
             .bind(template_id).fetch_optional(&mut *tx).await?;
         let Some(row) = row else {
             bail!("only a published active template can be default");
@@ -369,29 +366,13 @@ impl UiManagementRepository for PgControlPlaneStore {
         Ok(())
     }
 
-    async fn set_ui_code_template_archived(
-        &self,
-        template_id: Uuid,
-        archived: bool,
-        actor_user_id: Uuid,
-    ) -> Result<UiCodeTemplate> {
-        let mut tx = self.pool().begin().await?;
-        if archived {
-            sqlx::query("delete from ui_code_template_defaults where template_id=$1")
-                .bind(template_id)
-                .execute(&mut *tx)
-                .await?;
-        }
-        let changed = sqlx::query("update ui_code_templates set archived_at=case when $2 then now() else null end,updated_by=$3,updated_at=now() where id=$1")
-            .bind(template_id).bind(archived).bind(actor_user_id).execute(&mut *tx).await?;
-        if changed.rows_affected() == 0 {
-            bail!("ui code template not found");
-        }
-        let value = load_template(&mut tx, template_id)
-            .await?
-            .context("template missing")?;
-        tx.commit().await?;
-        Ok(value)
+    async fn delete_ui_code_template(&self, template_id: Uuid) -> Result<bool> {
+        // Foreign keys cascade revisions and default bindings in the same statement.
+        let result = sqlx::query("delete from ui_code_templates where id = $1")
+            .bind(template_id)
+            .execute(self.pool())
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {

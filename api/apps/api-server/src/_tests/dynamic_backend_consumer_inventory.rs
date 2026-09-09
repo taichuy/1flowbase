@@ -99,11 +99,13 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
             == "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data";
         // Login-entry metadata was renamed after the pinned 2.0.9 catalog release.
         // Keep the current backend contract; new translations require an official release,
-        // not edits to the immutable embedded artifact. These five operations stay explicit.
+        // not edits to the immutable embedded artifact. Template deletion likewise awaits
+        // an official translation release; its current backend description remains visible.
         let pending_official_catalog_release = matches!(
             interface.authorization_operation_id.as_deref(),
             Some(
-                "auth_center.login_entries.delete"
+                "ui_management.templates.delete"
+                    | "auth_center.login_entries.delete"
                     | "auth_center.login_entries.create"
                     | "auth_center.login_entries.copy"
                     | "auth_center.login_entries.order"

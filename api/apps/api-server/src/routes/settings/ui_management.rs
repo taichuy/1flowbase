@@ -36,12 +36,6 @@ async fn invoke_ui_management(
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ListTemplatesQuery {
-    #[serde(default)]
-    pub include_archived: bool,
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TemplateBody {
     #[serde(default = "default_template_provider_code")]
@@ -75,11 +69,6 @@ pub struct UpdateTemplateBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PublishTemplateBody {
     pub revision: i32,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ArchiveTemplateBody {
-    pub archived: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -139,7 +128,6 @@ pub struct ManagedTemplateResponse {
     pub latest_revision: TemplateRevisionResponse,
     pub published_revision: Option<TemplateRevisionResponse>,
     pub is_default: bool,
-    pub is_archived: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -303,7 +291,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/settings/ui-management/templates/:id",
-            console_put(update_template, owner("ui_management.templates.update")),
+            console_put(update_template, owner("ui_management.templates.update"))
+                .delete(delete_template, owner("ui_management.templates.delete")),
         )
         .route(
             "/settings/ui-management/templates/:id/publish",
@@ -315,10 +304,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 set_default_template,
                 owner("ui_management.templates.default.set"),
             ),
-        )
-        .route(
-            "/settings/ui-management/templates/:id/archive",
-            console_put(archive_template, owner("ui_management.templates.archive")),
         )
         .route(
             "/settings/ui-management/components",
@@ -367,13 +352,12 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 pub async fn list_templates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Query(query): Query<ListTemplatesQuery>,
 ) -> Result<Json<ApiSuccess<TemplateListResponse>>, ApiError> {
     let UiManagementOutput::Templates(value) = invoke_ui_management(
         state,
         headers,
         "http.console.ui-management.templates.list.get.v1",
-        UiManagementInput::ListTemplates(query),
+        UiManagementInput::ListTemplates,
         false,
     )
     .await?
@@ -482,25 +466,24 @@ pub async fn reset_default_template(
     };
     Ok(StatusCode::NO_CONTENT)
 }
-#[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}/archive", request_body = ArchiveTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
-pub async fn archive_template(
+#[utoipa::path(delete, path = "/api/console/settings/ui-management/templates/{id}", params(("id" = String, Path)), responses((status = 204), (status = 404, body = crate::error_response::ErrorBody)))]
+pub async fn delete_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Json(body): Json<ArchiveTemplateBody>,
-) -> Result<Json<ApiSuccess<ManagedTemplateResponse>>, ApiError> {
-    let UiManagementOutput::Template(value) = invoke_ui_management(
+) -> Result<StatusCode, ApiError> {
+    let UiManagementOutput::NoContent = invoke_ui_management(
         state,
         headers,
-        "http.console.ui-management.templates.archive.put.v1",
-        UiManagementInput::ArchiveTemplate { id, body },
+        "http.console.ui-management.templates.delete.delete.v1",
+        UiManagementInput::DeleteTemplate { id },
         true,
     )
     .await?
     else {
         unreachable!()
     };
-    Ok(Json(ApiSuccess::new(value)))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components", responses((status = 200, body = [ComponentRecordResponse])))]

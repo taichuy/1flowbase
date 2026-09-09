@@ -895,7 +895,7 @@ pub(crate) fn production_interface_contributions(
                 "ui_management.templates.update",
                 "ui_management.templates.publish",
                 "ui_management.templates.default.set",
-                "ui_management.templates.archive",
+                "ui_management.templates.delete",
                 "ui_management.components.list",
                 "ui_management.components.create",
                 "ui_management.components.view",

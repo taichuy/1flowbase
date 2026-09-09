@@ -1,5 +1,11 @@
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import {
   afterEach,
   beforeAll,
@@ -31,7 +37,7 @@ const uiManagementApi = vi.hoisted(() => ({
   updateSettingsUiComponent: vi.fn(),
   deleteSettingsUiComponent: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
-  archiveSettingsUiTemplate: vi.fn(),
+  deleteSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
   publishSettingsUiTemplate: vi.fn(),
   resetSettingsUiTemplateDefault: vi.fn(),
@@ -232,8 +238,7 @@ describe('UiManagementPanel code templates', () => {
             language: 'tsx',
             is_published: true
           },
-          is_default: false,
-          is_archived: false
+          is_default: false
         }
       ]
     });
@@ -267,6 +272,59 @@ describe('UiManagementPanel code templates', () => {
     vi.clearAllMocks();
   });
 
+  test('AC-DELETE-002 permanently deletes a managed template and refreshes the list', async () => {
+    renderPanel();
+    const name = await screen.findByText('自定义区块');
+    expect(
+      screen.queryByRole('button', { name: '显示归档' })
+    ).not.toBeInTheDocument();
+    const row = name.closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    const dialog = await screen.findByRole('dialog', { name: '删除模板？' });
+    expect(dialog).toHaveTextContent('全部修订');
+    expect(uiManagementApi.deleteSettingsUiTemplate).not.toHaveBeenCalled();
+    const initial = await uiManagementApi.fetchSettingsUiTemplates();
+    uiManagementApi.deleteSettingsUiTemplate.mockImplementation(async () => {
+      uiManagementApi.fetchSettingsUiTemplates.mockResolvedValue({
+        ...initial,
+        managed: []
+      });
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    await waitFor(() =>
+      expect(screen.queryByText('自定义区块')).not.toBeInTheDocument()
+    );
+    expect(uiManagementApi.deleteSettingsUiTemplate).toHaveBeenCalledWith(
+      'managed-1',
+      'csrf-token'
+    );
+    expect(screen.getByText('官方区块')).toBeInTheDocument();
+  });
+
+  test('AC-DELETE-003 cancellation and request failure retain the template', async () => {
+    uiManagementApi.deleteSettingsUiTemplate.mockRejectedValueOnce(
+      new Error('删除失败')
+    );
+    renderPanel();
+    const row = (await screen.findByText('自定义区块')).closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    let dialog = await screen.findByRole('dialog', { name: '删除模板？' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: '删除模板？' })
+      ).not.toBeInTheDocument()
+    );
+    expect(uiManagementApi.deleteSettingsUiTemplate).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole('button', { name: /删\s*除/ }));
+    dialog = await screen.findByRole('dialog', { name: '删除模板？' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    expect(await screen.findByText('删除失败')).toBeInTheDocument();
+    expect(screen.getByText('自定义区块')).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+  });
+
   test('AC-001 keeps the registered official template read-only while exposing view, copy, and default actions', async () => {
     renderPanel();
 
@@ -276,6 +334,9 @@ describe('UiManagementPanel code templates', () => {
     expect(officialRow).toHaveTextContent(/查\s*看/);
     expect(officialRow).toHaveTextContent(/复\s*制/);
     expect(officialRow).toHaveTextContent('设为默认');
+    expect(
+      within(officialRow!).queryByRole('button', { name: /删\s*除/ })
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /查\s*看/ })[0]!);
     expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
@@ -608,8 +669,7 @@ describe('UiManagementPanel code templates', () => {
             language: 'tsx',
             is_published: true
           },
-          is_default: true,
-          is_archived: false
+          is_default: true
         }
       ]
     });

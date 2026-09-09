@@ -48,7 +48,7 @@ impl FrontendBlockCatalogRepository for MemoryPersistedComponentCatalog {
 
 #[async_trait]
 impl UiManagementRepository for MemoryPersistedComponentCatalog {
-    async fn list_ui_code_templates(&self, _include_archived: bool) -> Result<Vec<UiCodeTemplate>> {
+    async fn list_ui_code_templates(&self) -> Result<Vec<UiCodeTemplate>> {
         Ok(Vec::new())
     }
 
@@ -95,12 +95,7 @@ impl UiManagementRepository for MemoryPersistedComponentCatalog {
         panic!("unused template method")
     }
 
-    async fn set_ui_code_template_archived(
-        &self,
-        _template_id: Uuid,
-        _archived: bool,
-        _actor_user_id: Uuid,
-    ) -> Result<UiCodeTemplate> {
+    async fn delete_ui_code_template(&self, _template_id: Uuid) -> Result<bool> {
         panic!("unused template method")
     }
 
