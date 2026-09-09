@@ -284,7 +284,7 @@ pub struct RuntimeManagedHookRequest {
 }
 
 /// Existing versioned Create peers remain a regression consumer; new canonical registrations
-/// always use Interface. Neither variant lets a worker supply trusted host identity.
+/// select an explicit interface protocol. No variant lets a worker supply trusted host identity.
 #[derive(Debug, Clone)]
 pub enum RuntimeManagedHookInput {
     LegacyCreate(extension_contracts::ManagedCreateHookInput),
@@ -292,6 +292,11 @@ pub enum RuntimeManagedHookInput {
         interface_id: String,
         interface_version: String,
         input: extension_contracts::ManagedInterfaceInput,
+    },
+    InterfaceReference {
+        interface_id: String,
+        interface_version: String,
+        input: extension_contracts::ManagedInterfaceReferenceInput,
     },
 }
 

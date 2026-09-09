@@ -22,6 +22,7 @@ use uuid::Uuid;
 pub(crate) struct ManagedContributionBinding {
     pub(crate) handle: ManagedExecutionHandle,
     pub(crate) descriptor: ContributionDescriptor,
+    pub(crate) interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
     installation: domain::PluginInstallationRecord,
 }
 
@@ -324,6 +325,13 @@ impl ManagedExtensionComposition {
         let mut bindings = BTreeMap::new();
         for package in packages {
             for contribution in &package.manifest.module.contributions {
+                let interface_protocol = package
+                    .manifest
+                    .execution_bindings
+                    .iter()
+                    .find(|binding| binding.contribution_id == contribution.contribution_id)
+                    .context("managed execution binding missing")?
+                    .interface_protocol;
                 let identity = ManagedExecutionIdentity::new(
                     ManagedInstallationId::new(package.installation.id.to_string())?,
                     ManagedWorkspaceId::new(workspace_id.to_string())?,
@@ -351,6 +359,7 @@ impl ManagedExtensionComposition {
                     ManagedContributionBinding {
                         handle,
                         descriptor: contribution.clone(),
+                        interface_protocol,
                         installation: package.installation.clone(),
                     },
                 );
@@ -505,12 +514,18 @@ impl ManagedExtensionComposition {
             .bindings
             .get(contribution_id)
             .context("managed hook contribution is absent from the frozen snapshot")?;
+        validate_interface_protocol(binding.interface_protocol, &input)?;
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
         let point_id = match &input {
             runtime_core::runtime_backend::RuntimeManagedHookInput::LegacyCreate(input) => {
                 input.point_id().to_owned()
             }
             runtime_core::runtime_backend::RuntimeManagedHookInput::Interface {
+                interface_id,
+                input,
+                ..
+            } => extension_contracts::managed_interface_hook_point_id(interface_id, input.phase()),
+            runtime_core::runtime_backend::RuntimeManagedHookInput::InterfaceReference {
                 interface_id,
                 input,
                 ..
@@ -1137,4 +1152,23 @@ impl ManagedExtensionComposition {
     pub(crate) fn interface_module(&self) -> Option<&ModuleDescriptor> {
         self.interface_module.get()
     }
+}
+
+/// The installation declaration, not parse success or caller preference, selects the wire.
+pub(crate) fn validate_interface_protocol(
+    selected: Option<extension_contracts::ManagedInterfaceProtocol>,
+    input: &runtime_core::runtime_backend::RuntimeManagedHookInput,
+) -> Result<()> {
+    use extension_contracts::ManagedInterfaceProtocol::*;
+    use runtime_core::runtime_backend::RuntimeManagedHookInput::*;
+    anyhow::ensure!(
+        matches!(
+            (selected, input),
+            (None, LegacyCreate(_) | Interface { .. })
+                | (Some(InterfaceV1), Interface { .. })
+                | (Some(ReferenceV2), InterfaceReference { .. })
+        ),
+        "managed hook protocol does not match frozen binding"
+    );
+    Ok(())
 }

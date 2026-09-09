@@ -160,7 +160,7 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
             contract_version: descriptor.contract.version().into(),
             schema: descriptor.schema.clone().unwrap(),
         }
-        .compile()
+        .compile_for_registration()
         .unwrap();
     }
     let mut profiles = BTreeSet::new();
@@ -618,4 +618,75 @@ async fn root_2014_ac_003_unary_stream_terminals() {
             }
         ));
     }
+}
+
+/// Root #2014 AC-015/016/018: complete candidate registry, without schema export.
+#[tokio::test]
+async fn root_2014_r3_probe_complete_contract_compilation() {
+    let total = std::time::Instant::now();
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _app = crate::app_with_state(state.clone());
+    let registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .interface_registry()
+        .unwrap()
+        .snapshot();
+    let required_large = [
+        "console-application-runtime-debug-commands-output",
+        "console-application-runtime-reads-output",
+        "console-extension-center-output",
+        "console-mcp-bundles-output",
+    ];
+    let mut seen_large = BTreeSet::new();
+    let mut count = 0;
+    let mut failures = Vec::new();
+    for descriptor in registry.managed_contracts() {
+        count += 1;
+        let contract = ManagedProjectionContract {
+            contract_id: descriptor.contract.contract_id().into(),
+            contract_version: descriptor.contract.version().into(),
+            schema: descriptor
+                .schema
+                .clone()
+                .expect("every candidate contract has its complete schema"),
+        };
+        let bytes = serde_json::to_vec(&contract.schema).unwrap().len();
+        let started = std::time::Instant::now();
+        let result = crate::extension_bus::FrozenManagedProjection::compile(contract.clone());
+        eprintln!(
+            "R3 contract={} version={} rust_type={} schema_bytes={} compile_us={} accepted={}",
+            contract.contract_id,
+            contract.contract_version,
+            descriptor.rust_type,
+            bytes,
+            started.elapsed().as_micros(),
+            result.is_ok()
+        );
+        if let Err(error) = result {
+            failures.push(format!("{}: {error}", contract.contract_id));
+        } else if required_large.contains(&contract.contract_id.as_str()) {
+            seen_large.insert(contract.contract_id);
+        }
+    }
+    let peak = std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find(|line| line.starts_with("VmHWM:"))
+                .map(str::to_owned)
+        });
+    eprintln!(
+        "R3 contracts={count} total_ms={} linux_peak={:?}",
+        total.elapsed().as_millis(),
+        peak
+    );
+    assert_eq!(count, 188);
+    assert_eq!(
+        seen_large,
+        required_large.into_iter().map(str::to_owned).collect()
+    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

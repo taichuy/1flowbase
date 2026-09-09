@@ -2,8 +2,10 @@
 use super::{ManagedExtensionComposition, ManagedWorkspaceSnapshot};
 use crate::app_state::ApiState;
 use extension_contracts::{
-    HookPhase, ManagedHookInvocation, ManagedHookOutcome, ManagedHookTerminal,
-    ManagedInterfaceInput, ManagedInterfaceView, ManagedProjectionContract,
+    CompiledManagedProjection, HookPhase, ManagedHookInvocation, ManagedHookOutcome,
+    ManagedHookTerminal, ManagedInterfaceInput, ManagedInterfaceProtocol,
+    ManagedInterfaceReferenceInput, ManagedInterfaceReferenceView, ManagedInterfaceView,
+    ManagedProjectionContract,
 };
 use interface_runtime::*;
 use plugin_framework::extension_bus::{
@@ -16,7 +18,47 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-type Contracts = BTreeMap<ContractIdentity, ManagedProjectionContract>;
+type Contracts = BTreeMap<ContractIdentity, FrozenManagedProjection>;
+
+pub(crate) struct FrozenManagedProjection {
+    contract: ManagedProjectionContract,
+    compiled: CompiledManagedProjection,
+}
+impl FrozenManagedProjection {
+    pub(crate) fn compile(contract: ManagedProjectionContract) -> anyhow::Result<Self> {
+        let compiled = contract.compile_for_registration()?;
+        Ok(Self { contract, compiled })
+    }
+    pub(crate) fn validate_projection(
+        &self,
+        projection: &ManagedInterfaceProjection,
+    ) -> Result<ManagedInterfaceReferenceView, &'static str> {
+        if projection.contract().contract_id() != self.contract.contract_id
+            || projection.contract().version() != self.contract.contract_version
+        {
+            return Err("managed-contract-not-frozen");
+        }
+        if &self.contract.schema != projection.schema() {
+            return Err("managed-schema-changed");
+        }
+        let view = ManagedInterfaceReferenceView {
+            contract: self.compiled.reference(),
+            value: projection.value().clone(),
+        };
+        self.compiled
+            .validate_reference(&view)
+            .map_err(|_| "managed-projection-invalid")?;
+        Ok(view)
+    }
+    pub(crate) fn validate_reference(
+        &self,
+        view: &ManagedInterfaceReferenceView,
+    ) -> Result<(), &'static str> {
+        self.compiled
+            .validate_reference(view)
+            .map_err(|_| "managed-projection-invalid")
+    }
+}
 
 pub(crate) struct ManagedInterfaceFactory {
     state: Weak<ApiState>,
@@ -43,17 +85,21 @@ impl ManagedInterfaceFactory {
                     .clone()
                     .ok_or_else(|| anyhow::anyhow!("compiled managed schema missing"))?,
             };
-            if let Err(error) = contract.compile() {
-                schema_failures.push(format!(
-                    "contract_id={} version={} rust_type={} schema_bytes={}: {}",
-                    contract.contract_id,
-                    contract.contract_version,
-                    entry.rust_type,
-                    serde_json::to_vec(&contract.schema)?.len(),
-                    error,
-                ));
+            match FrozenManagedProjection::compile(contract.clone()) {
+                Ok(frozen) => {
+                    contracts.insert(entry.contract.clone(), frozen);
+                }
+                Err(error) => {
+                    schema_failures.push(format!(
+                        "contract_id={} version={} rust_type={} schema_bytes={}: {}",
+                        contract.contract_id,
+                        contract.contract_version,
+                        entry.rust_type,
+                        serde_json::to_vec(&contract.schema)?.len(),
+                        error,
+                    ));
+                }
             }
-            contracts.insert(entry.contract.clone(), contract);
         }
         anyhow::ensure!(
             schema_failures.is_empty(),
@@ -232,15 +278,65 @@ impl FrozenInvocation {
             .contracts
             .get(projection.contract())
             .ok_or("managed-contract-not-frozen")?;
-        if &contract.schema != projection.schema() {
-            return Err("managed-schema-changed");
-        }
+        let reference = contract.validate_projection(projection)?;
         let view = ManagedInterfaceView {
-            contract: contract.clone(),
-            value: projection.value().clone(),
+            contract: contract.contract.clone(),
+            value: reference.value,
         };
-        view.validate().map_err(|_| "managed-projection-invalid")?;
         Ok(view)
+    }
+}
+impl FrozenInvocation {
+    fn reference_view(
+        &self,
+        view: &ManagedInterfaceView,
+    ) -> Result<ManagedInterfaceReferenceView, &'static str> {
+        let identity =
+            ContractIdentity::new(&view.contract.contract_id, &view.contract.contract_version)
+                .map_err(|_| "managed-contract-not-frozen")?;
+        let frozen = self
+            .contracts
+            .get(&identity)
+            .ok_or("managed-contract-not-frozen")?;
+        let reference = ManagedInterfaceReferenceView {
+            contract: frozen.compiled.reference(),
+            value: view.value.clone(),
+        };
+        frozen.validate_reference(&reference)?;
+        Ok(reference)
+    }
+    fn reference_input(
+        &self,
+        input: &ManagedInterfaceInput,
+    ) -> Result<ManagedInterfaceReferenceInput, &'static str> {
+        Ok(match input {
+            ManagedInterfaceInput::Authorization { input } => {
+                ManagedInterfaceReferenceInput::Authorization {
+                    input: self.reference_view(input)?,
+                }
+            }
+            ManagedInterfaceInput::Admission { input } => {
+                ManagedInterfaceReferenceInput::Admission {
+                    input: self.reference_view(input)?,
+                }
+            }
+            ManagedInterfaceInput::Before { input } => ManagedInterfaceReferenceInput::Before {
+                input: self.reference_view(input)?,
+            },
+            ManagedInterfaceInput::After { output } => ManagedInterfaceReferenceInput::After {
+                output: self.reference_view(output)?,
+            },
+            ManagedInterfaceInput::Failure { classification } => {
+                ManagedInterfaceReferenceInput::Failure {
+                    classification: classification.clone(),
+                }
+            }
+            ManagedInterfaceInput::Completion { terminal } => {
+                ManagedInterfaceReferenceInput::Completion {
+                    terminal: *terminal,
+                }
+            }
+        })
     }
 }
 impl ManagedInterfaceInvocation for FrozenInvocation {
@@ -324,6 +420,27 @@ impl ManagedInterfaceInvocation for FrozenInvocation {
                         (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
                             + 1000;
                 }
+                let binding = workspace
+                    .snapshot
+                    .bindings
+                    .get(id)
+                    .ok_or("managed-executable-missing")?;
+                let selected_input = match binding.interface_protocol {
+                    Some(ManagedInterfaceProtocol::ReferenceV2) => {
+                        RuntimeManagedHookInput::InterfaceReference {
+                            interface_id: self.interface_id.clone(),
+                            interface_version: self.interface_version.clone(),
+                            input: self.reference_input(&input)?,
+                        }
+                    }
+                    None | Some(ManagedInterfaceProtocol::InterfaceV1) => {
+                        RuntimeManagedHookInput::Interface {
+                            interface_id: self.interface_id.clone(),
+                            interface_version: self.interface_version.clone(),
+                            input: input.clone(),
+                        }
+                    }
+                };
                 let outcome = workspace
                     .composition
                     .execute_hook(
@@ -341,11 +458,7 @@ impl ManagedInterfaceInvocation for FrozenInvocation {
                                 .into(),
                             authority_revision: 0,
                         },
-                        RuntimeManagedHookInput::Interface {
-                            interface_id: self.interface_id.clone(),
-                            interface_version: self.interface_version.clone(),
-                            input: input.clone(),
-                        },
+                        selected_input,
                     )
                     .await;
                 match outcome {

@@ -1,6 +1,8 @@
 mod authentication_activation;
 mod authentication_invocation;
 mod managed_interface;
+#[cfg(test)]
+pub(crate) use managed_interface::FrozenManagedProjection;
 pub(crate) mod managed_projection;
 pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;
@@ -8,6 +10,8 @@ mod boot_snapshot;
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 mod input_assembly;
 mod managed_activation;
+#[cfg(test)]
+pub(crate) use managed_activation::validate_interface_protocol;
 pub(crate) use managed_activation::{
     ManagedExtensionComposition, ManagedWorkspacePublicationSource, ManagedWorkspaceSnapshot,
 };

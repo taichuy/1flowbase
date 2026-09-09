@@ -6,12 +6,12 @@ use extension_contracts::extension_bus::{
     ManagedExecutionIdentity, ManagedInstallationId, ManagedWorkspaceId,
 };
 use extension_contracts::{
-    MANAGED_INTERFACE_PROTOCOL_V1, ManagedHookHostContext, ManagedHookInvocation,
-    ManagedInterfaceHostFrame, ManagedInterfaceInput, ManagedInterfaceView,
-    ManagedProjectionContract,
+    ManagedHookHostContext, ManagedHookInvocation, ManagedInterfaceHostFrame,
+    ManagedInterfaceInput, ManagedInterfaceView, ManagedProjectionContract,
+    MANAGED_INTERFACE_PROTOCOL_V1,
 };
 use interface_runtime::{InterfaceContract, ManagedInterfaceProjection};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::routes::sign_in_interface::{
@@ -144,11 +144,9 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         output: view(&output),
     });
     assert_eq!(output_frame["context"]["actor_id"], "host-sealed-actor");
-    assert!(
-        output_frame["input"]["output"]["value"]["0"]
-            .get("session")
-            .is_none()
-    );
+    assert!(output_frame["input"]["output"]["value"]["0"]
+        .get("session")
+        .is_none());
     assert_eq!(output.0.session.session_id, SECRET);
     assert_eq!(output.0.session.csrf_token, SECRET);
 
@@ -156,7 +154,7 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     let error_view = view(&error);
     assert!(!serde_json::to_string(&error_view).unwrap().contains(SECRET));
     assert!(
-        error.0.0.to_string().contains(SECRET),
+        error.0 .0.to_string().contains(SECRET),
         "host error chain remains intact"
     );
 
@@ -240,13 +238,11 @@ fn oversized_typed_values() {
     assert_eq!(projected.value["bytes"]["byte_count"], input.bytes.len());
     assert_safe_frame(ManagedInterfaceInput::Before { input: projected });
     assert!(input.bytes.starts_with(SECRET.as_bytes()));
-    assert!(
-        ConsoleIdentityInput::SwitchWorkspace {
-            workspace_id: "x".repeat(257)
-        }
-        .project_for_managed_hook()
-        .is_none()
-    );
+    assert!(ConsoleIdentityInput::SwitchWorkspace {
+        workspace_id: "x".repeat(257)
+    }
+    .project_for_managed_hook()
+    .is_none());
     let run = ApplicationNativeRunInput {
         request: serde_json::from_value(json!({"query":"hello", "system":
             vec![json!({"type":"text","text":"hello"});33]}))
@@ -259,4 +255,87 @@ fn oversized_typed_values() {
         "typed lists have a hard item budget"
     );
     assert_eq!(run.request.system.len(), 33);
+}
+
+/// Root #2014 AC-015/016/018: frozen host owner validates real safe projection before transport.
+#[test]
+fn root_2014_r3_probe_reference_binding_and_projection() {
+    use crate::extension_bus::{validate_interface_protocol, FrozenManagedProjection};
+    use extension_contracts::{ManagedInterfaceProtocol, ManagedInterfaceReferenceInput};
+    use runtime_core::runtime_backend::RuntimeManagedHookInput;
+    let input = PublicSignInInput(LoginCommand {
+        login_entry_id: Uuid::new_v4(),
+        identifier: SECRET.into(),
+        password: SECRET.into(),
+    });
+    let projection = ManagedInterfaceProjection::from_contract(&input).unwrap();
+    let contract = ManagedProjectionContract {
+        contract_id: projection.contract().contract_id().into(),
+        contract_version: projection.contract().version().into(),
+        schema: projection.schema().clone(),
+    };
+    let frozen = FrozenManagedProjection::compile(contract.clone()).unwrap();
+    let reference = frozen.validate_projection(&projection).unwrap();
+    assert!(!serde_json::to_string(&reference).unwrap().contains(SECRET));
+    assert_eq!(reference.value, projection.value().clone());
+    for (field, value) in [
+        ("contract_id", "unknown"),
+        ("contract_version", "2"),
+        (
+            "schema_fingerprint",
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+    ] {
+        let mut wire = serde_json::to_value(&reference).unwrap();
+        wire["contract"][field] = json!(value);
+        assert!(frozen
+            .validate_reference(&serde_json::from_value(wire).unwrap())
+            .is_err());
+    }
+    let mut invalid = reference.clone();
+    invalid.value["0"]["password"] = json!(SECRET);
+    assert!(frozen.validate_reference(&invalid).is_err());
+    invalid = reference.clone();
+    invalid.value["0"]["login_entry_id"] = json!(123);
+    assert!(frozen.validate_reference(&invalid).is_err());
+    // A still-valid alternate schema with the same declared identity must not replace the frozen owner.
+    let mut changed = contract.clone();
+    changed.schema = json!({"type":"object","properties":{},"additionalProperties":false});
+    assert!(FrozenManagedProjection::compile(changed)
+        .unwrap()
+        .validate_projection(&projection)
+        .is_err());
+    for (id, version) in [
+        ("unknown", contract.contract_version.as_str()),
+        (contract.contract_id.as_str(), "2"),
+    ] {
+        let mut changed = contract.clone();
+        changed.contract_id = id.into();
+        changed.contract_version = version.into();
+        assert!(FrozenManagedProjection::compile(changed)
+            .unwrap()
+            .validate_projection(&projection)
+            .is_err());
+    }
+    let v2 = RuntimeManagedHookInput::InterfaceReference {
+        interface_id: "public.sign-in".into(),
+        interface_version: "1".into(),
+        input: ManagedInterfaceReferenceInput::Before { input: reference },
+    };
+    let v1 = RuntimeManagedHookInput::Interface {
+        interface_id: "public.sign-in".into(),
+        interface_version: "1".into(),
+        input: ManagedInterfaceInput::Before {
+            input: ManagedInterfaceView {
+                contract,
+                value: projection.value().clone(),
+            },
+        },
+    };
+    validate_interface_protocol(Some(ManagedInterfaceProtocol::ReferenceV2), &v2).unwrap();
+    validate_interface_protocol(Some(ManagedInterfaceProtocol::InterfaceV1), &v1).unwrap();
+    validate_interface_protocol(None, &v1).unwrap();
+    assert!(validate_interface_protocol(None, &v2).is_err());
+    assert!(validate_interface_protocol(Some(ManagedInterfaceProtocol::InterfaceV1), &v2).is_err());
+    assert!(validate_interface_protocol(Some(ManagedInterfaceProtocol::ReferenceV2), &v1).is_err());
 }
