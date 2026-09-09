@@ -1,5 +1,6 @@
 use super::*;
 use crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository as Repository;
+use plugin_framework::provider_contract::ProviderInvocationResult;
 
 fn invoker(repository: Repository) -> RuntimeProviderInvoker<Repository, ()> {
     RuntimeProviderInvoker {
@@ -244,4 +245,44 @@ async fn interrupted_fee_reservation_keeps_a_cleanup_owner() {
         repository.model_billing_credit_releases(),
         vec![(session, "provider_billing_interrupted".into())]
     );
+}
+
+// AC3: each snapshot replaces only the TTL buckets it actually reports.
+#[tokio::test]
+async fn partial_ttl_snapshots_preserve_other_buckets_and_rate_mixed_writes() {
+    let events = vec![
+        ProviderStreamEvent::UsageSnapshot {
+            usage: ProviderUsage {
+                cache_write_tokens: Some(3000),
+                cache_write_by_ttl_seconds: Some([("300".into(), 3000)].into()),
+                ..Default::default()
+            },
+        },
+        ProviderStreamEvent::UsageSnapshot {
+            usage: ProviderUsage {
+                cache_write_tokens: Some(5000),
+                cache_write_by_ttl_seconds: Some([("3600".into(), 2000)].into()),
+                ..Default::default()
+            },
+        },
+    ];
+    let usage = collected_provider_usage(
+        &events,
+        &ProviderUsage {
+            cache_write_tokens: Some(5000),
+            cache_write_by_ttl_seconds: Some([("3600".into(), 2000)].into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(usage.cache_write_tokens, Some(5000));
+    assert_eq!(
+        usage.cache_write_by_ttl_seconds,
+        Some([("300".into(), 3000), ("3600".into(), 2000)].into())
+    );
+    let repository = Repository::with_permissions(vec![]);
+    let rule = pricing(&repository).await;
+    let rated =
+        crate::billing::rate_token_usage(&rule, &normalized_token_usage(&rule, &usage).unwrap())
+            .unwrap();
+    assert_eq!(rated.total_cost.to_string(), "0.0775");
 }

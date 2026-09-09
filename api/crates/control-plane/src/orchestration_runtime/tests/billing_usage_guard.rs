@@ -364,14 +364,23 @@ async fn billing_no_usage_with_billable_output_fails_closed_with_evidence() {
         .expect("usage conflict must carry provider evidence details");
     assert_eq!(details["finish_reason"], json!("stop"));
     assert_eq!(details["billable_output"], json!(true));
+    assert_eq!(
+        details["_1flowbase_billing"]["billing_status"],
+        "reconciliation_failed"
+    );
+    assert_eq!(
+        details["_1flowbase_billing"]["billing_error_code"],
+        "provider_usage_unavailable"
+    );
+    assert_eq!(details["_1flowbase_user_account"], "billing-user");
     let releases = repository_probe.model_billing_credit_releases();
     assert_eq!(releases.len(), 1);
     assert_eq!(releases[0].1, "provider_usage_unavailable");
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
 }
 
-// AC-004 positive control: reported usage keeps the settlement path and never
-// releases the reservation.
+// AC4: reported usage reaches settlement; a failed settlement releases the reservation
+// and retains the fee/usage evidence without returning a successful provider outcome.
 #[tokio::test]
 async fn billing_finalize_failure_releases_and_preserves_failure_evidence() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);

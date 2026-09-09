@@ -107,7 +107,12 @@ fn collected_provider_usage(
         field!(reasoning_tokens);
         field!(cache_read_tokens);
         field!(cache_write_tokens);
-        field!(cache_write_by_ttl_seconds);
+        if let Some(buckets) = &snapshot.cache_write_by_ttl_seconds {
+            target
+                .cache_write_by_ttl_seconds
+                .get_or_insert_with(Default::default)
+                .extend(buckets.clone());
+        }
         field!(total_tokens);
     }
     let mut usage = plugin_framework::provider_contract::ProviderUsage::default();

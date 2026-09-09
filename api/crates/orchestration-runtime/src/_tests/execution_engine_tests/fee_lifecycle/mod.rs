@@ -1,6 +1,7 @@
 use super::*;
 
 struct FeeFailureInvoker;
+impl_noop_code_invoker!(FeeFailureInvoker);
 #[async_trait]
 impl ProviderInvoker for FeeFailureInvoker {
     async fn invoke_llm(
