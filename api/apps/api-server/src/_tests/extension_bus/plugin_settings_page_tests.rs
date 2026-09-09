@@ -1,29 +1,24 @@
 use std::sync::Arc;
 
-use access_control::{ConsoleAuthorization, ConsolePolicyGroup, ConsoleRouteOwnership};
-use axum::http::StatusCode;
-use plugin_framework::parse_host_extension_contribution_manifest;
-
 use crate::{
-    app_state::{compile_console_boot_plan_with_interface_operations, ApiState},
+    app_state::compile_console_boot_plan_with_interface_operations,
     host_extensions::console::{
-        resolve_linked_host_extension_console_contribution, LinkedHostConsoleRouteSource,
+        linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
     },
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
+use plugin_framework::parse_host_extension_contribution_manifest;
 
 #[test]
 fn root_2014_ac_009_registered_settings_page_authority() {
     let contribution = parse_host_extension_contribution_manifest(&fixture_manifest())
         .expect("fixture HostExtension manifest should be valid");
-    let source = LinkedHostConsoleRouteSource {
-        extension_id: "northwind.settings-page",
-        version: "1.0.0",
-        route_assembly: fixture_host_console_route_assembly,
-    };
-
-    let host = resolve_linked_host_extension_console_contribution(contribution, &[source])
-        .expect("active linked HostExtension contribution should resolve");
+    assert!(contribution.settings_features[0].api_routes.is_empty());
+    assert!(contribution.console_operations.is_empty());
+    let host = resolve_linked_host_extension_console_contribution(
+        contribution,
+        linked_host_console_route_sources(),
+    )
+    .expect("page-only contribution uses the default formal startup sources");
     let extension_assembly = crate::extension_bus::assemble_extension_graph_input(
         crate::api_workspace_root().expect("test API workspace root should resolve"),
         crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
@@ -49,41 +44,10 @@ fn root_2014_ac_009_registered_settings_page_authority() {
     )
     .expect("Core and active linked HostExtension should compile as one console plan");
 
-    let access = plan
+    assert!(plan
         .console_operation_registry
-        .access_for_console_route("GET", "/api/console/northwind.settings-page/scans")
-        .expect("linked HostExtension operation must be registered");
-    assert_eq!(access.operation_id, "northwind.settings-page.scan");
-    assert_eq!(
-        access.authorization,
-        &ConsoleAuthorization::ResourceAction {
-            resource_code: "northwind.settings-page.scans".to_string(),
-            action_code: "view".to_string(),
-        }
-    );
-    assert_eq!(
-        access.policy_group,
-        &ConsolePolicyGroup::SettingsFeature("northwind.settings-page.settings".to_string())
-    );
-    assert!(plan.route_assembly.bindings().iter().any(|binding| {
-        binding.route.method == "GET"
-            && binding.route.path == "/api/console/northwind.settings-page/scans"
-            && binding.ownership
-                == ConsoleRouteOwnership::ConsoleOperation(
-                    "northwind.settings-page.scan".to_string(),
-                )
-    }));
-    let interface = plan
-        .console_operation_registry
-        .inventory()
-        .interfaces
-        .iter()
-        .find(|interface| {
-            interface.authorization_operation_id.as_deref() == Some("northwind.settings-page.scan")
-        })
-        .expect("linked HostExtension route must have static interface metadata");
-    assert!(!interface.summary.trim().is_empty());
-    assert!(!interface.description.trim().is_empty());
+        .access_for_console_route("GET", "/api/console/northwind.settings-page/settings")
+        .is_none());
     let package = plugin_framework::parse_plugin_manifest(include_str!(
         "../../../../../plugins/fixtures/northwind.settings-page/manifest.yaml"
     ))
@@ -118,35 +82,20 @@ fn root_2014_ac_009_registered_settings_page_authority() {
         .iter()
         .any(|route| route.route_id == "northwind.settings-page.settings"
             && route.path == "/settings/northwind.settings-page"));
-    // A visible page does not confer its single-interface operation permission.
-    assert!(access_control::ensure_permission(&allowed, access.operation_id).is_err());
-}
-fn fixture_host_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    ConsoleRouteAssembly::new()
-        .route(
-            "/northwind.settings-page/settings",
-            console_get(
-                fixture_host_settings,
-                ConsoleRouteOwnership::ConsoleOperation(
-                    "northwind.settings-page.settings.view".to_string(),
-                ),
-            ),
-        )
-        .route(
-            "/northwind.settings-page/scans",
-            console_get(
-                fixture_host_scan,
-                ConsoleRouteOwnership::ConsoleOperation("northwind.settings-page.scan".to_string()),
-            ),
-        )
-}
-
-async fn fixture_host_settings() -> StatusCode {
-    StatusCode::NO_CONTENT
-}
-
-async fn fixture_host_scan() -> StatusCode {
-    StatusCode::NO_CONTENT
+    // Page access never grants a core operation or an invented plugin API.
+    assert!(access_control::ensure_permission(&allowed, "system.settings.view").is_err());
+    let mut with_api = parse_host_extension_contribution_manifest(&fixture_manifest()).unwrap();
+    with_api.settings_features[0]
+        .api_routes
+        .push(access_control::SettingsApiRoute {
+            method: "GET".into(),
+            path: "/api/console/northwind.settings-page/settings".into(),
+        });
+    assert!(resolve_linked_host_extension_console_contribution(
+        with_api,
+        linked_host_console_route_sources()
+    )
+    .is_err());
 }
 
 fn fixture_manifest() -> String {

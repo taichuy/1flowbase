@@ -23,55 +23,9 @@ settings_features:
       label_key: northwind.settings-page.console.settings.label
       description_key: northwind.settings-page.console.settings.description
       order: 100
-    api_routes:
-      - method: GET
-        path: /api/console/northwind.settings-page/settings
-console_operations:
-  - operation_id: northwind.settings-page.settings.view
-    owner:
-      kind: host_extension
-      owner_id: northwind.settings-page
-      version: 1.0.0
-    lifecycle: active
-    policy_group: !settings_feature northwind.settings-page.settings
-    order: 100
-    routes:
-      - method: GET
-        path: /api/console/northwind.settings-page/settings
-    authorization:
-      kind: simple
-  - operation_id: northwind.settings-page.scan
-    owner:
-      kind: host_extension
-      owner_id: northwind.settings-page
-      version: 1.0.0
-    lifecycle: active
-    policy_group: !settings_feature northwind.settings-page.settings
-    order: 110
-    routes:
-      - method: GET
-        path: /api/console/northwind.settings-page/scans
-    authorization:
-      kind: resource_action
-      resource_code: northwind.settings-page.scans
-      action_code: view
-console_resources:
-  - resource_code: northwind.settings-page.scans
-    owner:
-      kind: host_extension
-      owner_id: northwind.settings-page
-      version: 1.0.0
-    lifecycle: active
-    scope_kind: workspace
-    identity_field: id
-    scope_field: scope_id
-    owner_field: created_by
-    label_ref: northwind.settings-page.console.resources.scans.label
-    description_ref: northwind.settings-page.console.resources.scans.description
-    actions:
-      - action_code: view
-        label_ref: northwind.settings-page.console.resources.scans.actions.view.label
-        description_ref: northwind.settings-page.console.resources.scans.actions.view.description
+    api_routes: []
+console_operations: []
+console_resources: []
 console_locale_catalog:
   texts:
     - reference: northwind.settings-page.console.settings.label
@@ -80,18 +34,6 @@ console_locale_catalog:
     - reference: northwind.settings-page.console.settings.description
       en_us: Manage fixture settings
       zh_hans: 管理示例设置
-    - reference: northwind.settings-page.console.resources.scans.label
-      en_us: Scan records
-      zh_hans: 扫描记录
-    - reference: northwind.settings-page.console.resources.scans.description
-      en_us: Fixture records available for scanning
-      zh_hans: 可供扫描的示例记录
-    - reference: northwind.settings-page.console.resources.scans.actions.view.label
-      en_us: View scan records
-      zh_hans: 查看扫描记录
-    - reference: northwind.settings-page.console.resources.scans.actions.view.description
-      en_us: Read a fixture scan record
-      zh_hans: 读取示例扫描记录
   policy_groups: []
 console_surfaces: {}
 routes: []

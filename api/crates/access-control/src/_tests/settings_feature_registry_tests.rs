@@ -666,3 +666,29 @@ fn ac_002_inactive_owner_with_api_routes_fails_closed() {
         .to_string()
         .contains("inactive settings feature file-security cannot own API routes"));
 }
+
+// AC-009: a page is independently protected; its empty API inventory grants nothing.
+#[test]
+fn root_2014_ac_009_page_only_registry_keeps_api_fail_closed() {
+    let page = feature(
+        "northwind.settings",
+        SettingsFeatureOwnerKind::HostExtension,
+        "northwind",
+        &[],
+    );
+    let registry = SettingsFeatureRegistry::compile([page.clone()]).unwrap();
+    assert_eq!(registry.inventory().features.len(), 1);
+    assert!(registry.inventory().features[0].api_routes.is_empty());
+    assert!(registry
+        .access_rule("GET", "/api/console/northwind/settings")
+        .is_none());
+    assert!(registry
+        .access_rule("GET", "/api/console/settings/system")
+        .is_none());
+    let mut invalid_owner = page.clone();
+    invalid_owner.owner.owner_id.clear();
+    assert!(SettingsFeatureRegistry::compile([invalid_owner]).is_err());
+    let mut inactive = page;
+    inactive.lifecycle = SettingsFeatureLifecycle::Inactive;
+    assert!(SettingsFeatureRegistry::compile([inactive]).is_err());
+}
