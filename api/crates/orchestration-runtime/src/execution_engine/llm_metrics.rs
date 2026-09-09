@@ -524,6 +524,7 @@ pub(super) fn attach_provider_stream_timing(attempt: &mut Value, timing: Option<
 
 #[derive(Default)]
 pub(super) struct ProviderObservabilityMetadata {
+    pub(super) user_account: Option<Value>,
     pub(super) stream_timing: Option<Value>,
     pub(super) billing: Option<Value>,
 }
@@ -542,7 +543,8 @@ pub(super) fn take_provider_observability_metadata(
     while let Some(metadata) = result.provider_metadata.as_object_mut() {
         let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
             && (metadata.contains_key("_1flowbase_runtime_stream_timing")
-                || metadata.contains_key("_1flowbase_billing"));
+                || metadata.contains_key("_1flowbase_billing")
+                || metadata.contains_key("_1flowbase_user_account"));
         if !is_wrapper {
             break;
         }
@@ -550,6 +552,9 @@ pub(super) fn take_provider_observability_metadata(
             .remove("_1flowbase_runtime_stream_timing")
             .or(extracted.stream_timing);
         extracted.billing = metadata.remove("_1flowbase_billing").or(extracted.billing);
+        extracted.user_account = metadata
+            .remove("_1flowbase_user_account")
+            .or(extracted.user_account);
         let Some(upstream_metadata) = metadata.remove("_1flowbase_upstream_provider_metadata")
         else {
             break;
@@ -682,6 +687,7 @@ mod provider_stream_timing_tests {
         let mut result = ProviderInvocationResult {
             provider_metadata: json!({
                 "_1flowbase_billing": billing,
+                "_1flowbase_user_account": "billing-user",
                 "_1flowbase_upstream_provider_metadata": upstream
             }),
             ..ProviderInvocationResult::default()
@@ -690,6 +696,7 @@ mod provider_stream_timing_tests {
         let observability = take_provider_observability_metadata(&mut result);
 
         assert_eq!(observability.billing, Some(billing));
+        assert_eq!(observability.user_account, Some(json!("billing-user")));
         assert_eq!(result.provider_metadata, upstream);
     }
 }

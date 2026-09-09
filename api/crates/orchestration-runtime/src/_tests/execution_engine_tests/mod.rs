@@ -1256,6 +1256,7 @@ fn provider_output(result: ProviderInvocationResult) -> ProviderInvocationOutput
 mod answer_and_failover;
 mod branches;
 mod failures_and_parameters;
+mod fee_lifecycle;
 mod http_request;
 mod human_and_tool_resume;
 mod llm_context;

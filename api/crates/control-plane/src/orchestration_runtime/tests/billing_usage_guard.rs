@@ -373,7 +373,7 @@ async fn billing_no_usage_with_billable_output_fails_closed_with_evidence() {
 // AC-004 positive control: reported usage keeps the settlement path and never
 // releases the reservation.
 #[tokio::test]
-async fn billing_with_usage_attempts_settlement_without_release() {
+async fn billing_finalize_failure_releases_and_preserves_failure_evidence() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     repository.enable_model_billing();
@@ -396,21 +396,35 @@ async fn billing_with_usage_attempts_settlement_without_release() {
     let invoker = billing_invoker(repository, runtime);
     let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
 
-    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+    let error = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
         &invoker,
         &runtime,
         provider_user_input(provider_instance_id),
     )
     .await
-    .expect("usage-bearing invocation must succeed");
-
+    .expect_err("failed settlement must not return a free success");
+    let Some(PluginFrameworkError::RuntimeContract { error }) =
+        error.downcast_ref::<PluginFrameworkError>()
+    else {
+        panic!("expected typed fee failure")
+    };
+    let details = error
+        .provider_details
+        .as_ref()
+        .expect("fee failure evidence");
     assert_eq!(
-        output.result.final_content.as_deref(),
-        Some("computed answer")
+        details["_1flowbase_billing"]["billing_status"],
+        "reconciliation_failed"
     );
+    assert_eq!(
+        details["_1flowbase_billing"]["billing_error_code"],
+        "billing_finalize_failed"
+    );
+    assert_eq!(details["usage"]["input_tokens"], 120);
+    assert_eq!(details["_1flowbase_user_account"], "billing-user");
     assert_eq!(repository_probe.model_billing_reserved_session_count(), 1);
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
-    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
 }
 
 // AC5: request-log attribution comes from the execution snapshot even when fees

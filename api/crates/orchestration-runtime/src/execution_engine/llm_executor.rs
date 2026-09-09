@@ -594,6 +594,12 @@ where
             Err(error) => {
                 let attempt_finished_at = OffsetDateTime::now_utc();
                 let provider_error = provider_runtime_error_from_anyhow(&error);
+                let fee_details = provider_error.provider_details.as_ref();
+                let failure_usage = fee_details
+                    .and_then(|details| details.get("usage"))
+                    .cloned()
+                    .and_then(|usage| serde_json::from_value::<ProviderUsage>(usage).ok())
+                    .unwrap_or_default();
                 let mut error_payload =
                     build_provider_error_payload(attempt_runtime, &provider_error);
                 error_payload["failed_after_first_token"] = Value::Bool(false);
@@ -608,7 +614,7 @@ where
                     failed_after_first_token: false,
                     error_payload: Some(&error_payload),
                     generate_projection_receipt: generate_projection_receipt.as_ref(),
-                    usage: &ProviderUsage::default(),
+                    usage: &failure_usage,
                     event_count: 0,
                     started_at: attempt_started_at,
                     first_token_at: None,
@@ -619,9 +625,23 @@ where
                     &mut attempt,
                     distribution_selection_receipt.as_ref(),
                 );
+                attach_provider_billing(
+                    &mut attempt,
+                    fee_details.and_then(|details| details.get("_1flowbase_billing")),
+                );
+                if let Some(account) = fee_details
+                    .and_then(|details| details.get("_1flowbase_user_account"))
+                    .and_then(Value::as_str)
+                {
+                    attempt["user_account"] = json!(account);
+                }
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
                 if retry_enabled
+                    && fee_details
+                        .and_then(|details| details.pointer("/_1flowbase_billing/billing_status"))
+                        .and_then(Value::as_str)
+                        != Some("reconciliation_failed")
                     && provider_error_allows_retry(&provider_error)
                     && attempt_index + 1 < request_count
                 {
@@ -644,7 +664,7 @@ where
                     Some(recoverable_error_message),
                     build_llm_metrics_payload(
                         attempt_runtime,
-                        ProviderUsage::default(),
+                        failure_usage,
                         Some(ProviderFinishReason::Error),
                         0,
                         attempt_metrics,
@@ -801,6 +821,9 @@ where
         );
         attach_provider_stream_timing(&mut attempt, provider_observability.stream_timing.as_ref());
         attach_provider_billing(&mut attempt, provider_observability.billing.as_ref());
+        if let Some(account) = provider_observability.user_account {
+            attempt["user_account"] = account;
+        }
         attempt_metrics.push(attempt.clone());
 
         if let Some(error_payload) = &error_payload {
