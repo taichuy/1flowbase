@@ -254,7 +254,7 @@ describe('UiManagementPanel component records', () => {
     fireEvent.change(screen.getByLabelText('记录版本'), {
       target: { value: '1.0.0' }
     });
-    const editors = screen.getAllByTestId('block-source-editor');
+    const editors = await screen.findAllByTestId('block-source-editor');
     fireEvent.change(screen.getByRole('textbox', { name: '导入代码' }), {
       target: { value: 'opaque import {{{' }
     });
