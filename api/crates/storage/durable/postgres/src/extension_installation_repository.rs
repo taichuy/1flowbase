@@ -37,9 +37,11 @@ const JOINED_COLUMNS: &str = r#"
     artifact.node_id,
     artifact.local_path,
     artifact.local_checksum,
-    case when artifact.artifact_status = 'ready' then 'installed' else 'missing' end as status,
     artifact.is_current
 "#;
+
+const READY_STATUS_COLUMN: &str =
+    "case when artifact.artifact_status = 'ready' then 'installed' else 'missing' end as status";
 
 const DELETION_DECISION_QUERY: &str = r#"
     select
@@ -209,7 +211,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::ExtensionInstallationRecord>> {
         let query = format!(
             r#"
-            select {JOINED_COLUMNS}
+            select {JOINED_COLUMNS}, {READY_STATUS_COLUMN}
             from extension_installations installation
             join extension_artifact_instances artifact
               on artifact.installation_id = installation.id
@@ -232,7 +234,7 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::ExtensionInstallationRecord>> {
         let query = format!(
             r#"
-            select {JOINED_COLUMNS}
+            select {JOINED_COLUMNS}, {READY_STATUS_COLUMN}
             from extension_installations installation
             join extension_artifact_instances artifact
               on artifact.installation_id = installation.id
@@ -259,9 +261,16 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
         &self,
         node_id: &str,
     ) -> Result<Vec<domain::ExtensionInstallationRecord>> {
+        // A failed native load remains visible in inventory; readiness lookups stay separate.
         let query = format!(
             r#"
-            select {JOINED_COLUMNS}
+            select {JOINED_COLUMNS},
+                case
+                    when artifact.artifact_status = 'ready'
+                        or (installation.category = 'host-extensions'
+                            and artifact.artifact_status = 'load_failed')
+                    then 'installed' else 'missing'
+                end as status
             from extension_installations installation
             join extension_artifact_instances artifact
               on artifact.installation_id = installation.id
@@ -553,7 +562,7 @@ async fn find_joined_by_id(
 ) -> Result<Option<domain::ExtensionInstallationRecord>> {
     let query = format!(
         r#"
-        select {JOINED_COLUMNS}
+        select {JOINED_COLUMNS}, {READY_STATUS_COLUMN}
         from extension_installations installation
         join extension_artifact_instances artifact
           on artifact.installation_id = installation.id

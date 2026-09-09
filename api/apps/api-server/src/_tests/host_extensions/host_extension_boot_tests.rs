@@ -241,6 +241,30 @@ async fn root_2014_ac_014_template_commit_failure_keeps_target_pending() {
         artifact.availability_status,
         domain::PluginAvailabilityStatus::LoadFailed
     );
+    // Listing a failed target must not make readiness-based installation lookups succeed.
+    let by_id =
+        control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
+            &f.state.store,
+            &f.state.api_node_id,
+            target.installation_id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(by_id.status, domain::ExtensionInstallationStatus::Missing);
+    let by_identity =
+        control_plane::ports::ExtensionInstallationRepository::find_extension_installation(
+            &f.state.store,
+            &f.state.api_node_id,
+            &by_id.identity,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        by_identity.status,
+        domain::ExtensionInstallationStatus::Missing
+    );
     let app = crate::app_with_state(f.state.clone());
     let (cookie, _) =
         crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
