@@ -28,6 +28,7 @@ pub struct UpsertPluginInstallationInput {
 
 #[derive(Debug, Clone)]
 pub struct CommitPluginInstallationInput {
+    pub settings_templates: Vec<PluginSettingsTemplateInput>,
     pub installation: UpsertPluginInstallationInput,
     pub artifact_instance: UpsertPluginArtifactInstanceInput,
     pub package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
@@ -275,6 +276,18 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn apply_native_plugin_settings_templates(
+        &self,
+        _target: &domain::NativePluginTarget,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("native settings template application is not supported")
+    }
+    async fn native_plugin_target_is_applied(
+        &self,
+        _target: &domain::NativePluginTarget,
+    ) -> anyhow::Result<bool> {
+        anyhow::bail!("native settings template application is not supported")
+    }
     async fn list_native_plugin_targets(&self) -> anyhow::Result<Vec<domain::NativePluginTarget>> {
         anyhow::bail!("native target selection is not supported")
     }

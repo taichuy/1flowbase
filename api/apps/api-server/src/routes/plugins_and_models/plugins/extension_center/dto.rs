@@ -69,6 +69,7 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub status: String,
     pub is_current: bool,
     pub desired_state: Option<String>,
+    pub runtime_status: Option<String>,
     pub availability_status: Option<String>,
     pub application_action: String,
     pub application_status: String,

@@ -37,6 +37,9 @@ fn map_template(row: sqlx::postgres::PgRow) -> Result<UiCodeTemplate> {
         })
         .transpose()?;
     Ok(UiCodeTemplate {
+        owner_plugin_code: row.get("owner_plugin_code"),
+        owner_feature_id: row.get("owner_feature_id"),
+        applied_plugin_version: row.get("applied_plugin_version"),
         id: row.get("id"),
         scope_id: row.get("scope_id"),
         provider_code: row.get("provider_code"),
@@ -64,7 +67,7 @@ fn map_template(row: sqlx::postgres::PgRow) -> Result<UiCodeTemplate> {
 }
 
 const TEMPLATE_SELECT: &str = r#"
-select t.id, t.scope_id, t.provider_code, t.contribution_code, t.name, t.archived_at,
+select t.owner_plugin_code, t.owner_feature_id, t.applied_plugin_version, t.id, t.scope_id, t.provider_code, t.contribution_code, t.name, t.archived_at,
     t.created_by, t.updated_by, t.created_at, t.updated_at,
     latest.id latest_revision_id, latest.revision latest_revision, latest.source latest_source,
     latest.language latest_language, latest.is_published latest_is_published,
@@ -240,6 +243,37 @@ async fn replace_official_group_in_transaction(
 
 #[async_trait]
 impl UiManagementRepository for PgControlPlaneStore {
+    async fn native_template_is_available(
+        &self,
+        template_id: Uuid,
+        targets: &[domain::NativePluginTarget],
+    ) -> Result<bool> {
+        let row = sqlx::query("select owner_plugin_code,scope_id,owner_category,owner_organization,owner_artifact_id,applied_installation_id,applied_application_generation from ui_code_templates where id=$1")
+            .bind(template_id).fetch_optional(self.pool()).await?;
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        if row.get::<Option<String>, _>("owner_plugin_code").is_none() {
+            return Ok(true);
+        }
+        for target in targets {
+            if row.get::<Option<Uuid>, _>("applied_installation_id") == Some(target.installation_id)
+                && row.get::<Option<i64>, _>("applied_application_generation")
+                    == Some(target.application_generation)
+                && row.get::<Uuid, _>("scope_id") == target.scope_id
+                && row
+                    .get::<Option<String>, _>("owner_organization")
+                    .as_deref()
+                    == Some(target.organization.as_str())
+                && row.get::<Option<String>, _>("owner_artifact_id").as_deref()
+                    == Some(target.artifact_id.as_str())
+                && crate::plugin_settings_template_repository::is_applied(self, target).await?
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
     async fn list_ui_code_templates(&self, include_archived: bool) -> Result<Vec<UiCodeTemplate>> {
         let query =
             format!("{TEMPLATE_SELECT} where ($1 or t.archived_at is null) order by t.name, t.id");
@@ -322,6 +356,10 @@ impl UiManagementRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<UiCodeTemplate> {
         let mut tx = self.pool().begin().await?;
+        sqlx::query("select id from ui_code_templates where id=$1 for update")
+            .bind(template_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         sqlx::query("update ui_code_template_revisions set is_published=false where template_id=$1 and is_published")
             .bind(template_id).execute(&mut *tx).await?;
         let changed = sqlx::query("update ui_code_template_revisions set is_published=true where template_id=$1 and revision=$2")
@@ -347,6 +385,10 @@ impl UiManagementRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
+        sqlx::query("select id from ui_code_templates where id=$1 for update")
+            .bind(template_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         let row = sqlx::query("select t.provider_code, t.contribution_code from ui_code_templates t join ui_code_template_revisions r on r.template_id=t.id and r.is_published where t.id=$1 and t.archived_at is null")
             .bind(template_id).fetch_optional(&mut *tx).await?;
         let Some(row) = row else {
@@ -376,6 +418,10 @@ impl UiManagementRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
     ) -> Result<UiCodeTemplate> {
         let mut tx = self.pool().begin().await?;
+        sqlx::query("select id from ui_code_templates where id=$1 for update")
+            .bind(template_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         if archived {
             sqlx::query("delete from ui_code_template_defaults where template_id=$1")
                 .bind(template_id)

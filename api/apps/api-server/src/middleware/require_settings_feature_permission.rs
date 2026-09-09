@@ -75,6 +75,29 @@ pub async fn require_settings_feature_permission(
         return Ok(next.run(request).await);
     }
 
+    if let Ok(access) = compiled_console_route_access(
+        &state.console_operation_registry,
+        request.method().as_str(),
+        &path,
+    ) {
+        if let ConsolePolicyGroup::SettingsFeature(feature_id) = access.policy_group {
+            if state.console_surface_registry.is_native_feature(feature_id) {
+                use control_plane::ports::PluginRepository;
+                let target = state
+                    .console_surface_registry
+                    .target_for_feature(feature_id)
+                    .ok_or(ControlPlaneError::Conflict(
+                        "native_plugin_version_mismatch",
+                    ))?;
+                if !state.store.native_plugin_target_is_applied(target).await? {
+                    return Err(
+                        ControlPlaneError::Conflict("native_plugin_version_mismatch").into(),
+                    );
+                }
+            }
+        }
+    }
+
     if crate::routes::host_infrastructure::interface_operation::is_active_interface_route(
         state.as_ref(),
         request.method().as_str(),

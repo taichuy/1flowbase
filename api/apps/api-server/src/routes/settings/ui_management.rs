@@ -37,6 +37,26 @@ async fn invoke_ui_management(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PluginSettingsPageQuery {
+    pub route_id: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PluginSettingsPageResponse {
+    pub route_id: String,
+    pub feature_id: String,
+    pub template_id: String,
+    pub provider_code: String,
+    pub contribution_code: String,
+    pub source: String,
+    #[schema(value_type = String)]
+    pub language: UiCodeTemplateLanguage,
+    pub revision: i32,
+    pub applied_plugin_version: String,
+    pub overwrite_on_plugin_upgrade: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ListTemplatesQuery {
     #[serde(default)]
     pub include_archived: bool,
@@ -132,6 +152,10 @@ pub struct TemplateRevisionResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ManagedTemplateResponse {
+    pub owner_plugin_code: Option<String>,
+    pub owner_feature_id: Option<String>,
+    pub applied_plugin_version: Option<String>,
+    pub overwrite_on_plugin_upgrade: bool,
     pub id: String,
     pub provider_code: String,
     pub contribution_code: String,
@@ -290,6 +314,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     let owner = |operation_id: &str| ConsoleOperation(operation_id.to_string());
     ConsoleRouteAssembly::new()
         .route(
+            "/settings/ui-management/plugin-settings-page",
+            console_get(
+                plugin_settings_page,
+                access_control::ConsoleRouteOwnership::Authenticated,
+            ),
+        )
+        .route(
             "/settings/ui-management/templates",
             console_get(list_templates, owner("ui_management.templates.list"))
                 .post(create_template, owner("ui_management.templates.create")),
@@ -361,6 +392,28 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 owner("ui_management.catalog.sync_group"),
             ),
         )
+}
+
+#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-page", summary = "Read a registered plugin settings page", description = "Returns the published template for a registered route after page permission and native process version checks.", params(("route_id" = String, Query, description = "Registered settings page route identity")), responses((status = 200, body = PluginSettingsPageResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+pub async fn plugin_settings_page(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<PluginSettingsPageQuery>,
+) -> Result<Json<ApiSuccess<PluginSettingsPageResponse>>, ApiError> {
+    let UiManagementOutput::PluginSettingsPage(page) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.plugin-settings-page.get.v1",
+        UiManagementInput::PluginSettingsPage {
+            route_id: query.route_id,
+        },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(page)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/templates", responses((status = 200, body = TemplateListResponse), (status = 403, body = crate::error_response::ErrorBody)))]

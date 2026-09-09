@@ -1,4 +1,4 @@
-mod host_extension_boot_tests;
+pub(crate) mod host_extension_boot_tests;
 mod host_extension_console_plan_tests;
 mod host_extension_loader_tests;
 mod host_extensions_builtin_tests;

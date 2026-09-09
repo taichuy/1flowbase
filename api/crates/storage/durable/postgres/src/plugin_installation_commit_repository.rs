@@ -272,6 +272,12 @@ async fn write_installation(
     .await?;
     let record = map_installation(row)?;
     let installation_id = record.id;
+    crate::plugin_settings_template_repository::retain_settings_template_defaults(
+        connection,
+        &record,
+        &input.settings_templates,
+    )
+    .await?;
 
     let artifact = &input.artifact_instance;
     let selects_network_egress_current = artifact.is_current

@@ -35,6 +35,7 @@ pub mod physical_schema_repository;
 pub mod plugin_data_repository;
 mod plugin_installation_commit_repository;
 pub mod plugin_repository;
+mod plugin_settings_template_repository;
 pub mod plugin_worker_repository;
 pub mod repositories;
 pub mod role_repository;

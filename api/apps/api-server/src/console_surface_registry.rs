@@ -21,9 +21,21 @@ use plugin_framework::{
 /// Console navigation is compiled with the route and operation registries at boot. It has no
 /// runtime mutation path, so a navigation read cannot observe a different HostExtension set from
 /// the authorization registry that protects its API routes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConsoleSurfaceRegistry {
     contributions: Vec<ConsoleNavigation>,
+    pages: Vec<NativeSettingsPage>,
+    native_features: Vec<(String, String, String)>,
+    native_targets: Vec<domain::NativePluginTarget>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NativeSettingsPage {
+    pub route_id: String,
+    pub feature_id: String,
+    pub plugin_code: String,
+    pub plugin_version: String,
+    pub contribution_code: String,
 }
 
 impl ConsoleSurfaceRegistry {
@@ -52,8 +64,31 @@ impl ConsoleSurfaceRegistry {
             .map(|binding| binding.binding_id.clone())
             .collect::<HashSet<_>>();
         let mut compiled = Vec::new();
+        let mut pages = Vec::new();
+        let mut native_features = Vec::new();
 
         for contribution in contributions {
+            for page in &contribution.settings_pages {
+                let feature = contribution
+                    .settings_features
+                    .iter()
+                    .find(|f| f.feature_id == page.feature_id)
+                    .expect("validated native settings page");
+                pages.push(NativeSettingsPage {
+                    route_id: feature.console_surface.route_id.clone(),
+                    feature_id: page.feature_id.clone(),
+                    plugin_code: contribution.extension_id.clone(),
+                    plugin_version: contribution.version.clone(),
+                    contribution_code: page.contribution_code.clone(),
+                });
+            }
+            for feature in &contribution.settings_features {
+                native_features.push((
+                    feature.feature_id.clone(),
+                    contribution.extension_id.clone(),
+                    contribution.version.clone(),
+                ));
+            }
             let navigation = host_extension_console_navigation(contribution);
             validate_console_navigation(
                 &navigation,
@@ -67,6 +102,41 @@ impl ConsoleSurfaceRegistry {
 
         Ok(Self {
             contributions: compiled,
+            pages,
+            native_features,
+            native_targets: Vec::new(),
+        })
+    }
+
+    pub(crate) fn with_native_targets(mut self, targets: Vec<domain::NativePluginTarget>) -> Self {
+        self.native_targets = targets;
+        self
+    }
+
+    pub(crate) fn native_targets(&self) -> &[domain::NativePluginTarget] {
+        &self.native_targets
+    }
+    pub(crate) fn page(&self, route_id: &str) -> Option<&NativeSettingsPage> {
+        self.pages.iter().find(|p| p.route_id == route_id)
+    }
+    pub(crate) fn pages(&self) -> &[NativeSettingsPage] {
+        &self.pages
+    }
+    pub(crate) fn target_for_feature(
+        &self,
+        feature_id: &str,
+    ) -> Option<&domain::NativePluginTarget> {
+        let (_, owner, _) = self
+            .native_features
+            .iter()
+            .find(|(id, _, _)| id == feature_id)?;
+        self.native_targets.iter().find(|t| &t.artifact_id == owner)
+    }
+    pub(crate) fn is_native_feature(&self, feature_id: &str) -> bool {
+        self.native_features.iter().any(|(id, _, _)| {
+            id == feature_id
+                && (self.pages.iter().any(|p| p.feature_id == *id)
+                    || self.target_for_feature(feature_id).is_some())
         })
     }
 

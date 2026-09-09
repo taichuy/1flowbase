@@ -159,6 +159,13 @@ pub trait UiComponentCatalogRepository: Send + Sync {
 
 #[async_trait]
 pub trait UiManagementRepository: Send + Sync {
+    async fn native_template_is_available(
+        &self,
+        _template_id: Uuid,
+        _targets: &[domain::NativePluginTarget],
+    ) -> Result<bool> {
+        Ok(false)
+    }
     async fn list_ui_code_templates(&self, include_archived: bool) -> Result<Vec<UiCodeTemplate>>;
     async fn get_ui_code_template(&self, template_id: Uuid) -> Result<Option<UiCodeTemplate>>;
     async fn create_ui_code_template(

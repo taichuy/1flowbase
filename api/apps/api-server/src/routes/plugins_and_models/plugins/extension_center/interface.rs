@@ -156,6 +156,36 @@ impl ExtensionCenterAdapter {
                 let mut families = extension_installation_service(&self.0)
                     .list_installed_families_for_node(&self.0.api_node_id)
                     .await?;
+                let native_targets =
+                    control_plane::ports::PluginRepository::list_native_plugin_targets(
+                        &self.0.store,
+                    )
+                    .await?;
+                for family in &mut families {
+                    if family.current.identity.category != domain::ExtensionCategory::HostExtensions
+                    {
+                        continue;
+                    }
+                    let target = native_targets.iter().find(|t| {
+                        t.category == family.current.identity.category
+                            && t.organization == family.current.identity.organization
+                            && t.artifact_id == family.current.identity.artifact_id
+                    });
+                    for version in &mut family.installed_versions {
+                        version.is_current =
+                            target.is_some_and(|t| t.enabled && t.installation_id == version.id);
+                    }
+                    if let Some(selected) = target.and_then(|t| {
+                        family
+                            .installed_versions
+                            .iter()
+                            .find(|v| v.id == t.installation_id)
+                    }) {
+                        family.current = selected.clone();
+                    } else {
+                        family.current.is_current = false;
+                    }
+                }
                 if let Some(category) = category {
                     families.retain(|family| family.current.identity.category == category);
                 }
@@ -181,8 +211,13 @@ impl ExtensionCenterAdapter {
                         )
                         .await?
                     {
+                        let has_target = installation.category
+                            != domain::ExtensionCategory::HostExtensions
+                            || native_targets
+                                .iter()
+                                .any(|t| t.installation_id == installation.id);
                         response.desired_state =
-                            Some(installation.desired_state.as_str().to_string());
+                            has_target.then(|| installation.desired_state.as_str().to_string());
                         if let Some(artifact) =
                             control_plane::ports::PluginRepository::get_artifact_instance(
                                 &self.0.store,
@@ -193,6 +228,8 @@ impl ExtensionCenterAdapter {
                         {
                             response.availability_status =
                                 Some(artifact.availability_status.as_str().to_string());
+                            response.runtime_status =
+                                has_target.then(|| artifact.runtime_status.as_str().to_string());
                             if is_runtime_uninstall_category(installation.category)
                                 && artifact.artifact_status
                                     == domain::PluginArtifactInstanceStatus::Missing
@@ -257,6 +294,35 @@ impl ExtensionCenterAdapter {
                 )
                 .await?
                 {
+                    if target.category == domain::ExtensionCategory::HostExtensions {
+                        service(&self.0, actor, "extension_center.installed.select")
+                            .switch_version(
+                                control_plane::plugin_management::SwitchPluginVersionCommand {
+                                    actor_user_id: actor.user_id,
+                                    provider_code: target.provider_code,
+                                    target_installation_id: installation_id,
+                                },
+                            )
+                            .await?;
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store,&self.0.api_node_id,installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        let mut response = to_local_inventory_entry(selected);
+                        response.is_current = true;
+                        response.desired_state = Some("pending_restart".into());
+                        if let Some(artifact) =
+                            control_plane::ports::PluginRepository::get_artifact_instance(
+                                &self.0.store,
+                                &self.0.api_node_id,
+                                installation_id,
+                            )
+                            .await?
+                        {
+                            response.runtime_status = Some(artifact.runtime_status.as_str().into());
+                            response.availability_status =
+                                Some(artifact.availability_status.as_str().into());
+                        }
+                        return Ok(ExtensionCenterOutput::Installation(response));
+                    }
                     if target.contract_version == "1flowbase.extension-bus/v1" {
                         let assigned = control_plane::ports::PluginRepository::list_assignments(
                             &self.0.store,

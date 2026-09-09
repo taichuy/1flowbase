@@ -34,6 +34,9 @@ use crate::{
 };
 
 pub(crate) enum UiManagementInput {
+    PluginSettingsPage {
+        route_id: String,
+    },
     ListTemplates(ListTemplatesQuery),
     CreateTemplate(TemplateBody),
     UpdateTemplate {
@@ -80,6 +83,7 @@ pub(crate) enum UiManagementInput {
 }
 
 pub(crate) enum UiManagementOutput {
+    PluginSettingsPage(super::ui_management::PluginSettingsPageResponse),
     Templates(TemplateListResponse),
     Template(ManagedTemplateResponse),
     Components(Vec<ComponentRecordResponse>),
@@ -97,6 +101,7 @@ pub(crate) enum UiManagementOutput {
 pub(crate) struct UiManagementDependencies {
     pub(crate) store: MainDurableStore,
     pub(crate) api_node_id: String,
+    pub(crate) surfaces: Arc<crate::console_surface_registry::ConsoleSurfaceRegistry>,
 }
 
 struct UiManagementAdapter(UiManagementDependencies);
@@ -104,6 +109,7 @@ struct UiManagementAdapter(UiManagementDependencies);
 impl UiManagementAdapter {
     fn management_service(&self) -> UiManagementService<MainDurableStore> {
         UiManagementService::new(self.0.store.clone(), self.0.api_node_id.clone())
+            .with_native_targets(self.0.surfaces.native_targets().to_vec())
     }
 
     fn catalog_service(&self) -> crate::app_state::ApiUiComponentCatalogService {
@@ -120,6 +126,54 @@ impl UiManagementAdapter {
     ) -> Result<UiManagementOutput, ApiError> {
         let actor_user_id = principal.actor().user_id;
         match input {
+            UiManagementInput::PluginSettingsPage { route_id } => {
+                let page = self.0.surfaces.page(&route_id).ok_or(
+                    control_plane::errors::ControlPlaneError::NotFound("plugin_settings_page"),
+                )?;
+                if !self
+                    .0
+                    .surfaces
+                    .accessible_navigation(principal.actor())
+                    .route_definitions
+                    .iter()
+                    .any(|r| r.route_id == route_id)
+                {
+                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "plugin_settings_page_access_denied",
+                    )
+                    .into());
+                }
+                let template = self
+                    .management_service()
+                    .plugin_settings_template(&page.plugin_code, &page.contribution_code)
+                    .await?;
+                if template.owner_feature_id.as_deref() != Some(page.feature_id.as_str())
+                    || template.applied_plugin_version.as_deref()
+                        != Some(page.plugin_version.as_str())
+                {
+                    return Err(control_plane::errors::ControlPlaneError::Conflict(
+                        "native_plugin_version_mismatch",
+                    )
+                    .into());
+                }
+                let revision = template
+                    .published_revision
+                    .expect("published plugin settings template");
+                Ok(UiManagementOutput::PluginSettingsPage(
+                    super::ui_management::PluginSettingsPageResponse {
+                        route_id,
+                        feature_id: page.feature_id.clone(),
+                        template_id: template.id.to_string(),
+                        provider_code: template.provider_code,
+                        contribution_code: template.contribution_code,
+                        source: revision.source,
+                        language: revision.language,
+                        revision: revision.revision,
+                        applied_plugin_version: page.plugin_version.clone(),
+                        overwrite_on_plugin_upgrade: true,
+                    },
+                ))
+            }
             UiManagementInput::ListTemplates(query) => {
                 let templates = self
                     .management_service()
@@ -379,6 +433,10 @@ fn parse_component_id(value: &str) -> Result<Uuid, ApiError> {
 
 fn template_response(value: UiCodeTemplate) -> ManagedTemplateResponse {
     ManagedTemplateResponse {
+        overwrite_on_plugin_upgrade: value.owner_plugin_code.is_some(),
+        owner_plugin_code: value.owner_plugin_code,
+        owner_feature_id: value.owner_feature_id,
+        applied_plugin_version: value.applied_plugin_version,
         id: value.id.to_string(),
         provider_code: value.provider_code,
         contribution_code: value.contribution_code,
@@ -498,6 +556,13 @@ fn catalog_update_status_response(
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "ui_management.plugin_settings_page.view",
+        binding_id: "http.console.ui-management.plugin-settings-page.get.v1",
+        method: "GET",
+        path: "/api/console/settings/ui-management/plugin-settings-page",
+        mutating: false,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "ui_management.templates.list",
         binding_id: "http.console.ui-management.templates.list.get.v1",
@@ -679,7 +744,7 @@ mod tests {
             assert_eq!(route.method(), declaration.method);
             assert_eq!(route.path(), declaration.path);
         }
-        assert_eq!(DECLARATIONS.len(), 18);
+        assert_eq!(DECLARATIONS.len(), 19);
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }

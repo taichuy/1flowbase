@@ -6,9 +6,9 @@ use interface_runtime::{
 };
 
 use crate::console_operation_compilation::{
-    CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind, ConsoleBindingOwnershipContribution,
     compile_console_operation_snapshot, migration_contributions_from_plan,
-    policy_contributions_from_inventory,
+    policy_contributions_from_inventory, CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind,
+    ConsoleBindingOwnershipContribution,
 };
 
 #[derive(Clone)]
@@ -307,6 +307,7 @@ pub(crate) fn production_interface_contributions(
         crate::routes::ui_management_interface::UiManagementDependencies {
             store: state.store.clone(),
             api_node_id: state.api_node_id.clone(),
+            surfaces: state.console_surface_registry.clone(),
         },
     );
     let console_billing = crate::routes::billing_interface::port(

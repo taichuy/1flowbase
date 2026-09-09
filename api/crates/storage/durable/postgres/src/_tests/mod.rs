@@ -31,3 +31,5 @@ mod ui_management_repository_tests;
 mod unified_extension_installation_migration_tests;
 mod workspace_access_tests;
 mod workspace_scope_tests;
+
+mod plugin_settings_template_tests;

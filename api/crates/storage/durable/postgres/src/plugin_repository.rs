@@ -131,6 +131,18 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
+    async fn apply_native_plugin_settings_templates(
+        &self,
+        target: &domain::NativePluginTarget,
+    ) -> Result<()> {
+        crate::plugin_settings_template_repository::apply_at_startup(self, target).await
+    }
+    async fn native_plugin_target_is_applied(
+        &self,
+        target: &domain::NativePluginTarget,
+    ) -> Result<bool> {
+        crate::plugin_settings_template_repository::is_applied(self, target).await
+    }
     async fn list_native_plugin_targets(&self) -> Result<Vec<domain::NativePluginTarget>> {
         crate::native_plugin_target_repository::list(self).await
     }

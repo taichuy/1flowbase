@@ -220,6 +220,29 @@ impl ConsoleNavigationAdapter {
         match input {
             ConsoleNavigationInput::Get => {
                 let mut navigation = self.0.surfaces.accessible_navigation(actor);
+                let mut unavailable = std::collections::HashSet::new();
+                for page in self.0.surfaces.pages() {
+                    use control_plane::ports::PluginRepository;
+                    let available = match self.0.surfaces.target_for_feature(&page.feature_id) {
+                        Some(target) => {
+                            self.0.store.native_plugin_target_is_applied(target).await?
+                        }
+                        None => false,
+                    };
+                    if !available {
+                        unavailable.insert(page.route_id.as_str());
+                    }
+                }
+                navigation
+                    .route_definitions
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                navigation
+                    .navigation_items
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                navigation
+                    .permission_bindings
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+
                 let stored_order = self
                     .0
                     .store

@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::{
     app_state::compile_console_boot_plan,
     config::ApiConfig,
-    host_extension_loader::prepare_host_extensions_at_startup,
+    host_extension_loader::inspect_selected_host_extensions,
     host_extensions::{
         builtin::load_builtin_host_extension_manifests,
         console::{
@@ -56,7 +56,7 @@ pub(super) async fn load_live_context(
     let store = durable.store;
     let builtin_host_extensions =
         load_builtin_host_extension_manifests(crate::api_workspace_root()?)?;
-    let mut prepared_host_extensions = prepare_host_extensions_at_startup(
+    let mut prepared_host_extensions = inspect_selected_host_extensions(
         &store,
         &config.api_node_id,
         &config.provider_install_root,

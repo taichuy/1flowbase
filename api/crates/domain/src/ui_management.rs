@@ -49,6 +49,9 @@ pub struct UiCodeTemplateRevision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiCodeTemplate {
+    pub owner_plugin_code: Option<String>,
+    pub owner_feature_id: Option<String>,
+    pub applied_plugin_version: Option<String>,
     pub id: Uuid,
     pub scope_id: Uuid,
     pub provider_code: String,

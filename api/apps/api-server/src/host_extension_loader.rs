@@ -41,9 +41,56 @@ pub(crate) struct PreparedHostExtensionsAtStartup {
         domain::NativePluginTarget,
     )>,
     pub(crate) summary: HostExtensionStartupSummary,
+    failed_candidates: Vec<(domain::NativePluginTarget, String)>,
 }
 
 impl PreparedHostExtensionsAtStartup {
+    pub(crate) fn native_targets(&self) -> Vec<domain::NativePluginTarget> {
+        self.activation_candidates
+            .iter()
+            .map(|(_, target)| target.clone())
+            .collect()
+    }
+    pub(crate) async fn apply_templates(
+        &self,
+        store: &storage_durable_postgres::MainDurableStore,
+        node_id: &str,
+    ) -> Result<()> {
+        for (_, target) in &self.activation_candidates {
+            if let Err(error) = store.apply_native_plugin_settings_templates(target).await {
+                store
+                    .complete_native_plugin_startup(
+                        target,
+                        node_id,
+                        PluginRuntimeStatus::LoadFailed,
+                        Some(&format!("{error:#}")),
+                    )
+                    .await?;
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+    pub(crate) async fn record_boot_failure(
+        &self,
+        store: &storage_durable_postgres::MainDurableStore,
+        node_id: &str,
+        error: &anyhow::Error,
+    ) {
+        for (_, target) in &self.activation_candidates {
+            if let Err(record_error) = store
+                .complete_native_plugin_startup(
+                    target,
+                    node_id,
+                    PluginRuntimeStatus::LoadFailed,
+                    Some(&format!("{error:#}")),
+                )
+                .await
+            {
+                tracing::warn!(error=%record_error, "native startup failure observation was fenced");
+            }
+        }
+    }
     pub(crate) fn graph_extensions(
         &self,
     ) -> &[(PluginManifestV1, HostExtensionContributionManifest)] {
@@ -56,6 +103,63 @@ impl PreparedHostExtensionsAtStartup {
 }
 
 pub(crate) async fn prepare_host_extensions_at_startup(
+    store: &storage_durable_postgres::MainDurableStore,
+    api_node_id: &str,
+    _provider_install_root: &str,
+    host_extension_dropin_root: &str,
+    allow_unverified_filesystem_dropins: bool,
+) -> Result<PreparedHostExtensionsAtStartup> {
+    let mut conflicts = Vec::new();
+    let mut families = std::collections::HashSet::new();
+    for i in store
+        .list_installations()
+        .await?
+        .into_iter()
+        .filter(is_host_extension_installation)
+    {
+        if !families.insert((i.scope_id, i.organization.clone(), i.provider_code.clone())) {
+            continue;
+        }
+        if let Err(error) = store.reconcile_legacy_native_plugin_target(i.id).await {
+            if matches!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(ControlPlaneError::Conflict(
+                    "native_plugin_selection_conflict"
+                ))
+            ) {
+                conflicts.push(format!("{error:#}"));
+            } else {
+                return Err(error);
+            }
+        }
+    }
+    let mut prepared = inspect_selected_host_extensions(
+        store,
+        api_node_id,
+        _provider_install_root,
+        host_extension_dropin_root,
+        allow_unverified_filesystem_dropins,
+    )
+    .await?;
+    prepared.summary.failed_count += conflicts.len();
+    for conflict in &conflicts {
+        tracing::warn!(conflict = %conflict, "native plugin activation requires an explicit installation selection");
+    }
+    prepared.summary.warnings.extend(conflicts);
+    for (target, error) in &prepared.failed_candidates {
+        store
+            .complete_native_plugin_startup(
+                target,
+                api_node_id,
+                PluginRuntimeStatus::LoadFailed,
+                Some(error),
+            )
+            .await?;
+    }
+    Ok(prepared)
+}
+
+pub(crate) async fn inspect_selected_host_extensions(
     store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
     _provider_install_root: &str,
@@ -85,47 +189,8 @@ pub(crate) async fn prepare_host_extensions_at_startup(
     let mut graph_extensions = Vec::new();
     let mut activation_candidates = Vec::new();
 
-    let mut targets = store.list_native_plugin_targets().await?;
-    let mut reconciled = std::collections::HashSet::new();
-    for installation in installations
-        .iter()
-        .filter(|i| is_host_extension_installation(i))
-    {
-        let key = (
-            installation.scope_id,
-            installation.organization.clone(),
-            installation.provider_code.clone(),
-        );
-        if !reconciled.insert(key)
-            || targets.iter().any(|t| {
-                t.scope_id == installation.scope_id
-                    && t.category == installation.category
-                    && t.organization == installation.organization
-                    && t.artifact_id == installation.provider_code
-            })
-        {
-            continue;
-        }
-        match store
-            .reconcile_legacy_native_plugin_target(installation.id)
-            .await
-        {
-            Ok(Some(target)) => targets.push(target),
-            Ok(None) => (),
-            Err(error)
-                if matches!(
-                    error.downcast_ref::<ControlPlaneError>(),
-                    Some(ControlPlaneError::Conflict(
-                        "native_plugin_selection_conflict"
-                    ))
-                ) =>
-            {
-                summary.failed_count += 1;
-                summary.warnings.push(format!("{error:#}"));
-            }
-            Err(error) => return Err(error),
-        }
-    }
+    let targets = store.list_native_plugin_targets().await?;
+    let mut failed_candidates = Vec::new();
     for target in targets.into_iter().filter(|t| t.enabled) {
         let installation = installations
             .iter()
@@ -156,7 +221,7 @@ pub(crate) async fn prepare_host_extensions_at_startup(
             match validate_host_extension_installation(&local_installation) {
                 Ok(package) => package,
                 Err(error) => {
-                    mark_host_extension_load_failed(store, api_node_id, &target, &error).await?;
+                    failed_candidates.push((target.clone(), format!("{error:#}")));
                     summary.failed_count += 1;
                     continue;
                 }
@@ -167,8 +232,9 @@ pub(crate) async fn prepare_host_extensions_at_startup(
         ) {
             Ok(contribution) => contribution,
             Err(error) => {
-                mark_host_extension_load_failed(store, api_node_id, &target, &error).await?;
-                return Err(error);
+                failed_candidates.push((target.clone(), format!("{error:#}")));
+                summary.failed_count += 1;
+                continue;
             }
         };
         contributions.push(resolved);
@@ -181,23 +247,15 @@ pub(crate) async fn prepare_host_extensions_at_startup(
         graph_extensions,
         activation_candidates,
         summary,
+        failed_candidates,
     })
 }
 
-async fn mark_host_extension_load_failed(
-    store: &storage_durable_postgres::MainDurableStore,
-    api_node_id: &str,
-    target: &domain::NativePluginTarget,
-    error: &anyhow::Error,
-) -> Result<()> {
-    store
-        .complete_native_plugin_startup(
-            target,
-            api_node_id,
-            PluginRuntimeStatus::LoadFailed,
-            Some(&format!("{error:#}")),
-        )
-        .await
+#[cfg(test)]
+static FAIL_AFTER_APPLY: std::sync::Mutex<Option<uuid::Uuid>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+pub(crate) fn fail_after_template_apply_for(installation_id: uuid::Uuid) {
+    *FAIL_AFTER_APPLY.lock().expect("native startup failpoint") = Some(installation_id);
 }
 
 pub(crate) async fn activate_prepared_host_extensions(
@@ -205,10 +263,38 @@ pub(crate) async fn activate_prepared_host_extensions(
     api_node_id: &str,
     mut prepared: PreparedHostExtensionsAtStartup,
 ) -> Result<HostExtensionStartupSummary> {
-    for (_installation, target) in prepared.activation_candidates {
-        store
-            .complete_native_plugin_startup(&target, api_node_id, PluginRuntimeStatus::Active, None)
-            .await?;
+    #[cfg(test)]
+    {
+        let fail = {
+            let mut selected = FAIL_AFTER_APPLY.lock().expect("native startup failpoint");
+            if prepared
+                .activation_candidates
+                .iter()
+                .any(|(_, t)| Some(t.installation_id) == *selected)
+            {
+                selected.take().is_some()
+            } else {
+                false
+            }
+        };
+        if fail {
+            let error = anyhow::anyhow!("controlled native startup failure after template commit");
+            prepared
+                .record_boot_failure(store, api_node_id, &error)
+                .await;
+            return Err(error);
+        }
+    }
+    for (_, target) in &prepared.activation_candidates {
+        if let Err(error) = store
+            .complete_native_plugin_startup(target, api_node_id, PluginRuntimeStatus::Active, None)
+            .await
+        {
+            prepared
+                .record_boot_failure(store, api_node_id, &error)
+                .await;
+            return Err(error);
+        }
         prepared.summary.loaded_count += 1;
     }
 
@@ -227,6 +313,9 @@ pub async fn load_host_extensions_at_startup(
         state.allow_unverified_filesystem_dropins,
     )
     .await?;
+    prepared
+        .apply_templates(&state.store, &state.api_node_id)
+        .await?;
     activate_prepared_host_extensions(&state.store, &state.api_node_id, prepared).await
 }
 
