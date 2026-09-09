@@ -650,6 +650,18 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         .await
         .unwrap();
     let restarted = RuntimeFixture::new(&state);
+    // A fresh execution epoch still boots the same complete immutable host contract.
+    restarted
+        .composition
+        .attach_interface_module(
+            plugin_framework::extension_bus::compile_managed_interface_module(
+                registry
+                    .definitions()
+                    .map(|definition| definition.interface_id().as_str()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
     restarted.composition.rebuild_installation(a).await.unwrap();
     let restarted_service =
         ManagedExecutionService::new(runtime.store.clone(), restarted.composition.governance());
