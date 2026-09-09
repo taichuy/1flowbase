@@ -229,6 +229,9 @@ impl ExtensionCenterAdapter {
                             let availability_status = if has_target
                                 && installation.category
                                     == domain::ExtensionCategory::HostExtensions
+                                // Native startup owns the recorded failure; it is not a missing artifact.
+                                && artifact.artifact_status
+                                    != domain::PluginArtifactInstanceStatus::LoadFailed
                             {
                                 control_plane::plugin_lifecycle::derive_availability_status(
                                     installation.desired_state,

@@ -1,4 +1,9 @@
 use api_server::host_extension_boot::builtin_host_extension_ids;
+use axum::{
+    body::{to_bytes, Body},
+    http::{Request, StatusCode},
+};
+use tower::ServiceExt;
 
 #[test]
 fn builtin_host_extensions_include_plan_f_official_hosts() {
@@ -221,6 +226,44 @@ async fn root_2014_ac_014_template_commit_failure_keeps_target_pending() {
             .runtime_status,
         PluginRuntimeStatus::LoadFailed
     );
+    let artifact = f
+        .state
+        .store
+        .get_artifact_instance(&f.state.api_node_id, target.installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        artifact.artifact_status,
+        domain::PluginArtifactInstanceStatus::LoadFailed
+    );
+    assert_eq!(
+        artifact.availability_status,
+        domain::PluginAvailabilityStatus::LoadFailed
+    );
+    let app = crate::app_with_state(f.state.clone());
+    let (cookie, _) =
+        crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .oneshot(Request::builder()
+            .uri("/api/console/settings/extension-center/installed?category=host-extensions&limit=50")
+            .header("cookie", cookie)
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let selected = body["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == target.installation_id.to_string())
+        .expect("installed list must retain the precise failed native target");
+    assert_eq!(selected["desired_state"], "pending_restart");
+    assert_eq!(selected["runtime_status"], "load_failed");
+    assert_eq!(selected["availability_status"], "load_failed");
     sqlx::query("alter table ui_code_template_revisions drop constraint controlled_apply_failure")
         .execute(f.state.store.pool())
         .await
