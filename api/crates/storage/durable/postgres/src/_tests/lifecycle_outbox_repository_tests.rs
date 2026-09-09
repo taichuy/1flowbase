@@ -1066,3 +1066,64 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         "completed history remains unchanged"
     );
 }
+
+/// Root #2014: workspace cleanup for a new event never depends on an example contract name.
+#[tokio::test]
+async fn root_2014_generic_event_history_scope_is_verified_or_conservative() {
+    use control_plane_contracts::ports::ManagedLifecycleOutboxRepository;
+    let store = store().await;
+    let workspace = Uuid::now_v7();
+    let event = Uuid::now_v7();
+    let transaction = Uuid::now_v7();
+    let identity = extension_contracts::ManagedExecutionIdentity::new(
+        extension_contracts::ManagedInstallationId::new(Uuid::now_v7().to_string()).unwrap(),
+        extension_contracts::ManagedWorkspaceId::new(workspace.to_string()).unwrap(),
+        extension_contracts::ContributionId::new("orion.shipments.publish").unwrap(),
+        extension_contracts::ManagedArtifactFingerprint::from_bytes(b"artifact"),
+        extension_contracts::ManagedBindingFingerprint::from_bytes(b"binding"),
+    );
+    let fact = extension_contracts::ManagedEventFact {
+        event_id: event.to_string(),
+        transaction_id: transaction.to_string(),
+        contract_id: "orion.shipments.created".into(),
+        contract_version: "9".into(),
+        workspace_id: workspace.to_string(),
+        publisher: identity,
+        causation_id: Uuid::now_v7().to_string(),
+        correlation_id: Uuid::now_v7().to_string(),
+        payload: serde_json::json!({"shipment_id":"s1","destination_code":"NYC","item_count":3}),
+    };
+    let plan = publication(&["native_observer"]);
+    let target = plan.subscribers[0].clone();
+    let graph = plan.graph_fingerprint.clone();
+    store
+        .record_lifecycle_fact(&RecordLifecycleFactInput {
+            event_id: event,
+            transaction_id: transaction,
+            contract_id: fact.contract_id.clone(),
+            contract_version: fact.contract_version.clone(),
+            canonical_payload: serde_json::to_vec(&fact).unwrap(),
+            occurred_at: OffsetDateTime::now_utc(),
+            publication: plan,
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .lifecycle_target_has_backlog(workspace, &graph, &target)
+        .await
+        .unwrap());
+    assert!(!store
+        .lifecycle_target_has_backlog(Uuid::now_v7(), &graph, &target)
+        .await
+        .unwrap());
+    sqlx::query("update lifecycle_outbox set canonical_payload=$2 where event_id=$1")
+        .bind(event)
+        .bind(br#"{"unknown":true}"#.as_slice())
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .lifecycle_target_has_backlog(Uuid::now_v7(), &graph, &target)
+        .await
+        .unwrap());
+}

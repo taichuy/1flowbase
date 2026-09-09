@@ -20,4 +20,5 @@ mod managed_reinstall_tests;
 
 mod plugin_settings_page_tests;
 
+mod generic_event_history_tests;
 mod generic_event_tests;

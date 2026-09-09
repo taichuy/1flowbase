@@ -11,7 +11,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 const SHIPMENT: &str = "orion.shipments.created";
 const AUDIT: &str = "lyra.audit-log.recorded";
-fn manifest(owner: &str) -> serde_json::Value {
+pub(super) fn manifest(owner: &str) -> serde_json::Value {
     serde_yaml::from_str(match owner {
         "orion.shipments" => {
             include_str!("../../../../../plugins/fixtures/orion.shipments/manifest.yaml")
@@ -23,16 +23,16 @@ fn manifest(owner: &str) -> serde_json::Value {
     })
     .unwrap()
 }
-struct Fixture {
-    _state: Arc<crate::app_state::ApiState>,
-    _services: Arc<ApiRuntimeServices>,
-    store: storage_durable_postgres::MainDurableStore,
-    delivery: crate::host_extensions::lifecycle::ApiLifecycleFactDelivery,
-    actor: domain::ActorContext,
-    installations: Vec<Uuid>,
+pub(super) struct Fixture {
+    pub(super) _state: Arc<crate::app_state::ApiState>,
+    pub(super) _services: Arc<ApiRuntimeServices>,
+    pub(super) store: storage_durable_postgres::MainDurableStore,
+    pub(super) delivery: crate::host_extensions::lifecycle::ApiLifecycleFactDelivery,
+    pub(super) actor: domain::ActorContext,
+    pub(super) installations: Vec<Uuid>,
 }
 impl Fixture {
-    async fn new() -> Self {
+    pub(super) async fn new() -> Self {
         let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
         let actor_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
             .fetch_one(state.store.pool())
@@ -213,7 +213,7 @@ impl Fixture {
             installations,
         }
     }
-    async fn create(&self) -> Uuid {
+    pub(super) async fn create(&self) -> Uuid {
         let model =
             control_plane_contracts::ports::ModelDefinitionRepository::create_model_definition(
                 &self.store,
@@ -240,13 +240,13 @@ impl Fixture {
             .unwrap();
         model.id
     }
-    async fn claim(&self, worker: Uuid) -> Vec<LifecycleOutboxRecord> {
+    pub(super) async fn claim(&self, worker: Uuid) -> Vec<LifecycleOutboxRecord> {
         self.store
             .claim_lifecycle_facts(worker, 64, time::Duration::seconds(120))
             .await
             .unwrap()
     }
-    async fn ack(&self, worker: Uuid, record: &LifecycleOutboxRecord) {
+    pub(super) async fn ack(&self, worker: Uuid, record: &LifecycleOutboxRecord) {
         self.store
             .mark_lifecycle_fact_delivered(
                 record.event_id,
@@ -257,7 +257,7 @@ impl Fixture {
             .await
             .unwrap();
     }
-    async fn advance(&self, worker: Uuid) -> Vec<LifecycleOutboxRecord> {
+    pub(super) async fn advance(&self, worker: Uuid) -> Vec<LifecycleOutboxRecord> {
         let records = self.claim(worker).await;
         for record in &records {
             self.delivery.deliver(record).await.unwrap();
@@ -265,7 +265,7 @@ impl Fixture {
         }
         records
     }
-    async fn owned_count(&self) -> i64 {
+    pub(super) async fn owned_count(&self) -> i64 {
         let table:String=sqlx::query_scalar("select physical_table from plugin_schema_ownership where owner_id='lyra/lyra.audit-log' and object_kind='owned_collection' and logical_name='audit_records'").fetch_one(self.store.pool()).await.unwrap();
         assert!(table
             .bytes()
