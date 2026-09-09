@@ -54,3 +54,27 @@ fn root_2007_ac_001_002_manifest_routes_preserve_typed_data_model_payload() {
     );
     assert!(parse_plugin_manifest(&raw.replace("storage: host_managed", "storage: none")).is_err());
 }
+
+#[test]
+fn root_2014_ac_005_006_manifest_event_namespace_and_schema() {
+    let raw = include_str!("../../../../plugins/fixtures/acme.composition-a/event-manifest.yaml")
+        .replace("acme.composition-a", "orion.shipments")
+        .replace("publisher_namespace: acme", "publisher_namespace: orion");
+    let parsed = parse_plugin_manifest(&raw).expect("new installed module namespace");
+    let managed = parsed.managed.unwrap();
+    let point = &managed.module.extension_points[0];
+    assert!(point.is_managed_composition_event(&managed.module.module_id));
+    let contract =
+        extension_contracts::ManagedEventSchema::from_descriptor(&point.contract).unwrap();
+    assert_eq!(contract.contract_id, "orion.shipments.processed");
+    assert!(parse_plugin_manifest(&raw.replace(
+        "owner_module_id: orion.shipments",
+        "owner_module_id: foreign.module"
+    ))
+    .is_err());
+    assert!(parse_plugin_manifest(
+        &raw.replace("additionalProperties: false", "additionalProperties: true")
+    )
+    .is_err());
+    assert!(parse_plugin_manifest(&raw.replace("maxLength: 128", "maxLength: 999999")).is_err());
+}

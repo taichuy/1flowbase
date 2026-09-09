@@ -122,7 +122,7 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             .any(|point| !point.is_managed_composition_event(&module.module_id))
     {
         return Err(invalid(
-            "managed packages may only define their sealed composition event",
+            "managed packages may only define their schema-registered namespaced event",
         ));
     }
     if module.contributions.is_empty() {

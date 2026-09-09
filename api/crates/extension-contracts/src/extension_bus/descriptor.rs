@@ -237,11 +237,13 @@ pub enum ContributionMode {
     Override,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractDescriptor {
     pub contract_id: ContractId,
     pub contract_version: ContractVersion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_schema: Option<serde_json::Value>,
 }
 
 impl ContractDescriptor {
@@ -252,6 +254,7 @@ impl ContractDescriptor {
         Ok(Self {
             contract_id: ContractId::new(contract_id)?,
             contract_version: ContractVersion::new(contract_version)?,
+            payload_schema: None,
         })
     }
 }
@@ -324,14 +327,17 @@ pub struct ModuleDescriptor {
 }
 
 impl ExtensionPointDescriptor {
-    /// The first managed event contract is sealed to the approved installation namespace.
+    /// Managed event ownership is bounded to the installed module namespace.
     /// This does not grant general point ownership or override rights to ordinary modules.
     pub fn is_managed_composition_event(&self, owner: &ModuleId) -> bool {
-        owner.as_str() == "acme.composition-a"
-            && self.owner_module_id == *owner
-            && self.point_id.as_str() == crate::MANAGED_PROCESSED_EVENT_ID
-            && self.contract.contract_id.as_str() == crate::MANAGED_PROCESSED_EVENT_ID
-            && self.contract.contract_version.as_str() == "1"
+        self.owner_module_id == *owner
+            && self
+                .point_id
+                .as_str()
+                .strip_prefix(owner.as_str())
+                .is_some_and(|suffix| suffix.starts_with('.') && suffix.len() > 1)
+            && self.contract.contract_id.as_str() == self.point_id.as_str()
+            && crate::ManagedEventSchema::from_descriptor(&self.contract).is_ok()
             && self.point_kind == ExtensionPointKind::EventStream
             && self.scope == ScopeSemantics::Workspace
             && self.cardinality == Cardinality::Many

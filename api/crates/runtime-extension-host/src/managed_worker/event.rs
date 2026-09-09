@@ -1,5 +1,5 @@
 use super::{event_stdio, invalid, ManagedWorkers};
-use extension_contracts::{ManagedEventHostFrame, ManagedEventOutcome, MANAGED_EVENT_PROTOCOL_V1};
+use extension_contracts::{ManagedEventHostFrame, ManagedEventOutcome, MANAGED_EVENT_PROTOCOL_V2};
 use extension_package_runtime::{FrameworkResult, PluginExecutionMode};
 use runtime_core::runtime_backend::RuntimeManagedEventRequest;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -55,7 +55,7 @@ impl ManagedWorkers {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .map_err(|_| invalid("managed event call sequence exhausted"))?;
         let frame = ManagedEventHostFrame {
-            protocol: MANAGED_EVENT_PROTOCOL_V1.into(),
+            protocol: MANAGED_EVENT_PROTOCOL_V2.into(),
             call_id: format!("event-{sequence}"),
             handler: binding.handler.clone(),
             execution_identity: request.handle.identity().clone(),
@@ -99,7 +99,7 @@ impl ManagedWorkers {
                     "managed event contribution has no declared publish permission",
                 ));
             }
-            if matches!(&result, ManagedEventOutcome::ApplyProcessed { .. })
+            if matches!(&result, ManagedEventOutcome::ApplyOwned { .. })
                 && !binding
                     .contribution
                     .required_permissions
