@@ -7,7 +7,8 @@ import {
   within
 } from '@testing-library/react';
 import { App } from 'antd';
-import { beforeEach, vi } from 'vitest';
+import { beforeAll, beforeEach, vi } from 'vitest';
+import { loadApplicationI18nResources } from '../../../../../shared/i18n/app-i18n';
 
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 
@@ -50,6 +51,8 @@ function renderPanel() {
     </App>
   );
 }
+
+beforeAll(loadApplicationI18nResources);
 
 beforeEach(() => {
   resetAuthStore();
