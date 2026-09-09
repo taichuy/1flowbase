@@ -253,6 +253,28 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     let view = format!("{base}/managed-execution");
     let resume_path = format!("{base}/lifecycle-deliveries/resume");
     let retire_path = format!("{base}/managed-executions/retire");
+    // Prepare the installed, authorized but disabled successor before the timed worker barrier.
+    let b = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: actor_id,
+            file_name: "managed-governance-b.1flowbasepkg".into(),
+            package_bytes: package(&manifest("b")),
+        })
+        .await
+        .unwrap()
+        .installation
+        .id;
+    management
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: actor_id,
+            installation_id: b,
+        })
+        .await
+        .unwrap();
+    authority
+        .grant(&actor, b, grant("b", "event.subscribe"))
+        .await
+        .unwrap();
     let (_, initial_view) = request(&app, &cookie, &csrf, "GET", &view, Value::Null).await;
     assert_eq!(initial_view["data"]["installation_id"], a.to_string());
     assert_eq!(initial_view["data"]["workspace_id"], workspace.to_string());
@@ -446,27 +468,6 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     })
     .await
     .unwrap();
-    let b = management
-        .install_uploaded_plugin(InstallUploadedPluginCommand {
-            actor_user_id: actor_id,
-            file_name: "managed-governance-b.1flowbasepkg".into(),
-            package_bytes: package(&manifest("b")),
-        })
-        .await
-        .unwrap()
-        .installation
-        .id;
-    management
-        .assign_plugin(AssignPluginCommand {
-            actor_user_id: actor_id,
-            installation_id: b,
-        })
-        .await
-        .unwrap();
-    authority
-        .grant(&actor, b, grant("b", "event.subscribe"))
-        .await
-        .unwrap();
     management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: actor_id,
