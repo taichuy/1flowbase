@@ -17,7 +17,7 @@ import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import Conversations from '@ant-design/x/es/conversations';
-import { App, Button, Checkbox, Form, Modal, Select, Tooltip } from 'antd';
+import { App, Button, Checkbox, Form, Tooltip } from 'antd';
 import {
   lazy,
   Suspense,
@@ -29,6 +29,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { AssistantSettingsModal } from '../assistant-plugin/AssistantSettingsModal';
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
 import {
   fetchRuntimeDebugArtifact,
@@ -1180,85 +1181,61 @@ export function EmbeddedAgentAssistantPreview({
           </div>
         </WindowWorkspaceWindow>
       ) : null}
-      <Modal
+      <AssistantSettingsModal
+        form={form}
+        applications={settings?.published_agent_flows ?? []}
+        mcpInstances={
+          settings?.enabled_mcp_instances.map((instance) => ({
+            value: instance.instance_id,
+            label: instance.name
+          })) ?? []
+        }
+        onApplicationChange={(applicationId) => {
+          if (applicationId !== settings?.preference.application_id) {
+            form.setFieldsValue({ model: null, reasoning_effort: null });
+          }
+        }}
         confirmLoading={saving}
         open={open && settingsOpen}
-        title={i18nText('appShell', 'auto.assistant_settings')}
         zIndex={assistantSettingsModalZIndex}
         onCancel={() => setSettingsOpen(false)}
         onOk={() => void saveSettings()}
       >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            label={i18nText('appShell', 'auto.assistant_flow')}
-            name="application_id"
-            rules={[{ required: true }]}
-          >
-            <Select
-              allowClear
-              options={
-                settings?.published_agent_flows.map((flow) => ({
-                  value: flow.application_id,
-                  label: flow.name
-                })) ?? []
+        <Form.Item
+          label={i18nText('appShell', 'auto.assistant_client_tools')}
+          name="enabled_client_tools"
+        >
+          <Checkbox.Group
+            options={[
+              {
+                value: 'get_client_context',
+                label: i18nText(
+                  'appShell',
+                  'auto.assistant_client_context_tool'
+                )
+              },
+              {
+                value: 'refresh_client_view',
+                label: i18nText(
+                  'appShell',
+                  'auto.assistant_client_refresh_tool'
+                )
               }
-              onChange={(applicationId) => {
-                if (applicationId !== settings?.preference.application_id) {
-                  form.setFieldsValue({ model: null, reasoning_effort: null });
-                }
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            label={i18nText('appShell', 'auto.assistant_mcp')}
-            name="mcp_instance_ids"
-          >
-            <Select
-              mode="multiple"
-              options={
-                settings?.enabled_mcp_instances.map((instance) => ({
-                  value: instance.instance_id,
-                  label: instance.name
-                })) ?? []
-              }
-            />
-          </Form.Item>
-          <Form.Item
-            label={i18nText('appShell', 'auto.assistant_client_tools')}
-            name="enabled_client_tools"
-          >
-            <Checkbox.Group
-              options={[
-                {
-                  value: 'get_client_context',
-                  label: i18nText(
-                    'appShell',
-                    'auto.assistant_client_context_tool'
-                  )
-                },
-                {
-                  value: 'refresh_client_view',
-                  label: i18nText(
-                    'appShell',
-                    'auto.assistant_client_refresh_tool'
-                  )
-                }
-              ]}
-            />
-          </Form.Item>
-          <Button
-            disabled={!settings || saving}
-            onClick={() =>
-              void updateRuntimePreference({
-                model: null,
-                reasoning_effort: null
-              })
-            }
-          >
-            {i18nText('appShell', 'auto.assistant_reset_defaults')}
-          </Button>
-        </Form>
-      </Modal>
+            ]}
+          />
+        </Form.Item>
+        <Button
+          disabled={!settings || saving}
+          onClick={() =>
+            void updateRuntimePreference({
+              model: null,
+              reasoning_effort: null
+            })
+          }
+        >
+          {i18nText('appShell', 'auto.assistant_reset_defaults')}
+        </Button>
+      </AssistantSettingsModal>
     </>,
     document.body
   );

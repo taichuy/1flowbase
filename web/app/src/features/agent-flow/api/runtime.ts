@@ -260,6 +260,7 @@ export function startFlowDebugRun(
     input_payload: Record<string, Record<string, unknown>>;
     document?: FlowAuthoringDocument;
     debug_session_id?: string;
+    mcp_instance_ids?: string[];
   },
   csrfToken: string
 ) {
@@ -277,6 +278,7 @@ export function startFlowDebugRunStream(
     input_payload: Record<string, Record<string, unknown>>;
     document?: FlowAuthoringDocument;
     debug_session_id?: string;
+    mcp_instance_ids?: string[];
   },
   csrfToken: string,
   handlers: FlowDebugRunStreamHandlers,

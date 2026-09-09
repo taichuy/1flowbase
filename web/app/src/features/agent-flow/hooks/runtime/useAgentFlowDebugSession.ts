@@ -86,6 +86,7 @@ export function useAgentFlowDebugSession({
   const actorUserId = useAuthStore(
     (state) => state.actor?.id ?? state.me?.id ?? null
   );
+  const [mcp_instance_ids, setMcpInstanceIds] = useState<string[]>([]);
   const [status, setStatus] = useState<AgentFlowDebugSessionStatus>('idle');
   const [stopping, setStopping] = useState(false);
   const [messages, setMessages] = useState<AgentFlowDebugMessage[]>([]);
@@ -127,6 +128,7 @@ export function useAgentFlowDebugSession({
     setActiveRunId(null);
     setNodePreviewInputCache({});
     setVariableOverrides({});
+    setMcpInstanceIds([]);
   }, [applicationId, debugSessionScope, draftId]);
 
   useEffect(() => {
@@ -457,7 +459,8 @@ export function useAgentFlowDebugSession({
     const runInput = {
       ...buildFlowDebugRunInput(document, inputValues, environmentVariables),
       document,
-      debug_session_id: debugSessionState.id
+      debug_session_id: debugSessionState.id,
+      mcp_instance_ids
     };
 
     try {
@@ -864,6 +867,8 @@ export function useAgentFlowDebugSession({
   }
 
   return {
+    mcp_instance_ids,
+    setMcpInstanceIds,
     status,
     stopping,
     debugSessionId: debugSessionState.id,

@@ -100,7 +100,9 @@ switch (request.method) {
     }
     const query = request.input?.messages?.[0]?.content ?? "";
     const configuredText = request.input?.provider_config?.test_response_text;
-    const text = typeof configuredText === "string" ? configuredText : "reply:" + query;
+    const text = configuredText === "__echo_tools__"
+      ? JSON.stringify(request.input?.tools ?? [])
+      : typeof configuredText === "string" ? configuredText : "reply:" + query;
     const readyPath = request.input?.provider_config?.test_invoke_ready_path;
     const releasePath = request.input?.provider_config?.test_invoke_release_path;
     if (typeof readyPath === "string" && typeof releasePath === "string") {
@@ -981,3 +983,4 @@ mod logs_routes;
 mod read_side_effect_routes;
 mod resume_cancel_routes;
 mod stream_routes;
+mod mcp_settings;

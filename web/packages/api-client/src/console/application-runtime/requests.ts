@@ -87,6 +87,7 @@ export function startConsoleFlowDebugRun(
     input_payload: Record<string, unknown>;
     document?: FlowAuthoringDocument;
     debug_session_id?: string;
+    mcp_instance_ids?: string[];
   },
   csrfToken: string,
   baseUrl?: string

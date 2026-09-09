@@ -91,7 +91,7 @@ fn validate_flow_debug_run_shell(
         || flow_run.debug_session_id != command.debug_session_id
         || flow_run.flow_schema_version != flow_schema_version
         || flow_run.document_hash != document_hash
-        || user_input_payload(&flow_run.input_payload) != command.input_payload
+        || user_input_payload(&flow_run.input_payload) != user_input_payload(&command.input_payload)
         || flow_run.flow_id != editor_state.flow.id
         || flow_run.draft_id != editor_state.draft.id
     {

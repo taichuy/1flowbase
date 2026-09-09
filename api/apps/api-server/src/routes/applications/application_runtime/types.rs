@@ -10,6 +10,8 @@ pub struct StartFlowDebugRunBody {
     pub input_payload: serde_json::Value,
     pub document: Option<serde_json::Value>,
     pub debug_session_id: Option<String>,
+    #[serde(default)]
+    pub mcp_instance_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

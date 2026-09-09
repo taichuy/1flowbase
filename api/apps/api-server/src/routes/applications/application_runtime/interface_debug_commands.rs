@@ -249,16 +249,41 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         &self,
         actor: &domain::ActorContext,
         headers: HeaderMap,
+        mcp_instance_ids: Vec<String>,
     ) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, ApiError> {
         Ok(Arc::new(
             virtual_ui::ApiMcpRuntimeToolInvoker::new(
                 self.dependencies.mcp_factory.for_actor(actor).await?,
                 headers,
                 actor.clone(),
-                Vec::new(),
+                mcp_instance_ids,
             )
             .await?,
         ))
+    }
+
+    async fn mcp_invoker_for_run(
+        &self,
+        actor: &domain::ActorContext,
+        headers: HeaderMap,
+        application_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, ApiError> {
+        self.application(actor, application_id).await?;
+        let run = self
+            .dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+        let ids = run
+            .input_payload
+            .pointer("/sys/mcp_instance_ids")
+            .map(|value| serde_json::from_value::<Vec<String>>(value.clone()))
+            .transpose()
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_instance_ids"))?
+            .unwrap_or_default();
+        self.mcp_invoker(actor, headers, ids).await
     }
 
     async fn application(
@@ -293,7 +318,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         &self,
         principal: &UserPrincipal,
         application_id: Uuid,
-        body: StartFlowDebugRunBody,
+        mut body: StartFlowDebugRunBody,
         headers: HeaderMap,
     ) -> Result<ApplicationRunDetailResponse, ApiError> {
         let actor = principal.actor();
@@ -301,7 +326,10 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .dependencies
             .runtime_activity
             .start(application_id, ApplicationActivityKind::HttpRequest);
-        let mcp = self.mcp_invoker(actor, headers).await?;
+        let mcp = self
+            .mcp_invoker(actor, headers, body.mcp_instance_ids.clone())
+            .await?;
+        body.freeze_mcp_selection()?;
         let detail = self
             .runtime()
             .with_runtime_internal_tool_invoker(mcp.clone())
@@ -388,7 +416,10 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         let detail = scope_application_activity(
             application_id,
             self.runtime()
-                .with_runtime_internal_tool_invoker(self.mcp_invoker(actor, headers).await?)
+                .with_runtime_internal_tool_invoker(
+                    self.mcp_invoker_for_run(actor, headers, application_id, run_id)
+                        .await?,
+                )
                 .resume_flow_run(ResumeFlowRunCommand {
                     actor_user_id: actor.user_id,
                     application_id,
@@ -450,10 +481,20 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .dependencies
             .runtime_activity
             .start(application_id, ApplicationActivityKind::HttpRequest);
+        self.application(actor, application_id).await?;
+        let callback = self
+            .dependencies
+            .store
+            .get_callback_task(callback_task_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("callback_task"))?;
         let detail = scope_application_activity(
             application_id,
             self.runtime()
-                .with_runtime_internal_tool_invoker(self.mcp_invoker(actor, headers).await?)
+                .with_runtime_internal_tool_invoker(
+                    self.mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
+                        .await?,
+                )
                 .complete_callback_task(CompleteCallbackTaskCommand {
                     actor_user_id: actor.user_id,
                     application_id,
@@ -485,7 +526,9 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         let outcome = scope_application_activity(
             application_id,
             self.runtime()
-                .with_runtime_internal_tool_invoker(self.mcp_invoker(actor, headers).await?)
+                .with_runtime_internal_tool_invoker(
+                    self.mcp_invoker(actor, headers, Vec::new()).await?,
+                )
                 .start_node_debug_preview(StartNodeDebugPreviewCommand {
                     actor_user_id: actor.user_id,
                     application_id,
@@ -620,7 +663,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         &self,
         principal: &UserPrincipal,
         application_id: Uuid,
-        body: StartFlowDebugRunBody,
+        mut body: StartFlowDebugRunBody,
         headers: HeaderMap,
         stream_query: super::DebugRunStreamQuery,
     ) -> Result<
@@ -638,8 +681,13 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .start(application_id, ApplicationActivityKind::HttpRequest);
         let request_received_at = std::time::Instant::now();
         let mcp = self
-            .mcp_invoker(&actor, headers.clone())
+            .mcp_invoker(&actor, headers.clone(), body.mcp_instance_ids.clone())
             .await
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        body.freeze_mcp_selection()
             .map_err(ConsoleInterfaceTargetError)
             .map_err(|error| {
                 interface_runtime::InterfaceTargetFailure::new("console_interface", error)
@@ -999,4 +1047,22 @@ pub(crate) fn compile_stream_registry(
         STREAM_DECLARATIONS,
         stream_port(dependencies),
     )
+}
+
+impl StartFlowDebugRunBody {
+    fn freeze_mcp_selection(&mut self) -> Result<(), ApiError> {
+        let input = self
+            .input_payload
+            .as_object_mut()
+            .ok_or(ControlPlaneError::InvalidInput("input_payload"))?;
+        let sys = input.entry("sys").or_insert_with(|| serde_json::json!({}));
+        let sys = sys
+            .as_object_mut()
+            .ok_or(ControlPlaneError::InvalidInput("sys"))?;
+        sys.insert(
+            "mcp_instance_ids".to_string(),
+            serde_json::json!(self.mcp_instance_ids),
+        );
+        Ok(())
+    }
 }

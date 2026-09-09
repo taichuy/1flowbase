@@ -1153,6 +1153,9 @@ export function AgentFlowCanvasFrame({
               }
             >
               <DraftAssistantPreview
+                applicationId={applicationId}
+                mcp_instance_ids={debugSession.mcp_instance_ids}
+                onChangeMcpInstanceIds={debugSession.setMcpInstanceIds}
                 document={workingDocument}
                 applicationName={applicationName}
                 messages={debugSession.messages}

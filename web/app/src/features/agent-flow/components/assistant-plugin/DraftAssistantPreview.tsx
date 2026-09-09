@@ -1,6 +1,12 @@
 import { useState, type ComponentProps } from 'react';
 import Conversations from '@ant-design/x/es/conversations';
-import { Empty } from 'antd';
+import { Alert, Empty, Form } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { AssistantSettingsModal } from './AssistantSettingsModal';
+import {
+  agentFlowMcpInstanceOptionsQueryKey,
+  fetchAgentFlowMcpInstanceOptions
+} from '../../api/mcp-instance-options';
 import type {
   FlowAuthoringDocument,
   FlowStartModelDescriptor
@@ -18,13 +24,26 @@ type DraftAssistantPreviewProps = Omit<
 > & {
   document: FlowAuthoringDocument;
   applicationName: string;
+  applicationId: string;
+  mcp_instance_ids: string[];
+  onChangeMcpInstanceIds: (ids: string[]) => void;
 };
 
 export function DraftAssistantPreview({
   document,
   applicationName,
+  applicationId,
+  mcp_instance_ids,
+  onChangeMcpInstanceIds,
   ...conversation
 }: DraftAssistantPreviewProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [form] = Form.useForm();
+  const mcpOptions = useQuery({
+    queryKey: agentFlowMcpInstanceOptionsQueryKey,
+    queryFn: fetchAgentFlowMcpInstanceOptions,
+    enabled: settingsOpen
+  });
   const [historyOpen, setHistoryOpen] = useState(false);
   const start = document.graph.nodes.find((node) => node.type === 'start');
   const models = (
@@ -123,8 +142,42 @@ export function DraftAssistantPreview({
             }
           }}
           history={{ onClick: () => setHistoryOpen(true) }}
+          settingsAction={{
+            onClick: () => {
+              form.setFieldsValue({
+                application_id: applicationId,
+                mcp_instance_ids
+              });
+              setSettingsOpen(true);
+            }
+          }}
         />
       )}
+      <AssistantSettingsModal
+        form={form}
+        open={settingsOpen}
+        applications={[
+          { application_id: applicationId, name: applicationName }
+        ]}
+        applicationFixed
+        mcpInstances={mcpOptions.data ?? []}
+        mcpLoading={mcpOptions.isPending}
+        okButtonProps={{ disabled: mcpOptions.isPending || mcpOptions.isError }}
+        onCancel={() => setSettingsOpen(false)}
+        onOk={() => {
+          void form.validateFields().then((values) => {
+            onChangeMcpInstanceIds(values.mcp_instance_ids);
+            setSettingsOpen(false);
+          });
+        }}
+      >
+        {mcpOptions.isError ? (
+          <Alert
+            type="error"
+            title={i18nText('agentFlow', 'auto.loading_failed')}
+          />
+        ) : null}
+      </AssistantSettingsModal>
     </>
   );
 }

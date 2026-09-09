@@ -1,9 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi
+} from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
+
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 
 import * as runtimeApi from '../../api/runtime';
 import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
@@ -181,6 +191,8 @@ function createWaitingHumanRunDetail() {
     events: []
   };
 }
+
+beforeAll(() => loadApplicationI18nResources());
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -460,6 +472,7 @@ describe('useAgentFlowDebugSession', () => {
       {
         document,
         debug_session_id: expect.stringMatching(/^app-1:draft-1:/),
+        mcp_instance_ids: [],
         input_payload: {
           'node-start': {
             files: [],
@@ -959,4 +972,39 @@ describe('useAgentFlowDebugSession', () => {
       ])
     );
   });
+});
+
+test('#2018 AC-107 preview MCP selection reaches both stream and fallback and resets across applications', async () => {
+  const stream = vi
+    .spyOn(runtimeApi, 'startFlowDebugRunStream')
+    .mockRejectedValue(new Error('stream unavailable'));
+  const start = vi
+    .spyOn(runtimeApi, 'startFlowDebugRun')
+    .mockResolvedValue(createSucceededRunDetail());
+  vi.spyOn(runtimeApi, 'fetchDebugVariableSnapshot').mockResolvedValue({
+    variable_cache: {}
+  });
+  const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+  const { result, rerender } = renderHook(
+    ({ applicationId }) =>
+      useAgentFlowDebugSession({ applicationId, draftId: 'draft-1', document }),
+    {
+      initialProps: { applicationId: 'app-1' },
+      wrapper: createWrapper(createQueryClient())
+    }
+  );
+  act(() => result.current.setMcpInstanceIds(['preview-mcp']));
+  await act(async () => {
+    await result.current.submitPrompt('Test MCP');
+  });
+  expect(stream.mock.calls[0][1]).toMatchObject({
+    mcp_instance_ids: ['preview-mcp'],
+    document
+  });
+  expect(start.mock.calls[0][1]).toMatchObject({
+    mcp_instance_ids: ['preview-mcp'],
+    document
+  });
+  rerender({ applicationId: 'app-2' });
+  expect(result.current.mcp_instance_ids).toEqual([]);
 });

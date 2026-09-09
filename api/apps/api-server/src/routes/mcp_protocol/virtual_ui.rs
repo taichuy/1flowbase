@@ -282,6 +282,14 @@ impl RuntimeInternalToolInvokerFactory {
         let catalog = McpManagementService::new(self.dependencies.store.clone())
             .read_catalog_for_actor(&actor)
             .await?;
+        for instance_id in &run_level_instance_ids {
+            if !catalog.instances.iter().any(|instance| {
+                instance.instance_id == *instance_id
+                    && instance.status == McpInstanceStatus::Enabled
+            }) {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput("mcp_instance_ids").into());
+            }
+        }
         headers.remove(COOKIE);
         headers.remove(AUTHORIZATION);
         headers.remove(CSRF_HEADER);

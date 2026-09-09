@@ -12,14 +12,23 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { AgentFlowEditorAssembly } from '../../components/editor/AgentFlowEditorAssembly';
 
-const { setRunContextValue } = vi.hoisted(() => ({
+const { setRunContextValue, setMcpInstanceIds } = vi.hoisted(() => ({
+  setMcpInstanceIds: vi.fn(),
   setRunContextValue: vi.fn()
+}));
+vi.mock('../../api/mcp-instance-options', () => ({
+  agentFlowMcpInstanceOptionsQueryKey: ['test-mcp-options'],
+  fetchAgentFlowMcpInstanceOptions: async () => [
+    { value: 'preview-mcp', label: 'Preview MCP' }
+  ]
 }));
 vi.mock('../../components/editor/AgentFlowCanvas', () => ({
   AgentFlowCanvas: () => <div />
 }));
 vi.mock('../../hooks/runtime/useAgentFlowDebugSession', () => ({
   useAgentFlowDebugSession: () => ({
+    mcp_instance_ids: [],
+    setMcpInstanceIds,
     activeRunId: null,
     messages: [],
     status: 'idle',
@@ -94,10 +103,26 @@ test('#2018 AC-101/103 preview uses the assistant plugin and writes model select
   expect(
     await within(dock).findByText('Current draft', {}, { timeout: 5000 })
   ).toBeInTheDocument();
-  // AC-103: preview has no settings entry; it must not redirect to Start.
-  expect(
-    within(dock).queryByRole('button', { name: '助手设置' })
-  ).not.toBeInTheDocument();
+  // AC-106: settings edits preview MCP only and fixes the current application.
+  fireEvent.click(within(dock).getByRole('button', { name: '助手设置' }));
+  const settings = await screen.findByRole('dialog');
+  const [application, mcp] = within(settings).getAllByRole('combobox');
+  expect(application).toBeDisabled();
+  await waitFor(() => expect(mcp).toBeEnabled());
+  fireEvent.mouseDown(mcp);
+  fireEvent.click(await screen.findByText('Preview MCP'));
+  fireEvent.click(within(settings).getByRole('button', { name: /确.*定|OK/ }));
+  await waitFor(() =>
+    expect(setMcpInstanceIds).toHaveBeenCalledWith(['preview-mcp'])
+  );
+  // Cancel discards the pending selection and never writes assistant preferences.
+  fireEvent.click(within(dock).getByRole('button', { name: '助手设置' }));
+  fireEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', {
+      name: /取.*消|Cancel/
+    })
+  );
+  expect(setMcpInstanceIds).toHaveBeenCalledTimes(1);
   const modelButton = await screen.findByRole('button', {
     name: /Draft model/
   });
