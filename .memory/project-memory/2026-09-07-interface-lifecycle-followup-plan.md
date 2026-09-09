@@ -1,12 +1,30 @@
 ---
-title: "接口生命周期先验收，三级插件开放后审计"
+title: "接口生命周期后续与插件组合架构计划"
 memory_type: project
 created_at: "2026-09-07 12"
-updated_at: "2026-09-07 22"
+updated_at: "2026-09-09 07"
 decision_policy: verify_before_decision
 status: active
 tags: [interface-lifecycle, planning, github-issues]
 ---
+
+## 当前阶段（2026-09-09 07）
+
+用户交付 F01 修复后要求本会话再次独立审计。已核实当前候选、远端beta和最终CI身份，独立复算原始artifact为268唯一Rust（含50必需）及35Node通过；安装owner阻止同版异内容覆盖，历史SQL不依赖当前manifest，正式重装/重启/恢复/并发及旧数据反例有真实证据。本轮结论PASS_WITH_LIMITS，解除此前F01/AC009的red，建议按Root既定有限范围最终验收；Root仍open，用户尚未最终关闭。本轮只读审查与证据整理，未修改产品或线上Issue、未重跑本地重型测试。限制仍含原archive字节严格相同、缺可信旧checksum拒绝、安装发布取消缺专项运行fixture、跨DB/FS崩溃恢复与性能不在范围。原因是核对上轮缺陷是否闭合而非重开整体架构；无固定截止日期。最新证据指针：tmp/test-governance/2007/independent-f01-review/review.md；后续先核对当前Root/代码，不再沿用上一份F01红灯结论。
+
+## 上一轮独立复核（2026-09-08 21）
+
+用户报告 Root #2007 已完成开发/集中 QA 并合入 beta，要求本会话独立检查。本轮已只读核实远端 beta、CI candidate、原始 artifact 的一致性与实际 265 唯一 Rust（含47必需）/35 Node 全通过；四 Delivery closed、Root仍open。复核发现同版本异内容重装覆盖当前贡献 metadata，使旧积压脱离历史查询/清理保护的范围内缺陷，暂不建议最终验收，等待原开发会话有界修复与新反例补验。静态可达链已交叉核实，新增场景未跑PG复现。本轮没有修产品或改线上Issue；无固定截止日期。动机是保住已批准的积压可查、旧目标和退休边界，避免专项CI green被泛化。详细结论与证据唯一指针：tmp/test-governance/2007/independent-review/review.md；后续先核对该报告、在线Root和当前源码，不直接沿用旧“全部AC green”。
+
+## 上一阶段计划（2026-09-08 10）
+
+阶段更新：用户在本会话确认成熟授权模型的平衡方案，并明确要求更新 Issue 计划、再向原开发会话发继续指令。Root #2007 与四个 Delivery #2008–2011 已同步，原生父子关系和正文回读验证完成。当前 REPLAN_APPROVED/phase:ready，P01=a8511d6a 保留在原隔离 assembly，原 P02 退出活动调度，由 P02A→P02B→P02C 接替；全树13个活动Packet、原10项AC及AUTH-01–10有限反例，均未新验收。P02B贡献授权/撤销/修订持久结构、必要追加migration与显式授权operation已获确认，不能再按旧条款7重复索要同一范围批准；具体语义、写集合与新鲜度/撤权边界以在线Root为准。本轮只修改在线计划和私有记忆，没有接管开发、修改产品代码、执行migration或新测试。用户将在原开发会话继续，无固定截止日期。
+
+用户要求整理插件架构现状并将 Issue Tree 发布线上，之后在独立会话开发。当前插件规划唯一真值为 https://github.com/taichuy/1flowbase/issues/2007 ，原生子 Issue #2008（多贡献安装激活）、#2009（真实接口 Hook）、#2010（命名空间可靠事件）、#2011（升级停用与资源回收）。Root 包含现状永久链接、10项AC、有界Packet inventory、集中Test Batch及新会话启动指令；phase:ready，本轮仅发布计划，没有开发/验收新插件能力。新会话用户启动Root后，以在线正文为准固定具体Packet再执行，不逐个请求Delivery批准；无固定截止日期。
+
+动机：基于已调整的接口生命周期开放实际可安装插件组合，避免把已有Graph/Kernel/Outbox代码等同于真实受管插件已接通。Scope与首批契约见Root，尤其真实Create入口的只读Before、同workspace事件、旧版本不可用显式暂停、普通publish与原业务事务分离。上一阶段#1998为独立验收记录，本轮未关闭或改写其状态。Wiki预览：https://github.com/taichuy/1flowbase/wiki/Plugin-Composition-Architecture-CN 。本地研究提交尚未推送不影响在线交接，不应为启动计划顺手推送其他本地提交。
+
+以下为此前阶段记录，判断当前授权与执行状态优先读取在线Root。
 
 用户授权Root继续接口生命周期实现，P6/P7先完成，集中验收后推送GitHub Actions，验证迁移前后输入/输出/状态/error/权限等价。活动工作区固定 /home/taichuy/git/1flowbase_latest，beta；用户明确要求提前合回beta并直接工作，覆盖旧隔离/pre-QA集成规则。无需重复申请实现/有限修复/push授权。无固定截止日期；以实际验收证据完成为目标。
 
