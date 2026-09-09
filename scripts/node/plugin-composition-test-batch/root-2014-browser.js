@@ -153,7 +153,7 @@ async function editTemplate(base, owner, web, source) {
     await editor.click();
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.insertText(source);
-    await studio.getByRole('button', { name: /^(Save|保存)$/u }).click();
+    await studio.getByRole('button', { name: /^(Save|保存)$/iu }).click();
     await studio.waitFor({ state: 'hidden' });
     await row.getByRole('button', { name: /^(Publish|发布)$/u }).click();
     for (let attempt = 0; attempt < 40; attempt++) {
