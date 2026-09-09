@@ -145,7 +145,7 @@ async fn ensure_account<'a>(
                   current_balance::text as current_balance,
                   reserved_amount::text as reserved_amount,
                   (current_balance-reserved_amount)::text as available_balance,
-                  (current_balance-reserved_amount)<0 as credit_insufficient,
+                  (current_balance-reserved_amount)<=0 as credit_insufficient,
                   revision, created_at, updated_at
            from user_credit_accounts
            where workspace_id = $1 and user_id = $2 and credit_unit = 'USD'
@@ -588,7 +588,7 @@ impl BillingRepository for PgControlPlaneStore {
             r#"select id, workspace_id, user_id, credit_unit, charge_enabled,
             current_balance::text as current_balance, reserved_amount::text as reserved_amount,
             (current_balance-reserved_amount)::text as available_balance,
-            (current_balance-reserved_amount)<0 as credit_insufficient,
+            (current_balance-reserved_amount)<=0 as credit_insufficient,
             revision, created_at, updated_at from user_credit_accounts
             where workspace_id=$1 order by updated_at desc, id desc limit $2 offset $3"#,
         )
@@ -609,7 +609,7 @@ impl BillingRepository for PgControlPlaneStore {
             r#"select id, workspace_id, user_id, credit_unit, charge_enabled,
             current_balance::text as current_balance, reserved_amount::text as reserved_amount,
             (current_balance-reserved_amount)::text as available_balance,
-            (current_balance-reserved_amount)<0 as credit_insufficient,
+            (current_balance-reserved_amount)<=0 as credit_insufficient,
             revision, created_at, updated_at from user_credit_accounts
             where workspace_id=$1 and user_id=$2 and credit_unit='USD'"#,
         )
@@ -787,7 +787,7 @@ impl BillingRepository for PgControlPlaneStore {
         }
         let balance: rust_decimal::Decimal = account.current_balance.parse()?;
         let reserved: rust_decimal::Decimal = account.reserved_amount.parse()?;
-        if account.charge_enabled && balance - reserved < rust_decimal::Decimal::ZERO {
+        if account.charge_enabled && balance - reserved <= rust_decimal::Decimal::ZERO {
             return Err(ControlPlaneError::Conflict("credit_insufficient").into());
         }
         let session_id = Uuid::now_v7();

@@ -78,7 +78,7 @@ async fn credit_command_is_idempotent_and_updates_projection_with_ledger() {
 }
 
 #[tokio::test]
-async fn zero_balance_allows_only_one_concurrent_boundary_reservation() {
+async fn zero_balance_rejects_all_concurrent_boundary_reservations() {
     let (store, workspace_id, user_id) = seeded_store().await;
     let store = Arc::new(store);
     let barrier = Arc::new(Barrier::new(2));
@@ -111,7 +111,7 @@ async fn zero_balance_allows_only_one_concurrent_boundary_reservation() {
             Err(error) => panic!("unexpected reservation error: {error}"),
         }
     }
-    assert_eq!((accepted, rejected), (1, 1));
+    assert_eq!((accepted, rejected), (0, 2));
 }
 
 #[tokio::test]
@@ -186,6 +186,23 @@ async fn expired_reservation_with_rated_cost_is_settled_instead_of_released() {
 #[tokio::test]
 async fn expired_reservation_without_cost_is_released() {
     let (store, workspace_id, user_id) = seeded_store().await;
+    store
+        .execute_credit_command(&CreditCommandInput {
+            workspace_id,
+            user_id,
+            amount: "1".into(),
+            credit_unit: "USD".into(),
+            command: "grant".into(),
+            reason: "expiry_fixture".into(),
+            source_type: None,
+            source_id: None,
+            idempotency_key: "expiry_fixture".into(),
+            actor_user_id: Some(user_id),
+            actor_plugin_id: None,
+            metadata: json!({}),
+        })
+        .await
+        .unwrap();
     let reservation = store
         .reserve_credit(&ReserveCreditInput {
             workspace_id,
@@ -444,4 +461,95 @@ async fn model_pricing_install_skips_existing_rule_without_overwriting_user_valu
             .input_token_unit_price,
         Decimal::from(9)
     );
+}
+
+#[tokio::test]
+async fn nonpositive_available_credit_blocks_only_charge_enabled_accounts() {
+    for (balance, reserved, charge_enabled, blocked) in [
+        ("0", "0", true, true),
+        ("1", "1", true, true),
+        ("-1", "0", true, true),
+        ("1", "0", true, false),
+        ("0", "0", false, false),
+        ("-1", "0", false, false),
+    ] {
+        let (store, workspace_id, user_id) = seeded_store().await;
+        store
+            .execute_credit_command(&CreditCommandInput {
+                workspace_id,
+                user_id,
+                amount: balance.into(),
+                credit_unit: "USD".into(),
+                command: "adjustment".into(),
+                reason: "boundary_fixture".into(),
+                source_type: None,
+                source_id: None,
+                idempotency_key: "boundary_fixture".into(),
+                actor_user_id: Some(user_id),
+                actor_plugin_id: None,
+                metadata: json!({}),
+            })
+            .await
+            .unwrap();
+        sqlx::query("update user_credit_accounts set reserved_amount=$3::numeric, charge_enabled=$4 where workspace_id=$1 and user_id=$2")
+            .bind(workspace_id).bind(user_id).bind(reserved).bind(charge_enabled)
+            .execute(store.pool()).await.unwrap();
+        let account = store
+            .get_credit_account(workspace_id, user_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let expected_insufficient = balance.parse::<Decimal>().unwrap()
+            - reserved.parse::<Decimal>().unwrap()
+            <= Decimal::ZERO;
+        assert_eq!(account.credit_insufficient, expected_insufficient);
+        let listed = store
+            .list_credit_accounts(workspace_id, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(listed[0].credit_insufficient, expected_insufficient);
+        let result = store
+            .reserve_credit(&ReserveCreditInput {
+                workspace_id,
+                user_id,
+                amount: "2".into(),
+                flow_run_id: None,
+                provider_invocation_id: Uuid::now_v7(),
+                pricing_rule_id: Uuid::now_v7(),
+                charge_enabled_default: true,
+                reservation_expires_at: OffsetDateTime::now_utc() + Duration::minutes(15),
+            })
+            .await;
+        if blocked {
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("credit_insufficient"));
+            let count: i64 =
+                sqlx::query_scalar("select count(*) from billing_sessions where workspace_id=$1")
+                    .bind(workspace_id)
+                    .fetch_one(store.pool())
+                    .await
+                    .unwrap();
+            assert_eq!(count, 0);
+            let after = store
+                .get_credit_account(workspace_id, user_id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(after.current_balance, account.current_balance);
+            assert_eq!(after.reserved_amount, account.reserved_amount);
+        } else {
+            let reservation = result.unwrap();
+            assert_eq!(reservation.charge_skipped, !charge_enabled);
+            assert_eq!(
+                reservation.reserved_amount.parse::<Decimal>().unwrap(),
+                if charge_enabled {
+                    Decimal::from(2)
+                } else {
+                    Decimal::ZERO
+                }
+            );
+        }
+    }
 }
