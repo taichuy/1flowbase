@@ -13,10 +13,14 @@ use crate::{
     app_state::ApiState,
     provider_runtime::{ApiProviderRuntime, ApiRuntimeArtifactResolver, ApiRuntimeServices},
 };
-use axum::{Router, http::StatusCode};
-use control_plane::{plugin_management::*, ports::AuthRepository};
+use axum::{http::StatusCode, Router};
+use control_plane::{
+    plugin_management::*,
+    ports::{AuthRepository, PluginRepository},
+};
 use extension_contracts::ManagedHookHostFrame;
-use serde_json::{Value, json};
+use runtime_extension_host::RuntimeArtifactResolver;
+use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -41,6 +45,61 @@ pub(super) struct Fixture {
     pub(super) actor: domain::ActorContext,
     pub(super) installation_id: Uuid,
     pub(super) worker: PathBuf,
+}
+
+/// The production managed binding uses installation IDs; cfg(test) Provider bindings use
+/// installed package paths. Both fixture dialects resolve through the same durable owner.
+struct FixtureArtifactResolver {
+    store: storage_durable_postgres::MainDurableStore,
+    node_id: String,
+    install_root: PathBuf,
+    installed: ApiRuntimeArtifactResolver,
+}
+
+#[async_trait::async_trait]
+impl RuntimeArtifactResolver for FixtureArtifactResolver {
+    async fn resolve(
+        &self,
+        artifact: &runtime_core::runtime_backend::RuntimeArtifactReference,
+    ) -> Result<PathBuf, runtime_core::runtime_backend::RuntimeBackendError> {
+        use runtime_core::runtime_backend::{RuntimeArtifactReference, RuntimeBackendError};
+        let reject = || {
+            RuntimeBackendError::InvalidRequest(
+                "fixture artifact does not identify an exact current-node installation".into(),
+            )
+        };
+        let declared_path = Path::new(artifact.as_str());
+        if declared_path.is_absolute() {
+            let root = std::fs::canonicalize(&self.install_root).map_err(|_| reject())?;
+            let canonical = std::fs::canonicalize(declared_path).map_err(|_| reject())?;
+            if canonical != declared_path || !canonical.starts_with(&root) {
+                return Err(reject());
+            }
+            let artifacts = self
+                .store
+                .list_artifact_instances(&self.node_id)
+                .await
+                .map_err(|_| reject())?;
+            let mut matches = artifacts.iter().filter(|record| {
+                record.node_id == self.node_id
+                    && record.local_path.as_deref() == Some(artifact.as_str())
+            });
+            let installation_id = matches.next().ok_or_else(reject)?.installation_id;
+            if matches.next().is_some() {
+                return Err(reject());
+            }
+            let reference = RuntimeArtifactReference::new(installation_id.to_string())?;
+            let resolved = self.installed.resolve(&reference).await?;
+            // A changed durable mapping cannot retarget this exact path admission.
+            if resolved != declared_path {
+                return Err(reject());
+            }
+            Ok(resolved)
+        } else {
+            Uuid::parse_str(artifact.as_str()).map_err(|_| reject())?;
+            self.installed.resolve(artifact).await
+        }
+    }
 }
 
 fn package() -> Vec<u8> {
@@ -104,11 +163,16 @@ impl Fixture {
         let host = Arc::new(
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
-                Arc::new(ApiRuntimeArtifactResolver::new(
-                    initial.store.clone(),
-                    &initial.api_node_id,
-                    &initial.provider_install_root,
-                )),
+                Arc::new(FixtureArtifactResolver {
+                    store: initial.store.clone(),
+                    node_id: initial.api_node_id.clone(),
+                    install_root: PathBuf::from(&initial.provider_install_root),
+                    installed: ApiRuntimeArtifactResolver::new(
+                        initial.store.clone(),
+                        &initial.api_node_id,
+                        &initial.provider_install_root,
+                    ),
+                }),
             )
             .unwrap(),
         );
@@ -709,8 +773,8 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
     use crate::routes::{
         console_interface,
         model_definitions::{
+            interface::{managed_hooks, ModelDefinitionsInput, ModelDefinitionsOutput},
             CreateModelDefinitionBody,
-            interface::{ModelDefinitionsInput, ModelDefinitionsOutput, managed_hooks},
         },
     };
     use interface_runtime::*;
@@ -769,12 +833,10 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
                 InterfaceInvocationTerminal::Cancelled
             );
             assert_eq!(fixture.model_count(code).await, 0);
-            assert!(
-                fixture
-                    .trace()
-                    .iter()
-                    .any(|frame| frame.handler == "trace.completion")
-            );
+            assert!(fixture
+                .trace()
+                .iter()
+                .any(|frame| frame.handler == "trace.completion"));
         } else {
             let outcome = invocation.await.unwrap();
             assert_eq!(fixture.model_count(code).await, 1);

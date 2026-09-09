@@ -283,7 +283,14 @@ async fn create_provider_instance(
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "provider {suffix} status={status} body={}",
+            String::from_utf8_lossy(&body)
+        );
     }
 
     let mut config = json!({
