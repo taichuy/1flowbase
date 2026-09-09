@@ -70,6 +70,11 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
+// Component-record editing does not exercise Monaco's browser worker setup.
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates'],
