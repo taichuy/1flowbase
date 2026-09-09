@@ -840,16 +840,31 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
         } else {
             let outcome = invocation.await.unwrap();
             assert_eq!(fixture.model_count(code).await, 1);
-            assert_eq!(
-                outcome
-                    .receipt()
-                    .observer_records()
+            let records = outcome.receipt().observer_records();
+            for (owner, expected) in [
+                (
+                    "api-server.managed-create.after",
+                    InterfaceObserverStatus::Failed,
+                ),
+                (
+                    "interface-runtime.managed.after",
+                    InterfaceObserverStatus::Executed,
+                ),
+            ] {
+                let selected = records
                     .iter()
-                    .find(|record| record.point() == InterfaceExtensionPoint::After)
-                    .unwrap()
-                    .status(),
-                InterfaceObserverStatus::Failed
-            );
+                    .filter(|record| {
+                        record.point() == InterfaceExtensionPoint::After
+                            && record.plugin().as_str() == owner
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(selected.len(), 1, "owner={owner} records={records:?}");
+                assert_eq!(
+                    selected[0].status(),
+                    expected,
+                    "owner={owner} records={records:?}"
+                );
+            }
             assert_eq!(
                 outcome.receipt().terminal(),
                 InterfaceInvocationTerminal::Completed
