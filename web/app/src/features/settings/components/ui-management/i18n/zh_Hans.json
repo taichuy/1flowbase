@@ -76,5 +76,7 @@
   "catalog_updated": "组件已更新",
   "catalog_request_failed": "远程目录请求失败，现有组件记录未发生变化。",
   "extension_center_tab": "UI 组件",
-  "go_to_ui_management": "前往 UI 管理"
+  "go_to_ui_management": "前往 UI 管理",
+  "plugin_template_overwrite_warning": "此模板由插件提供。首次启用及插件升级将在重启时应用内置模板，覆盖您的修改。需要保留时，请提前保存自定义代码。普通重启及同版本重新启用保留您的修改。",
+  "plugin_template_ownership": "插件：{{owner_plugin_code}} · 设置功能：{{owner_feature_id}} · 已应用版本：{{applied_plugin_version}}"
 }

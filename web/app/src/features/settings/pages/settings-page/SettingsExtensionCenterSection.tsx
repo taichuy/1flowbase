@@ -765,7 +765,28 @@ function GenericExtensionCenterSection({
             {isInstalledRow(row) ? (
               <>
                 <Tag>{row.desired_state ?? '—'}</Tag>
-                <Tag>{row.availability_status ?? '—'}</Tag>
+                <Tag
+                  data-testid="plugin-runtime-status"
+                  data-runtime-status={row.runtime_status ?? undefined}
+                >
+                  {row.runtime_status === 'active'
+                    ? t('auto.plugin_runtime_active')
+                    : row.runtime_status === 'inactive'
+                      ? t('auto.plugin_runtime_inactive')
+                      : row.runtime_status === 'load_failed'
+                        ? t('auto.plugin_runtime_load_failed')
+                        : (row.runtime_status ?? '—')}
+                </Tag>
+                <Tag
+                  data-testid="plugin-availability-status"
+                  data-availability-status={
+                    row.availability_status ?? undefined
+                  }
+                >
+                  {row.availability_status === 'pending_restart'
+                    ? t('auto.plugin_pending_restart')
+                    : (row.availability_status ?? '—')}
+                </Tag>
                 <Tag>
                   {extensionApplicationStatusLabel(row.application_status, t)}
                 </Tag>
@@ -1032,6 +1053,14 @@ function GenericExtensionCenterSection({
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
+        {activeTab === 'installed' || activeTab === 'host-extensions' ? (
+          <Alert
+            data-testid="plugin-settings-upgrade-warning"
+            type="warning"
+            showIcon
+            title={t('auto.plugin_settings_upgrade_warning')}
+          />
+        ) : null}
         <Tabs
           activeKey={activeTab}
           tabBarExtraContent={
@@ -1270,6 +1299,7 @@ function GenericExtensionCenterSection({
                     <li
                       className="structured-list__item"
                       key={installedVersion.id}
+                      data-installation-id={installedVersion.id}
                     >
                       <div className="structured-list__content">
                         <Descriptions column={1} size="small">
@@ -1301,6 +1331,29 @@ function GenericExtensionCenterSection({
                       </div>
                       {!supportsFamilyUninstall(selected.category) ? (
                         <div className="structured-list__actions">
+                          {selected.category === 'host-extensions' ? (
+                            <Button
+                              type="link"
+                              disabled={
+                                installedVersion.is_current &&
+                                selected.desired_state !== 'disabled'
+                              }
+                              loading={
+                                activatingInstallationId === installedVersion.id
+                              }
+                              onClick={() =>
+                                toggleInstalledExtensionActivation(
+                                  {
+                                    installationId: installedVersion.id,
+                                    enabled: true
+                                  },
+                                  { onSuccess: () => setSelected(null) }
+                                )
+                              }
+                            >
+                              {t('auto.select_installed_plugin_version')}
+                            </Button>
+                          ) : null}
                           <Tooltip
                             title={
                               installedVersion.deletable

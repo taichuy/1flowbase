@@ -1145,6 +1145,13 @@
     "network_center_proxy_plugins_search": "搜索代理插件",
     "network_center_no_proxy_plugins": "暂无可用代理插件。",
     "network_center_proxy_plugin_installed": "已安装",
-    "ui_components": "UI 组件"
+    "ui_components": "UI 组件",
+    "plugin_settings_upgrade_warning": "对于提供设置页的插件，首次启用及版本切换将在重启时应用内置模板，覆盖您的修改。需要保留时，请提前保存自定义代码。普通重启及同版本重新启用保留您的修改，业务配置和凭据不受影响。",
+    "plugin_settings_page_failed": "无法打开此插件设置页。请检查访问权限及选定插件版本是否已完成重启。",
+    "plugin_runtime_active": "运行中",
+    "plugin_runtime_inactive": "未运行",
+    "plugin_runtime_load_failed": "加载失败",
+    "plugin_pending_restart": "等待重启",
+    "select_installed_plugin_version": "选择此版本"
   }
 }

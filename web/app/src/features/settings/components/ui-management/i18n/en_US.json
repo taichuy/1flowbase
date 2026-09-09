@@ -76,5 +76,7 @@
   "catalog_updated": "Component updated",
   "catalog_request_failed": "The remote catalog request failed. Existing component records were not changed.",
   "extension_center_tab": "UI components",
-  "go_to_ui_management": "Go to UI management"
+  "go_to_ui_management": "Go to UI management",
+  "plugin_template_overwrite_warning": "This template is provided by a plugin. First activation and plugin upgrades apply the bundled template at restart, overwriting your edits. Save custom code beforehand. Ordinary restarts and re-enabling the same version preserve your edits.",
+  "plugin_template_ownership": "Plugin: {{owner_plugin_code}} · Settings feature: {{owner_feature_id}} · Applied version: {{applied_plugin_version}}"
 }

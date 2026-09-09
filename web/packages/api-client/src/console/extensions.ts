@@ -85,6 +85,7 @@ export interface ConsoleInstalledExtension {
   status: string;
   is_current: boolean;
   desired_state: string | null;
+  runtime_status: string | null;
   availability_status: string | null;
   application_action: ConsoleExtensionApplicationAction;
   application_status: ConsoleExtensionApplicationStatus;
