@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::{Query, State},
-    http::{header, HeaderMap, HeaderValue, Response, StatusCode},
+    http::{HeaderMap, HeaderValue, Response, StatusCode, header},
 };
 use control_plane::{errors::ControlPlaneError, i18n_catalog::RuntimeI18nCatalogService};
 use domain::CatalogLocale;
@@ -18,7 +18,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 const CATALOG_CACHE_CONTROL: &str = "no-cache";
@@ -52,6 +52,15 @@ pub(crate) struct RuntimeI18nInput {
     if_none_match: Option<String>,
 }
 impl InterfaceContract for RuntimeI18nInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[("locale", mp::text_schema())]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("locale", mp::text(&(self).locale)?)]))
+    }
+
     const CONTRACT_ID: &'static str = "console-runtime-i18n-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -60,6 +69,44 @@ pub(crate) struct RuntimeI18nOutput {
     etag: String,
 }
 impl InterfaceContract for RuntimeI18nOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "payload",
+            serde_json::json!({"anyOf": [mp::object_schema(&[("catalog_revision",serde_json::json!({"type":"integer"})), ("locale",mp::text_schema()), ("digest",mp::object_schema(&[("byte_count",mp::count_schema())])), ("messages",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "payload",
+            match (&(self).payload).as_ref() {
+                Some(item) => mp::object_value(&[
+                    (
+                        "catalog_revision",
+                        serde_json::json!(*(&(item).catalog_revision)),
+                    ),
+                    ("locale", mp::text(&(item).locale)?),
+                    (
+                        "digest",
+                        mp::object_value(&[(
+                            "byte_count",
+                            serde_json::json!((&(item).digest).len()),
+                        )]),
+                    ),
+                    (
+                        "messages",
+                        mp::object_value(&[(
+                            "item_count",
+                            serde_json::json!((&(item).messages).len()),
+                        )]),
+                    ),
+                ]),
+                None => serde_json::Value::Null,
+            },
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-runtime-i18n-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

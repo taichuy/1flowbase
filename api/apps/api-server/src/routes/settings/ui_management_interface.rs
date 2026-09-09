@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
@@ -77,11 +79,6 @@ pub(crate) enum UiManagementInput {
     },
 }
 
-impl InterfaceContract for UiManagementInput {
-    const CONTRACT_ID: &'static str = "console-ui-management-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum UiManagementOutput {
     Templates(TemplateListResponse),
     Template(ManagedTemplateResponse),
@@ -94,11 +91,6 @@ pub(crate) enum UiManagementOutput {
     CatalogComponent(CatalogComponentResponse),
     CatalogSync(CatalogSyncResponse),
     NoContent,
-}
-
-impl InterfaceContract for UiManagementOutput {
-    const CONTRACT_ID: &'static str = "console-ui-management-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 #[derive(Clone)]

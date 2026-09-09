@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
@@ -8,8 +10,8 @@ use control_plane::{
         VerifiedOfficialCatalogSeed,
     },
     plugin_management::{
-        installed_extension_integrity_warnings, validate_extension_integrity_override,
         ExtensionInstallationService, ExtensionRiskOverride,
+        installed_extension_integrity_warnings, validate_extension_integrity_override,
     },
     ports::I18nCatalogRepository,
 };
@@ -18,13 +20,13 @@ use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
+    ActivateI18nCatalogBody, ActivateI18nCatalogResponse, ActivateInstalledI18nCatalogBody,
+    I18nCatalogStateResponse, I18nCatalogUpdateStatusResponse, InstalledI18nCatalogPreviewResponse,
     management::{
         CatalogEntryMutationResponse, CatalogManagementPageResponse, CatalogRevisionResponse,
         DeleteCustomCatalogKeyBody, GetCatalogEntryQuery, ListCatalogEntriesQuery,
         RestoreCatalogOverrideBody, RestoreCatalogOverridesBody, UpsertCatalogTranslationBody,
     },
-    ActivateI18nCatalogBody, ActivateI18nCatalogResponse, ActivateInstalledI18nCatalogBody,
-    I18nCatalogStateResponse, I18nCatalogUpdateStatusResponse, InstalledI18nCatalogPreviewResponse,
 };
 use crate::{
     error_response::ApiError,
@@ -54,11 +56,6 @@ pub(crate) enum I18nCatalogInput {
     RestoreAllOfficialOverrides(RestoreCatalogOverridesBody),
 }
 
-impl InterfaceContract for I18nCatalogInput {
-    const CONTRACT_ID: &'static str = "console-i18n-catalog-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum I18nCatalogOutput {
     State(I18nCatalogStateResponse),
     UpdateStatus(I18nCatalogUpdateStatusResponse),
@@ -68,11 +65,6 @@ pub(crate) enum I18nCatalogOutput {
     Entry(super::management::CatalogManagementEntryResponse),
     EntryMutation(CatalogEntryMutationResponse),
     Revision(CatalogRevisionResponse),
-}
-
-impl InterfaceContract for I18nCatalogOutput {
-    const CONTRACT_ID: &'static str = "console-i18n-catalog-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct I18nCatalogDependencies {

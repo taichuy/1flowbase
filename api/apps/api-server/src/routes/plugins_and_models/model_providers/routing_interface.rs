@@ -20,12 +20,233 @@ pub(crate) enum ProviderRoutingInput {
     },
 }
 impl InterfaceContract for ProviderRoutingInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Get")),
+                ("provider_code", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Update")),
+                ("provider_code", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[
+                        (
+                            "auto_include_new_instances",
+                            serde_json::json!({"type":"boolean"}),
+                        ),
+                        ("expected_revision", serde_json::json!({"type":"integer"})),
+                        (
+                            "model_routing_policies",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("model_id",mp::text_schema()), ("distribution_rule",mp::object_schema(&[("byte_count",mp::count_schema())])), ("distribution_rule_contract_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("distribution_rule_config",mp::object_schema(&[("item_count",mp::count_schema())])), ("provider_instance_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()})), ("excluded_provider_instance_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}))])}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Get {
+                provider_code: _field_provider_code,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Get".to_owned())),
+                ("provider_code", mp::text(_field_provider_code)?),
+            ]),
+            Self::Update {
+                provider_code: _field_provider_code,
+                body: _field_body,
+                ..
+            } => {
+                mp::object_value(&[
+                    ("variant", serde_json::Value::String("Update".to_owned())),
+                    ("provider_code", mp::text(_field_provider_code)?),
+                    (
+                        "body",
+                        mp::object_value(&[
+                            (
+                                "auto_include_new_instances",
+                                serde_json::Value::Bool(
+                                    *(&(_field_body).auto_include_new_instances),
+                                ),
+                            ),
+                            (
+                                "expected_revision",
+                                serde_json::json!(*(&(_field_body).expected_revision)),
+                            ),
+                            (
+                                "model_routing_policies",
+                                match (&(_field_body).model_routing_policies).as_ref() {
+                                    Some(item) => {
+                                        if (item).len() > 32 {
+                                            return None;
+                                        }
+                                        serde_json::Value::Array((item).iter().map(|item| Some(mp::object_value(&[("model_id",mp::text(&(item).model_id)?), ("distribution_rule",mp::object_value(&[("byte_count",serde_json::json!((&(item).distribution_rule).len()))])), ("distribution_rule_contract_version",match (&(item).distribution_rule_contract_version).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("distribution_rule_config",mp::object_value(&[("item_count",serde_json::json!((&(item).distribution_rule_config).len()))])), ("provider_instance_ids",{ if (&(item).provider_instance_ids).len() > 32 { return None; } serde_json::Value::Array((&(item).provider_instance_ids).iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) }), ("excluded_provider_instance_ids",{ if (&(item).excluded_provider_instance_ids).len() > 32 { return None; } serde_json::Value::Array((&(item).excluded_provider_instance_ids).iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
+                                    }
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                        ]),
+                    ),
+                ])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-provider-routing-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct ProviderRoutingOutput(pub(crate) ModelProviderMainInstanceResponse);
 impl InterfaceContract for ProviderRoutingOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "0",
+            mp::object_schema(&[
+                ("provider_code", mp::text_schema()),
+                (
+                    "auto_include_new_instances",
+                    serde_json::json!({"type":"boolean"}),
+                ),
+                ("revision", serde_json::json!({"type":"integer"})),
+                (
+                    "model_routing_policies",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("model_id",mp::text_schema()), ("distribution_rule",mp::object_schema(&[("byte_count",mp::count_schema())])), ("distribution_rule_id",mp::text_schema()), ("distribution_rule_contract_version",mp::text_schema()), ("distribution_rule_config",mp::object_schema(&[("item_count",mp::count_schema())])), ("provider_instance_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()})), ("excluded_provider_instance_ids",serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}))])}),
+                ),
+                (
+                    "distribution_rules",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("value",mp::object_schema(&[("byte_count",mp::count_schema())])), ("rule_id",mp::text_schema()), ("rule_version",mp::text_schema()), ("contract_version",mp::text_schema()), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("config_fields",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                ),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "0",
+            mp::object_value(&[
+                ("provider_code", mp::text(&(&(self).0).provider_code)?),
+                (
+                    "auto_include_new_instances",
+                    serde_json::Value::Bool(*(&(&(self).0).auto_include_new_instances)),
+                ),
+                ("revision", serde_json::json!(*(&(&(self).0).revision))),
+                ("model_routing_policies", {
+                    if (&(&(self).0).model_routing_policies).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (&(&(self).0).model_routing_policies)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("model_id", mp::text(&(item).model_id)?),
+                                    (
+                                        "distribution_rule",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).distribution_rule).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "distribution_rule_id",
+                                        mp::text(&(item).distribution_rule_id)?,
+                                    ),
+                                    (
+                                        "distribution_rule_contract_version",
+                                        mp::text(&(item).distribution_rule_contract_version)?,
+                                    ),
+                                    (
+                                        "distribution_rule_config",
+                                        mp::object_value(&[(
+                                            "item_count",
+                                            serde_json::json!(
+                                                (&(item).distribution_rule_config).len()
+                                            ),
+                                        )]),
+                                    ),
+                                    ("provider_instance_ids", {
+                                        if (&(item).provider_instance_ids).len() > 32 {
+                                            return None;
+                                        }
+                                        serde_json::Value::Array(
+                                            (&(item).provider_instance_ids)
+                                                .iter()
+                                                .map(|item| {
+                                                    Some(serde_json::Value::String(
+                                                        (item).to_string(),
+                                                    ))
+                                                })
+                                                .collect::<Option<Vec<_>>>()?,
+                                        )
+                                    }),
+                                    ("excluded_provider_instance_ids", {
+                                        if (&(item).excluded_provider_instance_ids).len() > 32 {
+                                            return None;
+                                        }
+                                        serde_json::Value::Array(
+                                            (&(item).excluded_provider_instance_ids)
+                                                .iter()
+                                                .map(|item| {
+                                                    Some(serde_json::Value::String(
+                                                        (item).to_string(),
+                                                    ))
+                                                })
+                                                .collect::<Option<Vec<_>>>()?,
+                                        )
+                                    }),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+                ("distribution_rules", {
+                    if (&(&(self).0).distribution_rules).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (&(&(self).0).distribution_rules)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    (
+                                        "value",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).value).len()),
+                                        )]),
+                                    ),
+                                    ("rule_id", mp::text(&(item).rule_id)?),
+                                    ("rule_version", mp::text(&(item).rule_version)?),
+                                    ("contract_version", mp::text(&(item).contract_version)?),
+                                    (
+                                        "display_name",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).display_name).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "config_fields",
+                                        mp::object_value(&[(
+                                            "item_count",
+                                            serde_json::json!((&(item).config_fields).len()),
+                                        )]),
+                                    ),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-provider-routing-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

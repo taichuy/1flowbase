@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::{
     debug_execute::{self, McpDebugDispatchError, McpDebugExecuteBody, McpServerBoundInputs},
-    interface_catalog::{bindable_mcp_interface_with, McpInterfaceCatalogDependencies},
+    interface_catalog::{McpInterfaceCatalogDependencies, bindable_mcp_interface_with},
 };
 use crate::{
     error_response::ApiError,
@@ -39,6 +39,30 @@ pub(crate) struct McpDebugInput {
 }
 
 impl InterfaceContract for McpDebugInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "body",
+            mp::object_schema(&[
+                ("interface_id", mp::text_schema()),
+                (
+                    "debug_response_mode",
+                    mp::union_schema(vec![
+                        mp::object_schema(&[("variant", mp::tag_schema("ToolResult"))]),
+                        mp::object_schema(&[("variant", mp::tag_schema("DebugDetails"))]),
+                    ]),
+                ),
+                ("mcp_arguments", mp::json_summary_schema()),
+                ("input_mapping", mp::json_summary_schema()),
+                ("output_mapping", mp::json_summary_schema()),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("body",mp::object_value(&[("interface_id",mp::text(&(&(self).body).interface_id)?), ("debug_response_mode",match &(&(self).body).debug_response_mode {crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::ToolResult => mp::object_value(&[("variant",serde_json::Value::String("ToolResult".to_owned()))]), crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::DebugDetails => mp::object_value(&[("variant",serde_json::Value::String("DebugDetails".to_owned()))])}), ("mcp_arguments",mp::json_summary(&(&(self).body).mcp_arguments)), ("input_mapping",mp::json_summary(&(&(self).body).input_mapping)), ("output_mapping",mp::json_summary(&(&(self).body).output_mapping))]))]))
+    }
+
     const CONTRACT_ID: &'static str = "console-mcp-debug-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -49,6 +73,54 @@ pub(crate) enum McpDebugOutput {
 }
 
 impl InterfaceContract for McpDebugOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Json")),
+                ("0", mp::json_summary_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Target")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("status", serde_json::json!({"type":"integer"})),
+                        (
+                            "body",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Json(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Json".to_owned())),
+                ("0", mp::json_summary(_field_0)),
+            ]),
+            Self::Target(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Target".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        (
+                            "body",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).body).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-mcp-debug-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

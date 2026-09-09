@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -33,11 +35,6 @@ pub(crate) enum McpCoreInput {
     UpdateDiscoveryPolicy(String, UpdateMcpInstanceDiscoveryPolicyBody),
 }
 
-impl InterfaceContract for McpCoreInput {
-    const CONTRACT_ID: &'static str = "console-mcp-core-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum McpCoreOutput {
     Credential(McpClientCredentialResponse),
     Instances(Vec<McpInstanceResponse>),
@@ -46,11 +43,6 @@ pub(crate) enum McpCoreOutput {
     Binding(McpToolBindingResponse),
     DiscoveryPolicy(McpInstanceDiscoveryPolicyResponse),
     NoContent,
-}
-
-impl InterfaceContract for McpCoreOutput {
-    const CONTRACT_ID: &'static str = "console-mcp-core-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct McpCoreAdapter(McpCoreDependencies);

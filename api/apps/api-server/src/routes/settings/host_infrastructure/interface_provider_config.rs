@@ -25,6 +25,44 @@ pub(crate) struct HostInfrastructureProviderConfigInput {
 }
 
 impl InterfaceContract for HostInfrastructureProviderConfigInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            ("installation_id", mp::text_schema()),
+            ("provider_code", mp::text_schema()),
+            (
+                "body",
+                mp::object_schema(&[
+                    (
+                        "enabled_contracts",
+                        mp::object_schema(&[("item_count", mp::count_schema())]),
+                    ),
+                    ("config_json", mp::json_summary_schema()),
+                ]),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            ("installation_id", mp::text(&(self).installation_id)?),
+            ("provider_code", mp::text(&(self).provider_code)?),
+            (
+                "body",
+                mp::object_value(&[
+                    (
+                        "enabled_contracts",
+                        mp::object_value(&[(
+                            "item_count",
+                            serde_json::json!((&(&(self).body).enabled_contracts).len()),
+                        )]),
+                    ),
+                    ("config_json", mp::json_summary(&(&(self).body).config_json)),
+                ]),
+            ),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "console-host-infrastructure-provider-config-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -40,6 +78,50 @@ impl HostInfrastructureProviderConfigOutput {
 }
 
 impl InterfaceContract for HostInfrastructureProviderConfigOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "response",
+            mp::object_schema(&[
+                ("restart_required", serde_json::json!({"type":"boolean"})),
+                (
+                    "installation_desired_state",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "provider_config_status",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "response",
+            mp::object_value(&[
+                (
+                    "restart_required",
+                    serde_json::Value::Bool(*(&(&(self).response).restart_required)),
+                ),
+                (
+                    "installation_desired_state",
+                    mp::object_value(&[(
+                        "byte_count",
+                        serde_json::json!((&(&(self).response).installation_desired_state).len()),
+                    )]),
+                ),
+                (
+                    "provider_config_status",
+                    mp::object_value(&[(
+                        "byte_count",
+                        serde_json::json!((&(&(self).response).provider_config_status).len()),
+                    )]),
+                ),
+            ]),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-host-infrastructure-provider-config-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -103,8 +185,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     interface_id: "host_infrastructure.providers.configure",
     binding_id: "http.console.host-infrastructure.providers.configure.v1",
     method: "PUT",
-    path:
-        "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
+    path: "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
     mutating: true,
 }];
 
@@ -157,9 +238,11 @@ mod tests {
             Arc::new(Unavailable),
         )
         .unwrap();
-        assert!(registry
-            .binding(&BindingId::new(DECLARATIONS[0].binding_id).unwrap())
-            .is_some());
+        assert!(
+            registry
+                .binding(&BindingId::new(DECLARATIONS[0].binding_id).unwrap())
+                .is_some()
+        );
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }

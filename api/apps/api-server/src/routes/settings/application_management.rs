@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
+use axum::{Json, Router, extract::Query, extract::State, http::HeaderMap};
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
@@ -23,7 +23,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 #[derive(Debug, Deserialize)]
@@ -67,10 +67,199 @@ pub struct ApplicationManagementPageResponse {
 }
 
 impl InterfaceContract for ApplicationManagementQueryParams {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            (
+                "filter",
+                serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+            ),
+            (
+                "sort",
+                serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+            ),
+            (
+                "page",
+                serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+            ),
+            (
+                "page_size",
+                serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            (
+                "filter",
+                match (&(self).filter).as_ref() {
+                    Some(item) => {
+                        mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                    }
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "sort",
+                match (&(self).sort).as_ref() {
+                    Some(item) => {
+                        mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
+                    }
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "page",
+                match (&(self).page).as_ref() {
+                    Some(item) => serde_json::json!(*(item)),
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "page_size",
+                match (&(self).page_size).as_ref() {
+                    Some(item) => serde_json::json!(*(item)),
+                    None => serde_json::Value::Null,
+                },
+            ),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "console-application-management-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
 impl InterfaceContract for ApplicationManagementPageResponse {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            (
+                "items",
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+            ),
+            ("total", serde_json::json!({"type":"integer"})),
+            ("page", serde_json::json!({"type":"integer"})),
+            ("page_size", serde_json::json!({"type":"integer"})),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            ("items", {
+                if (&(self).items).len() > 32 {
+                    return None;
+                }
+                serde_json::Value::Array(
+                    (&(self).items)
+                        .iter()
+                        .map(|item| {
+                            Some(mp::object_value(&[
+                                ("id", mp::text(&(item).id)?),
+                                ("application_type", mp::text(&(item).application_type)?),
+                                (
+                                    "workflow_trigger_type",
+                                    match (&(item).workflow_trigger_type).as_ref() {
+                                        Some(item) => mp::text(item)?,
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "name",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(item).name).len()),
+                                    )]),
+                                ),
+                                (
+                                    "description",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(item).description).len()),
+                                    )]),
+                                ),
+                                (
+                                    "icon",
+                                    match (&(item).icon).as_ref() {
+                                        Some(item) => mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "icon_type",
+                                    match (&(item).icon_type).as_ref() {
+                                        Some(item) => mp::text(item)?,
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "icon_background",
+                                    match (&(item).icon_background).as_ref() {
+                                        Some(item) => mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "created_by",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(item).created_by).len()),
+                                    )]),
+                                ),
+                                (
+                                    "created_by_display_name",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(item).created_by_display_name).len()),
+                                    )]),
+                                ),
+                                ("created_at", mp::text(&(item).created_at)?),
+                                ("updated_at", mp::text(&(item).updated_at)?),
+                                ("tags", {
+                                    if (&(item).tags).len() > 32 {
+                                        return None;
+                                    }
+                                    serde_json::Value::Array(
+                                        (&(item).tags)
+                                            .iter()
+                                            .map(|item| {
+                                                Some(mp::object_value(&[
+                                                    ("id", mp::text(&(item).id)?),
+                                                    (
+                                                        "name",
+                                                        mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((&(item).name).len()),
+                                                        )]),
+                                                    ),
+                                                ]))
+                                            })
+                                            .collect::<Option<Vec<_>>>()?,
+                                    )
+                                }),
+                                (
+                                    "publication_status",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(item).publication_status).len()),
+                                    )]),
+                                ),
+                            ]))
+                        })
+                        .collect::<Option<Vec<_>>>()?,
+                )
+            }),
+            ("total", serde_json::json!(*(&(self).total))),
+            ("page", serde_json::json!(*(&(self).page))),
+            ("page_size", serde_json::json!(*(&(self).page_size))),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "console-application-management-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

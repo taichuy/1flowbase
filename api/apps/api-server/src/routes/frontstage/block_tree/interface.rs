@@ -29,6 +29,385 @@ pub(crate) enum FrontstageBlocksInput {
 }
 
 impl InterfaceContract for FrontstageBlocksInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Open")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ListRoots")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        ("tab_id", mp::text_schema()),
+                        ("limit", serde_json::json!({"type":"integer"})),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Create")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        (
+                            "tab_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "description",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "presentation",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Page"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Drawer"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Modal"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Inline"))]),
+                            ]),
+                        ),
+                        (
+                            "parent_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "before_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "after_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        ("source_code", mp::text_schema()),
+                        (
+                            "input_mapping",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                        (
+                            "output_mapping",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                        (
+                            "runtime_descriptor",
+                            serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Search")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        ("tab_id", mp::text_schema()),
+                        (
+                            "query",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("limit", serde_json::json!({"type":"integer"})),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Get")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Update")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "description",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "presentation",
+                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])]), {"type":"null"}]}),
+                        ),
+                        (
+                            "input_mapping",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("item_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "output_mapping",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("item_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "runtime_descriptor",
+                            serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("UpdateDescriptors")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[(
+                        "updates",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("block_id",mp::text_schema()), ("runtime_descriptor",mp::json_summary_schema())])}),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteLeaf")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Children")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[("limit", serde_json::json!({"type":"integer"}))]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Ancestors")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Descendants")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        ("max_depth", serde_json::json!({"type":"integer"})),
+                        ("limit", serde_json::json!({"type":"integer"})),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteImpact")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Move")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        (
+                            "parent_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "before_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "after_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteSubtree")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[(
+                        "expected_affected_count",
+                        serde_json::json!({"type":"integer"}),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("GetCode")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("GetCodeFragment")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        ("start_line", serde_json::json!({"type":"integer"})),
+                        ("start_column", serde_json::json!({"type":"integer"})),
+                        ("line_count", serde_json::json!({"type":"integer"})),
+                        ("max_chars", serde_json::json!({"type":"integer"})),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RuntimeAssembly")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("SaveCode")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        (
+                            "expected_source_revision",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        ("source_code", mp::text_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("PatchCode")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        (
+                            "expected_source_revision",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "edits",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("start_line",serde_json::json!({"type":"integer"})), ("start_column",serde_json::json!({"type":"integer"})), ("end_line",serde_json::json!({"type":"integer"})), ("end_column",serde_json::json!({"type":"integer"})), ("replacement",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {Self::Open(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Open".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::ListRoots(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("ListRoots".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("tab_id",mp::text(&(_field_1).tab_id)?), ("limit",serde_json::json!(*(&(_field_1).limit)))]))]), Self::Create(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("tab_id",match (&(_field_1).tab_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("title",match (&(_field_1).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(_field_1).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("presentation",match &(_field_1).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("parent_block_id",match (&(_field_1).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("before_block_id",match (&(_field_1).before_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("after_block_id",match (&(_field_1).after_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("source_code",mp::text(&(_field_1).source_code)?), ("input_mapping",mp::object_value(&[("item_count",serde_json::json!((&(_field_1).input_mapping).len()))])), ("output_mapping",mp::object_value(&[("item_count",serde_json::json!((&(_field_1).output_mapping).len()))])), ("runtime_descriptor",match (&(_field_1).runtime_descriptor).as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null })]))]), Self::Search(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Search".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("tab_id",mp::text(&(_field_1).tab_id)?), ("query",mp::object_value(&[("byte_count",serde_json::json!((&(_field_1).query).len()))])), ("limit",serde_json::json!(*(&(_field_1).limit)))]))]), Self::Get(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Get".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::Update(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("Update".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("title",match (&(_field_2).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(_field_2).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("presentation",match (&(_field_2).presentation).as_ref() { Some(item) => match item {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}, None => serde_json::Value::Null }), ("input_mapping",match (&(_field_2).input_mapping).as_ref() { Some(item) => mp::object_value(&[("item_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("output_mapping",match (&(_field_2).output_mapping).as_ref() { Some(item) => mp::object_value(&[("item_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("runtime_descriptor",match (&(_field_2).runtime_descriptor).as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null })]))]), Self::UpdateDescriptors(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("UpdateDescriptors".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("updates",{ if (&(_field_2).updates).len() > 32 { return None; } serde_json::Value::Array((&(_field_2).updates).iter().map(|item| Some(mp::object_value(&[("block_id",mp::text(&(item).block_id)?), ("runtime_descriptor",mp::json_summary(&(item).runtime_descriptor))]))).collect::<Option<Vec<_>>>()?) })]))]), Self::DeleteLeaf(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("DeleteLeaf".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::Children(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("Children".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("limit",serde_json::json!(*(&(_field_2).limit)))]))]), Self::Ancestors(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Ancestors".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::Descendants(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("Descendants".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("max_depth",serde_json::json!(*(&(_field_2).max_depth))), ("limit",serde_json::json!(*(&(_field_2).limit)))]))]), Self::DeleteImpact(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("DeleteImpact".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::Move(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("Move".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("parent_block_id",match (&(_field_2).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("before_block_id",match (&(_field_2).before_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("after_block_id",match (&(_field_2).after_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))]), Self::DeleteSubtree(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("DeleteSubtree".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("expected_affected_count",serde_json::json!(*(&(_field_2).expected_affected_count)))]))]), Self::GetCode(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("GetCode".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::GetCodeFragment(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("GetCodeFragment".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("start_line",serde_json::json!(*(&(_field_2).start_line))), ("start_column",serde_json::json!(*(&(_field_2).start_column))), ("line_count",serde_json::json!(*(&(_field_2).line_count))), ("max_chars",serde_json::json!(*(&(_field_2).max_chars)))]))]), Self::RuntimeAssembly(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("RuntimeAssembly".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::SaveCode(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("SaveCode".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("expected_source_revision",match (&(_field_2).expected_source_revision).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("source_code",mp::text(&(_field_2).source_code)?)]))]), Self::PatchCode(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("PatchCode".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("expected_source_revision",mp::object_value(&[("byte_count",serde_json::json!((&(_field_2).expected_source_revision).len()))])), ("edits",{ if (&(_field_2).edits).len() > 32 { return None; } serde_json::Value::Array((&(_field_2).edits).iter().map(|item| Some(mp::object_value(&[("start_line",serde_json::json!(*(&(item).start_line))), ("start_column",serde_json::json!(*(&(item).start_column))), ("end_line",serde_json::json!(*(&(item).end_line))), ("end_column",serde_json::json!(*(&(item).end_column))), ("replacement",mp::object_value(&[("byte_count",serde_json::json!((&(item).replacement).len()))]))]))).collect::<Option<Vec<_>>>()?) })]))])})
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-blocks-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -53,6 +432,174 @@ pub(crate) enum FrontstageBlocksOutput {
 }
 
 impl InterfaceContract for FrontstageBlocksOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("Open"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Nodes")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("block_id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("page_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("schema_version",serde_json::json!({"type":"integer"})), ("input_mapping",mp::object_schema(&[("item_count",mp::count_schema())])), ("output_mapping",mp::object_schema(&[("item_count",mp::count_schema())])), ("runtime_descriptor",mp::json_summary_schema()), ("code_ref",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Node")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("block_id", mp::text_schema()),
+                        ("workspace_id", mp::text_schema()),
+                        ("page_id", mp::text_schema()),
+                        ("tab_id", mp::text_schema()),
+                        (
+                            "parent_block_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "presentation",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Page"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Drawer"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Modal"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Inline"))]),
+                            ]),
+                        ),
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "description",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        ("schema_version", serde_json::json!({"type":"integer"})),
+                        (
+                            "input_mapping",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                        (
+                            "output_mapping",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                        ("runtime_descriptor", mp::json_summary_schema()),
+                        (
+                            "code_ref",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("created_at", mp::text_schema()),
+                        ("updated_at", mp::text_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Search")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("node",mp::object_schema(&[("block_id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("page_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("schema_version",serde_json::json!({"type":"integer"})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])), ("ancestors",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("block_id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("page_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("schema_version",serde_json::json!({"type":"integer"})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Summaries")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("block_id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("page_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("schema_version",serde_json::json!({"type":"integer"})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Descendants")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("node",mp::object_schema(&[("block_id",mp::text_schema()), ("workspace_id",mp::text_schema()), ("page_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("schema_version",serde_json::json!({"type":"integer"})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])), ("depth",serde_json::json!({"type":"integer"})), ("has_children",serde_json::json!({"type":"boolean"})), ("path",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteImpact")),
+                (
+                    "0",
+                    mp::object_schema(&[("affected_count", serde_json::json!({"type":"integer"}))]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteSubtree")),
+                (
+                    "0",
+                    mp::object_schema(&[("deleted_count", serde_json::json!({"type":"integer"}))]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Code")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("block_id", mp::text_schema()),
+                        ("page_id", mp::text_schema()),
+                        ("source_code", mp::text_schema()),
+                        (
+                            "source_sha256",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Fragment")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("block_id", mp::text_schema()),
+                        ("page_id", mp::text_schema()),
+                        (
+                            "source_revision",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "source_fragment",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("start_line", serde_json::json!({"type":"integer"})),
+                        ("start_column", serde_json::json!({"type":"integer"})),
+                        ("end_line", serde_json::json!({"type":"integer"})),
+                        ("end_column", serde_json::json!({"type":"integer"})),
+                        ("total_lines", serde_json::json!({"type":"integer"})),
+                        ("total_chars", serde_json::json!({"type":"integer"})),
+                        (
+                            "next_line",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "next_column",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "truncated_by_max_chars",
+                            serde_json::json!({"type":"boolean"}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RuntimeAssembly")),
+                (
+                    "0",
+                    mp::object_schema(&[(
+                        "layers",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("block_id",mp::text_schema()), ("tab_id",mp::text_schema()), ("parent_block_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Page"))]), mp::object_schema(&[("variant",mp::tag_schema("Drawer"))]), mp::object_schema(&[("variant",mp::tag_schema("Modal"))]), mp::object_schema(&[("variant",mp::tag_schema("Inline"))])])), ("schema_version",serde_json::json!({"type":"integer"})), ("input_mapping",mp::object_schema(&[("item_count",mp::count_schema())])), ("output_mapping",mp::object_schema(&[("item_count",mp::count_schema())])), ("runtime_descriptor",mp::json_summary_schema()), ("code_ref",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source_revision",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {Self::Open(_) => mp::object_value(&[("variant",serde_json::Value::String("Open".to_owned()))]), Self::Nodes(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Nodes".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("block_id",mp::text(&(item).block_id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("page_id",mp::text(&(item).page_id)?), ("tab_id",mp::text(&(item).tab_id)?), ("parent_block_id",match (&(item).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(item).rank).len()))])), ("presentation",match &(item).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(item).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(item).schema_version))), ("input_mapping",mp::object_value(&[("item_count",serde_json::json!((&(item).input_mapping).len()))])), ("output_mapping",mp::object_value(&[("item_count",serde_json::json!((&(item).output_mapping).len()))])), ("runtime_descriptor",mp::json_summary(&(item).runtime_descriptor)), ("code_ref",mp::object_value(&[("byte_count",serde_json::json!((&(item).code_ref).len()))])), ("created_at",mp::text(&(item).created_at)?), ("updated_at",mp::text(&(item).updated_at)?)]))).collect::<Option<Vec<_>>>()?) })]), Self::Node(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Node".to_owned())), ("0",mp::object_value(&[("block_id",mp::text(&(_field_0).block_id)?), ("workspace_id",mp::text(&(_field_0).workspace_id)?), ("page_id",mp::text(&(_field_0).page_id)?), ("tab_id",mp::text(&(_field_0).tab_id)?), ("parent_block_id",match (&(_field_0).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).rank).len()))])), ("presentation",match &(_field_0).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(_field_0).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(_field_0).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(_field_0).schema_version))), ("input_mapping",mp::object_value(&[("item_count",serde_json::json!((&(_field_0).input_mapping).len()))])), ("output_mapping",mp::object_value(&[("item_count",serde_json::json!((&(_field_0).output_mapping).len()))])), ("runtime_descriptor",mp::json_summary(&(_field_0).runtime_descriptor)), ("code_ref",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).code_ref).len()))])), ("created_at",mp::text(&(_field_0).created_at)?), ("updated_at",mp::text(&(_field_0).updated_at)?)]))]), Self::Search(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Search".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("node",mp::object_value(&[("block_id",mp::text(&(&(item).node).block_id)?), ("workspace_id",mp::text(&(&(item).node).workspace_id)?), ("page_id",mp::text(&(&(item).node).page_id)?), ("tab_id",mp::text(&(&(item).node).tab_id)?), ("parent_block_id",match (&(&(item).node).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(item).node).rank).len()))])), ("presentation",match &(&(item).node).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(&(item).node).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(&(item).node).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(&(item).node).schema_version))), ("created_at",mp::text(&(&(item).node).created_at)?), ("updated_at",mp::text(&(&(item).node).updated_at)?)])), ("ancestors",{ if (&(item).ancestors).len() > 32 { return None; } serde_json::Value::Array((&(item).ancestors).iter().map(|item| Some(mp::object_value(&[("block_id",mp::text(&(item).block_id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("page_id",mp::text(&(item).page_id)?), ("tab_id",mp::text(&(item).tab_id)?), ("parent_block_id",match (&(item).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(item).rank).len()))])), ("presentation",match &(item).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(item).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(item).schema_version))), ("created_at",mp::text(&(item).created_at)?), ("updated_at",mp::text(&(item).updated_at)?)]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?) })]), Self::Summaries(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Summaries".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("block_id",mp::text(&(item).block_id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("page_id",mp::text(&(item).page_id)?), ("tab_id",mp::text(&(item).tab_id)?), ("parent_block_id",match (&(item).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(item).rank).len()))])), ("presentation",match &(item).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(item).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(item).schema_version))), ("created_at",mp::text(&(item).created_at)?), ("updated_at",mp::text(&(item).updated_at)?)]))).collect::<Option<Vec<_>>>()?) })]), Self::Descendants(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Descendants".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("node",mp::object_value(&[("block_id",mp::text(&(&(item).node).block_id)?), ("workspace_id",mp::text(&(&(item).node).workspace_id)?), ("page_id",mp::text(&(&(item).node).page_id)?), ("tab_id",mp::text(&(&(item).node).tab_id)?), ("parent_block_id",match (&(&(item).node).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(item).node).rank).len()))])), ("presentation",match &(&(item).node).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("title",match (&(&(item).node).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("description",match (&(&(item).node).description).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("schema_version",serde_json::json!(*(&(&(item).node).schema_version))), ("created_at",mp::text(&(&(item).node).created_at)?), ("updated_at",mp::text(&(&(item).node).updated_at)?)])), ("depth",serde_json::json!(*(&(item).depth))), ("has_children",serde_json::Value::Bool(*(&(item).has_children))), ("path",mp::object_value(&[("item_count",serde_json::json!((&(item).path).len()))]))]))).collect::<Option<Vec<_>>>()?) })]), Self::DeleteImpact(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("DeleteImpact".to_owned())), ("0",mp::object_value(&[("affected_count",serde_json::json!(*(&(_field_0).affected_count)))]))]), Self::DeleteSubtree(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("DeleteSubtree".to_owned())), ("0",mp::object_value(&[("deleted_count",serde_json::json!(*(&(_field_0).deleted_count)))]))]), Self::Code(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Code".to_owned())), ("0",mp::object_value(&[("block_id",mp::text(&(_field_0).block_id)?), ("page_id",mp::text(&(_field_0).page_id)?), ("source_code",mp::text(&(_field_0).source_code)?), ("source_sha256",match (&(_field_0).source_sha256).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Fragment(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Fragment".to_owned())), ("0",mp::object_value(&[("block_id",mp::text(&(_field_0).block_id)?), ("page_id",mp::text(&(_field_0).page_id)?), ("source_revision",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).source_revision).len()))])), ("source_fragment",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).source_fragment).len()))])), ("start_line",serde_json::json!(*(&(_field_0).start_line))), ("start_column",serde_json::json!(*(&(_field_0).start_column))), ("end_line",serde_json::json!(*(&(_field_0).end_line))), ("end_column",serde_json::json!(*(&(_field_0).end_column))), ("total_lines",serde_json::json!(*(&(_field_0).total_lines))), ("total_chars",serde_json::json!(*(&(_field_0).total_chars))), ("next_line",match (&(_field_0).next_line).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null }), ("next_column",match (&(_field_0).next_column).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null }), ("truncated_by_max_chars",serde_json::Value::Bool(*(&(_field_0).truncated_by_max_chars)))]))]), Self::RuntimeAssembly(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("RuntimeAssembly".to_owned())), ("0",mp::object_value(&[("layers",{ if (&(_field_0).layers).len() > 32 { return None; } serde_json::Value::Array((&(_field_0).layers).iter().map(|item| Some(mp::object_value(&[("block_id",mp::text(&(item).block_id)?), ("tab_id",mp::text(&(item).tab_id)?), ("parent_block_id",match (&(item).parent_block_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("presentation",match &(item).presentation {crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Drawer => mp::object_value(&[("variant",serde_json::Value::String("Drawer".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Modal => mp::object_value(&[("variant",serde_json::Value::String("Modal".to_owned()))]), crate::routes::frontstage::block_tree::FrontstageBlockPresentationDto::Inline => mp::object_value(&[("variant",serde_json::Value::String("Inline".to_owned()))])}), ("schema_version",serde_json::json!(*(&(item).schema_version))), ("input_mapping",mp::object_value(&[("item_count",serde_json::json!((&(item).input_mapping).len()))])), ("output_mapping",mp::object_value(&[("item_count",serde_json::json!((&(item).output_mapping).len()))])), ("runtime_descriptor",mp::json_summary(&(item).runtime_descriptor)), ("code_ref",mp::object_value(&[("byte_count",serde_json::json!((&(item).code_ref).len()))])), ("source_revision",match (&(item).source_revision).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) })]))]), Self::NoContent => mp::object_value(&[("variant",serde_json::Value::String("NoContent".to_owned()))])})
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-blocks-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

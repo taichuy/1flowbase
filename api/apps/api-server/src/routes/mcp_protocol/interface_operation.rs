@@ -51,6 +51,347 @@ pub(crate) struct McpToolInvocationContext {
 }
 
 impl InterfaceContract for McpInvocationInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Initialize")),
+                (
+                    "instance_name",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("InitializedNotification"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ToolsList")),
+                ("path_regex_enabled", serde_json::json!({"type":"boolean"})),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ToolCall")),
+                (
+                    "name",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "context",
+                    mp::object_schema(&[
+                        (
+                            "user",
+                            mp::object_schema(&[
+                                ("id", mp::text_schema()),
+                                (
+                                    "name",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "nickname",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "introduction",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "preferred_locale",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                ("meta", mp::json_summary_schema()),
+                                (
+                                    "default_display_role",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "status",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Active"))]),
+                                        mp::object_schema(&[(
+                                            "variant",
+                                            mp::tag_schema("Disabled"),
+                                        )]),
+                                    ]),
+                                ),
+                                (
+                                    "roles",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "actor",
+                            mp::object_schema(&[
+                                ("user_id", mp::text_schema()),
+                                ("tenant_id", mp::text_schema()),
+                                ("current_workspace_id", mp::text_schema()),
+                                (
+                                    "effective_display_role",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                ("is_root", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "permissions",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "catalog",
+                            mp::object_schema(&[
+                                (
+                                    "instances",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "groups",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "tools",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "bindings",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "discovery_policies",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Initialize {
+                instance_name: _field_instance_name,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("Initialize".to_owned()),
+                ),
+                (
+                    "instance_name",
+                    mp::object_value(&[(
+                        "byte_count",
+                        serde_json::json!((_field_instance_name).len()),
+                    )]),
+                ),
+            ]),
+            Self::InitializedNotification => mp::object_value(&[(
+                "variant",
+                serde_json::Value::String("InitializedNotification".to_owned()),
+            )]),
+            Self::ToolsList {
+                path_regex_enabled: _field_path_regex_enabled,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("ToolsList".to_owned())),
+                (
+                    "path_regex_enabled",
+                    serde_json::Value::Bool(*(_field_path_regex_enabled)),
+                ),
+            ]),
+            Self::ToolCall {
+                name: _field_name,
+                context: _field_context,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("ToolCall".to_owned())),
+                (
+                    "name",
+                    mp::object_value(&[("byte_count", serde_json::json!((_field_name).len()))]),
+                ),
+                (
+                    "context",
+                    mp::object_value(&[
+                        (
+                            "user",
+                            mp::object_value(&[
+                                (
+                                    "id",
+                                    serde_json::Value::String(
+                                        (&(&(_field_context).user).id).to_string(),
+                                    ),
+                                ),
+                                (
+                                    "name",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(&(_field_context).user).name).len()),
+                                    )]),
+                                ),
+                                (
+                                    "nickname",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).user).nickname).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "introduction",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).user).introduction).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "preferred_locale",
+                                    match (&(&(_field_context).user).preferred_locale).as_ref() {
+                                        Some(item) => mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                ("meta", mp::json_summary(&(&(_field_context).user).meta)),
+                                (
+                                    "default_display_role",
+                                    match (&(&(_field_context).user).default_display_role).as_ref()
+                                    {
+                                        Some(item) => mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "status",
+                                    match &(&(_field_context).user).status {
+                                        domain::auth::UserStatus::Active => mp::object_value(&[(
+                                            "variant",
+                                            serde_json::Value::String("Active".to_owned()),
+                                        )]),
+                                        domain::auth::UserStatus::Disabled => {
+                                            mp::object_value(&[(
+                                                "variant",
+                                                serde_json::Value::String("Disabled".to_owned()),
+                                            )])
+                                        }
+                                    },
+                                ),
+                                (
+                                    "roles",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!((&(&(_field_context).user).roles).len()),
+                                    )]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "actor",
+                            mp::object_value(&[
+                                (
+                                    "user_id",
+                                    serde_json::Value::String(
+                                        (&(&(_field_context).actor).user_id).to_string(),
+                                    ),
+                                ),
+                                (
+                                    "tenant_id",
+                                    serde_json::Value::String(
+                                        (&(&(_field_context).actor).tenant_id).to_string(),
+                                    ),
+                                ),
+                                (
+                                    "current_workspace_id",
+                                    serde_json::Value::String(
+                                        (&(&(_field_context).actor).current_workspace_id)
+                                            .to_string(),
+                                    ),
+                                ),
+                                (
+                                    "effective_display_role",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).actor).effective_display_role)
+                                                .len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "is_root",
+                                    serde_json::Value::Bool(*(&(&(_field_context).actor).is_root)),
+                                ),
+                                (
+                                    "permissions",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).actor).permissions).len()
+                                        ),
+                                    )]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "catalog",
+                            mp::object_value(&[
+                                (
+                                    "instances",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).catalog).instances).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "groups",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).catalog).groups).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "tools",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).catalog).tools).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "bindings",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).catalog).bindings).len()
+                                        ),
+                                    )]),
+                                ),
+                                (
+                                    "discovery_policies",
+                                    mp::object_value(&[(
+                                        "item_count",
+                                        serde_json::json!(
+                                            (&(&(_field_context).catalog).discovery_policies).len()
+                                        ),
+                                    )]),
+                                ),
+                            ]),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "mcp-invocation-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -63,6 +404,126 @@ pub(super) enum McpInvocationOutput {
 }
 
 impl InterfaceContract for McpInvocationOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Initialized")),
+                (
+                    "instance_name",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("NotificationAccepted"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ToolsListed")),
+                ("path_regex_enabled", serde_json::json!({"type":"boolean"})),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ToolCalled")),
+                (
+                    "0",
+                    mp::union_schema(vec![
+                        mp::object_schema(&[
+                            ("variant", mp::tag_schema("Success")),
+                            ("0", mp::json_summary_schema()),
+                        ]),
+                        mp::object_schema(&[
+                            ("variant", mp::tag_schema("Error")),
+                            ("code", serde_json::json!({"type":"integer"})),
+                            (
+                                "message",
+                                mp::object_schema(&[("byte_count", mp::count_schema())]),
+                            ),
+                            (
+                                "data",
+                                serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
+                            ),
+                        ]),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Initialized {
+                instance_name: _field_instance_name,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("Initialized".to_owned()),
+                ),
+                (
+                    "instance_name",
+                    mp::object_value(&[(
+                        "byte_count",
+                        serde_json::json!((_field_instance_name).len()),
+                    )]),
+                ),
+            ]),
+            Self::NotificationAccepted => mp::object_value(&[(
+                "variant",
+                serde_json::Value::String("NotificationAccepted".to_owned()),
+            )]),
+            Self::ToolsListed {
+                path_regex_enabled: _field_path_regex_enabled,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ToolsListed".to_owned()),
+                ),
+                (
+                    "path_regex_enabled",
+                    serde_json::Value::Bool(*(_field_path_regex_enabled)),
+                ),
+            ]),
+            Self::ToolCalled(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ToolCalled".to_owned()),
+                ),
+                (
+                    "0",
+                    match _field_0 {
+                        crate::routes::mcp_protocol::McpCallOutcome::Success(_field_0) => {
+                            mp::object_value(&[
+                                ("variant", serde_json::Value::String("Success".to_owned())),
+                                ("0", mp::json_summary(_field_0)),
+                            ])
+                        }
+                        crate::routes::mcp_protocol::McpCallOutcome::Error {
+                            code: _field_code,
+                            message: _field_message,
+                            data: _field_data,
+                            ..
+                        } => mp::object_value(&[
+                            ("variant", serde_json::Value::String("Error".to_owned())),
+                            ("code", serde_json::json!(*(_field_code))),
+                            (
+                                "message",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((_field_message).len()),
+                                )]),
+                            ),
+                            (
+                                "data",
+                                match (_field_data).as_ref() {
+                                    Some(item) => mp::json_summary(item),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                        ]),
+                    },
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "mcp-invocation-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -70,6 +531,21 @@ impl InterfaceContract for McpInvocationOutput {
 pub(super) struct McpInvocationTargetError(pub(super) ApiError);
 
 impl InterfaceContract for McpInvocationTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("McpInvocationTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("McpInvocationTargetError".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "mcp-invocation-target-error";
     const CONTRACT_VERSION: &'static str = "1";
 }

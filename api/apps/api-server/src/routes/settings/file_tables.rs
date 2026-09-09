@@ -5,13 +5,13 @@ use access_control::{
     FILE_TABLES_LIST_OPERATION_ID, FILE_TABLES_STORAGE_BIND_OPERATION_ID,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::file_management::{
-    project_builtin_file_table_title, BindFileTableStorageCommand, CreateFileTableCommand,
-    DeleteFileTableCommand, FileTableService, FileTableWithStorageTitle,
+    BindFileTableStorageCommand, CreateFileTableCommand, DeleteFileTableCommand, FileTableService,
+    FileTableWithStorageTitle, project_builtin_file_table_title,
 };
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::RuntimeRegistrySync;
@@ -30,7 +30,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError, ConsoleLocaleHints,
         },
-        console_route_assembly::{console_delete, console_get, console_put, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_delete, console_get, console_put},
     },
 };
 
@@ -55,6 +55,84 @@ enum FileTablesInput {
 }
 
 impl InterfaceContract for FileTablesInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Create")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("code", mp::text_schema()),
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Bind")),
+                ("file_table_id", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[("bound_storage_id", mp::text_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Delete")),
+                ("file_table_id", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List { .. } => {
+                mp::object_value(&[("variant", serde_json::Value::String("List".to_owned()))])
+            }
+            Self::Create(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("code", mp::text(&(_field_0).code)?),
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).title).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Bind {
+                file_table_id: _field_file_table_id,
+                body: _field_body,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Bind".to_owned())),
+                ("file_table_id", mp::text(_field_file_table_id)?),
+                (
+                    "body",
+                    mp::object_value(&[(
+                        "bound_storage_id",
+                        mp::text(&(_field_body).bound_storage_id)?,
+                    )]),
+                ),
+            ]),
+            Self::Delete {
+                file_table_id: _field_file_table_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Delete".to_owned())),
+                ("file_table_id", mp::text(_field_file_table_id)?),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-file-tables-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -66,6 +144,157 @@ enum FileTablesOutput {
 }
 
 impl InterfaceContract for FileTablesOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("List")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("scope_id",mp::text_schema()), ("model_definition_id",mp::text_schema()), ("bound_storage_id",mp::text_schema()), ("bound_storage_title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_builtin",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("status",mp::text_schema())])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Item")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        ("code", mp::text_schema()),
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "scope_kind",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("scope_id", mp::text_schema()),
+                        ("model_definition_id", mp::text_schema()),
+                        ("bound_storage_id", mp::text_schema()),
+                        (
+                            "bound_storage_title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        ("is_builtin", serde_json::json!({"type":"boolean"})),
+                        ("is_default", serde_json::json!({"type":"boolean"})),
+                        ("status", mp::text_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("List".to_owned())),
+                ("0", {
+                    if (_field_0).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (_field_0)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("id", mp::text(&(item).id)?),
+                                    ("code", mp::text(&(item).code)?),
+                                    (
+                                        "title",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).title).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "scope_kind",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).scope_kind).len()),
+                                        )]),
+                                    ),
+                                    ("scope_id", mp::text(&(item).scope_id)?),
+                                    (
+                                        "model_definition_id",
+                                        mp::text(&(item).model_definition_id)?,
+                                    ),
+                                    ("bound_storage_id", mp::text(&(item).bound_storage_id)?),
+                                    (
+                                        "bound_storage_title",
+                                        match (&(item).bound_storage_title).as_ref() {
+                                            Some(item) => mp::object_value(&[(
+                                                "byte_count",
+                                                serde_json::json!((item).len()),
+                                            )]),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    ("is_builtin", serde_json::Value::Bool(*(&(item).is_builtin))),
+                                    ("is_default", serde_json::Value::Bool(*(&(item).is_default))),
+                                    ("status", mp::text(&(item).status)?),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+            Self::Item(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Item".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("id", mp::text(&(_field_0).id)?),
+                        ("code", mp::text(&(_field_0).code)?),
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).title).len()),
+                            )]),
+                        ),
+                        (
+                            "scope_kind",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).scope_kind).len()),
+                            )]),
+                        ),
+                        ("scope_id", mp::text(&(_field_0).scope_id)?),
+                        (
+                            "model_definition_id",
+                            mp::text(&(_field_0).model_definition_id)?,
+                        ),
+                        ("bound_storage_id", mp::text(&(_field_0).bound_storage_id)?),
+                        (
+                            "bound_storage_title",
+                            match (&(_field_0).bound_storage_title).as_ref() {
+                                Some(item) => mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "is_builtin",
+                            serde_json::Value::Bool(*(&(_field_0).is_builtin)),
+                        ),
+                        (
+                            "is_default",
+                            serde_json::Value::Bool(*(&(_field_0).is_default)),
+                        ),
+                        ("status", mp::text(&(_field_0).status)?),
+                    ]),
+                ),
+            ]),
+            Self::Deleted => {
+                mp::object_value(&[("variant", serde_json::Value::String("Deleted".to_owned()))])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-file-tables-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

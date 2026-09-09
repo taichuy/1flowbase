@@ -10,9 +10,9 @@ use interface_runtime::InterfaceContract;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    has_registered_simple_operations, to_cache_domain_response, to_cache_entry_metadata_response,
     CacheEntriesResponse, CacheEntryKeyBody, CacheEntryValueResponse, CacheOverviewResponse,
-    ClearCacheDomainResponse, ClearCacheEntryResponse,
+    ClearCacheDomainResponse, ClearCacheEntryResponse, has_registered_simple_operations,
+    to_cache_domain_response, to_cache_entry_metadata_response,
 };
 use crate::{
     error_response::ApiError,
@@ -41,6 +41,107 @@ pub(crate) enum CacheInspectionInput {
 }
 
 impl InterfaceContract for CacheInspectionInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("Overview"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Entries")),
+                ("domain_code", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Reveal")),
+                ("domain_code", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[(
+                        "key",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ClearEntry")),
+                ("domain_code", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[(
+                        "key",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ClearDomain")),
+                ("domain_code", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Overview => {
+                mp::object_value(&[("variant", serde_json::Value::String("Overview".to_owned()))])
+            }
+            Self::Entries {
+                domain_code: _field_domain_code,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Entries".to_owned())),
+                ("domain_code", mp::text(_field_domain_code)?),
+            ]),
+            Self::Reveal {
+                domain_code: _field_domain_code,
+                body: _field_body,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Reveal".to_owned())),
+                ("domain_code", mp::text(_field_domain_code)?),
+                (
+                    "body",
+                    mp::object_value(&[(
+                        "key",
+                        mp::object_value(&[(
+                            "byte_count",
+                            serde_json::json!((&(_field_body).key).len()),
+                        )]),
+                    )]),
+                ),
+            ]),
+            Self::ClearEntry {
+                domain_code: _field_domain_code,
+                body: _field_body,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ClearEntry".to_owned()),
+                ),
+                ("domain_code", mp::text(_field_domain_code)?),
+                (
+                    "body",
+                    mp::object_value(&[(
+                        "key",
+                        mp::object_value(&[(
+                            "byte_count",
+                            serde_json::json!((&(_field_body).key).len()),
+                        )]),
+                    )]),
+                ),
+            ]),
+            Self::ClearDomain {
+                domain_code: _field_domain_code,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ClearDomain".to_owned()),
+                ),
+                ("domain_code", mp::text(_field_domain_code)?),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-host-infrastructure-cache-inspection-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -54,6 +155,359 @@ pub(crate) enum CacheInspectionOutput {
 }
 
 impl InterfaceContract for CacheInspectionOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Overview")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "provider_code",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        ("can_manage", serde_json::json!({"type":"boolean"})),
+                        (
+                            "capabilities",
+                            mp::object_schema(&[
+                                ("list_domains", serde_json::json!({"type":"boolean"})),
+                                ("list_entries", serde_json::json!({"type":"boolean"})),
+                                ("reveal_value", serde_json::json!({"type":"boolean"})),
+                                ("clear_entry", serde_json::json!({"type":"boolean"})),
+                                ("clear_domain", serde_json::json!({"type":"boolean"})),
+                            ]),
+                        ),
+                        (
+                            "domains",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("domain_code",mp::text_schema()), ("entry_count",serde_json::json!({"type":"integer"})), ("total_value_size_bytes",serde_json::json!({"type":"integer"}))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Entries")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("domain_code", mp::text_schema()),
+                        (
+                            "capabilities",
+                            mp::object_schema(&[
+                                ("list_domains", serde_json::json!({"type":"boolean"})),
+                                ("list_entries", serde_json::json!({"type":"boolean"})),
+                                ("reveal_value", serde_json::json!({"type":"boolean"})),
+                                ("clear_entry", serde_json::json!({"type":"boolean"})),
+                                ("clear_domain", serde_json::json!({"type":"boolean"})),
+                            ]),
+                        ),
+                        (
+                            "entries",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("domain_code",mp::text_schema()), ("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("value_size_bytes",serde_json::json!({"type":"integer"})), ("ttl_seconds",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("created_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("expires_at_unix",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Revealed")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "metadata",
+                            mp::object_schema(&[
+                                ("domain_code", mp::text_schema()),
+                                (
+                                    "key",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                ("value_size_bytes", serde_json::json!({"type":"integer"})),
+                                (
+                                    "ttl_seconds",
+                                    serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                                ),
+                                (
+                                    "created_at_unix",
+                                    serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                                ),
+                                (
+                                    "expires_at_unix",
+                                    serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                                ),
+                            ]),
+                        ),
+                        ("value", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("EntryCleared")),
+                (
+                    "0",
+                    mp::object_schema(&[("cleared", serde_json::json!({"type":"boolean"}))]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DomainCleared")),
+                (
+                    "0",
+                    mp::object_schema(&[("cleared_count", serde_json::json!({"type":"integer"}))]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Overview(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Overview".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "provider_code",
+                            match (&(_field_0).provider_code).as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "can_manage",
+                            serde_json::Value::Bool(*(&(_field_0).can_manage)),
+                        ),
+                        (
+                            "capabilities",
+                            mp::object_value(&[
+                                (
+                                    "list_domains",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).list_domains),
+                                    ),
+                                ),
+                                (
+                                    "list_entries",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).list_entries),
+                                    ),
+                                ),
+                                (
+                                    "reveal_value",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).reveal_value),
+                                    ),
+                                ),
+                                (
+                                    "clear_entry",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).clear_entry),
+                                    ),
+                                ),
+                                (
+                                    "clear_domain",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).clear_domain),
+                                    ),
+                                ),
+                            ]),
+                        ),
+                        ("domains", {
+                            if (&(_field_0).domains).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).domains)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("domain_code", mp::text(&(item).domain_code)?),
+                                            (
+                                                "entry_count",
+                                                serde_json::json!(*(&(item).entry_count)),
+                                            ),
+                                            (
+                                                "total_value_size_bytes",
+                                                serde_json::json!(
+                                                    *(&(item).total_value_size_bytes)
+                                                ),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                    ]),
+                ),
+            ]),
+            Self::Entries(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Entries".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("domain_code", mp::text(&(_field_0).domain_code)?),
+                        (
+                            "capabilities",
+                            mp::object_value(&[
+                                (
+                                    "list_domains",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).list_domains),
+                                    ),
+                                ),
+                                (
+                                    "list_entries",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).list_entries),
+                                    ),
+                                ),
+                                (
+                                    "reveal_value",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).reveal_value),
+                                    ),
+                                ),
+                                (
+                                    "clear_entry",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).clear_entry),
+                                    ),
+                                ),
+                                (
+                                    "clear_domain",
+                                    serde_json::Value::Bool(
+                                        *(&(&(_field_0).capabilities).clear_domain),
+                                    ),
+                                ),
+                            ]),
+                        ),
+                        ("entries", {
+                            if (&(_field_0).entries).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).entries)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("domain_code", mp::text(&(item).domain_code)?),
+                                            (
+                                                "key",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).key).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "value_size_bytes",
+                                                serde_json::json!(*(&(item).value_size_bytes)),
+                                            ),
+                                            (
+                                                "ttl_seconds",
+                                                match (&(item).ttl_seconds).as_ref() {
+                                                    Some(item) => serde_json::json!(*(item)),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "created_at_unix",
+                                                match (&(item).created_at_unix).as_ref() {
+                                                    Some(item) => serde_json::json!(*(item)),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "expires_at_unix",
+                                                match (&(item).expires_at_unix).as_ref() {
+                                                    Some(item) => serde_json::json!(*(item)),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                    ]),
+                ),
+            ]),
+            Self::Revealed(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Revealed".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "metadata",
+                            mp::object_value(&[
+                                (
+                                    "domain_code",
+                                    mp::text(&(&(_field_0).metadata).domain_code)?,
+                                ),
+                                (
+                                    "key",
+                                    mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((&(&(_field_0).metadata).key).len()),
+                                    )]),
+                                ),
+                                (
+                                    "value_size_bytes",
+                                    serde_json::json!(*(&(&(_field_0).metadata).value_size_bytes)),
+                                ),
+                                (
+                                    "ttl_seconds",
+                                    match (&(&(_field_0).metadata).ttl_seconds).as_ref() {
+                                        Some(item) => serde_json::json!(*(item)),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "created_at_unix",
+                                    match (&(&(_field_0).metadata).created_at_unix).as_ref() {
+                                        Some(item) => serde_json::json!(*(item)),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "expires_at_unix",
+                                    match (&(&(_field_0).metadata).expires_at_unix).as_ref() {
+                                        Some(item) => serde_json::json!(*(item)),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                            ]),
+                        ),
+                        ("value", mp::json_summary(&(_field_0).value)),
+                    ]),
+                ),
+            ]),
+            Self::EntryCleared(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("EntryCleared".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[(
+                        "cleared",
+                        serde_json::Value::Bool(*(&(_field_0).cleared)),
+                    )]),
+                ),
+            ]),
+            Self::DomainCleared(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("DomainCleared".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[(
+                        "cleared_count",
+                        serde_json::json!(*(&(_field_0).cleared_count)),
+                    )]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-host-infrastructure-cache-inspection-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -377,9 +831,11 @@ mod tests {
         })
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

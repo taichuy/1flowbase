@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
@@ -14,9 +16,9 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::billing::{
-    body_to_rule, invalidate_pricing_rules_cache, CreditCommandBody, ImportCatalogBody, PageQuery,
-    PricingCatalogPageResponse, PricingCatalogQuery, PricingRuleBody, PricingRuleQuery,
-    PricingRuleResponse, PricingRulesPageResponse,
+    CreditCommandBody, ImportCatalogBody, PageQuery, PricingCatalogPageResponse,
+    PricingCatalogQuery, PricingRuleBody, PricingRuleQuery, PricingRuleResponse,
+    PricingRulesPageResponse, body_to_rule, invalidate_pricing_rules_cache,
 };
 use crate::{
     error_response::ApiError,
@@ -70,11 +72,6 @@ pub(crate) enum BillingInput {
     },
 }
 
-impl InterfaceContract for BillingInput {
-    const CONTRACT_ID: &'static str = "console-billing-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum BillingOutput {
     PricingRules(PricingRulesPageResponse),
     PricingRule(PricingRuleResponse),
@@ -85,11 +82,6 @@ pub(crate) enum BillingOutput {
     CreditAccount(Option<CreditAccountRecord>),
     CreditLedger(Vec<CreditTransactionRecord>),
     CreditTransaction(CreditTransactionRecord),
-}
-
-impl InterfaceContract for BillingOutput {
-    const CONTRACT_ID: &'static str = "console-billing-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct BillingDependencies {

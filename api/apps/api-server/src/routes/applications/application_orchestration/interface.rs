@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::flow::{FlowService, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand};
@@ -6,12 +8,12 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    build_application_archive_zip, installed_application_archive_entry_with, parse_change_kind,
-    safe_archive_name, to_import_response_with, to_response_with, to_template_preview_response,
     AgentFlowTemplatePreviewResponse, ApplicationArchiveEntry, ExportApplicationArchiveBody,
     ImportAgentFlowTemplateResponse, ImportInstalledApplicationExtensionBody,
     InstalledApplicationExtensionPreviewResponse, OrchestrationStateResponse, SaveDraftBody,
-    UpdateVersionBody,
+    UpdateVersionBody, build_application_archive_zip, installed_application_archive_entry_with,
+    parse_change_kind, safe_archive_name, to_import_response_with, to_response_with,
+    to_template_preview_response,
 };
 use crate::{
     error_response::ApiError,
@@ -56,11 +58,6 @@ pub(crate) enum ApplicationOrchestrationInput {
         body: ImportInstalledApplicationExtensionBody,
         locale: ConsoleLocaleHints,
     },
-}
-
-impl InterfaceContract for ApplicationOrchestrationInput {
-    const CONTRACT_ID: &'static str = "console-application-orchestration-input";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 #[expect(
@@ -133,11 +130,6 @@ pub(crate) struct ExportedApplicationArchive {
     pub(super) content_type: &'static str,
     pub(super) filename: String,
     pub(super) document: Vec<u8>,
-}
-
-impl InterfaceContract for ApplicationOrchestrationOutput {
-    const CONTRACT_ID: &'static str = "console-application-orchestration-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct ApplicationOrchestrationAdapter {

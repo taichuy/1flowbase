@@ -9,8 +9,8 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+        projection_status_needs_lazy_rebuild,
     },
     ports::{
         ApplicationRunTraceProjectionStatistics, FileManagementRepository,
@@ -20,7 +20,7 @@ use control_plane::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use super::*;
@@ -44,6 +44,70 @@ pub(crate) enum ApplicationRuntimeTraceExportsInput {
 }
 
 impl InterfaceContract for ApplicationRuntimeTraceExportsInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ExportRun")),
+                ("application_id", mp::text_schema()),
+                ("run_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ExportSelectedRuns")),
+                ("application_id", mp::text_schema()),
+                (
+                    "run_ids",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::ExportRun {
+                application_id: _field_application_id,
+                run_id: _field_run_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("ExportRun".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "run_id",
+                    serde_json::Value::String((_field_run_id).to_string()),
+                ),
+            ]),
+            Self::ExportSelectedRuns {
+                application_id: _field_application_id,
+                run_ids: _field_run_ids,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ExportSelectedRuns".to_owned()),
+                ),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                ("run_ids", {
+                    if (_field_run_ids).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (_field_run_ids)
+                            .iter()
+                            .map(|item| Some(serde_json::Value::String((item).to_string())))
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-application-runtime-trace-exports-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -59,6 +123,44 @@ pub(crate) enum ApplicationRuntimeTraceExportsOutput {
 }
 
 impl InterfaceContract for ApplicationRuntimeTraceExportsOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![mp::object_schema(&[
+            ("variant", mp::tag_schema("Download")),
+            (
+                "0",
+                mp::object_schema(&[
+                    ("content_type", mp::text_schema()),
+                    (
+                        "body",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    ),
+                ]),
+            ),
+        ])]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Download(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Download".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("content_type", mp::text(&(_field_0).content_type)?),
+                        (
+                            "body",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).body).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-application-runtime-trace-exports-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -119,9 +221,9 @@ pub(crate) fn trace_exports_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-        ApplicationRuntimeTraceExportsInput,
-        ApplicationRuntimeTraceExportsOutput,
-    >,
+            ApplicationRuntimeTraceExportsInput,
+            ApplicationRuntimeTraceExportsOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeTraceExportsAdapter {
         artifacts: TraceExportArtifactReader {

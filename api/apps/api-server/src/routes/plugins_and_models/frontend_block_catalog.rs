@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use axum::{extract::State, http::HeaderMap, Json, Router};
+use axum::{Json, Router, extract::State, http::HeaderMap};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, FrontendContributionBinding, ListFrontendBlockCatalogQuery,
 };
@@ -12,7 +12,7 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -198,12 +198,264 @@ pub(crate) struct FrontendBlockDependencies {
 
 pub(crate) struct FrontendBlocksInput;
 impl InterfaceContract for FrontendBlocksInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("FrontendBlocksInput"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("FrontendBlocksInput".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-frontend-blocks-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct FrontendBlocksOutput(Vec<FrontendBlockCatalogResponse>);
 impl InterfaceContract for FrontendBlocksOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "0",
+            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("runtime",mp::object_schema(&[("byte_count",mp::count_schema())])), ("entry",mp::object_schema(&[("byte_count",mp::count_schema())])), ("code_template",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("code_template_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("code_template_language",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("isolated_entry_asset",serde_json::json!({"anyOf": [mp::object_schema(&[("media_type",mp::text_schema()), ("sha256",mp::object_schema(&[("byte_count",mp::count_schema())])), ("integrity",mp::object_schema(&[("byte_count",mp::count_schema())]))]), {"type":"null"}]})), ("context_contract",mp::object_schema(&[("primitives",mp::object_schema(&[("item_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema())])), ("permissions",mp::object_schema(&[("network",mp::object_schema(&[("byte_count",mp::count_schema())])), ("storage",mp::object_schema(&[("byte_count",mp::count_schema())]))])), ("ui_capabilities",mp::object_schema(&[("item_count",mp::count_schema())])), ("frontend_contribution_id",mp::text_schema()), ("frontend_block_id",mp::text_schema()), ("frontend_block_version",mp::text_schema()), ("runtime_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("execution_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("isolation_requirement",mp::object_schema(&[("byte_count",mp::count_schema())])), ("requested_permissions",mp::object_schema(&[("item_count",mp::count_schema())])), ("granted_permissions",mp::object_schema(&[("item_count",mp::count_schema())])), ("workspace_id",mp::text_schema()), ("lifecycle_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("graph_fingerprint",mp::object_schema(&[("byte_count",mp::count_schema())])), ("provenance",mp::object_schema(&[("module_id",mp::text_schema()), ("module_version",mp::text_schema()), ("module_kind",mp::object_schema(&[("byte_count",mp::count_schema())]))])), ("disable_reason",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("0", {
+            if (&(self).0).len() > 32 {
+                return None;
+            }
+            serde_json::Value::Array(
+                (&(self).0)
+                    .iter()
+                    .map(|item| {
+                        Some(mp::object_value(&[
+                            ("installation_id", mp::text(&(item).installation_id)?),
+                            ("provider_code", mp::text(&(item).provider_code)?),
+                            ("plugin_id", mp::text(&(item).plugin_id)?),
+                            ("plugin_version", mp::text(&(item).plugin_version)?),
+                            ("contribution_code", mp::text(&(item).contribution_code)?),
+                            (
+                                "title",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).title).len()),
+                                )]),
+                            ),
+                            (
+                                "runtime",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).runtime).len()),
+                                )]),
+                            ),
+                            (
+                                "entry",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).entry).len()),
+                                )]),
+                            ),
+                            (
+                                "code_template",
+                                match (&(item).code_template).as_ref() {
+                                    Some(item) => mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((item).len()),
+                                    )]),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                            (
+                                "code_template_version",
+                                match (&(item).code_template_version).as_ref() {
+                                    Some(item) => mp::text(item)?,
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                            (
+                                "code_template_language",
+                                match (&(item).code_template_language).as_ref() {
+                                    Some(item) => mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((item).len()),
+                                    )]),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                            (
+                                "isolated_entry_asset",
+                                match (&(item).isolated_entry_asset).as_ref() {
+                                    Some(item) => mp::object_value(&[
+                                        ("media_type", mp::text(&(item).media_type)?),
+                                        (
+                                            "sha256",
+                                            mp::object_value(&[(
+                                                "byte_count",
+                                                serde_json::json!((&(item).sha256).len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "integrity",
+                                            mp::object_value(&[(
+                                                "byte_count",
+                                                serde_json::json!((&(item).integrity).len()),
+                                            )]),
+                                        ),
+                                    ]),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                            (
+                                "context_contract",
+                                mp::object_value(&[
+                                    (
+                                        "primitives",
+                                        mp::object_value(&[(
+                                            "item_count",
+                                            serde_json::json!(
+                                                (&(&(item).context_contract).primitives).len()
+                                            ),
+                                        )]),
+                                    ),
+                                    (
+                                        "input_schema",
+                                        mp::json_summary(&(&(item).context_contract).input_schema),
+                                    ),
+                                ]),
+                            ),
+                            (
+                                "permissions",
+                                mp::object_value(&[
+                                    (
+                                        "network",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!(
+                                                (&(&(item).permissions).network).len()
+                                            ),
+                                        )]),
+                                    ),
+                                    (
+                                        "storage",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!(
+                                                (&(&(item).permissions).storage).len()
+                                            ),
+                                        )]),
+                                    ),
+                                ]),
+                            ),
+                            (
+                                "ui_capabilities",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(item).ui_capabilities).len()),
+                                )]),
+                            ),
+                            (
+                                "frontend_contribution_id",
+                                mp::text(&(item).frontend_contribution_id)?,
+                            ),
+                            ("frontend_block_id", mp::text(&(item).frontend_block_id)?),
+                            (
+                                "frontend_block_version",
+                                mp::text(&(item).frontend_block_version)?,
+                            ),
+                            (
+                                "runtime_kind",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).runtime_kind).len()),
+                                )]),
+                            ),
+                            (
+                                "execution_kind",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).execution_kind).len()),
+                                )]),
+                            ),
+                            (
+                                "isolation_requirement",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).isolation_requirement).len()),
+                                )]),
+                            ),
+                            (
+                                "requested_permissions",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(item).requested_permissions).len()),
+                                )]),
+                            ),
+                            (
+                                "granted_permissions",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(item).granted_permissions).len()),
+                                )]),
+                            ),
+                            ("workspace_id", mp::text(&(item).workspace_id)?),
+                            (
+                                "lifecycle_kind",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).lifecycle_kind).len()),
+                                )]),
+                            ),
+                            (
+                                "graph_fingerprint",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).graph_fingerprint).len()),
+                                )]),
+                            ),
+                            (
+                                "provenance",
+                                mp::object_value(&[
+                                    ("module_id", mp::text(&(&(item).provenance).module_id)?),
+                                    (
+                                        "module_version",
+                                        mp::text(&(&(item).provenance).module_version)?,
+                                    ),
+                                    (
+                                        "module_kind",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!(
+                                                (&(&(item).provenance).module_kind).len()
+                                            ),
+                                        )]),
+                                    ),
+                                ]),
+                            ),
+                            (
+                                "disable_reason",
+                                match (&(item).disable_reason).as_ref() {
+                                    Some(item) => mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((item).len()),
+                                    )]),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                        ]))
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            )
+        })]))
+    }
+
     const CONTRACT_ID: &'static str = "console-frontend-blocks-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

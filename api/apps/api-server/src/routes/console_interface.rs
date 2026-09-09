@@ -97,6 +97,21 @@ pub(crate) struct ConsoleInterfaceDeclaration {
 pub(crate) struct ConsoleInterfaceTargetError(pub(crate) ApiError);
 
 impl InterfaceContract for ConsoleInterfaceTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("ConsoleInterfaceTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("ConsoleInterfaceTargetError".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-interface-error";
     const CONTRACT_VERSION: &'static str = "1";
 }

@@ -46,17 +46,113 @@ pub(crate) enum WebMcpOutput {
 }
 
 pub(crate) struct WebMcpTargetError(pub(crate) ApiError);
-macro_rules! contract {
-    ($ty:ty, $id:literal) => {
-        impl InterfaceContract for $ty {
-            const CONTRACT_ID: &'static str = $id;
-            const CONTRACT_VERSION: &'static str = "1";
-        }
-    };
+impl InterfaceContract for WebMcpInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("Registrations"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Tool")),
+                ("instance_id", mp::text_schema()),
+                ("operation", mp::text_schema()),
+                ("arguments", mp::json_summary_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Registrations => mp::object_value(&[(
+                "variant",
+                serde_json::Value::String("Registrations".to_owned()),
+            )]),
+            Self::Tool {
+                instance_id: _field_instance_id,
+                operation: _field_operation,
+                arguments: _field_arguments,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Tool".to_owned())),
+                ("instance_id", mp::text(_field_instance_id)?),
+                ("operation", mp::text(_field_operation)?),
+                ("arguments", mp::json_summary(_field_arguments)),
+            ]),
+        })
+    }
+    const CONTRACT_ID: &'static str = "webmcp-input";
+    const CONTRACT_VERSION: &'static str = "1";
 }
-contract!(WebMcpInput, "webmcp-input");
-contract!(WebMcpOutput, "webmcp-output");
-contract!(WebMcpTargetError, "webmcp-error");
+impl InterfaceContract for WebMcpOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Registrations")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("instance_id",mp::text_schema()), ("tools",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("operation",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",mp::object_schema(&[("byte_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema()), ("annotations",mp::object_schema(&[("read_only_hint",serde_json::json!({"type":"boolean"})), ("untrusted_content_hint",serde_json::json!({"type":"boolean"}))]))])}))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Tool")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("content", mp::json_summary_schema()),
+                        ("is_error", serde_json::json!({"type":"boolean"})),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Registrations(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("Registrations".to_owned()),
+                ),
+                ("0", {
+                    if (_field_0).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("instance_id",mp::text(&(item).instance_id)?), ("tools",{ if (&(item).tools).len() > 32 { return None; } serde_json::Value::Array((&(item).tools).iter().map(|item| Some(mp::object_value(&[("operation",mp::text(&(item).operation)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("title",mp::object_value(&[("byte_count",serde_json::json!((&(item).title).len()))])), ("description",mp::object_value(&[("byte_count",serde_json::json!((&(item).description).len()))])), ("input_schema",mp::json_summary(&(item).input_schema)), ("annotations",mp::object_value(&[("read_only_hint",serde_json::Value::Bool(*(&(&(item).annotations).read_only_hint))), ("untrusted_content_hint",serde_json::Value::Bool(*(&(&(item).annotations).untrusted_content_hint)))]))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
+                }),
+            ]),
+            Self::Tool(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Tool".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("content", mp::json_summary(&(_field_0).content)),
+                        ("is_error", serde_json::Value::Bool(*(&(_field_0).is_error))),
+                    ]),
+                ),
+            ]),
+        })
+    }
+    const CONTRACT_ID: &'static str = "webmcp-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+impl InterfaceContract for WebMcpTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("WebMcpTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("WebMcpTargetError".to_owned()),
+        )]))
+    }
+    const CONTRACT_ID: &'static str = "webmcp-error";
+    const CONTRACT_VERSION: &'static str = "1";
+}
 
 pub(crate) type WebMcpFuture<'a> =
     Pin<Box<dyn Future<Output = Result<WebMcpOutput, ApiError>> + Send + 'a>>;

@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::{convert::Infallible, sync::Arc};
 
 use axum::response::sse::Event;
@@ -16,14 +18,13 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    assistant_preference_for_actor, assistant_run_capabilities, available_targets,
-    execute_assistant_run, launch_assistant_execution, prepare_assistant_execution,
-    read_preference, validate_preference, AssistantConversationMessageResponse,
-    AssistantConversationPageResponse, AssistantConversationResponse, AssistantPageReferenceBody,
-    AssistantPreferenceBody, AssistantRunActivityPageResponse, AssistantRunActivityQuery,
-    AssistantRunDependencies, AssistantRunResponse, AssistantSettingsResponse,
-    CreateAssistantConversationBody, ListAssistantConversationsQuery, StartAssistantRunBody,
-    ASSISTANT_META_KEY,
+    ASSISTANT_META_KEY, AssistantConversationMessageResponse, AssistantConversationPageResponse,
+    AssistantConversationResponse, AssistantPageReferenceBody, AssistantPreferenceBody,
+    AssistantRunActivityPageResponse, AssistantRunActivityQuery, AssistantRunDependencies,
+    AssistantRunResponse, AssistantSettingsResponse, CreateAssistantConversationBody,
+    ListAssistantConversationsQuery, StartAssistantRunBody, assistant_preference_for_actor,
+    assistant_run_capabilities, available_targets, execute_assistant_run,
+    launch_assistant_execution, prepare_assistant_execution, read_preference, validate_preference,
 };
 use super::{
     conversation_events::{
@@ -45,18 +46,8 @@ pub(crate) enum AssistantSettingsInput {
     Update(AssistantPreferenceBody),
 }
 
-impl InterfaceContract for AssistantSettingsInput {
-    const CONTRACT_ID: &'static str = "console-assistant-settings-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum AssistantSettingsOutput {
     Settings(AssistantSettingsResponse),
-}
-
-impl InterfaceContract for AssistantSettingsOutput {
-    const CONTRACT_ID: &'static str = "console-assistant-settings-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) enum AssistantConversationsInput {
@@ -76,11 +67,6 @@ pub(crate) enum AssistantConversationsInput {
     },
 }
 
-impl InterfaceContract for AssistantConversationsInput {
-    const CONTRACT_ID: &'static str = "console-assistant-conversations-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum AssistantConversationsOutput {
     RunActivity(AssistantRunActivityPageResponse),
     Conversation(AssistantConversationResponse),
@@ -88,41 +74,16 @@ pub(crate) enum AssistantConversationsOutput {
     ConversationMessages(Vec<AssistantConversationMessageResponse>),
 }
 
-impl InterfaceContract for AssistantConversationsOutput {
-    const CONTRACT_ID: &'static str = "console-assistant-conversations-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct AssistantRunInput {
     pub(crate) body: StartAssistantRunBody,
     pub(crate) headers: axum::http::HeaderMap,
 }
 
-impl InterfaceContract for AssistantRunInput {
-    const CONTRACT_ID: &'static str = "console-assistant-run-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct AssistantRunOutput(pub(crate) AssistantRunResponse);
-
-impl InterfaceContract for AssistantRunOutput {
-    const CONTRACT_ID: &'static str = "console-assistant-run-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
 
 pub(crate) struct AssistantRunStreamEvent(pub(crate) Result<Event, Infallible>);
 
-impl InterfaceContract for AssistantRunStreamEvent {
-    const CONTRACT_ID: &'static str = "console-assistant-run-stream-event";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct AssistantRunStreamOutput;
-
-impl InterfaceContract for AssistantRunStreamOutput {
-    const CONTRACT_ID: &'static str = "console-assistant-run-stream-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
 
 struct AssistantSettingsAdapter {
     store: MainDurableStore,
@@ -811,9 +772,11 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantSettingsPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
@@ -825,9 +788,11 @@ mod tests {
         ))
         .unwrap();
         for declaration in CONVERSATION_DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), CONVERSATION_DECLARATIONS.len());
     }

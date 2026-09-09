@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::plugin_management::{
@@ -38,11 +40,6 @@ pub(crate) enum ExtensionCenterInput {
     InstallUploaded(ExtensionUploadFields),
 }
 
-impl InterfaceContract for ExtensionCenterInput {
-    const CONTRACT_ID: &'static str = "console-extension-center-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum ExtensionCenterOutput {
     ManagedExecution(control_plane_contracts::ports::ManagedExecutionState),
     ContributionAuthorizations(ContributionAuthorizationResponse),
@@ -53,11 +50,6 @@ pub(crate) enum ExtensionCenterOutput {
     CatalogEntry(ExtensionCatalogGatewayEntryResponse),
     Updates(ExtensionUpdateCheckResponse),
     Install(ExtensionInstallOutcome),
-}
-
-impl InterfaceContract for ExtensionCenterOutput {
-    const CONTRACT_ID: &'static str = "console-extension-center-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct ExtensionCenterAdapter(ExtensionCenterDependencies);
@@ -537,9 +529,27 @@ impl ConsoleInterfacePort<ExtensionCenterInput, ExtensionCenterOutput> for Exten
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_execution.view",binding_id:"http.console.extension-center.managed-execution.view.v1",method:"GET",path:"/api/console/settings/extension-center/installed/:installation_id/managed-execution",mutating:false },
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.lifecycle_deliveries.resume",binding_id:"http.console.extension-center.lifecycle-deliveries.resume.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",mutating:true },
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_executions.retire",binding_id:"http.console.extension-center.managed-executions.retire.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",mutating:true },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_execution.view",
+        binding_id: "http.console.extension-center.managed-execution.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-execution",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.lifecycle_deliveries.resume",
+        binding_id: "http.console.extension-center.lifecycle-deliveries.resume.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_executions.retire",
+        binding_id: "http.console.extension-center.managed-executions.retire.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",
+        mutating: true,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.contribution_authorizations.grant",
         binding_id: "http.console.extension-center.contribution-authorizations.grant.v1",
@@ -561,7 +571,6 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
         mutating: false,
     },
-
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.installed.view",
         binding_id: "http.console.extension-center.installed.v1",

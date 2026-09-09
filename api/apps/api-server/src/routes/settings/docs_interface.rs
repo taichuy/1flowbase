@@ -9,9 +9,9 @@ use super::DocsCategoryOperationsQuery;
 use crate::{
     error_response::ApiError,
     openapi_docs::{
+        ApiDocsRegistry, DocsCatalog, DocsCatalogCategoryOperationsPage,
         build_api_docs_registry_with_cookie_name, filter_category_operations,
-        paginate_category_operations, ApiDocsRegistry, DocsCatalog,
-        DocsCatalogCategoryOperationsPage,
+        paginate_category_operations,
     },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
@@ -35,6 +35,110 @@ pub(crate) enum DocsInput {
 }
 
 impl InterfaceContract for DocsInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("Catalog"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CategoryOperations")),
+                ("category_id", mp::text_schema()),
+                (
+                    "query",
+                    mp::object_schema(&[
+                        (
+                            "offset",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "limit",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "q",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CategoryOpenApi")),
+                ("category_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("OperationOpenApi")),
+                ("operation_id", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Catalog => {
+                mp::object_value(&[("variant", serde_json::Value::String("Catalog".to_owned()))])
+            }
+            Self::CategoryOperations {
+                category_id: _field_category_id,
+                query: _field_query,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("CategoryOperations".to_owned()),
+                ),
+                ("category_id", mp::text(_field_category_id)?),
+                (
+                    "query",
+                    mp::object_value(&[
+                        (
+                            "offset",
+                            match (&(_field_query).offset).as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "limit",
+                            match (&(_field_query).limit).as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "q",
+                            match (&(_field_query).q).as_ref() {
+                                Some(item) => mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::CategoryOpenApi {
+                category_id: _field_category_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("CategoryOpenApi".to_owned()),
+                ),
+                ("category_id", mp::text(_field_category_id)?),
+            ]),
+            Self::OperationOpenApi {
+                operation_id: _field_operation_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("OperationOpenApi".to_owned()),
+                ),
+                ("operation_id", mp::text(_field_operation_id)?),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-docs-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -46,6 +150,200 @@ pub(crate) enum DocsOutput {
 }
 
 impl InterfaceContract for DocsOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Catalog")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("version", mp::text_schema()),
+                        (
+                            "categories",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("operation_count",serde_json::json!({"type":"integer"}))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CategoryOperations")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        (
+                            "label",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "operations",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("method",mp::text_schema()), ("path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("summary",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tags",mp::object_schema(&[("item_count",mp::count_schema())])), ("group",mp::object_schema(&[("byte_count",mp::count_schema())])), ("deprecated",serde_json::json!({"type":"boolean"}))])}),
+                        ),
+                        ("total", serde_json::json!({"type":"integer"})),
+                        ("offset", serde_json::json!({"type":"integer"})),
+                        ("limit", serde_json::json!({"type":"integer"})),
+                        ("has_more", serde_json::json!({"type":"boolean"})),
+                        (
+                            "next_offset",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("OpenApi")),
+                ("0", mp::json_summary_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Catalog(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Catalog".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).title).len()),
+                            )]),
+                        ),
+                        ("version", mp::text(&(_field_0).version)?),
+                        ("categories", {
+                            if (&(_field_0).categories).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).categories)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("id", mp::text(&(item).id)?),
+                                            (
+                                                "label",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).label).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "operation_count",
+                                                serde_json::json!(*(&(item).operation_count)),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                    ]),
+                ),
+            ]),
+            Self::CategoryOperations(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("CategoryOperations".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("id", mp::text(&(_field_0).id)?),
+                        (
+                            "label",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).label).len()),
+                            )]),
+                        ),
+                        ("operations", {
+                            if (&(_field_0).operations).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).operations)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("id", mp::text(&(item).id)?),
+                                            ("method", mp::text(&(item).method)?),
+                                            (
+                                                "path",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).path).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "summary",
+                                                match (&(item).summary).as_ref() {
+                                                    Some(item) => mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((item).len()),
+                                                    )]),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "description",
+                                                match (&(item).description).as_ref() {
+                                                    Some(item) => mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((item).len()),
+                                                    )]),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "tags",
+                                                mp::object_value(&[(
+                                                    "item_count",
+                                                    serde_json::json!((&(item).tags).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "group",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).group).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "deprecated",
+                                                serde_json::Value::Bool(*(&(item).deprecated)),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                        ("total", serde_json::json!(*(&(_field_0).total))),
+                        ("offset", serde_json::json!(*(&(_field_0).offset))),
+                        ("limit", serde_json::json!(*(&(_field_0).limit))),
+                        ("has_more", serde_json::Value::Bool(*(&(_field_0).has_more))),
+                        (
+                            "next_offset",
+                            match (&(_field_0).next_offset).as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::OpenApi(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("OpenApi".to_owned())),
+                ("0", mp::json_summary(_field_0)),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-docs-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
