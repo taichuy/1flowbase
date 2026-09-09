@@ -44,7 +44,7 @@ export function DebugComposer({
         header={header || false}
         footer={(_, { components: { LoadingButton, SendButton } }) => (
           <Flex align="center" justify="end" style={{ width: '100%' }}>
-            <Flex align="center" gap="small" style={{ width: '100%' }}>
+            <Flex align="center" justify="end" gap="small" style={{ width: '100%' }}>
               {footerActions}
               {showStop ? (
                 <Tooltip

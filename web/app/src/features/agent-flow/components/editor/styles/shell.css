@@ -1137,3 +1137,14 @@
   flex-direction: column;
   min-height: 0;
 }
+
+@media (max-width: 640px) {
+  .agent-flow-editor__debug-console-dock {
+    position: fixed;
+    inset: 64px 8px 8px;
+    min-width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: calc(100dvh - 72px);
+    z-index: 20;
+  }
+}

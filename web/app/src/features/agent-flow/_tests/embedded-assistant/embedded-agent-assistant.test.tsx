@@ -6,7 +6,7 @@ import {
   within,
   waitFor
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   attachConsoleAssistantRunWebSocket,
@@ -61,6 +61,7 @@ vi.mock('@monaco-editor/react', () => ({
   )
 }));
 
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import type { ConsoleFlowDebugStreamEvent } from '@1flowbase/api-client';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
@@ -79,6 +80,7 @@ const ASSISTANT_WINDOW_SIZE_STORAGE_KEY =
   '1flowbase.embedded_assistant.window_size';
 
 describe('EmbeddedAgentAssistant', () => {
+  beforeAll(() => loadApplicationI18nResources());
   let innerHeightSpy: WindowDimensionSpy | undefined;
   let innerWidthSpy: WindowDimensionSpy | undefined;
 
@@ -245,9 +247,9 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() => {
       expect(getConsoleAssistantSettings).toHaveBeenCalledTimes(1);
     });
-    expect(
+    await waitFor(() => expect(
       document.querySelector('.agent-flow-editor__debug-console')
-    ).toBeInTheDocument();
+    ).toBeInTheDocument());
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
     expect(
       screen.getByTestId('embedded-agent-assistant-preview')
@@ -2318,7 +2320,7 @@ describe('EmbeddedAgentAssistant', () => {
     });
     await waitFor(() => expect(sendButton).toBeEnabled());
     const initialContextProgress = document.querySelector(
-      '.embedded-agent-assistant-preview__context-progress'
+      '.assistant-panel-plugin__context-progress'
     );
     expect(initialContextProgress).toBeInTheDocument();
     fireEvent.mouseEnter(initialContextProgress as HTMLElement);
@@ -2332,7 +2334,7 @@ describe('EmbeddedAgentAssistant', () => {
 
     const contextProgress = await waitFor(() => {
       const element = document.querySelector(
-        '.embedded-agent-assistant-preview__context-progress'
+        '.assistant-panel-plugin__context-progress'
       );
       expect(element).toBeInTheDocument();
       return element as HTMLElement;

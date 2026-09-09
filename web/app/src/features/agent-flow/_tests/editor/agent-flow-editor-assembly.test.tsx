@@ -19,8 +19,8 @@ const previewLoading = new Promise<void>((resolve) => {
   };
 });
 
-vi.mock('../../components/debug-console/AgentFlowDebugConsole', () => ({
-  AgentFlowDebugConsole: () => {
+vi.mock('../../components/assistant-plugin/DraftAssistantPreview', () => ({
+  DraftAssistantPreview: () => {
     if (!previewLoaded) throw previewLoading;
     return <div>Loaded preview content</div>;
   }

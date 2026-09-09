@@ -101,9 +101,9 @@ import { type AgentFlowCanvasFrameProps } from './canvas-frame/types';
 
 type NodePreviewAction = 'run' | 'debug';
 
-const AgentFlowDebugConsole = lazy(() =>
-  import('../debug-console/AgentFlowDebugConsole').then((module) => ({
-    default: module.AgentFlowDebugConsole
+const DraftAssistantPreview = lazy(() =>
+  import('../assistant-plugin/DraftAssistantPreview').then((module) => ({
+    default: module.DraftAssistantPreview
   }))
 );
 const ConversationLogPanel = lazy(() =>
@@ -1060,10 +1060,7 @@ export function AgentFlowCanvasFrame({
             />
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <NodeDetailPanel
@@ -1125,10 +1122,7 @@ export function AgentFlowCanvasFrame({
           >
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <ConversationLogPanel
@@ -1155,13 +1149,12 @@ export function AgentFlowCanvasFrame({
           >
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
-              <AgentFlowDebugConsole
+              <DraftAssistantPreview
+                document={workingDocument}
+                applicationName={applicationName}
                 messages={debugSession.messages}
                 runContext={debugSession.runContext}
                 status={debugSession.status}
@@ -1205,10 +1198,7 @@ export function AgentFlowCanvasFrame({
           >
             <Suspense
               fallback={
-                <LoadingState
-                  compact
-                  className="loading-state--panel"
-                />
+                <LoadingState compact className="loading-state--panel" />
               }
             >
               <VersionHistoryPanel

@@ -25,11 +25,13 @@ describe('BGP scenario demand islands', () => {
     const frame = await source(
       'src/features/agent-flow/components/editor/AgentFlowCanvasFrame.tsx'
     );
-    expect(frame).toContain("import('../debug-console/AgentFlowDebugConsole')");
+    expect(frame).toContain(
+      "import('../assistant-plugin/DraftAssistantPreview')"
+    );
     expect(frame).toContain("import('../detail/NodeDetailPanel')");
     expect(frame).toContain("import('../history/VersionHistoryPanel')");
     expect(frame).not.toContain(
-      "import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole'"
+      "import { DraftAssistantPreview } from '../assistant-plugin/DraftAssistantPreview'"
     );
 
     const jsonPreview = await source(
@@ -51,7 +53,7 @@ describe('BGP scenario demand islands', () => {
     expect(trigger).toContain('embedded-agent-assistant-window-shell');
     expect(preview).toContain("import('./AssistantRunActivityPanel')");
     expect(preview).toContain(
-      "import('../debug-console/AgentFlowDebugConsole')"
+      "import('../assistant-plugin/AssistantPanelPlugin')"
     );
   });
 });

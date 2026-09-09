@@ -84,39 +84,6 @@
   color: var(--text-tertiary);
 }
 
-.embedded-agent-assistant-preview__runtime-preferences
-  .ant-sender-switch-content.ant-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  max-width: 16rem;
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.embedded-agent-assistant-preview__runtime-preferences-effort {
-  color: var(--text-secondary);
-}
-
-.embedded-agent-assistant-preview__context-progress {
-  display: inline-flex;
-  align-items: center;
-  cursor: help;
-}
-
-.embedded-agent-assistant-preview__context-tooltip {
-  display: grid;
-  gap: 0.125rem;
-  color: var(--text-primary);
-  font-size: 0.8125rem;
-  line-height: 1.45;
-}
-
-.embedded-agent-assistant-preview__context-tooltip-total {
-  color: var(--text-secondary);
-}
-
 .embedded-agent-assistant-preview__history {
   display: flex;
   flex: 0 0 auto;
@@ -307,26 +274,6 @@
   min-width: 0;
 }
 
-.embedded-agent-assistant-preview__runtime-menu-row,
-.embedded-agent-assistant-preview__runtime-menu-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  min-width: 11rem;
-}
-
-.embedded-agent-assistant-preview__runtime-menu-value {
-  overflow: hidden;
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.embedded-agent-assistant-preview__runtime-menu-option .anticon {
-  color: var(--color-primary);
-}
-
 .embedded-agent-assistant-preview
   .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
   border-color: var(--bg-elevated);
@@ -356,11 +303,6 @@
   .agent-flow-editor__debug-message-content.ant-typography {
   background: var(--bg-hover);
   color: var(--text-primary);
-}
-
-.embedded-agent-assistant-preview__composer-actions {
-  flex: 1;
-  min-width: 0;
 }
 
 .agent-flow-page-reference-tag {

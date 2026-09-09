@@ -1,0 +1,66 @@
+.assistant-panel-plugin__runtime-preferences
+  .ant-sender-switch-content.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 16rem;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.assistant-panel-plugin__runtime-preferences-effort {
+  color: var(--text-secondary);
+}
+
+.assistant-panel-plugin__context-progress {
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+.assistant-panel-plugin__context-tooltip {
+  display: grid;
+  gap: 0.125rem;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.assistant-panel-plugin__context-tooltip-total {
+  color: var(--text-secondary);
+}
+
+.assistant-panel-plugin__runtime-menu-row,
+.assistant-panel-plugin__runtime-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-width: 11rem;
+}
+
+.assistant-panel-plugin__runtime-menu-value {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-panel-plugin__runtime-menu-option .anticon {
+  color: var(--color-primary);
+}
+
+.assistant-panel-plugin__composer-actions {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant-panel-plugin__model-label {
+  display: inline-block;
+  min-width: 0;
+  max-width: clamp(3rem, calc(100cqw - 16rem), 12rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
