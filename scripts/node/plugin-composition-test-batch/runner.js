@@ -12,6 +12,13 @@ const report = { schema: 1, scope: manifest.scope, batchMode: manifest.batchMode
 fs.mkdirSync(output, { recursive: true });
 let commandIndex = 0;
 const env = { ...process.env };
+// Keep real per-call integrity checks within the production observer budget even in debug tests.
+// Only the SHA-256 dependency is optimized; the algorithm, full-byte checks and deadlines remain.
+const cargoProfileArgs = manifest.scope === 'plugin-composition-2014' ? [
+  '--config', 'profile.dev.package.sha2.opt-level=3',
+  '--config', 'profile.test.package.sha2.opt-level=3',
+] : [];
+report.cargoProfileArgs = cargoProfileArgs;
 delete env.RUST_TEST_THREADS; // Every Rust command selects exactly one test; the chain itself is serial.
 function save() {
   report.finishedAt = new Date().toISOString();
@@ -71,7 +78,7 @@ try {
   ];
   for (const { example, env: variable } of workerFixtures) {
     try {
-      requireCommand(`build-${example}`, 'cargo', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', example]);
+      requireCommand(`build-${example}`, 'cargo', ['build', ...cargoProfileArgs, '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', example]);
       env[variable] = path.join(env.CARGO_TARGET_DIR, 'debug/examples', example);
       fs.accessSync(env[variable], fs.constants.X_OK);
       identity(env[variable]);
@@ -90,7 +97,7 @@ try {
     report.targets.push(targetReport);
     try {
       const targetArgs = target.target === 'lib' ? ['--lib'] : ['--test', target.target];
-      const text = requireCommand(`compile-${target.id}`, 'cargo', ['test', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', target.package, ...targetArgs, '--no-run', '--message-format=json']);
+      const text = requireCommand(`compile-${target.id}`, 'cargo', ['test', ...cargoProfileArgs, '--locked', '--manifest-path', 'api/Cargo.toml', '-p', target.package, ...targetArgs, '--no-run', '--message-format=json']);
       const artifacts = text.split(/\r?\n/u).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } }).filter(row => row.reason === 'compiler-artifact' && row.profile?.test && row.executable && row.target?.name === (target.target === 'lib' ? target.package.replaceAll('-', '_') : target.target));
       const binaries = [...new Set(artifacts.map(row => row.executable))];
       if (binaries.length !== 1) throw new Error(`${target.id}: expected one actual test artifact, got ${binaries.length}`);
@@ -124,7 +131,7 @@ try {
   for (const row of manifest.required) if (!report.tests.some(test => test.target === row.target && test.name === row.name && test.status === 'passed')) report.blockers.push(`required not passed: ${row.target}/${row.name}`);
   if (manifest.browserBinary && report.blockers.length === 0) {
     const { package: packageName, binary } = manifest.browserBinary;
-    requireCommand('build-candidate-browser-api', 'cargo', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', packageName, '--bin', binary]);
+    requireCommand('build-candidate-browser-api', 'cargo', ['build', ...cargoProfileArgs, '--locked', '--manifest-path', 'api/Cargo.toml', '-p', packageName, '--bin', binary]);
     const source = path.join(env.CARGO_TARGET_DIR, 'debug', binary);
     const directory = path.join(output, 'candidate-api');
     fs.mkdirSync(directory, { recursive: true });
