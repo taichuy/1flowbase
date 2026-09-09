@@ -496,7 +496,7 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     .await
     .unwrap();
     let mut last_effect = fact.payload.clone();
-    last_effect.model_id = Uuid::now_v7().to_string();
+    last_effect["model_id"] = serde_json::Value::String(Uuid::now_v7().to_string());
     let last_event = Uuid::now_v7();
     assert!(
         !lease

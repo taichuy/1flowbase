@@ -38,9 +38,7 @@ impl Fixture {
             .fetch_one(state.store.pool())
             .await
             .unwrap();
-        let actor = state
-            .store
-            .load_actor_context_for_user(actor_id)
+        let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
             .await
             .unwrap();
         let assembly = crate::extension_bus::assemble_extension_graph_input(
