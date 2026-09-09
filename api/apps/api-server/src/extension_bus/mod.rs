@@ -1,5 +1,6 @@
 mod authentication_activation;
 mod authentication_invocation;
+mod managed_interface;
 pub(crate) mod managed_projection;
 pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;

@@ -1,3 +1,4 @@
+//! Legacy Create compatibility; canonical interfaces use extension_bus::managed_interface.
 //! The boot-compiled Create bridge consumes one invocation-owned managed graph, never latest.
 use extension_contracts::{
     HookPhase, ManagedCreateHookInput, ManagedCreateView, ManagedHookInvocation,

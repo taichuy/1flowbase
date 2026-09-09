@@ -13,10 +13,10 @@ use crate::{
     app_state::ApiState,
     provider_runtime::{ApiProviderRuntime, ApiRuntimeArtifactResolver, ApiRuntimeServices},
 };
-use axum::{http::StatusCode, Router};
+use axum::{Router, http::StatusCode};
 use control_plane::{plugin_management::*, ports::AuthRepository};
 use extension_contracts::ManagedHookHostFrame;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -32,15 +32,15 @@ const PHASES: [&str; 6] = [
     "failure",
     "completion",
 ];
-struct Fixture {
-    state: Arc<ApiState>,
-    app: Router,
-    cookie: String,
-    csrf: String,
-    token: String,
-    actor: domain::ActorContext,
-    installation_id: Uuid,
-    worker: PathBuf,
+pub(super) struct Fixture {
+    pub(super) state: Arc<ApiState>,
+    pub(super) app: Router,
+    pub(super) cookie: String,
+    pub(super) csrf: String,
+    pub(super) token: String,
+    pub(super) actor: domain::ActorContext,
+    pub(super) installation_id: Uuid,
+    pub(super) worker: PathBuf,
 }
 
 fn package() -> Vec<u8> {
@@ -88,6 +88,12 @@ fn grant(phase: &str) -> GrantContributionPermission {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_package(package(), PHASES.into_iter().map(grant).collect()).await
+    }
+    pub(super) async fn new_with_package(
+        package_bytes: Vec<u8>,
+        grants: Vec<GrantContributionPermission>,
+    ) -> Self {
         let (initial, _) = test_api_state_with_database_url().await;
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
@@ -147,7 +153,7 @@ impl Fixture {
             .install_uploaded_plugin(InstallUploadedPluginCommand {
                 actor_user_id: user_id,
                 file_name: "acme.composition-a.1flowbasepkg".into(),
-                package_bytes: package(),
+                package_bytes,
             })
             .await
             .unwrap();
@@ -163,9 +169,9 @@ impl Fixture {
             state.store.clone(),
             HostContributionGrantPolicy::root_composition(),
         );
-        for phase in PHASES {
+        for grant in grants {
             authority
-                .grant(&actor, installation_id, grant(phase))
+                .grant(&actor, installation_id, grant)
                 .await
                 .unwrap();
         }
@@ -189,7 +195,7 @@ impl Fixture {
             worker,
         }
     }
-    fn mode(&self, mode: &str) {
+    pub(super) fn mode(&self, mode: &str) {
         std::fs::write(self.worker.with_extension("mode"), mode).unwrap();
         let _ = std::fs::remove_file(self.worker.with_extension("trace"));
         let _ = std::fs::remove_file(self.worker.with_extension("started"));
@@ -202,7 +208,7 @@ impl Fixture {
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
     }
-    async fn call(&self, mcp: bool, body: Value) -> (u16, Value) {
+    pub(super) async fn call(&self, mcp: bool, body: Value) -> (u16, Value) {
         if mcp {
             let response = call_mcp(&self.app, &self.token, create_pair::mcp_request(body)).await;
             if response.get("error").is_some() {
@@ -703,8 +709,8 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
     use crate::routes::{
         console_interface,
         model_definitions::{
-            interface::{managed_hooks, ModelDefinitionsInput, ModelDefinitionsOutput},
             CreateModelDefinitionBody,
+            interface::{ModelDefinitionsInput, ModelDefinitionsOutput, managed_hooks},
         },
     };
     use interface_runtime::*;
@@ -763,10 +769,12 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
                 InterfaceInvocationTerminal::Cancelled
             );
             assert_eq!(fixture.model_count(code).await, 0);
-            assert!(fixture
-                .trace()
-                .iter()
-                .any(|frame| frame.handler == "trace.completion"));
+            assert!(
+                fixture
+                    .trace()
+                    .iter()
+                    .any(|frame| frame.handler == "trace.completion")
+            );
         } else {
             let outcome = invocation.await.unwrap();
             assert_eq!(fixture.model_count(code).await, 1);

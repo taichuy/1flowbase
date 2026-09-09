@@ -2,13 +2,13 @@
 mod candidate_switch;
 mod governance;
 mod lifetime;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use control_plane::{
-    plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
+    plugin_management::{HostContributionGrantPolicy, ready_current_node_plugin_installation},
     ports::{ContributionAuthorityLease, PluginContributionAuthorityRepository, PluginRepository},
 };
 use lifetime::*;
-use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
+use plugin_framework::{ManagedManifest, PluginManifestV1, extension_bus::*};
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
     RuntimeManagedCapabilityRequest,
@@ -58,6 +58,7 @@ pub(crate) struct ManagedExtensionComposition {
     base_modules: Vec<ModuleDescriptor>,
     policy: HostContributionGrantPolicy,
     native_lifecycle_plan: std::sync::OnceLock<EffectiveLifecycleSubscriberPlan>,
+    interface_module: std::sync::OnceLock<ModuleDescriptor>,
     /// One assembly owner; immutable snapshots remain valid while callers hold their Arc.
     snapshots: Mutex<ManagedSnapshots>,
     execution_epoch: Uuid,
@@ -80,6 +81,7 @@ impl ManagedExtensionComposition {
             base_modules,
             policy: HostContributionGrantPolicy::root_composition(),
             native_lifecycle_plan: Default::default(),
+            interface_module: Default::default(),
             snapshots: Mutex::new(ManagedSnapshots::default()),
             execution_epoch: Uuid::now_v7(),
             assembly: Arc::new(Mutex::new(())),
@@ -259,6 +261,9 @@ impl ManagedExtensionComposition {
         new_handles: &mut Vec<ManagedExecutionHandle>,
     ) -> Result<Arc<ManagedWorkspaceSnapshot>> {
         let mut modules = self.base_modules.clone();
+        if let Some(module) = self.interface_module.get() {
+            modules.push(module.clone());
+        }
         let mut authority = ManagedGraphAuthority::new(self.policy.identity());
         for package in packages {
             let mut module = package.manifest.module.clone();
@@ -492,17 +497,28 @@ impl ManagedExtensionComposition {
         contribution_id: &ContributionId,
         principal: RuntimeExecutionPrincipal,
         mut invocation: extension_contracts::ManagedHookInvocation,
-        input: extension_contracts::ManagedCreateHookInput,
+        input: impl Into<runtime_core::runtime_backend::RuntimeManagedHookInput> + Send,
     ) -> Result<extension_contracts::ManagedHookOutcome> {
+        let input = input.into();
         let _execution_reference = snapshot.freeze_reference()?;
         let binding = snapshot
             .bindings
             .get(contribution_id)
             .context("managed hook contribution is absent from the frozen snapshot")?;
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
+        let point_id = match &input {
+            runtime_core::runtime_backend::RuntimeManagedHookInput::LegacyCreate(input) => {
+                input.point_id().to_owned()
+            }
+            runtime_core::runtime_backend::RuntimeManagedHookInput::Interface {
+                interface_id,
+                input,
+                ..
+            } => extension_contracts::managed_interface_hook_point_id(interface_id, input.phase()),
+        };
         if principal.workspace_id != workspace_id.to_string()
             || invocation.graph_fingerprint != snapshot.graph.fingerprint().as_str()
-            || binding.descriptor.point_id.as_str() != input.point_id()
+            || binding.descriptor.point_id.as_str() != point_id
             || binding.descriptor.contract_version.as_str() != "1"
         {
             bail!("managed hook frozen plan or scope mismatch");
@@ -1051,5 +1067,22 @@ impl ManagedExtensionComposition {
                     error
                 }
             })
+    }
+}
+
+impl ManagedExtensionComposition {
+    pub(crate) fn attach_interface_module(&self, module: ModuleDescriptor) -> Result<()> {
+        if let Some(existing) = self.interface_module.get() {
+            if existing != &module {
+                bail!("managed interface catalogue already frozen differently");
+            }
+            return Ok(());
+        }
+        self.interface_module
+            .set(module)
+            .map_err(|_| anyhow::anyhow!("managed interface catalogue already frozen"))
+    }
+    pub(crate) fn interface_module(&self) -> Option<&ModuleDescriptor> {
+        self.interface_module.get()
     }
 }

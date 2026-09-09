@@ -6,9 +6,9 @@ use interface_runtime::{
 };
 
 use crate::console_operation_compilation::{
+    CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind, ConsoleBindingOwnershipContribution,
     compile_console_operation_snapshot, migration_contributions_from_plan,
-    policy_contributions_from_inventory, CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind,
-    ConsoleBindingOwnershipContribution,
+    policy_contributions_from_inventory,
 };
 
 #[derive(Clone)]
@@ -57,6 +57,7 @@ struct PublishedInterfaceContribution {
 }
 
 pub(crate) struct InterfaceContributionCollector {
+    managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
     published: Vec<PublishedInterfaceContribution>,
     contributions: Vec<InterfaceRegistryContribution>,
@@ -92,6 +93,7 @@ impl crate::routes::mcp_management::interface_debug::McpDebugActivatedOperationP
 impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
+            managed_factory: None,
             graph_fingerprint,
             published: Vec::new(),
             contributions: Vec::new(),
@@ -145,6 +147,9 @@ impl InterfaceContributionCollector {
         }
 
         let mut compiler = RegistryCompiler::new(self.graph_fingerprint, operations, owners);
+        if let Some(factory) = self.managed_factory {
+            compiler = compiler.with_managed_invocations(factory);
+        }
         for published in self.published {
             compiler.absorb_interface(published.registry.as_ref(), &published.interface_id)?;
         }
@@ -1781,4 +1786,14 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
     ])
+}
+
+impl InterfaceContributionCollector {
+    pub(crate) fn with_managed_invocations(
+        mut self,
+        factory: Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>,
+    ) -> Self {
+        self.managed_factory = Some(factory);
+        self
+    }
 }

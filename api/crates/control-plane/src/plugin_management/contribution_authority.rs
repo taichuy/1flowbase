@@ -131,7 +131,9 @@ impl HostContributionGrantPolicy {
         format!(
             "{}:sha256:{:x}",
             Self::IDENTITY,
-            sha2::Sha256::digest(bytes)
+            sha2::Sha256::digest(
+                [bytes.as_slice(), b"canonical-interface-managed-hook/v1"].concat()
+            )
         )
     }
 
@@ -190,6 +192,16 @@ impl HostContributionGrantPolicy {
         contribution: &plugin_framework::extension_bus::ContributionDescriptor,
         request: &GrantContributionPermission,
     ) -> bool {
+        if let Some(phase) = plugin_framework::extension_bus::managed_interface_point_phase(
+            contribution.point_id.as_str(),
+        ) {
+            return request.permission_contract_version == "1"
+                && request.permission_contract_id == "managed-interface"
+                && contribution.contract_version.as_str() == "1"
+                && request.resource_scope == ContributionResourceScope::Workspace
+                && request.permission
+                    == plugin_framework::extension_bus::managed_interface_permission(phase);
+        }
         request.permission_contract_version == "1"
             && self.rules.iter().any(|rule| {
                 rule.point_id == contribution.point_id.as_str()

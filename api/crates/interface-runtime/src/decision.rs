@@ -178,6 +178,17 @@ where
 
 macro_rules! typed_decision_plan {
     ($name:ident, $contribution:ident) => {
+        impl<I: InterfaceContract, O: InterfaceContract> Clone for $name<I, O> {
+            fn clone(&self) -> Self {
+                Self {
+                    graph: self.graph.clone(),
+                    input: self.input.clone(),
+                    output: self.output.clone(),
+                    bindings: self.bindings.clone(),
+                    marker: PhantomData,
+                }
+            }
+        }
         impl<I, O> $name<I, O>
         where
             I: InterfaceContract,
