@@ -1409,7 +1409,7 @@ mod request_log_response_tests {
                 output_tokens: Some(191),
                 total_tokens: Some(194),
                 input_cache_hit_tokens: Some(97),
-                cache_write_tokens: None,
+                cache_write_tokens: Some(5000),
                 input_cache_hit_rate: Some(0.5),
                 started_at,
                 first_token_at: Some(started_at - Duration::milliseconds(6076)),
@@ -1423,6 +1423,7 @@ mod request_log_response_tests {
         assert_eq!(response.total_duration_ms, Some(7426));
         assert_eq!(response.plugin_id.as_deref(), Some("gemini@0.1.20"));
         assert_eq!(response.input_cache_hit_tokens, Some(97));
+        assert_eq!(response.cache_write_tokens, Some(5000));
         assert_eq!(response.input_cache_hit_rate, Some(0.5));
         assert_eq!(response.pricing_provider_code.as_deref(), Some("zero"));
         assert_eq!(response.pricing_model_id.as_deref(), Some("any"));
