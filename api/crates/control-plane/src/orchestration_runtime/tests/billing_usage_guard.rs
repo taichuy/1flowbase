@@ -6,6 +6,7 @@ use plugin_framework::PluginFrameworkError;
 
 fn billing_flow_execution_context(flow_run_id: Uuid) -> Arc<RuntimeFlowExecutionContext> {
     Arc::new(RuntimeFlowExecutionContext {
+        user_account: Some("billing-user".to_string()),
         active_node: Mutex::new(None),
         data_model: RuntimeDataModelExecutionContext {
             actor: domain::ActorContext::root(Uuid::now_v7(), Uuid::nil(), "root"),
@@ -410,4 +411,41 @@ async fn billing_with_usage_attempts_settlement_without_release() {
     assert_eq!(repository_probe.model_billing_reserved_session_count(), 1);
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
     assert!(repository_probe.model_billing_credit_releases().is_empty());
+}
+
+// AC5: request-log attribution comes from the execution snapshot even when fees
+// are disabled; it must not depend on a later users-table lookup.
+#[tokio::test]
+async fn provider_outcome_carries_account_snapshot_without_billing() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: Vec::new(),
+            result: ProviderInvocationResult {
+                final_content: Some("answer".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+        },
+    ]);
+    let invoker = billing_invoker(repository, runtime);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("non-billed provider invocation should succeed");
+    let mut metadata = &output.result.provider_metadata;
+    loop {
+        if let Some(account) = metadata.get("_1flowbase_user_account") {
+            assert_eq!(account.as_str(), Some("billing-user"));
+            break;
+        }
+        metadata = metadata
+            .get("_1flowbase_upstream_provider_metadata")
+            .expect("host outcome must carry the frozen user account");
+    }
 }

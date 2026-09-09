@@ -91,6 +91,7 @@ where
 
     let flow_execution_context = service.runtime_flow_execution_context(
         actor.clone(),
+        flow_run.authorized_account.clone(),
         application.id,
         flow_run.draft_id,
         flow_run.id,

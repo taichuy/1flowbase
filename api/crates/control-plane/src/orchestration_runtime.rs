@@ -321,6 +321,7 @@ struct RuntimeProviderInvoker<R, H> {
 }
 
 struct RuntimeFlowExecutionContext {
+    user_account: Option<String>,
     active_node: Mutex<Option<RuntimeActiveNode>>,
     data_model: RuntimeDataModelExecutionContext,
 }
@@ -492,12 +493,14 @@ where
     fn runtime_flow_execution_context(
         &self,
         actor: domain::ActorContext,
+        user_account: Option<String>,
         application_id: Uuid,
         draft_id: Uuid,
         flow_run_id: Uuid,
         active_node: Option<RuntimeActiveNode>,
     ) -> Arc<RuntimeFlowExecutionContext> {
         Arc::new(RuntimeFlowExecutionContext {
+            user_account,
             active_node: Mutex::new(active_node),
             data_model: RuntimeDataModelExecutionContext {
                 actor,
@@ -566,6 +569,7 @@ where
     {
         let flow_execution_context = self.runtime_flow_execution_context(
             input.actor.clone(),
+            input.flow_run.authorized_account.clone(),
             input.application.id,
             input.flow_run.draft_id,
             input.flow_run.id,
@@ -767,8 +771,18 @@ where
                 started_at,
             ))
             .await?;
+        // The create response does not include the authorized account. Freeze the
+        // existing read-model attribution once, before provider execution; log
+        // persistence consumes this snapshot without querying mutable user data.
+        let user_account = self
+            .repository
+            .get_flow_run(application.id, flow_run.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?
+            .authorized_account;
         let flow_execution_context = self.runtime_flow_execution_context(
             actor.clone(),
+            user_account,
             application.id,
             editor_state.draft.id,
             flow_run.id,
