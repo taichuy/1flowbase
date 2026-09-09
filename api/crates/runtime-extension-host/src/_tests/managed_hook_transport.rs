@@ -663,20 +663,31 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
     let fixture = WorkerFixture::new();
     let raw =
         include_str!("../../../../plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml");
-    let mut manifest = extension_package_runtime::parse_plugin_manifest(raw).unwrap();
-    let managed = manifest.managed.as_mut().unwrap();
-    managed.module.contributions.truncate(1);
-    managed.execution_bindings.truncate(1);
-    let declaration = &mut managed.module.contributions[0];
-    declaration.point_id = ExtensionPointId::new(managed_interface_hook_point_id(
-        "probe.values",
-        HookPhase::Before,
-    ))
-    .unwrap();
-    let binding = &mut managed.execution_bindings[0];
-    binding.handler = "trace.before".into();
-    binding.runtime.entry = "worker".into();
-    binding.interface_protocol = Some(ManagedInterfaceProtocol::ReferenceV2);
+    let package_header = raw.split_once("\nmanaged:\n").unwrap().0;
+    // Author documents are serialized; the parsed package model remains validation-only.
+    let mut managed_document = serde_json::json!({
+        "module": {
+            "bus_version": "v1",
+            "module_id": "northwind.lifecycle-auditor",
+            "module_version": "1.0.0",
+            "module_kind": "runtime",
+            "contributions": [{
+                "contribution_id": "northwind.lifecycle-auditor.i0.authorization",
+                "contributor_module_id": "northwind.lifecycle-auditor",
+                "point_id": managed_interface_hook_point_id("probe.values", HookPhase::Before),
+                "contract_version": "1",
+                "required_permissions": ["hook.interface.authorization"],
+                "mode": "append"
+            }]
+        },
+        "execution_bindings": [{
+            "contribution_id": "northwind.lifecycle-auditor.i0.authorization",
+            "execution_mode": "process_per_call",
+            "interface_protocol": "reference-v2",
+            "runtime": {"protocol": "stdio_json", "entry": "worker"},
+            "handler": "trace.before"
+        }]
+    });
     let contract = ManagedProjectionContract {
         contract_id: "probe.values".into(),
         contract_version: "1".into(),
@@ -706,8 +717,11 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
         "attack.fingerprint",
         "attack.flood",
     ] {
-        manifest.managed.as_mut().unwrap().execution_bindings[0].handler = handler.into();
-        let raw = serde_json::to_vec(&manifest).unwrap();
+        managed_document["execution_bindings"][0]["handler"] = handler.into();
+        let raw = format!("{package_header}\nmanaged: {managed_document}\n").into_bytes();
+        let manifest =
+            extension_package_runtime::parse_plugin_manifest(std::str::from_utf8(&raw).unwrap())
+                .unwrap();
         std::fs::write(fixture.root.join("manifest.yaml"), &raw).unwrap();
         let managed = manifest.managed.as_ref().unwrap();
         let contribution = &managed.module.contributions[0].contribution_id;
