@@ -774,15 +774,14 @@ where
         // The create response does not include the authorized account. Freeze the
         // existing read-model attribution once, before provider execution; log
         // persistence consumes this snapshot without querying mutable user data.
-        let user_account = self
+        let flow_run = self
             .repository
             .get_flow_run(application.id, flow_run.id)
             .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?
-            .authorized_account;
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
         let flow_execution_context = self.runtime_flow_execution_context(
             actor.clone(),
-            user_account,
+            flow_run.authorized_account.clone(),
             application.id,
             editor_state.draft.id,
             flow_run.id,
