@@ -1,3 +1,5 @@
+pub mod policy;
+
 use anyhow::{anyhow, Result};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -84,7 +86,11 @@ impl PricingRule {
             return Err(anyhow!("pricing_priority_invalid"));
         }
         if self.rating_policy_enabled {
-            validate_input_token_tier_policy(&self.rating_policy)?;
+            if self.rating_policy["schema_version"] == policy::RATING_POLICY_SCHEMA_V2 {
+                policy::TokenPricingPolicy::parse(&self.rating_policy)?;
+            } else {
+                validate_input_token_tier_policy(&self.rating_policy)?;
+            }
         }
         Ok(())
     }

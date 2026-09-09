@@ -1,3 +1,7 @@
+mod rating;
+pub use control_plane_contracts::billing::policy::CacheWriteRate;
+use std::collections::BTreeMap;
+
 use crate::ports::{
     BillingRepository, CreditCommandInput, CreditOutboxEvent, CreditTransactionRecord,
     PluginCreditCommandRequest, PluginCreditCommandResult, ReserveCreditInput, SettleCreditInput,
@@ -303,8 +307,9 @@ pub struct TokenRate {
     pub unit_price: Decimal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AppliedTokenRates {
+    pub cache_write: Option<CacheWriteRate>,
     pub input: TokenRate,
     pub output: TokenRate,
     pub cache_hit: TokenRate,
@@ -363,6 +368,7 @@ fn validated_input_token_tier_policy(
 
 fn base_token_rates(rule: &PricingRule) -> AppliedTokenRates {
     AppliedTokenRates {
+        cache_write: None,
         input: TokenRate {
             unit_size: rule.input_token_unit_size,
             unit_price: rule.input_token_unit_price,
@@ -385,6 +391,11 @@ fn applied_token_rates(
     if !rule.rating_policy_enabled {
         return Ok((base_token_rates(rule), None));
     }
+    if rule.rating_policy["schema_version"]
+        == control_plane_contracts::billing::policy::RATING_POLICY_SCHEMA_V2
+    {
+        return rating::applied_v2_rates(rule, input_tokens);
+    }
     let policy = validated_input_token_tier_policy(&rule.rating_policy)?;
     let matched =
         policy
@@ -402,6 +413,7 @@ fn applied_token_rates(
     };
     Ok((
         AppliedTokenRates {
+            cache_write: None,
             input: token_rate(&tier.rates.input)?,
             output: token_rate(&tier.rates.output)?,
             cache_hit: token_rate(&tier.rates.cache_hit)?,
@@ -417,8 +429,10 @@ fn applied_token_rates(
     ))
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenUsage {
+    pub cache_write_tokens: i64,
+    pub cache_write_by_ttl_seconds: Option<BTreeMap<String, i64>>,
     pub input_tokens: i64,
     pub input_cache_hit_tokens: i64,
     pub input_cache_miss_tokens: Option<i64>,
@@ -427,6 +441,8 @@ pub struct TokenUsage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RatedTokenCost {
+    pub cache_write_tokens: i64,
+    pub cache_write_cost: Decimal,
     pub ordinary_input_tokens: i64,
     pub cache_hit_tokens: i64,
     pub output_tokens: i64,
@@ -439,36 +455,7 @@ pub struct RatedTokenCost {
 }
 
 pub fn rate_token_usage(rule: &PricingRule, usage: &TokenUsage) -> Result<RatedTokenCost> {
-    rule.validate()?;
-    if usage.input_tokens < 0
-        || usage.input_cache_hit_tokens < 0
-        || usage.input_cache_miss_tokens.is_some_and(|value| value < 0)
-        || usage.output_tokens < 0
-    {
-        return Err(anyhow!("provider_usage_invalid"));
-    }
-    let cache_hit_tokens = usage.input_cache_hit_tokens;
-    let ordinary_input_tokens = usage
-        .input_cache_miss_tokens
-        .unwrap_or_else(|| usage.input_tokens.saturating_sub(cache_hit_tokens));
-    let (applied_rates, rating_policy_match) = applied_token_rates(rule, usage.input_tokens)?;
-    let input_cost = Decimal::from(ordinary_input_tokens) * applied_rates.input.unit_price
-        / Decimal::from(applied_rates.input.unit_size);
-    let output_cost = Decimal::from(usage.output_tokens) * applied_rates.output.unit_price
-        / Decimal::from(applied_rates.output.unit_size);
-    let cache_hit_cost = Decimal::from(cache_hit_tokens) * applied_rates.cache_hit.unit_price
-        / Decimal::from(applied_rates.cache_hit.unit_size);
-    Ok(RatedTokenCost {
-        ordinary_input_tokens,
-        cache_hit_tokens,
-        output_tokens: usage.output_tokens,
-        input_cost,
-        output_cost,
-        cache_hit_cost,
-        total_cost: input_cost + output_cost + cache_hit_cost,
-        applied_rates,
-        rating_policy_match,
-    })
+    rating::rate(rule, usage)
 }
 
 pub fn weekday_bit(weekday: Weekday) -> i16 {

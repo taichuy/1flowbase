@@ -429,6 +429,8 @@ fn input_token_tier_overrides_base_rates_at_the_configured_threshold() {
     let below = rate_token_usage(
         &tiered,
         &TokenUsage {
+            cache_write_tokens: 0,
+            cache_write_by_ttl_seconds: None,
             input_tokens: 272_000,
             input_cache_hit_tokens: 0,
             input_cache_miss_tokens: Some(272_000),
@@ -445,6 +447,8 @@ fn input_token_tier_overrides_base_rates_at_the_configured_threshold() {
     let above = rate_token_usage(
         &tiered,
         &TokenUsage {
+            cache_write_tokens: 0,
+            cache_write_by_ttl_seconds: None,
             input_tokens: 300_000,
             input_cache_hit_tokens: 0,
             input_cache_miss_tokens: Some(300_000),
@@ -505,6 +509,8 @@ fn token_rating_uses_mutually_exclusive_input_and_cache_quantities() {
     let cost = rate_token_usage(
         &rule(),
         &TokenUsage {
+            cache_write_tokens: 0,
+            cache_write_by_ttl_seconds: None,
             input_tokens: 300_000,
             input_cache_hit_tokens: 200_000,
             input_cache_miss_tokens: None,
@@ -526,6 +532,8 @@ fn explicit_cache_miss_quantity_wins_over_derived_input_quantity() {
     let cost = rate_token_usage(
         &rule(),
         &TokenUsage {
+            cache_write_tokens: 0,
+            cache_write_by_ttl_seconds: None,
             input_tokens: 999_999,
             input_cache_hit_tokens: 200_000,
             input_cache_miss_tokens: Some(10),
@@ -625,4 +633,144 @@ fn exact_pricing_rule_wins_over_global_zero_fallback() {
     .unwrap()
     .unwrap();
     assert_eq!(selected.id, fallback.id);
+}
+
+fn v2_rule() -> PricingRule {
+    let mut value = rule();
+    value.rating_policy_enabled = true;
+    value.rating_policy = serde_json::json!({"schema_version":"1flowbase.model-rating-policy/v2", "type":"token_pricing", "unit_size":1000000,
+    "rates":{"input":"10","output":"50","cache_hit":"1","cache_write":{"unit_price":"12.5"}},
+    "input_token_tiers":[
+        {"when":{"operator":"gt","value":272000},"rates":{"input":"20","output":"75","cache_hit":"2","cache_write":{"unit_price":"25"}}},
+        {"when":{"operator":"gte","value":300000},"rates":{"input":"30","output":"100","cache_hit":"3","cache_write":{"unit_price":"40"}}}
+    ]});
+    value
+}
+
+// AC2: tier threshold uses full input and replaces all four rates for the whole request.
+#[test]
+fn v2_full_request_highest_tier_boundaries() {
+    for (input_tokens, input_price, output_price, hit_price, write_price, tier) in [
+        (272000, "10", "50", "1", "12.5", None),
+        (272001, "20", "75", "2", "25", Some(0)),
+        (300000, "30", "100", "3", "40", Some(1)),
+        (400000, "30", "100", "3", "40", Some(1)),
+    ] {
+        let rated = rate_token_usage(
+            &v2_rule(),
+            &TokenUsage {
+                input_tokens,
+                input_cache_hit_tokens: 1000,
+                cache_write_tokens: 2000,
+                output_tokens: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(rated.ordinary_input_tokens, input_tokens - 3000);
+        assert_eq!(
+            rated.applied_rates.input.unit_price,
+            Decimal::from_str(input_price).unwrap()
+        );
+        assert_eq!(
+            rated.applied_rates.output.unit_price,
+            Decimal::from_str(output_price).unwrap()
+        );
+        assert_eq!(
+            rated.applied_rates.cache_hit.unit_price,
+            Decimal::from_str(hit_price).unwrap()
+        );
+        assert_eq!(
+            rated.applied_rates.cache_write,
+            Some(crate::billing::CacheWriteRate::UnitPrice(
+                Decimal::from_str(write_price).unwrap()
+            ))
+        );
+        assert_eq!(
+            rated.rating_policy_match.map(|value| value.tier_index),
+            tier
+        );
+    }
+}
+
+// AC2/3: mixed TTL writes are disjoint billable input; missing facts fail closed.
+#[test]
+fn v2_mixed_ttl_and_usage_negative_matrix() {
+    let mut pricing = v2_rule();
+    pricing
+        .rating_policy
+        .as_object_mut()
+        .unwrap()
+        .remove("input_token_tiers");
+    pricing.rating_policy["rates"]["cache_write"] =
+        serde_json::json!({"by_ttl_seconds":{"300":"12.5","3600":"20"}});
+    let usage = TokenUsage {
+        input_tokens: 5000,
+        cache_write_tokens: 5000,
+        cache_write_by_ttl_seconds: Some([("300".into(), 3000), ("3600".into(), 2000)].into()),
+        ..Default::default()
+    };
+    let cost = rate_token_usage(&pricing, &usage).unwrap();
+    assert_eq!(cost.total_cost, Decimal::from_str("0.0775").unwrap());
+    assert_eq!(cost.cache_write_cost, cost.total_cost);
+    assert_eq!(cost.ordinary_input_tokens, 0);
+    assert_eq!(
+        rate_token_usage(&pricing, &TokenUsage::default())
+            .unwrap()
+            .total_cost,
+        Decimal::ZERO
+    );
+    for bad in [
+        TokenUsage {
+            cache_write_by_ttl_seconds: None,
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_tokens: 4999,
+            ..usage.clone()
+        },
+        TokenUsage {
+            input_tokens: 4999,
+            ..usage.clone()
+        },
+        TokenUsage {
+            input_cache_miss_tokens: Some(1),
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_by_ttl_seconds: Some([("60".into(), 5000)].into()),
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_by_ttl_seconds: Some([("0300".into(), 5000)].into()),
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_by_ttl_seconds: Some([("300".into(), -1), ("3600".into(), 5001)].into()),
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_tokens: -1,
+            ..usage.clone()
+        },
+        TokenUsage {
+            cache_write_tokens: 0,
+            input_tokens: 0,
+            ..usage.clone()
+        },
+    ] {
+        assert!(
+            rate_token_usage(&pricing, &bad).is_err(),
+            "accepted {bad:?}"
+        );
+    }
+    pricing.rating_policy["rates"]["input"] = serde_json::json!("79228162514264337593543950335");
+    assert!(rate_token_usage(
+        &pricing,
+        &TokenUsage {
+            input_tokens: i64::MAX,
+            ..Default::default()
+        }
+    )
+    .is_err());
 }
