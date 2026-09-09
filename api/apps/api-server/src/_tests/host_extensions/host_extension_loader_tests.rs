@@ -4,6 +4,10 @@ use std::{
     sync::Arc,
 };
 
+use axum::{
+    body::{to_bytes, Body},
+    http::{Request, StatusCode},
+};
 use control_plane::{
     host_extension::HOST_EXTENSION_CONTRACT_VERSION,
     ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput},
@@ -14,11 +18,14 @@ use domain::{
 };
 use plugin_framework::compute_manifest_fingerprint;
 use serde_json::json;
+use tower::ServiceExt;
 use uuid::Uuid;
 
 use crate::{app_state::ApiState, host_extension_loader::load_host_extensions_at_startup};
 
-use super::super::support::{test_api_state_with_database_url, write_test_executable};
+use super::super::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, write_test_executable,
+};
 
 fn create_host_extension_installation_fixture(root: &Path, version: &str, source_kind: &str) {
     fs::create_dir_all(root.join("lib")).unwrap();
@@ -565,6 +572,25 @@ async fn root_2014_ac_014_selected_v2_keeps_v1_running_until_restart() {
     let one = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
     let two = create_current_node_host_extension_fixture(&state, "2.0.0", "uploaded").await;
     let first = seed_pending_restart_host_extension(&state, &one, "1.0.0").await;
+    let second = seed_pending_restart_host_extension(&state, &two, "2.0.0").await;
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    // Prepare the uploaded version before either version owns the native target.
+    state
+        .store
+        .update_desired_state(&control_plane::ports::UpdatePluginDesiredStateInput {
+            installation_id: second,
+            desired_state: PluginDesiredState::Disabled,
+            actor_user_id: actor.id,
+        })
+        .await
+        .unwrap();
     formally_enable_native(&state, first).await;
     assert_eq!(
         load_host_extensions_at_startup(&state)
@@ -573,8 +599,38 @@ async fn root_2014_ac_014_selected_v2_keeps_v1_running_until_restart() {
             .loaded_count,
         1
     );
-    let second = seed_pending_restart_host_extension(&state, &two, "2.0.0").await;
     formally_enable_native(&state, second).await;
+    // The ready check observed Disabled; native selection only changed desired state.
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, second)
+            .await
+            .unwrap()
+            .unwrap()
+            .availability_status,
+        PluginAvailabilityStatus::Disabled
+    );
+    let app = crate::app_with_state(state.clone());
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let request = Request::builder()
+        .uri("/api/console/settings/extension-center/installed?category=host-extensions&limit=50")
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entries = body["data"]["entries"].as_array().unwrap();
+    let selected = entries
+        .iter()
+        .find(|entry| entry["id"] == second.to_string())
+        .expect("installed family must expose the precisely selected v2");
+    assert_eq!(selected["desired_state"], "pending_restart");
+    assert_eq!(selected["availability_status"], "pending_restart");
+    assert_eq!(selected["runtime_status"], "inactive");
+
     assert_eq!(
         state
             .store

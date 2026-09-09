@@ -226,8 +226,24 @@ impl ExtensionCenterAdapter {
                             )
                             .await?
                         {
+                            let availability_status = if has_target
+                                && installation.category
+                                    == domain::ExtensionCategory::HostExtensions
+                            {
+                                control_plane::plugin_lifecycle::derive_availability_status(
+                                    installation.desired_state,
+                                    if artifact.artifact_status.is_ready() {
+                                        domain::PluginArtifactStatus::Ready
+                                    } else {
+                                        domain::PluginArtifactStatus::Missing
+                                    },
+                                    artifact.runtime_status,
+                                )
+                            } else {
+                                artifact.availability_status
+                            };
                             response.availability_status =
-                                Some(artifact.availability_status.as_str().to_string());
+                                Some(availability_status.as_str().to_string());
                             response.runtime_status =
                                 has_target.then(|| artifact.runtime_status.as_str().to_string());
                             if is_runtime_uninstall_category(installation.category)

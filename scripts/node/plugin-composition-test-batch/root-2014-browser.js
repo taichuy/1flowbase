@@ -164,7 +164,7 @@ async function editTemplate(base, owner, web, source) {
     throw new Error('UI edit/publish did not change the formal published source');
   } finally { await context.close(); }
 }
-async function chooseUpgrade(owner, web, installationId) {
+async function chooseUpgrade(base, owner, web, installationId) {
   const context = await cookieContext(owner, web, { width: 1440, height: 1000 });
   try {
     const page = await context.newPage();
@@ -173,7 +173,27 @@ async function chooseUpgrade(owner, web, installationId) {
     await screenshot(page, 'upgrade-warning');
     const row = page.getByRole('row').filter({ hasText: 'northwind.settings-page' }).first();
     await row.getByRole('button', { name: /^(View|查看)$/u }).click();
+    const enableRoute = `/api/console/settings/extension-center/installed/${installationId}/enable`;
+    const responsePromise = page.waitForResponse(response =>
+      response.request().method() === 'POST' && new URL(response.url()).pathname === enableRoute);
     await page.locator(`li[data-installation-id="${installationId}"]`).getByRole('button', { name: /^(Select this version|选择此版本)$/u }).click();
+    const response = await responsePromise;
+    const responseText = await response.text();
+    report.upgradeSelection = { installationId, status: response.status(), responseText };
+    assert.ok(response.ok(), `UI version selection HTTP ${response.status()}: ${responseText}`);
+    const task = JSON.parse(responseText).data;
+    assert.equal(task.installation_id, installationId);
+    assert.equal(task.status, 'succeeded');
+    const installed = await request(base, owner, '/api/console/settings/extension-center/installed?category=host-extensions&limit=50');
+    const selected = installed.entries.find(entry => entry.id === installationId);
+    report.upgradeSelection.selected = selected ? {
+      id: selected.id, desired_state: selected.desired_state,
+      runtime_status: selected.runtime_status, availability_status: selected.availability_status,
+    } : null;
+    assert.ok(selected, 'formal installed list exposes the precisely selected version');
+    assert.equal(selected.desired_state, 'pending_restart');
+    assert.equal(selected.runtime_status, 'inactive');
+    assert.equal(selected.availability_status, 'pending_restart');
     await page.locator('[data-testid="plugin-availability-status"][data-availability-status="pending_restart"]').first().waitFor();
     await screenshot(page, 'selected-version-pending-restart');
   } finally { await context.close(); }
@@ -230,7 +250,7 @@ async function main() {
   await disposeSession(ownerB); await stop(b); b = await startApi('b'); ownerB = await session(bases.b, password);
   assert.equal((await request(bases.b, ownerB, pageRoute)).applied_plugin_version, '1.0.0');
   const v2 = await install(bases.a, ownerA, archive('2.0.0', source('Root 2014 version two')));
-  await chooseUpgrade(ownerA, bases.web, v2);
+  await chooseUpgrade(bases.a, ownerA, bases.web, v2);
   const pending = sql(`select desired_state from "${schema}".extension_installations where id='${v2}'::uuid`);
   assert.equal(pending, 'pending_restart');
   const oldStatus = sql(`select runtime_status from "${schema}".extension_artifact_instances where installation_id='${v1}'::uuid and node_id='${schema}-a'`);
