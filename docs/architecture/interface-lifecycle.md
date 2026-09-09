@@ -201,7 +201,32 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 
 接口管理可以用受控 typed registration 验证执行契约。三级插件开放则需真实 declaration → loader/activation → graph/registry → invocation，覆盖依赖、冲突、停用、版本切换和在途隔离。native HostExtension 的 restart-scoped 管理不能被快照测试解释成 Rust 热卸载。
 
-当前有限受管链路见[插件组合与事件交付](plugin-composition.md)：真实 `model_definitions.create` 开放 Authorization、Admission、Before、After、Failure、Completion 六阶段。该 Create 的 Before 只读且可否决，不继承通用 Prepared 坐标可能允许的输入修改。认证适配器仍是可信宿主边界；受管声明不自动获得任何阶段或事件权限。
+受管接口从 compiled Canonical Interface 的契约与执行计划生成 `1flowbase.interface.{interface_id}.{phase}` 坐标，共用 `ManagedInterfaceInput` wire。Authorization / Admission 可继续或拒绝；Before、After、Failure、Completion 仅观察，不能 patch 输入、改写主结果或恢复错误，核心拒绝不可推翻。旧 Create adapter 保留既有兼容契约与回归，不将它的可否决 Before 推广为新通用契约。
+
+每个实际 Rust contract 显式提供有界 schema 和 encoder；缺任一项均不可开放。输入与成功输出都排除原始 credential、session/token、header bag、native handle、本地路径、无界二进制和原始错误链。动态 JSON 只表达预先定义的安全字段或有限元数据。schema 经标准 JSON Schema engine 校验，受限词汇不接受外部引用；它不代替当前授权和宿主 sealed 身份。发现目录、调用工厂与 Handler 消费同一冻结身份及 schema。流式 Completion 由真实 stream owner 在流终态执行一次，观察失败不能替换业务结果。认证 factory 继续留在可信宿主边界。
+
+### 契约驱动的插件事件
+
+插件在自己的命名空间声明 `contract_id`、精确 `contract_version` 与有限 payload schema，宿主从安装身份、当前逐贡献授权和冻结图验证发布/订阅。通用事件 wire v2 传输 schema 校验后的 payload，不能带入自称的 workspace、publisher 或幂等身份。声明允许什么与当前能否执行分别由 graph 与 authority lease 决定；撤权和旧 lease 必须在写入前拒绝。
+
+事件事务沿用 Outbox 与独立 subscriber claim/ACK/retry。宿主只接受声明并获准的 owned collection typed upsert，receipt 与这些效果在一个事务中提交；重复交付不会重复产生宿主事务效果，不承诺任意外部副作用 exactly-once。历史查询、恢复/退休与清理依据持久 payload、精确安装/制品/handler/binding 身份；不能用当前选中版本重解释旧事件。未知历史保持保守，F01 同版本异归档拒绝保持。早期有限组合背景见[插件组合与事件交付](plugin-composition.md)，当前通用范围以 Root #2014 候选证据为准。
+
+### Native 设置页与模板应用
+
+固定页面文件通过 native manifest 的 `settings_pages` 关联 SettingsFeature、路由和模板。纯页面的 `api_routes` 可以为空，不需要虚构 linked handler；它仍有 owner 与页面访问权限。真实自有 API 继续要求实际绑定和独立 operation 授权。页面源由宿主 typed 接口按 boot 注册 `route_id` 解析并校验，前端既不推断插件归属，也不因页面可见获得核心 API 权限。
+
+```text
+已安装制品（可多份）
+  → 正式选择：canonical 插件族 + scope → 唯一 installation
+  → selection_revision 拒绝旧尝试；application_generation 标识一次首次启用/版本切换
+  → 启动验证与装配 → 原子提交模板 + 成功应用记录 → 开放匹配的页面/路由
+```
+
+选择与节点实际运行分开记录。选择 v2 后仍运行 v1 时显示等待重启；不热卸载、不自动回退、不按 semver 或遍历顺序选目标。多个旧候选缺可信选择时明确拒绝该插件，管理员通过同一正式 enable 入口选择精确目标。其他安装、制品和事件历史继续保留。
+
+首次启用/明确版本切换才产生新的模板应用身份，覆盖该插件自有模板，包括用户编辑。普通重启、同版本重新启用不产生新覆盖；不比较新旧内容，不合并或自动保留编辑。模板与成功 marker 同事务提交，并在同一事务重新确认目标及 revision；锁本身不是目标授权。应用提交后进程失败只记录真实加载失败，重试使用已有成功记录，不能再次覆盖后续用户编辑。
+
+每个进程保留不可变装配身份。导航、插件 operation 和模板 source 使用同一版本门禁：旧进程不能读取其他进程已应用的新版本模板并搭配旧后端执行。多节点门禁不承诺跨节点原子切换。编辑及启用/升级入口提示覆盖时机，业务配置、凭据和角色权限不属于模板覆盖范围。
 
 源码与局部规则：[interface-runtime/AGENTS.md](../../api/crates/interface-runtime/AGENTS.md)。
 

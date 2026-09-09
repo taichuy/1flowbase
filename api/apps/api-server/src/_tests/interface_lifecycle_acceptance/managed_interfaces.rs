@@ -121,8 +121,36 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         .interface_registry()
         .unwrap()
         .snapshot();
-    assert_eq!(registry.definitions().len(), 457);
-    assert_eq!(registry.bindings().len(), 481);
+    let inventory: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../scripts/node/plugin-composition-test-batch/root-2014-inventory.json"
+    )))
+    .unwrap();
+    let expected = |baseline: &str, added: &str| -> BTreeSet<String> {
+        inventory[baseline]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(inventory[added].as_array().unwrap())
+            .map(|id| id.as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        registry
+            .definitions()
+            .map(|definition| definition.interface_id().as_str().to_string())
+            .collect::<BTreeSet<_>>(),
+        expected("definitions", "approvedAddedDefinitions")
+    );
+    assert_eq!(
+        registry
+            .bindings()
+            .map(|binding| binding.binding_id().as_str().to_string())
+            .collect::<BTreeSet<_>>(),
+        expected("bindings", "approvedAddedBindings")
+    );
+    assert_eq!(registry.definitions().len(), 458);
+    assert_eq!(registry.bindings().len(), 482);
     assert_eq!(registry.managed_contracts().count(), 188);
     let mut ids = BTreeSet::new();
     for descriptor in registry.managed_contracts() {
@@ -231,11 +259,9 @@ async fn root_2014_ac_002_installed_two_interface_plugin() {
         .unwrap();
     f.mode("");
     assert!(providers(&f).await >= 400);
-    assert!(
-        !trace(&f)
-            .iter()
-            .any(|frame| frame.handler == "trace.before")
-    );
+    assert!(!trace(&f)
+        .iter()
+        .any(|frame| frame.handler == "trace.before"));
 }
 
 // Negative handlers are never invoked: they exercise real activation rejection, not projection helpers.

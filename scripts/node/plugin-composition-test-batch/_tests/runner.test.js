@@ -67,3 +67,30 @@ test('zero, ignored, failed and wrong-count executions cannot satisfy a required
   ]) assert.equal(nodeTapResult(output, 0).passed, false, output);
   for (const exitCode of [1, null]) assert.equal(nodeTapResult(tap, exitCode).passed, false);
 });
+
+test('Root 2014 retains legacy requirements and rejects missing new candidate evidence', () => {
+  const fs = require('node:fs');
+  const { loadManifest, rootTestNames } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const { data } = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json');
+  assert.equal(data.scope, 'plugin-composition-2014');
+  for (const legacy of manifest.required) {
+    const inherited = data.required.find(row => row.target === legacy.target && row.name === legacy.name);
+    assert.ok(inherited, `legacy required test retained: ${legacy.name}`);
+    const { originRoot, ...actual } = inherited;
+    assert.equal(originRoot, 2007);
+    assert.deepEqual(actual, legacy);
+  }
+  validateSources(root, data);
+  assert.equal(data.requiredAc.length, 14);
+  assert.deepEqual(rootTestNames('#[test]\nfn root_2014_real() {}\nfn root_2014_fixture() {}', data.rootPrefixes), ['root_2014_real']);
+  const newRequired = [{ target: target.id, name: 'new::root_2014_real', expected: 1 }];
+  assert.throws(() => selectTests(target, ['old::regression'], newRequired, data), /missing/u);
+  assert.throws(() => selectTests(target, ['old::regression', 'new::root_2014_real', 'new::root_2014_unmapped'], newRequired, data), /unmapped/u);
+  const inventory = JSON.parse(fs.readFileSync(path.join(root, 'scripts/node/plugin-composition-test-batch/root-2014-inventory.json'), 'utf8'));
+  assert.equal(inventory.definitions.length, 457);
+  assert.equal(inventory.bindings.length, 481);
+  assert.deepEqual(inventory.approvedAddedDefinitions, ['ui_management.plugin_settings_page.view']);
+  assert.equal(new Set(inventory.definitions).size, 457);
+  assert.equal(new Set(inventory.bindings).size, 481);
+});

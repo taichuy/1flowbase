@@ -1,11 +1,24 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const manifest = require('./manifest.json');
+function loadManifest(root, filename = process.env.PLUGIN_COMPOSITION_MANIFEST) {
+  const resolved = filename ? path.resolve(root, filename) : path.join(__dirname, 'manifest.json');
+  const data = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  if (!Array.isArray(data.targets) || !Array.isArray(data.required)
+      || !/^plugin-composition-\d+$/u.test(data.scope)) throw new Error('invalid finite manifest');
+  return { data, filename: resolved };
+}
+function rootPrefixes(data) { return data.rootPrefixes || ['root_2007_']; }
+function rootTestNames(source, prefixes) {
+  // Source inventory only counts test functions, never similarly named fixture helpers.
+  const tests = /#\[(?:tokio::)?test(?:\([^\]]*\))?\]\s*(?:#\[[^\]]*\]\s*|\/\/[^\n]*\n\s*)*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*\(/gu;
+  return [...source.matchAll(tests)].map(match => match[1]).filter(name => prefixes.some(prefix => name.startsWith(prefix)));
+}
 
 function parseList(text) {
   return text.split(/\r?\n/u).flatMap(line => line.endsWith(': test') ? [line.slice(0, -6)] : []);
 }
-function selectTests(target, listed, required = manifest.required) {
+function selectTests(target, listed, required = manifest.required, data = manifest) {
   if (new Set(listed).size !== listed.length) throw new Error(`${target.id}: duplicate --list names`);
   const must = required.filter(entry => entry.target === target.id);
   for (const entry of must) {
@@ -16,7 +29,7 @@ function selectTests(target, listed, required = manifest.required) {
   for (const filter of target.regressionFilters) {
     if (!listed.some(name => name.includes(filter))) throw new Error(`${target.id}: zero regression filter ${filter}`);
   }
-  for (const name of listed.filter(name => name.split('::').at(-1).startsWith('root_2007_'))) {
+  for (const name of listed.filter(name => rootPrefixes(data).some(prefix => name.split('::').at(-1).startsWith(prefix)))) {
     if (!must.some(entry => entry.name === name)) throw new Error(`${target.id}: unmapped Root test ${name}`);
   }
   const chosen = new Set(must.map(entry => entry.name));
@@ -70,9 +83,9 @@ function validateSources(root, data = manifest) {
       if (entry.isDirectory()) walk(filename);
       else if (entry.name.endsWith('.rs')) {
         const source = path.relative(root, filename).split(path.sep).join('/');
-        for (const match of fs.readFileSync(filename, 'utf8').matchAll(/\bfn\s+(root_2007_\w+)\s*\(/gu)) {
-          const mapped = data.required.filter(row => row.source === source && row.name.split('::').at(-1) === match[1]);
-          if (mapped.length !== 1) throw new Error(`unmapped/non-unique Root source ${source}:${match[1]}`);
+        for (const name of rootTestNames(fs.readFileSync(filename, 'utf8'), rootPrefixes(data))) {
+          const mapped = data.required.filter(row => row.source === source && row.name.split('::').at(-1) === name);
+          if (mapped.length !== 1) throw new Error(`unmapped/non-unique Root source ${source}:${name}`);
           seen.add(`${mapped[0].target}/${mapped[0].name}`);
         }
       }
@@ -85,9 +98,12 @@ function validateSources(root, data = manifest) {
     }
   }
   if (seen.size !== data.required.length) throw new Error('manifest/source inventory mismatch');
-  for (const prefix of ['AC', 'AUTH']) for (let index = 1; index <= 10; index++) {
-    const id = `${prefix}-${String(index).padStart(prefix === 'AC' ? 3 : 2, '0')}`;
-    if (!data.required.some(row => row[prefix === 'AC' ? 'ac' : 'auth'].includes(id))) throw new Error(`unmapped ${id}`);
+  const requiredAc = data.requiredAc || Array.from({ length: 10 }, (_, index) => `AC-${String(index + 1).padStart(3, '0')}`);
+  const requiredAuth = data.requiredAuth || Array.from({ length: 10 }, (_, index) => `AUTH-${String(index + 1).padStart(2, '0')}`);
+  for (const id of requiredAc) if (![...data.required, ...(data.external || [])].some(row => row.ac.includes(id))) throw new Error(`unmapped ${id}`);
+  for (const id of requiredAuth) if (!data.required.some(row => row.auth.includes(id))) throw new Error(`unmapped ${id}`);
+  for (const row of data.external || []) {
+    if (!fs.readFileSync(path.join(root, row.source), 'utf8').includes(row.id)) throw new Error(`external scenario missing: ${row.id}`);
   }
 }
-module.exports = { manifest, parseList, selectTests, passedExact, nodeTapResult, validateSources };
+module.exports = { manifest, loadManifest, rootTestNames, parseList, selectTests, passedExact, nodeTapResult, validateSources };

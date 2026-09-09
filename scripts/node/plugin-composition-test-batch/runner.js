@@ -4,9 +4,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { getAvailableParallelism, loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
-const { manifest, parseList, selectTests, passedExact, nodeTapResult, validateSources } = require('./selection.js');
+const { loadManifest, parseList, selectTests, passedExact, nodeTapResult, validateSources } = require('./selection.js');
 const root = path.resolve(__dirname, '../../..');
-const output = path.join(root, 'tmp/test-governance/2007');
+const { data: manifest, filename: manifestPath } = loadManifest(root);
+const output = path.resolve(root, manifest.outputDirectory || 'tmp/test-governance/2007');
 const report = { schema: 1, scope: manifest.scope, startedAt: new Date().toISOString(), status: 'running', candidate: null, commands: [], node: [], targets: [], tests: [], blockers: [], identities: [], manifest };
 fs.mkdirSync(output, { recursive: true });
 let commandIndex = 0;
@@ -50,15 +51,16 @@ try {
   if (requireCommand('tracked-clean', 'git', ['status', '--porcelain', '--untracked-files=no']).trim()) throw new Error('candidate tracked files are dirty');
   if (process.platform !== manifest.supportedPlatform) throw new Error('this finite batch requires Linux');
   if (env.CARGO_BUILD_TARGET) throw new Error('this native Linux batch does not accept CARGO_BUILD_TARGET');
-  validateSources(root);
+  validateSources(root, manifest);
   for (const variable of ['DATABASE_URL', 'API_DATABASE_URL']) if (!env[variable]) throw new Error(`${variable} is required; no silent database fallback`);
-  env.CARGO_TARGET_DIR = path.resolve(root, env.CARGO_TARGET_DIR || 'tmp/quality-gate-cache/plugin-composition-2007/target');
+  env.CARGO_TARGET_DIR = path.resolve(root, env.CARGO_TARGET_DIR || `tmp/quality-gate-cache/${manifest.scope}/target`);
   const availableParallelism = getAvailableParallelism();
   const runtimeConfig = loadVerifyRuntimeConfig({ repoRoot: root, env, availableParallelism });
   env.CARGO_BUILD_JOBS = String(runtimeConfig.backend.cargoJobs);
   report.resources = { availableParallelism, cargoJobs: runtimeConfig.backend.cargoJobs };
 
-  identity(path.join(__dirname, 'manifest.json'));
+  identity(manifestPath);
+  for (const file of manifest.identityFiles || []) identity(path.join(root, file));
   for (const target of manifest.targets) identity(path.join(root, target.packageRoot, 'Cargo.toml'));
   for (const file of ['api/Cargo.lock', 'api/crates/runtime-extension-sdk/Cargo.toml', 'api/crates/runtime-extension-sdk/src/_tests/managed_hook_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/managed_event_worker.rs', 'api/plugins/fixtures/acme.composition-a/manifest.yaml', 'api/plugins/fixtures/acme.composition-a/event-manifest.yaml', 'api/plugins/fixtures/acme.composition-b/manifest.yaml', 'api/plugins/fixtures/acme.composition-c/manifest.yaml']) identity(path.join(root, file));
   // Dependency-boundary regressions use locked offline cargo metadata; fetch this same lock first.
@@ -95,7 +97,7 @@ try {
       env.LD_LIBRARY_PATH = [path.dirname(binary), path.join(env.CARGO_TARGET_DIR, 'debug'), process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter);
       const listed = parseList(requireCommand(`list-${target.id}`, binary, ['--list', '--format=terse'], { cwd }));
       targetReport.listedCount = listed.length;
-      const selected = selectTests(target, listed);
+      const selected = selectTests(target, listed, manifest.required, manifest);
       targetReport.selected = selected;
       targetReport.status = 'running';
       for (const name of selected) {
@@ -116,6 +118,19 @@ try {
     } catch (error) { targetReport.status = 'blocked'; report.blockers.push(error.message); save(); }
   }
   for (const row of manifest.required) if (!report.tests.some(test => test.target === row.target && test.name === row.name && test.status === 'passed')) report.blockers.push(`required not passed: ${row.target}/${row.name}`);
+  if (manifest.browserBinary && report.blockers.length === 0) {
+    const { package: packageName, binary } = manifest.browserBinary;
+    requireCommand('build-candidate-browser-api', 'cargo', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', packageName, '--bin', binary]);
+    const source = path.join(env.CARGO_TARGET_DIR, 'debug', binary);
+    const directory = path.join(output, 'candidate-api');
+    fs.mkdirSync(directory, { recursive: true });
+    const destination = path.join(directory, binary);
+    fs.copyFileSync(source, destination);
+    fs.chmodSync(destination, 0o755);
+    const binaryIdentity = { candidate: report.candidate, sha256: hash(destination), binary };
+    fs.writeFileSync(`${destination}.identity.json`, `${JSON.stringify(binaryIdentity, null, 2)}\n`);
+    report.browserBinary = binaryIdentity;
+  }
   report.status = report.blockers.length ? 'failed' : 'passed';
 } catch (error) { report.status = 'failed'; report.blockers.push(error.stack || error.message); }
-finally { save(); process.stdout.write(`plugin-composition-2007: ${report.status}; ${path.relative(root, output)}/report.json\n`); process.exitCode = report.status === 'passed' ? 0 : 1; }
+finally { save(); process.stdout.write(`${manifest.scope}: ${report.status}; ${path.relative(root, output)}/report.json\n`); process.exitCode = report.status === 'passed' ? 0 : 1; }
