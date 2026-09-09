@@ -44,10 +44,15 @@ fn root_2014_ac_009_registered_settings_page_authority() {
     )
     .expect("Core and active linked HostExtension should compile as one console plan");
 
-    assert!(plan
+    let error = plan
         .console_operation_registry
         .access_for_console_route("GET", "/api/console/northwind.settings-page/settings")
-        .is_none());
+        .err()
+        .expect("page-only registration must not authorize an invented API route");
+    assert_eq!(
+        error.to_string(),
+        "unregistered console route GET /api/console/northwind.settings-page/settings"
+    );
     let package = plugin_framework::parse_plugin_manifest(include_str!(
         "../../../../../plugins/fixtures/northwind.settings-page/manifest.yaml"
     ))
