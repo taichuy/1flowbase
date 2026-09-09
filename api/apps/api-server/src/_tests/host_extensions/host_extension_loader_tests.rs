@@ -448,3 +448,180 @@ async fn entry_file_existence_alone_is_insufficient() {
 
     let _ = fs::remove_dir_all(pending_root);
 }
+
+fn native_selection_service(state: &ApiState) -> crate::app_state::ApiPluginManagementService {
+    control_plane::plugin_management::PluginManagementService::new(
+        state.store.clone(),
+        crate::provider_runtime::ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.official_plugin_source.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_node_id(state.api_node_id.clone())
+}
+
+async fn formally_enable_native(state: &ApiState, installation_id: Uuid) {
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    native_selection_service(state)
+        .enable_plugin(control_plane::plugin_management::EnablePluginCommand {
+            actor_user_id: actor.id,
+            installation_id,
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn root_2014_ac_013_legacy_ambiguous_native_selection_requires_explicit_enable() {
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let one = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let two = create_current_node_host_extension_fixture(&state, "2.0.0", "uploaded").await;
+    let first = seed_pending_restart_host_extension(&state, &one, "1.0.0").await;
+    let second = seed_pending_restart_host_extension(&state, &two, "2.0.0").await;
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    assert_eq!(summary.loaded_count, 0);
+    assert!(summary
+        .warnings
+        .iter()
+        .any(|w| w.contains("native_plugin_selection_conflict")
+            && w.contains(&first.to_string())
+            && w.contains(&second.to_string())));
+    assert!(state
+        .store
+        .list_native_plugin_targets()
+        .await
+        .unwrap()
+        .is_empty());
+    formally_enable_native(&state, first).await;
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    assert_eq!(summary.loaded_count, 1);
+    assert_eq!(
+        state.store.list_native_plugin_targets().await.unwrap()[0].installation_id,
+        first
+    );
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, second)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Inactive
+    );
+    let _ = fs::remove_dir_all(one);
+    let _ = fs::remove_dir_all(two);
+}
+
+#[tokio::test]
+async fn root_2014_ac_013_startup_loads_only_selected_native_installation() {
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let one = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let two = create_current_node_host_extension_fixture(&state, "99.0.0", "uploaded").await;
+    let first = seed_pending_restart_host_extension(&state, &one, "1.0.0").await;
+    let second = seed_pending_restart_host_extension(&state, &two, "99.0.0").await;
+    formally_enable_native(&state, first).await;
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    assert_eq!(summary.loaded_count, 1);
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, first)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Active
+    );
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, second)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Inactive
+    );
+    assert!(state
+        .store
+        .get_installation(second)
+        .await
+        .unwrap()
+        .is_some());
+    let _ = fs::remove_dir_all(one);
+    let _ = fs::remove_dir_all(two);
+}
+
+#[tokio::test]
+async fn root_2014_ac_014_selected_v2_keeps_v1_running_until_restart() {
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let one = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let two = create_current_node_host_extension_fixture(&state, "2.0.0", "uploaded").await;
+    let first = seed_pending_restart_host_extension(&state, &one, "1.0.0").await;
+    formally_enable_native(&state, first).await;
+    assert_eq!(
+        load_host_extensions_at_startup(&state)
+            .await
+            .unwrap()
+            .loaded_count,
+        1
+    );
+    let second = seed_pending_restart_host_extension(&state, &two, "2.0.0").await;
+    formally_enable_native(&state, second).await;
+    assert_eq!(
+        state
+            .store
+            .get_installation(second)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::PendingRestart
+    );
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, first)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Active
+    );
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, second)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Inactive
+    );
+    assert_eq!(
+        load_host_extensions_at_startup(&state)
+            .await
+            .unwrap()
+            .loaded_count,
+        1
+    );
+    assert_eq!(
+        state
+            .store
+            .get_artifact_instance(&state.api_node_id, second)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Active
+    );
+    let _ = fs::remove_dir_all(one);
+    let _ = fs::remove_dir_all(two);
+}

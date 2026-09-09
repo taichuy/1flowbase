@@ -7,10 +7,7 @@ use anyhow::{bail, Context, Result};
 use control_plane::{
     errors::ControlPlaneError,
     host_extension::{is_host_extension_installation, is_host_extension_manifest},
-    plugin_management::{
-        mark_current_node_plugin_runtime_status, ready_current_node_plugin_installation,
-    },
-    ports::{PluginRepository, UpdatePluginDesiredStateInput},
+    ports::PluginRepository,
 };
 use domain::{PluginDesiredState, PluginRuntimeStatus};
 use plugin_framework::{
@@ -39,7 +36,10 @@ pub struct HostExtensionStartupSummary {
 pub(crate) struct PreparedHostExtensionsAtStartup {
     pub(crate) contributions: Vec<ResolvedHostExtensionConsoleContribution>,
     graph_extensions: Vec<(PluginManifestV1, HostExtensionContributionManifest)>,
-    activation_candidates: Vec<domain::LocalPluginInstallationRecord>,
+    activation_candidates: Vec<(
+        domain::LocalPluginInstallationRecord,
+        domain::NativePluginTarget,
+    )>,
     pub(crate) summary: HostExtensionStartupSummary,
 }
 
@@ -58,7 +58,7 @@ impl PreparedHostExtensionsAtStartup {
 pub(crate) async fn prepare_host_extensions_at_startup(
     store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
-    provider_install_root: &str,
+    _provider_install_root: &str,
     host_extension_dropin_root: &str,
     allow_unverified_filesystem_dropins: bool,
 ) -> Result<PreparedHostExtensionsAtStartup> {
@@ -85,40 +85,78 @@ pub(crate) async fn prepare_host_extensions_at_startup(
     let mut graph_extensions = Vec::new();
     let mut activation_candidates = Vec::new();
 
-    for installation in installations.into_iter().filter(|installation| {
-        is_host_extension_installation(installation)
-            && matches!(
-                installation.desired_state,
-                PluginDesiredState::PendingRestart | PluginDesiredState::ActiveRequested
-            )
-    }) {
-        let local_installation = match ready_current_node_plugin_installation(
-            store,
-            api_node_id,
-            Path::new(provider_install_root),
-            installation.id,
-        )
-        .await
+    let mut targets = store.list_native_plugin_targets().await?;
+    let mut reconciled = std::collections::HashSet::new();
+    for installation in installations
+        .iter()
+        .filter(|i| is_host_extension_installation(i))
+    {
+        let key = (
+            installation.scope_id,
+            installation.organization.clone(),
+            installation.provider_code.clone(),
+        );
+        if !reconciled.insert(key)
+            || targets.iter().any(|t| {
+                t.scope_id == installation.scope_id
+                    && t.category == installation.category
+                    && t.organization == installation.organization
+                    && t.artifact_id == installation.provider_code
+            })
         {
-            Ok(local_installation) => local_installation,
-            Err(error) if is_current_node_artifact_conflict(&error) => {
+            continue;
+        }
+        match store
+            .reconcile_legacy_native_plugin_target(installation.id)
+            .await
+        {
+            Ok(Some(target)) => targets.push(target),
+            Ok(None) => (),
+            Err(error)
+                if matches!(
+                    error.downcast_ref::<ControlPlaneError>(),
+                    Some(ControlPlaneError::Conflict(
+                        "native_plugin_selection_conflict"
+                    ))
+                ) =>
+            {
+                summary.failed_count += 1;
+                summary.warnings.push(format!("{error:#}"));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    for target in targets.into_iter().filter(|t| t.enabled) {
+        let installation = installations
+            .iter()
+            .find(|i| i.id == target.installation_id)
+            .ok_or_else(|| anyhow::anyhow!("selected native installation is absent"))?;
+        let local_installation = match store
+            .get_local_installation(api_node_id, installation.id)
+            .await?
+        {
+            Some(local)
+                if matches!(
+                    local.artifact.artifact_status,
+                    domain::PluginArtifactInstanceStatus::Ready
+                        | domain::PluginArtifactInstanceStatus::LoadFailed
+                ) && local.local_path().is_some() =>
+            {
+                local
+            }
+            _ => {
                 summary.skipped_count += 1;
                 continue;
             }
-            Err(error) => return Err(error),
         };
+        // A previous native load failure is retryable at restart. Revalidate the selected
+        // immutable artifact below; never call this retry path for an unselected installation.
 
         let (manifest, contribution) =
             match validate_host_extension_installation(&local_installation) {
                 Ok(package) => package,
                 Err(error) => {
-                    mark_host_extension_load_failed(
-                        store,
-                        api_node_id,
-                        &local_installation,
-                        &error,
-                    )
-                    .await?;
+                    mark_host_extension_load_failed(store, api_node_id, &target, &error).await?;
                     summary.failed_count += 1;
                     continue;
                 }
@@ -129,14 +167,13 @@ pub(crate) async fn prepare_host_extensions_at_startup(
         ) {
             Ok(contribution) => contribution,
             Err(error) => {
-                mark_host_extension_load_failed(store, api_node_id, &local_installation, &error)
-                    .await?;
+                mark_host_extension_load_failed(store, api_node_id, &target, &error).await?;
                 return Err(error);
             }
         };
         contributions.push(resolved);
         graph_extensions.push((manifest, contribution));
-        activation_candidates.push(local_installation);
+        activation_candidates.push((local_installation, target));
     }
 
     Ok(PreparedHostExtensionsAtStartup {
@@ -150,18 +187,17 @@ pub(crate) async fn prepare_host_extensions_at_startup(
 async fn mark_host_extension_load_failed(
     store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
-    installation: &domain::LocalPluginInstallationRecord,
+    target: &domain::NativePluginTarget,
     error: &anyhow::Error,
 ) -> Result<()> {
-    mark_current_node_plugin_runtime_status(
-        store,
-        api_node_id,
-        installation,
-        PluginRuntimeStatus::LoadFailed,
-        Some(format!("{error:#}")),
-    )
-    .await?;
-    Ok(())
+    store
+        .complete_native_plugin_startup(
+            target,
+            api_node_id,
+            PluginRuntimeStatus::LoadFailed,
+            Some(&format!("{error:#}")),
+        )
+        .await
 }
 
 pub(crate) async fn activate_prepared_host_extensions(
@@ -169,23 +205,10 @@ pub(crate) async fn activate_prepared_host_extensions(
     api_node_id: &str,
     mut prepared: PreparedHostExtensionsAtStartup,
 ) -> Result<HostExtensionStartupSummary> {
-    for installation in prepared.activation_candidates {
-        let desired_state = PluginDesiredState::ActiveRequested;
+    for (_installation, target) in prepared.activation_candidates {
         store
-            .update_desired_state(&UpdatePluginDesiredStateInput {
-                installation_id: installation.id,
-                desired_state,
-                actor_user_id: installation.created_by,
-            })
+            .complete_native_plugin_startup(&target, api_node_id, PluginRuntimeStatus::Active, None)
             .await?;
-        mark_current_node_plugin_runtime_status(
-            store,
-            api_node_id,
-            &installation,
-            PluginRuntimeStatus::Active,
-            None,
-        )
-        .await?;
         prepared.summary.loaded_count += 1;
     }
 
@@ -234,22 +257,6 @@ fn scan_host_extensions_from_dropins(
     .map_err(anyhow::Error::from)
 }
 
-fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {
-    matches!(
-        error.downcast_ref::<ControlPlaneError>(),
-        Some(
-            ControlPlaneError::PluginUnavailable
-                | ControlPlaneError::Conflict(
-                    "plugin_artifact_missing"
-                        | "plugin_artifact_outdated"
-                        | "plugin_artifact_mismatched"
-                        | "plugin_artifact_corrupted"
-                        | "plugin_runtime_load_failed",
-                ),
-        )
-    )
-}
-
 fn validate_host_extension_installation(
     installation: &domain::LocalPluginInstallationRecord,
 ) -> Result<(PluginManifestV1, HostExtensionContributionManifest)> {
@@ -263,6 +270,14 @@ fn validate_host_extension_installation(
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;
     let manifest = plugin_framework::parse_plugin_manifest(&manifest_raw)
         .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+    if manifest.versioned_plugin_id()? != installation.plugin_id
+        || manifest.version != installation.plugin_version
+        || installation.artifact.local_version.as_deref()
+            != Some(installation.plugin_version.as_str())
+        || installation.artifact.local_checksum != installation.expected_checksum
+    {
+        bail!("native selected installation/artifact identity mismatch");
+    }
     if !is_host_extension_manifest(&manifest) {
         bail!(
             "installation {} is not a host extension manifest",

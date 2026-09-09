@@ -220,6 +220,20 @@ pub struct PluginInstallationRecord {
     pub updated_at: OffsetDateTime,
 }
 
+/// One exact, restart-scoped native target. Revision fences attempts; application generation
+/// changes only on a first selection or a switch of installation, never on re-enable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativePluginTarget {
+    pub scope_id: Uuid,
+    pub category: ExtensionCategory,
+    pub organization: String,
+    pub artifact_id: String,
+    pub installation_id: Uuid,
+    pub selection_revision: i64,
+    pub enabled: bool,
+    pub application_generation: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginArtifactInstanceRecord {
     pub node_id: String,

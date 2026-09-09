@@ -275,6 +275,27 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn list_native_plugin_targets(&self) -> anyhow::Result<Vec<domain::NativePluginTarget>> {
+        anyhow::bail!("native target selection is not supported")
+    }
+    /// Bootstrap only a legacy family without a target, rejecting multiple enabled candidates.
+    async fn reconcile_legacy_native_plugin_target(
+        &self,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::NativePluginTarget>> {
+        anyhow::bail!("native target reconciliation is not supported")
+    }
+    /// Fences both desired completion and node runtime observation in one transaction.
+    async fn complete_native_plugin_startup(
+        &self,
+        _target: &domain::NativePluginTarget,
+        _node_id: &str,
+        _status: domain::PluginRuntimeStatus,
+        _last_error: Option<&str>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("native startup completion is not supported")
+    }
+
     async fn begin_plugin_installation(
         &self,
         _admission: &PluginInstallationAdmission,
