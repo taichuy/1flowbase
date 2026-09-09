@@ -23,11 +23,39 @@ impl ManagedWorkers {
         if request.principal.workspace_id != request.handle.identity().workspace_id().as_str() {
             return Err(invalid("managed hook workspace mismatch").into());
         }
+        use extension_contracts::ManagedInterfaceProtocol;
+        let protocol_matches = matches!(
+            (binding.interface_protocol, &request.input),
+            (
+                None,
+                RuntimeManagedHookInput::LegacyCreate(_)
+                    | RuntimeManagedHookInput::Interface { .. }
+            ) | (
+                Some(ManagedInterfaceProtocol::InterfaceV1),
+                RuntimeManagedHookInput::Interface { .. }
+            ) | (
+                Some(ManagedInterfaceProtocol::ReferenceV2),
+                RuntimeManagedHookInput::InterfaceReference { .. }
+            )
+        );
+        if !protocol_matches {
+            return Err(
+                invalid("managed hook input protocol does not match installed binding").into(),
+            );
+        }
         let (point_id, phase) = match &request.input {
             RuntimeManagedHookInput::LegacyCreate(input) => {
                 (input.point_id().to_owned(), input.phase())
             }
             RuntimeManagedHookInput::Interface {
+                interface_id,
+                input,
+                ..
+            } => (
+                extension_contracts::managed_interface_hook_point_id(interface_id, input.phase()),
+                input.phase(),
+            ),
+            RuntimeManagedHookInput::InterfaceReference {
                 interface_id,
                 input,
                 ..
@@ -100,6 +128,21 @@ impl ManagedWorkers {
                 context,
                 input,
             }),
+            RuntimeManagedHookInput::InterfaceReference {
+                interface_id,
+                interface_version,
+                input,
+            } => hook_stdio::HookFrame::InterfaceReference(
+                extension_contracts::ManagedInterfaceReferenceHostFrame {
+                    protocol: extension_contracts::MANAGED_INTERFACE_PROTOCOL_V2.into(),
+                    call_id: format!("hook-{sequence}"),
+                    handler: binding.handler.clone(),
+                    interface_id,
+                    interface_version,
+                    context,
+                    input,
+                },
+            ),
         };
         let payload = frame.encode()?;
         let lease = mounted

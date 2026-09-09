@@ -143,108 +143,126 @@ managed:
         mode: append
   execution_bindings:
     - contribution_id: northwind.lifecycle-auditor.i0.authorization
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.authorization
     - contribution_id: northwind.lifecycle-auditor.i0.admission
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.admission
     - contribution_id: northwind.lifecycle-auditor.i0.before
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.before
     - contribution_id: northwind.lifecycle-auditor.i0.after
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.after
     - contribution_id: northwind.lifecycle-auditor.i0.failure
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.failure
     - contribution_id: northwind.lifecycle-auditor.i0.completion
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.completion
     - contribution_id: northwind.lifecycle-auditor.i1.authorization
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.authorization
     - contribution_id: northwind.lifecycle-auditor.i1.admission
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.admission
     - contribution_id: northwind.lifecycle-auditor.i1.before
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.before
     - contribution_id: northwind.lifecycle-auditor.i1.after
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.after
     - contribution_id: northwind.lifecycle-auditor.i1.failure
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.failure
     - contribution_id: northwind.lifecycle-auditor.i1.completion
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.completion
     - contribution_id: northwind.lifecycle-auditor.i2.authorization
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.authorization
     - contribution_id: northwind.lifecycle-auditor.i2.admission
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.admission
     - contribution_id: northwind.lifecycle-auditor.i2.before
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.before
     - contribution_id: northwind.lifecycle-auditor.i2.after
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.after
     - contribution_id: northwind.lifecycle-auditor.i2.failure
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json
         entry: bin/worker.py
       handler: trace.failure
     - contribution_id: northwind.lifecycle-auditor.i2.completion
+      interface_protocol: reference-v2
       execution_mode: process_per_call
       runtime:
         protocol: stdio_json

@@ -35,6 +35,7 @@ fn fixture(
                 ),
                 runtime_executable: executable,
                 execution_mode: PluginExecutionMode::ProcessPerCall,
+                interface_protocol: None,
                 limits: PluginRuntimeLimits::default(),
                 handler: handler.into(),
                 contribution: ContributionDescriptor {

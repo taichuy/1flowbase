@@ -5,7 +5,9 @@ use control_plane::plugin_management::{
     GrantContributionPermission, HostContributionGrantPolicy, PluginContributionAuthorityService,
     RevokeContributionPermission,
 };
-use extension_contracts::{ManagedInterfaceHostFrame, ManagedProjectionContract};
+use extension_contracts::{
+    ManagedInterfaceHostFrame, ManagedInterfaceReferenceHostFrame, ManagedProjectionContract,
+};
 use interface_runtime::*;
 use serde_json::json;
 use std::{collections::BTreeSet, sync::Arc};
@@ -26,12 +28,20 @@ const PHASES: [&str; 6] = [
 ];
 
 fn package() -> Vec<u8> {
-    let raw = std::fs::read(
+    package_protocol("reference-v2", "1.0.0")
+}
+fn package_protocol(protocol: &str, version: &str) -> Vec<u8> {
+    let raw = std::fs::read_to_string(
         crate::api_workspace_root()
             .unwrap()
             .join("plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml"),
     )
-    .unwrap();
+    .unwrap()
+    .replace(
+        "interface_protocol: reference-v2",
+        &format!("interface_protocol: {protocol}"),
+    )
+    .replace("version: 1.0.0", &format!("version: {version}"));
     let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
         Vec::new(),
         flate2::Compression::default(),
@@ -41,7 +51,7 @@ fn package() -> Vec<u8> {
     header.set_mode(0o644);
     header.set_cksum();
     archive
-        .append_data(&mut header, "manifest.yaml", raw.as_slice())
+        .append_data(&mut header, "manifest.yaml", raw.as_bytes())
         .unwrap();
     let executable = std::env::var_os("MANAGED_HOOK_WORKER_FIXTURE")
         .expect("Root Test Batch builds the real SDK worker once");
@@ -51,7 +61,10 @@ fn package() -> Vec<u8> {
     archive.into_inner().unwrap().finish().unwrap()
 }
 async fn fixture() -> Fixture {
-    let grants = INTERFACES
+    Fixture::new_with_package(package(), interface_grants()).await
+}
+fn interface_grants() -> Vec<GrantContributionPermission> {
+    INTERFACES
         .iter()
         .enumerate()
         .flat_map(|(i, _)| {
@@ -63,10 +76,9 @@ async fn fixture() -> Fixture {
                 permission_contract_version: "1".into(),
             })
         })
-        .collect();
-    Fixture::new_with_package(package(), grants).await
+        .collect()
 }
-fn trace(f: &Fixture) -> Vec<ManagedInterfaceHostFrame> {
+fn trace(f: &Fixture) -> Vec<ManagedInterfaceReferenceHostFrame> {
     std::fs::read_to_string(f.worker.with_extension("trace"))
         .unwrap_or_default()
         .lines()
@@ -89,7 +101,7 @@ fn assert_trace(f: &Fixture, interface: &str, phases: &[&str]) {
         frame.validate().unwrap();
         assert_eq!(
             frame.protocol,
-            extension_contracts::MANAGED_INTERFACE_PROTOCOL_V1
+            extension_contracts::MANAGED_INTERFACE_PROTOCOL_V2
         );
         assert_eq!(frame.interface_id, interface);
         assert_eq!(frame.context.invocation, first.context.invocation);
@@ -467,7 +479,7 @@ async fn start_native_stream(
 
 #[tokio::test]
 async fn root_2014_ac_003_unary_stream_terminals() {
-    use extension_contracts::{ManagedHookTerminal, ManagedInterfaceInput};
+    use extension_contracts::{ManagedHookTerminal, ManagedInterfaceReferenceInput};
     use std::time::{Duration, SystemTime};
     let f = fixture().await;
     let token = crate::_tests::application_public_api::setup_published_native_app(
@@ -535,7 +547,7 @@ async fn root_2014_ac_003_unary_stream_terminals() {
         );
         assert!(matches!(
             trace(&f).last().unwrap().input,
-            ManagedInterfaceInput::Completion {
+            ManagedInterfaceReferenceInput::Completion {
                 terminal: ManagedHookTerminal::Succeeded
             }
         ));
@@ -613,7 +625,7 @@ async fn root_2014_ac_003_unary_stream_terminals() {
         );
         assert!(matches!(
             trace(&f).last().unwrap().input,
-            ManagedInterfaceInput::Completion {
+            ManagedInterfaceReferenceInput::Completion {
                 terminal: ManagedHookTerminal::Cancelled
             }
         ));
@@ -689,4 +701,230 @@ async fn root_2014_r3_probe_complete_contract_compilation() {
         required_large.into_iter().map(str::to_owned).collect()
     );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Root #2014 AC-015/017: same business state, actor and grants through both formally installed peers.
+#[tokio::test]
+async fn root_2014_ac_015_017_protocol_equivalence() {
+    use crate::provider_runtime::ApiProviderRuntime;
+    use control_plane::plugin_management::{
+        AssignPluginCommand, DisablePluginCommand, EnablePluginCommand,
+        InstallUploadedPluginCommand, PluginManagementService,
+    };
+    use extension_contracts::{
+        ManagedInterfaceInput, ManagedInterfaceReferenceInput, ManagedInterfaceReferenceView,
+    };
+    let f = Fixture::new_with_package(
+        package_protocol("interface-v1", "1.0.0"),
+        interface_grants(),
+    )
+    .await;
+    async fn response(f: &Fixture) -> (u16, serde_json::Value) {
+        let response = f.app.clone().oneshot(Request::builder()
+            .uri(crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH)
+            .header("cookie", &f.cookie).body(Body::empty()).unwrap()).await.unwrap();
+        let status = response.status().as_u16();
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+    let read_old = || -> Vec<ManagedInterfaceHostFrame> {
+        std::fs::read_to_string(f.worker.with_extension("trace"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    };
+    f.mode("");
+    let old_result = response(&f).await;
+    assert_eq!(old_result.0, 200);
+    let old_frames = read_old();
+    assert_eq!(old_frames.len(), 5);
+    f.mode("deny.authorization");
+    let old_denied = response(&f).await;
+    assert!(old_denied.0 >= 400);
+    let old_denied_frames = read_old();
+    assert!(!old_denied_frames
+        .iter()
+        .any(|frame| frame.handler == "trace.before"));
+    f.mode("");
+    // A distinct installed version has its own immutable artifact and grant identity.
+    let management = PluginManagementService::new(
+        f.state.store.clone(),
+        ApiProviderRuntime::new(f.state.provider_runtime.clone()),
+        f.state.official_plugin_source.clone(),
+        &f.state.provider_install_root,
+    )
+    .with_node_id(&f.state.api_node_id);
+    management
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: f.actor.user_id,
+            installation_id: f.installation_id,
+        })
+        .await
+        .unwrap();
+    let installed = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: f.actor.user_id,
+            file_name: "northwind-v2.1flowbasepkg".into(),
+            package_bytes: package_protocol("reference-v2", "2.0.0"),
+        })
+        .await
+        .unwrap();
+    let new_id = installed.installation.id;
+    assert_ne!(new_id, f.installation_id);
+    management
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: f.actor.user_id,
+            installation_id: new_id,
+        })
+        .await
+        .unwrap();
+    let authority = PluginContributionAuthorityService::new(
+        f.state.store.clone(),
+        HostContributionGrantPolicy::root_composition(),
+    );
+    for grant in interface_grants() {
+        authority.grant(&f.actor, new_id, grant).await.unwrap();
+    }
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: f.actor.user_id,
+            installation_id: new_id,
+        })
+        .await
+        .unwrap();
+    let new_worker = std::path::Path::new(installed.local_artifact.local_path.as_ref().unwrap())
+        .join("bin/worker.py");
+    std::fs::write(new_worker.with_extension("mode"), "").unwrap();
+    let new_result = response(&f).await;
+    // No business DTO fields or response branches are removed from the equality assertion.
+    assert_eq!(new_result, old_result);
+    let new_frames: Vec<ManagedInterfaceReferenceHostFrame> =
+        std::fs::read_to_string(new_worker.with_extension("trace"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+    assert_eq!(new_frames.len(), old_frames.len());
+    fn reference(
+        view: &extension_contracts::ManagedInterfaceView,
+    ) -> ManagedInterfaceReferenceView {
+        let compiled = view.contract.compile().unwrap();
+        compiled.validate(&view.value).unwrap();
+        ManagedInterfaceReferenceView {
+            contract: compiled.reference(),
+            value: view.value.clone(),
+        }
+    }
+    fn canonical(input: &ManagedInterfaceInput) -> ManagedInterfaceReferenceInput {
+        match input {
+            ManagedInterfaceInput::Authorization { input } => {
+                ManagedInterfaceReferenceInput::Authorization {
+                    input: reference(input),
+                }
+            }
+            ManagedInterfaceInput::Admission { input } => {
+                ManagedInterfaceReferenceInput::Admission {
+                    input: reference(input),
+                }
+            }
+            ManagedInterfaceInput::Before { input } => ManagedInterfaceReferenceInput::Before {
+                input: reference(input),
+            },
+            ManagedInterfaceInput::After { output } => ManagedInterfaceReferenceInput::After {
+                output: reference(output),
+            },
+            ManagedInterfaceInput::Failure { classification } => {
+                ManagedInterfaceReferenceInput::Failure {
+                    classification: classification.clone(),
+                }
+            }
+            ManagedInterfaceInput::Completion { terminal } => {
+                ManagedInterfaceReferenceInput::Completion {
+                    terminal: *terminal,
+                }
+            }
+        }
+    }
+    for (old, new) in old_frames.iter().zip(&new_frames) {
+        old.validate().unwrap();
+        new.validate().unwrap();
+        assert_eq!(
+            old.protocol,
+            extension_contracts::MANAGED_INTERFACE_PROTOCOL_V1
+        );
+        assert_eq!(
+            new.protocol,
+            extension_contracts::MANAGED_INTERFACE_PROTOCOL_V2
+        );
+        assert_eq!(old.interface_id, new.interface_id);
+        assert_eq!(old.interface_version, new.interface_version);
+        assert_eq!(old.handler, new.handler);
+        assert_eq!(canonical(&old.input), new.input);
+        assert_eq!(old.context.actor_id, new.context.actor_id);
+        assert_eq!(
+            old.context.invocation.registry_fingerprint,
+            new.context.invocation.registry_fingerprint
+        );
+        assert_eq!(
+            old.context.invocation.authority_revision,
+            new.context.invocation.authority_revision
+        );
+        assert_eq!(
+            old.context.execution_identity.workspace_id(),
+            new.context.execution_identity.workspace_id()
+        );
+        assert_eq!(
+            old.context.execution_identity.installation_id().as_str(),
+            f.installation_id.to_string()
+        );
+        assert_eq!(
+            new.context.execution_identity.installation_id().as_str(),
+            new_id.to_string()
+        );
+        assert_ne!(
+            old.context.execution_identity.binding_fingerprint(),
+            new.context.execution_identity.binding_fingerprint()
+        );
+        assert!(!serde_json::to_string(&new.input)
+            .unwrap()
+            .contains("\"schema\":"));
+    }
+    // Correlation and deadlines belong to separate invocations; assert each run's internal consistency.
+    for frame in &old_frames {
+        assert_eq!(frame.context.invocation, old_frames[0].context.invocation);
+    }
+    for frame in &new_frames {
+        assert_eq!(frame.context.invocation, new_frames[0].context.invocation);
+    }
+    std::fs::write(new_worker.with_extension("mode"), "deny.authorization").unwrap();
+    std::fs::remove_file(new_worker.with_extension("trace")).unwrap();
+    let new_denied = response(&f).await;
+    assert_eq!(new_denied, old_denied);
+    let denied: Vec<ManagedInterfaceReferenceHostFrame> =
+        std::fs::read_to_string(new_worker.with_extension("trace"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+    assert_eq!(
+        denied
+            .iter()
+            .map(|frame| frame.input.phase())
+            .collect::<Vec<_>>(),
+        old_denied_frames
+            .iter()
+            .map(|frame| frame.input.phase())
+            .collect::<Vec<_>>()
+    );
+    assert!(!denied.iter().any(|frame| frame.handler == "trace.before"));
+    management
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: f.actor.user_id,
+            installation_id: new_id,
+        })
+        .await
+        .unwrap();
 }

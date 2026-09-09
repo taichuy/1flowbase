@@ -56,13 +56,14 @@ pub(super) async fn exchange(
         stdin.write_all(&payload).await?;
         stdin.shutdown().await
     };
+    let reply_limit = frame.reply_limit();
     let read = async move {
         let mut bytes = Vec::new();
         stdout
-            .take((MANAGED_HOOK_MAX_FRAME_BYTES + 1) as u64)
+            .take((reply_limit + 1) as u64)
             .read_to_end(&mut bytes)
             .await?;
-        if bytes.len() > MANAGED_HOOK_MAX_FRAME_BYTES {
+        if bytes.len() > reply_limit {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "managed hook response exceeds frame limit",
@@ -81,8 +82,22 @@ pub(super) async fn exchange(
 pub(super) enum HookFrame {
     LegacyCreate(ManagedHookHostFrame),
     Interface(extension_contracts::ManagedInterfaceHostFrame),
+    InterfaceReference(extension_contracts::ManagedInterfaceReferenceHostFrame),
 }
 impl HookFrame {
+    fn reply_limit(&self) -> usize {
+        match self {
+            Self::InterfaceReference(_) => extension_contracts::MANAGED_INTERFACE_MAX_REPLY_BYTES,
+            _ => MANAGED_HOOK_MAX_FRAME_BYTES,
+        }
+    }
+    fn request_limit(&self) -> usize {
+        match self {
+            Self::InterfaceReference(_) => extension_contracts::MANAGED_INTERFACE_MAX_REQUEST_BYTES,
+            _ => MANAGED_HOOK_MAX_FRAME_BYTES,
+        }
+    }
+
     pub(super) fn encode(&self) -> FrameworkResult<Vec<u8>> {
         let bytes = match self {
             Self::LegacyCreate(frame) => {
@@ -97,15 +112,33 @@ impl HookFrame {
                     .map_err(|error| invalid(&error.to_string()))?;
                 serde_json::to_vec(frame)
             }
+            Self::InterfaceReference(frame) => {
+                frame
+                    .validate()
+                    .map_err(|error| invalid(&error.to_string()))?;
+                serde_json::to_vec(frame)
+            }
         }
         .map_err(|_| invalid("managed hook frame cannot be encoded"))?;
-        if bytes.len() > MANAGED_HOOK_MAX_FRAME_BYTES {
+        if bytes.len() > self.request_limit() {
             return Err(invalid("managed hook request exceeds frame limit"));
         }
         Ok(bytes)
     }
     fn decode_response(&self, bytes: &[u8]) -> FrameworkResult<ManagedHookOutcome> {
+        if bytes.len() > self.reply_limit() {
+            return Err(invalid("managed hook response exceeds frame limit"));
+        }
         match self {
+            Self::InterfaceReference(frame) => {
+                let response: extension_contracts::ManagedInterfaceReferenceWorkerFrame =
+                    serde_json::from_slice(bytes)
+                        .map_err(|_| invalid("managed reference response is malformed"))?;
+                response
+                    .validate_for(frame)
+                    .map_err(|error| invalid(&error.to_string()))?;
+                Ok(response.outcome)
+            }
             Self::LegacyCreate(frame) => {
                 let response: ManagedHookWorkerFrame = serde_json::from_slice(bytes)
                     .map_err(|_| invalid("managed hook response is malformed"))?;

@@ -11,6 +11,7 @@ pub(crate) struct LoadedManagedBinding {
     pub execution_mode: PluginExecutionMode,
     pub limits: PluginRuntimeLimits,
     pub handler: String,
+    pub interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
     pub contribution: extension_contracts::extension_bus::ContributionDescriptor,
 }
 

@@ -15,7 +15,14 @@ pub use extension_contracts::{
     ManagedInterfaceHostFrame, ManagedInterfaceInput, ManagedInterfaceView,
     ManagedProjectionContract,
 };
-pub use managed_hook::{serve_managed_hook, serve_managed_interface_hook};
+pub use extension_contracts::{
+    ManagedInterfaceReferenceHostFrame, ManagedInterfaceReferenceInput,
+    ManagedInterfaceReferenceView, ManagedInterfaceReferenceWorkerFrame,
+    ManagedProjectionReference,
+};
+pub use managed_hook::{
+    serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
+};
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
 
