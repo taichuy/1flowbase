@@ -10,7 +10,6 @@ import {
   type AssistantPanelRuntime
 } from './AssistantPanelPlugin';
 import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
-import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { i18nText } from '../../../../shared/i18n/text';
 
 type DraftAssistantPreviewProps = Omit<
@@ -27,7 +26,6 @@ export function DraftAssistantPreview({
   ...conversation
 }: DraftAssistantPreviewProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
-  const setSelection = useAgentFlowEditorStore((state) => state.setSelection);
   const start = document.graph.nodes.find((node) => node.type === 'start');
   const models = (
     (start?.config.model_list ?? []) as Array<FlowStartModelDescriptor | string>
@@ -125,21 +123,6 @@ export function DraftAssistantPreview({
             }
           }}
           history={{ onClick: () => setHistoryOpen(true) }}
-          settingsAction={{
-            disabled: !start,
-            onClick: () => {
-              if (start) {
-                conversation.onClose();
-                setSelection({
-                  selectedNodeId: start.id,
-                  selectedNodeIds: [start.id],
-                  selectedEdgeId: null,
-                  focusedFieldKey: 'config.model_list',
-                  openInspectorSectionKey: null
-                });
-              }
-            }
-          }}
         />
       )}
     </>

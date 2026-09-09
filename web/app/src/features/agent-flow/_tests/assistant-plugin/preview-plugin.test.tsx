@@ -94,6 +94,10 @@ test('#2018 AC-101/103 preview uses the assistant plugin and writes model select
   expect(
     await within(dock).findByText('Current draft', {}, { timeout: 5000 })
   ).toBeInTheDocument();
+  // AC-103: preview has no settings entry; it must not redirect to Start.
+  expect(
+    within(dock).queryByRole('button', { name: '助手设置' })
+  ).not.toBeInTheDocument();
   const modelButton = await screen.findByRole('button', {
     name: /Draft model/
   });

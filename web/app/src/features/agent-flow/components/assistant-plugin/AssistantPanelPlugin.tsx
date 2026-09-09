@@ -45,7 +45,7 @@ export type AssistantPanelPluginProps = Omit<
   selection?: { selecting: boolean; disabled?: boolean; onToggle: () => void };
   activity: PanelAction;
   history: PanelAction;
-  settingsAction: PanelAction;
+  settingsAction?: PanelAction;
   overlayZIndex?: number;
 };
 
@@ -303,14 +303,16 @@ export function AssistantPanelPlugin({
             type="text"
             onClick={history.onClick}
           />
-          <Button
-            aria-label={i18nText('appShell', 'auto.assistant_settings')}
-            disabled={settingsAction.disabled}
-            icon={<SettingOutlined />}
-            size="small"
-            type="text"
-            onClick={settingsAction.onClick}
-          />
+          {settingsAction ? (
+            <Button
+              aria-label={i18nText('appShell', 'auto.assistant_settings')}
+              disabled={settingsAction.disabled}
+              icon={<SettingOutlined />}
+              size="small"
+              type="text"
+              onClick={settingsAction.onClick}
+            />
+          ) : null}
         </>
       }
     />
