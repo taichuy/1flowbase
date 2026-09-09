@@ -54,7 +54,7 @@ fn root_2014_managed_schema_rejects_unknown_fields_and_oversize() {
     );
 }
 
-fn request(input: ManagedInterfaceInput) -> ManagedInterfaceHostFrame {
+pub(super) fn request(input: ManagedInterfaceInput) -> ManagedInterfaceHostFrame {
     ManagedInterfaceHostFrame {
         protocol: MANAGED_INTERFACE_PROTOCOL_V1.into(),
         call_id: "call-1".into(),

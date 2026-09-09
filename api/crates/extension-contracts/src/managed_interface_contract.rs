@@ -32,6 +32,18 @@ pub struct ManagedProjectionContract {
 
 impl ManagedProjectionContract {
     pub fn compile(&self) -> ContractResult<CompiledManagedProjection> {
+        self.compile_with_schema_budget(MANAGED_INTERFACE_MAX_SCHEMA_BYTES)
+    }
+
+    /// Host registration only; legacy wire and event consumers retain `compile()`.
+    pub fn compile_for_registration(&self) -> ContractResult<CompiledManagedProjection> {
+        self.compile_with_schema_budget(crate::MANAGED_INTERFACE_MAX_REGISTRATION_SCHEMA_BYTES)
+    }
+
+    fn compile_with_schema_budget(
+        &self,
+        schema_limit: usize,
+    ) -> ContractResult<CompiledManagedProjection> {
         if !identity(&self.contract_id) || !identity(&self.contract_version) {
             return Err(ManagedInterfaceContractError(
                 "invalid projection identity".into(),
@@ -40,12 +52,10 @@ impl ManagedProjectionContract {
         let schema_bytes = serde_json::to_vec(&self.schema)
             .map_err(|_| schema_violation("$", "serialization failed"))?
             .len();
-        if schema_bytes > MANAGED_INTERFACE_MAX_SCHEMA_BYTES {
+        if schema_bytes > schema_limit {
             return Err(schema_violation(
                 "$",
-                &format!(
-                "serialized_bytes actual={schema_bytes} limit={MANAGED_INTERFACE_MAX_SCHEMA_BYTES}"
-            ),
+                &format!("serialized_bytes actual={schema_bytes} limit={schema_limit}"),
             ));
         }
         validate_schema_shape(&self.schema, 0, "$")?;
@@ -65,16 +75,42 @@ impl ManagedProjectionContract {
         Ok(CompiledManagedProjection {
             validator,
             fingerprint,
+            contract_id: self.contract_id.clone(),
+            contract_version: self.contract_version.clone(),
         })
     }
 }
 
 pub struct CompiledManagedProjection {
+    contract_id: String,
+    contract_version: String,
     validator: jsonschema::Validator,
     fingerprint: String,
 }
 
 impl CompiledManagedProjection {
+    pub fn reference(&self) -> crate::ManagedProjectionReference {
+        crate::ManagedProjectionReference {
+            contract_id: self.contract_id.clone(),
+            contract_version: self.contract_version.clone(),
+            schema_fingerprint: self.fingerprint.clone(),
+        }
+    }
+
+    /// The frozen host validator is authoritative; references never grant access.
+    pub fn validate_reference(
+        &self,
+        view: &crate::ManagedInterfaceReferenceView,
+    ) -> ContractResult {
+        if view.contract != self.reference() {
+            return Err(ManagedInterfaceContractError(
+                "projection reference mismatch".into(),
+            ));
+        }
+        view.validate()?;
+        self.validate(&view.value)
+    }
+
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
     }
@@ -227,16 +263,16 @@ fn invalid_schema() -> ManagedInterfaceContractError {
 fn invalid_value() -> ManagedInterfaceContractError {
     ManagedInterfaceContractError("projection violates schema or resource budget".into())
 }
-fn identity(s: &str) -> bool {
+pub(crate) fn identity(s: &str) -> bool {
     !s.trim().is_empty() && s.len() <= 512
 }
-fn classification_code(s: &str) -> bool {
+pub(crate) fn classification_code(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 128
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
 }
-fn bounded_value(value: &Value, depth: usize) -> bool {
+pub(crate) fn bounded_value(value: &Value, depth: usize) -> bool {
     if depth > MANAGED_INTERFACE_MAX_DEPTH {
         return false;
     }

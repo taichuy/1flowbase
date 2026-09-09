@@ -78,3 +78,86 @@ fn root_2014_ac_005_006_manifest_event_namespace_and_schema() {
     .is_err());
     assert!(parse_plugin_manifest(&raw.replace("maxLength: 128", "maxLength: 999999")).is_err());
 }
+
+// Root #2014 AC-015/017/018: omitted selection preserves the existing signed binding bytes.
+#[test]
+fn root_2014_r3_probe_explicit_protocol_selection() {
+    use extension_contracts::{ManagedBindingFingerprint, ManagedInterfaceProtocol};
+    let raw = MANAGED.replace(
+        "point_id: acme.compute",
+        "point_id: 1flowbase.interface.shipments.create.before",
+    );
+    let baseline = parse_plugin_manifest(&raw).unwrap().managed.unwrap();
+    let contribution = &baseline.module.contributions[0];
+    let binding = &baseline.execution_bindings[0];
+    assert_eq!(binding.interface_protocol, None);
+    let mut historical = serde_json::to_value(binding).unwrap();
+    assert!(historical
+        .as_object_mut()
+        .unwrap()
+        .remove("interface_protocol")
+        .is_none());
+    #[derive(serde::Serialize)]
+    struct LegacyBinding<'a> {
+        contribution_id: &'a extension_contracts::ContributionId,
+        execution_mode: &'a PluginExecutionMode,
+        runtime: &'a crate::PluginRuntimeManifest,
+        handler: &'a str,
+        payload: &'a Option<crate::ManagedContributionPayload>,
+    }
+    let historical = LegacyBinding {
+        contribution_id: &binding.contribution_id,
+        execution_mode: &binding.execution_mode,
+        runtime: &binding.runtime,
+        handler: &binding.handler,
+        payload: &binding.payload,
+    };
+    let expected = ManagedBindingFingerprint::from_bytes(
+        &serde_json::to_vec(&(contribution, historical)).unwrap(),
+    );
+    assert_eq!(
+        baseline
+            .execution_binding_fingerprint(&contribution.contribution_id)
+            .unwrap(),
+        expected
+    );
+    for (name, selected) in [
+        ("interface-v1", ManagedInterfaceProtocol::InterfaceV1),
+        ("reference-v2", ManagedInterfaceProtocol::ReferenceV2),
+    ] {
+        let explicit = raw.replace(
+            "      handler: compute",
+            &format!("      handler: compute\n      interface_protocol: {name}"),
+        );
+        let parsed = parse_plugin_manifest(&explicit).unwrap().managed.unwrap();
+        assert_eq!(
+            parsed.execution_bindings[0].interface_protocol,
+            Some(selected)
+        );
+        assert_ne!(
+            parsed
+                .execution_binding_fingerprint(&contribution.contribution_id)
+                .unwrap(),
+            expected
+        );
+        assert!(parse_plugin_manifest(&explicit.replace(
+            "point_id: 1flowbase.interface.shipments.create.before",
+            "point_id: acme.compute"
+        ))
+        .is_err());
+        assert!(parse_plugin_manifest(&explicit.replace(
+            "execution_mode: process_per_call",
+            "execution_mode: declarative_only"
+        ))
+        .is_err());
+        assert!(parse_plugin_manifest(
+            &explicit.replace("interface_protocol: ", "unknown_protocol: ")
+        )
+        .is_err());
+    }
+    assert!(parse_plugin_manifest(&raw.replace(
+        "      handler: compute",
+        "      handler: compute\n      interface_protocol: reference-v99"
+    ))
+    .is_err());
+}

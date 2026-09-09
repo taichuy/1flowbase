@@ -33,6 +33,8 @@ pub struct ManagedContributionExecutionBinding {
     pub execution_mode: PluginExecutionMode,
     pub runtime: PluginRuntimeManifest,
     pub handler: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
     #[serde(default)]
     pub payload: Option<ManagedContributionPayload>,
 }
@@ -222,6 +224,38 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             return Err(invalid(
                 "managed execution binding must reference a unique declared contribution_id",
             ));
+        }
+        if binding.interface_protocol.is_some() {
+            let contribution = module
+                .contributions
+                .iter()
+                .find(|item| item.contribution_id == binding.contribution_id)
+                .ok_or_else(|| invalid("managed contribution does not exist"))?;
+            let canonical = contribution
+                .point_id
+                .as_str()
+                .strip_prefix("1flowbase.interface.")
+                .and_then(|point| point.rsplit_once('.'))
+                .is_some_and(|(interface, phase)| {
+                    !interface.is_empty()
+                        && matches!(
+                            phase,
+                            "authorization"
+                                | "admission"
+                                | "before"
+                                | "after"
+                                | "failure"
+                                | "completion"
+                        )
+                });
+            if !canonical
+                || binding.execution_mode != PluginExecutionMode::ProcessPerCall
+                || binding.payload.is_some()
+            {
+                return Err(invalid(
+                    "interface_protocol requires a canonical interface process_per_call binding",
+                ));
+            }
         }
         if let Some(payload) = &binding.payload {
             if !payloads.contains(payload) || !bound_payloads.insert(payload.clone()) {

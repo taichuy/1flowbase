@@ -9,3 +9,5 @@ mod runtime_target_tests;
 mod semantic_terminal_tests;
 
 mod managed_interface_contract_tests;
+
+mod managed_interface_reference_tests;
