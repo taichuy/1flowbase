@@ -341,8 +341,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       const row = await screen.findByRole('row', { name: /Acme preferences/ });
       fireEvent.click(
         within(row).getByRole('button', {
-          name: locale === 'en_US' ? 'Edit' : '编辑',
-          exact: true
+          name: locale === 'en_US' ? 'Edit' : /^编\s*辑$/
         })
       );
       const warning = await screen.findByTestId(
@@ -451,8 +450,7 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       const row = await screen.findByRole('row', { name: /preferences/ });
       fireEvent.click(
         within(row).getByRole('button', {
-          name: locale === 'en_US' ? 'View' : '查看',
-          exact: true
+          name: locale === 'en_US' ? 'View' : '查看'
         })
       );
       const label = locale === 'en_US' ? 'Select this version' : '选择此版本';
@@ -482,6 +480,52 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         'inactive'
       );
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    }
+  );
+
+  test.each([
+    ['en_US', 'active', 'Running'],
+    ['zh_Hans', 'active', '运行中'],
+    ['en_US', 'load_failed', 'Load failed'],
+    ['zh_Hans', 'load_failed', '加载失败']
+  ])(
+    'preserves the %s visible label for backend runtime_status=%s',
+    async (locale, runtime_status, label) => {
+      await i18n.changeLanguage(locale);
+      api.listConsoleInstalledExtensions.mockResolvedValue({
+        entries: [
+          {
+            id: 'installation-1',
+            category: 'host-extensions',
+            catalog_id: 'host-extensions:acme/preferences',
+            organization: 'acme',
+            artifact_id: 'preferences',
+            version: '1.0.0',
+            node_id: 'node-1',
+            source_kind: 'local',
+            trust_level: 'trusted_host',
+            warnings: [],
+            status: 'installed',
+            is_current: true,
+            desired_state: 'active_requested',
+            runtime_status,
+            availability_status: 'available',
+            application_action: 'none',
+            application_status: 'not_required',
+            installed_versions: [],
+            created_by: 'user-1',
+            created_at: '',
+            updated_at: ''
+          }
+        ],
+        total_entries: 1,
+        limit: 20,
+        next_cursor: null
+      });
+      renderSurface(<SettingsExtensionCenterSection category="installed" />);
+      expect(
+        (await screen.findByTestId('plugin-runtime-status')).textContent
+      ).toBe(label);
     }
   );
 

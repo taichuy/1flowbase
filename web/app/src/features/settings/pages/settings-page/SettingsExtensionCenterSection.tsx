@@ -770,7 +770,7 @@ function GenericExtensionCenterSection({
                   data-runtime-status={row.runtime_status ?? undefined}
                 >
                   {row.runtime_status === 'active'
-                    ? t('auto.plugin_runtime_active')
+                    ? t('auto.running')
                     : row.runtime_status === 'inactive'
                       ? t('auto.plugin_runtime_inactive')
                       : row.runtime_status === 'load_failed'

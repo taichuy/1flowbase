@@ -5,7 +5,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -92,6 +92,10 @@ const uiManagementApi = vi.hoisted(() => ({
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
 
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -127,6 +131,10 @@ const custom = {
 };
 
 describe('UiManagementPanel component records', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+    await appI18n.changeLanguage('zh_Hans');
+  });
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');
     useAuthStore.setState({ csrfToken: 'csrf' });
