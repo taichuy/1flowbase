@@ -303,8 +303,11 @@ export function FrontstageJsxStudioDrawer({
       renderResource={(section) =>
         section === 'templates' ? (
           <JsxStudioTemplatesPanel
+            key={activeBlockId}
+            source={draft}
+            blockTitle={activeTab?.detail?.title ?? activeBlock.title ?? ''}
             catalogEntry={activeCatalogEntry}
-            readOnly={permissionDenied}
+            readOnly={permissionDenied || notFound || !!activeTab?.loading}
             workspaceId={workspaceId}
             onReplaceCode={blockTabs.setActiveDraft}
           />

@@ -1,5 +1,13 @@
 {
   "auto": {
+    "save_as_page_template": "保存为页面模板",
+    "save_template_draft": "保存模板草稿",
+    "save_template_draft_description": "将当前区块代码保存为模板草稿，不包含页面布局或业务数据。发布后可供其他区块使用。",
+    "template_name": "模板名称",
+    "template_name_required": "请输入模板名称",
+    "template_draft_saved": "模板草稿已保存，可在 UI 管理中发布后使用。",
+    "template_create_forbidden": "没有创建模板的权限",
+    "template_save_failed": "模板保存失败，请重试",
     "code_template": "代码模板",
     "code_template_description": "选择已发布的完整代码模板。替换会覆盖当前草稿。",
     "no_available_code_templates": "当前区块没有可用的代码模板",

@@ -10,6 +10,7 @@ import {
   within
 } from '@testing-library/react';
 import { App } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -19,12 +20,40 @@ import {
   sha256Text
 } from '@1flowbase/page-runtime';
 
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
-const render = (ui: ReactElement) => testingRender(ui, { wrapper: App });
+const render = (ui: ReactElement) =>
+  testingRender(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <App>{children}</App>
+      </QueryClientProvider>
+    )
+  });
+const templateApi = vi.hoisted(() => ({
+  createSettingsUiTemplate: vi.fn(),
+  settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates']
+}));
+const templateAuth = vi.hoisted(() => ({
+  csrfToken: 'csrf-test',
+  actor: null,
+  me: { permissions: ['settings_feature.access.system.ui-management'] }
+}));
+vi.mock('../../../settings/api/ui-management', () => templateApi);
+vi.mock('../../../../state/auth-store', () => ({
+  useAuthStore: (selector: (state: typeof templateAuth) => unknown) =>
+    selector(templateAuth)
+}));
 
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
@@ -119,6 +148,9 @@ vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
       {children}
     </dialog>
   )
+}));
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
 }));
 vi.mock('@monaco-editor/react', () => ({
   default: ({
@@ -233,6 +265,13 @@ describe('FrontstageJsxStudioDrawer', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    templateAuth.me.permissions = [
+      'settings_feature.access.system.ui-management'
+    ];
+    templateApi.createSettingsUiTemplate.mockResolvedValue({
+      id: 'saved-template',
+      published_revision: null
+    });
     monacoHook.addExtraLib.mockReturnValue({ dispose: vi.fn() });
     monacoEditor.getSelection.mockReturnValue(null);
     monacoEditor.getModel.mockReturnValue(null);
@@ -244,6 +283,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       configurable: true,
       value: 900
     });
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
       code: 'export default {}',
@@ -411,7 +451,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(screen.getByRole('dialog', { name: 'TSX 编辑器' })).toHaveStyle({
       height: '680px'
     });
-    expect(screen.getByLabelText('JSX source')).toBeInTheDocument();
+    expect(await screen.findByLabelText('JSX source')).toBeInTheDocument();
     expect(screen.getByLabelText('JSX source')).toHaveAttribute(
       'data-edit-context',
       'false'
@@ -584,6 +624,112 @@ describe('FrontstageJsxStudioDrawer', () => {
 
     await waitFor(() => expect(setDraft).toHaveBeenCalledWith(templateSource));
     expect(save).not.toHaveBeenCalled();
+  });
+
+  test('AC-001/002 saves the unsaved active draft as an unpublished template', async () => {
+    const draft =
+      'export default function Current() { return <div>Unsaved</div>; }';
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      ...blockCodeHook.useFrontstageBlockCode(),
+      draft,
+      dirty: true
+    });
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="templates"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存为页面模板' }));
+    const dialog = screen.getByRole('dialog', { name: '保存为页面模板' });
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: '模板名称' }),
+      { target: { value: '  我的模板  ' } }
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '保存模板草稿' })
+    );
+    await waitFor(() =>
+      expect(templateApi.createSettingsUiTemplate).toHaveBeenCalledWith(
+        {
+          name: '我的模板',
+          source: draft,
+          language: 'tsx',
+          provider_code: '1flowbase',
+          contribution_code: 'frontstage.js-ui-block'
+        },
+        'csrf-test'
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: '保存为页面模板' })
+      ).not.toBeInTheDocument()
+    );
+    expect(antdAppMocks.success).toHaveBeenCalledWith(
+      '模板草稿已保存，可在 UI 管理中发布后使用。'
+    );
+    expect(blockCodeHook.useFrontstageBlockCode().save).not.toHaveBeenCalled();
+  });
+
+  test('AC-003 validates the name and retains input after a rejected save', async () => {
+    templateApi.createSettingsUiTemplate.mockRejectedValue({ status: 403 });
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="templates"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存为页面模板' }));
+    const dialog = screen.getByRole('dialog', { name: '保存为页面模板' });
+    const input = within(dialog).getByRole('textbox', { name: '模板名称' });
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '保存模板草稿' })
+    );
+    expect(await screen.findByText('请输入模板名称')).toBeInTheDocument();
+    expect(templateApi.createSettingsUiTemplate).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '保留这个名称' } });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '保存模板草稿' })
+    );
+    expect(await screen.findByText('没有创建模板的权限')).toBeInTheDocument();
+    expect(input).toHaveValue('保留这个名称');
+    expect(dialog).toBeInTheDocument();
+  });
+
+  test('AC-004 disables template creation without management permission', () => {
+    templateAuth.me.permissions = [];
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="templates"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: '保存为页面模板' })
+    ).toBeDisabled();
   });
 
   test('resizes the resource panel horizontally without resizing the Studio window', () => {

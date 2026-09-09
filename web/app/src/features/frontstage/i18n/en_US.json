@@ -1,5 +1,13 @@
 {
   "auto": {
+    "save_as_page_template": "Save as page template",
+    "save_template_draft": "Save template draft",
+    "save_template_draft_description": "Save the current block code as a template draft, excluding page layout and business data. Publish it to reuse it in other blocks.",
+    "template_name": "Template name",
+    "template_name_required": "Enter a template name",
+    "template_draft_saved": "Template draft saved. Publish it in UI management to use it.",
+    "template_create_forbidden": "You do not have permission to create templates",
+    "template_save_failed": "Failed to save the template. Please try again.",
     "code_template": "Code template",
     "code_template_description": "Choose a complete published code template. Replacing overwrites the current draft.",
     "no_available_code_templates": "No code templates are available for this block",
