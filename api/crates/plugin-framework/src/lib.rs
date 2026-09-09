@@ -84,3 +84,7 @@ pub fn crate_name() -> &'static str {
 
 #[cfg(test)]
 pub mod _tests;
+
+pub use extension_package_runtime::plugin_settings_page::{
+    read_plugin_settings_page_source, validate_plugin_settings_pages, PluginSettingsPageManifest,
+};

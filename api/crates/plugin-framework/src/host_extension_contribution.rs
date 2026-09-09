@@ -287,6 +287,8 @@ pub struct HostExtensionLifecycleSubscriptionManifest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionContributionManifest {
+    #[serde(default)]
+    pub settings_pages: Vec<crate::PluginSettingsPageManifest>,
     pub schema_version: String,
     pub extension_id: String,
     pub version: String,
@@ -328,6 +330,21 @@ pub struct HostExtensionConsoleContribution {
 }
 
 impl HostExtensionContributionManifest {
+    pub fn validate_package_settings_pages(
+        &self,
+        package: &crate::PluginManifestV1,
+    ) -> FrameworkResult<()> {
+        if package.plugin_code()? != self.extension_id
+            || package.version != self.version
+            || package.settings_pages != self.settings_pages
+        {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "native settings page declarations do not match the package",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn console_contribution(&self) -> FrameworkResult<HostExtensionConsoleContribution> {
         validate_console_contributions(self)?;
         Ok(HostExtensionConsoleContribution {
@@ -553,6 +570,23 @@ fn validate_host_extension_contribution_manifest(
         validate_non_empty(&route.action.action, "routes[].action.action")?;
     }
     validate_settings_features(manifest)?;
+    crate::validate_plugin_settings_pages(&manifest.extension_id, &manifest.settings_pages)?;
+    for page in &manifest.settings_pages {
+        let feature = manifest
+            .settings_features
+            .iter()
+            .find(|feature| feature.feature_id == page.feature_id)
+            .ok_or_else(|| {
+                PluginFrameworkError::invalid_provider_package(
+                    "settings page references an unregistered feature",
+                )
+            })?;
+        if feature.lifecycle != SettingsFeatureLifecycle::Active {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "settings page feature must be active",
+            ));
+        }
+    }
     validate_console_contributions(manifest)?;
     validate_console_surfaces(&manifest.extension_id, &manifest.console_surfaces)?;
     for worker in &manifest.workers {

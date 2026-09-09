@@ -153,7 +153,7 @@ fn host_extension_console_navigation(
 ) -> ConsoleNavigation {
     let surfaces = &contribution.console_surfaces;
 
-    ConsoleNavigation {
+    let mut navigation = ConsoleNavigation {
         route_definitions: surfaces
             .route_definitions
             .iter()
@@ -186,7 +186,39 @@ fn host_extension_console_navigation(
                 requirement: console_permission_requirement(binding.requirement),
             })
             .collect(),
+    };
+    for page in &contribution.settings_pages {
+        // The same feature owns its API scope and its fixed page; page declarations grant no API access.
+        let feature = contribution
+            .settings_features
+            .iter()
+            .find(|feature| feature.feature_id == page.feature_id)
+            .expect("validated native settings page feature");
+        let surface = &feature.console_surface;
+        navigation.route_definitions.push(ConsoleRouteDefinition {
+            route_id: surface.route_id.clone(),
+            surface_key: surface.surface_key.clone(),
+            path: surface.path.clone(),
+            surface_kind: ConsoleSurfaceKind::HostExtension,
+        });
+        navigation.navigation_items.push(ConsoleNavigationItem {
+            item_id: format!("{}.navigation", page.feature_id),
+            route_id: surface.route_id.clone(),
+            parent_item_id: Some("settings".to_string()),
+            label_key: surface.label_key.clone(),
+            navigation_slot: ConsoleNavigationSlot::Settings,
+            order: surface.order,
+        });
+        navigation
+            .permission_bindings
+            .push(ConsolePermissionBinding {
+                binding_id: format!("{}.access", page.feature_id),
+                route_id: surface.route_id.clone(),
+                permission_codes: vec![format!("settings_feature.access.{}", page.feature_id)],
+                requirement: ConsolePermissionRequirement::AnyPermission,
+            });
     }
+    navigation
 }
 
 fn console_surface_kind(kind: HostExtensionConsoleSurfaceKind) -> ConsoleSurfaceKind {

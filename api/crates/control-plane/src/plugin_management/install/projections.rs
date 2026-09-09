@@ -158,3 +158,24 @@ pub(super) fn build_frontend_block_sync_input(
             .collect(),
     }
 }
+
+/// Loads only the immutable package default. Applied-version decisions belong to template synchronization.
+pub(super) fn load_plugin_settings_templates(
+    manifest: &PluginManifestV1,
+    package_root: &std::path::Path,
+) -> anyhow::Result<Vec<control_plane_contracts::ports::PluginSettingsTemplateInput>> {
+    manifest
+        .settings_pages
+        .iter()
+        .map(|page| {
+            Ok(
+                control_plane_contracts::ports::PluginSettingsTemplateInput {
+                    feature_id: page.feature_id.clone(),
+                    contribution_code: page.contribution_code.clone(),
+                    source: plugin_framework::read_plugin_settings_page_source(package_root, page)?,
+                    language: domain::UiCodeTemplateLanguage::try_from(page.language.as_str())?,
+                },
+            )
+        })
+        .collect()
+}

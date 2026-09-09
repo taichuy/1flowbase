@@ -132,6 +132,7 @@ impl ExtensionGraphInputAssembly {
             .map(|descriptor| descriptor.module_id.as_str().to_string())
             .collect::<BTreeSet<_>>();
         for (manifest, contribution) in extensions {
+            contribution.validate_package_settings_pages(manifest)?;
             let module_id = manifest.plugin_code()?;
             if manifest.consumption_kind != PluginConsumptionKind::HostExtension {
                 bail!("activated package {module_id} is not a HostExtension manifest");
@@ -746,6 +747,13 @@ fn load_host_contribution(
             manifest.version,
             contribution.version
         );
+    }
+    contribution.validate_package_settings_pages(manifest)?;
+    let package_root = api_workspace_root
+        .join("plugins/host-extensions")
+        .join(listed_module_id);
+    for page in &manifest.settings_pages {
+        plugin_framework::read_plugin_settings_page_source(&package_root, page)?;
     }
     if !contribution.native.library.starts_with("builtin://") {
         bail!(

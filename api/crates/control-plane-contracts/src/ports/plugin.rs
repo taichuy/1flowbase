@@ -609,3 +609,12 @@ pub trait HostExtensionInventoryRepository: Send + Sync {
         &self,
     ) -> anyhow::Result<Vec<domain::HostExtensionInventoryRecord>>;
 }
+
+/// Verified fixed page source passed to the atomic plugin template application owner.
+#[derive(Debug, Clone)]
+pub struct PluginSettingsTemplateInput {
+    pub feature_id: String,
+    pub contribution_code: String,
+    pub source: String,
+    pub language: domain::UiCodeTemplateLanguage,
+}
