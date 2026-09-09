@@ -548,12 +548,20 @@ impl ManagedExtensionComposition {
         }
         // The adapter supplies invocation/registry identity; the composition owns grant identity.
         invocation.authority_revision = frozen_authority.revision;
-        let lease = self
+        let lease_started = std::time::Instant::now();
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "authority_lease", status = "started", "managed hook admission");
+        let lease_result = self
             .store
             .lock_contribution_authority(binding.handle.identity().subject())
-            .await?;
-        self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
-        let admitted = self
+            .await;
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "authority_lease", elapsed_us = lease_started.elapsed().as_micros() as u64, status = if lease_result.is_ok() { "acquired" } else { "failed" }, "managed hook admission");
+        let lease = lease_result?;
+        let validation = self.validate_current_binding(binding, workspace_id, lease.as_ref());
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "current_binding", status = if validation.is_ok() { "accepted" } else { "rejected" }, "managed hook admission");
+        validation?;
+        let admission_started = std::time::Instant::now();
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "runtime_admission", status = "started", "managed hook admission");
+        let admitted_result = self
             .backend
             .admit_managed_hook(runtime_core::runtime_backend::RuntimeManagedHookRequest {
                 handle: binding.handle.clone(),
@@ -561,9 +569,17 @@ impl ManagedExtensionComposition {
                 invocation,
                 input,
             })
-            .await?;
-        lease.release().await?;
-        Ok(admitted.await?)
+            .await;
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "runtime_admission", elapsed_us = admission_started.elapsed().as_micros() as u64, status = if admitted_result.is_ok() { "admitted" } else { "rejected" }, "managed hook admission");
+        let admitted = admitted_result?;
+        let release_started = std::time::Instant::now();
+        let release_result = lease.release().await;
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "authority_release", elapsed_us = release_started.elapsed().as_micros() as u64, status = if release_result.is_ok() { "released" } else { "failed" }, "managed hook admission");
+        release_result?;
+        let execution_started = std::time::Instant::now();
+        let result = admitted.await;
+        tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "worker_execution", elapsed_us = execution_started.elapsed().as_micros() as u64, status = if result.is_ok() { "completed" } else { "failed" }, "managed hook admission");
+        Ok(result?)
     }
 
     fn validate_current_binding(

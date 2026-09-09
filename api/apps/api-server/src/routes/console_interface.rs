@@ -505,10 +505,20 @@ where
         .await
     {
         Ok(outcome) => {
+            log_observer_receipt(outcome.receipt());
             let _receipt = outcome.receipt().clone().projected();
             Ok(outcome.into_value())
         }
-        Err(failure) => Err(console_invocation_error(failure.into_error())),
+        Err(failure) => {
+            log_observer_receipt(failure.receipt());
+            Err(console_invocation_error(failure.into_error()))
+        }
+    }
+}
+
+fn log_observer_receipt(receipt: &interface_runtime::InterfaceInvocationReceipt) {
+    for observer in receipt.observer_records() {
+        tracing::debug!(invocation_id = %receipt.invocation_id().value(), interface_id = ?receipt.interface_id(), plugin = ?observer.plugin(), point = ?observer.point(), status = ?observer.status(), reason = observer.reason(), "console interface observer finalization");
     }
 }
 

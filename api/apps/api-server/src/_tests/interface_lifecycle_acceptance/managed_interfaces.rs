@@ -61,6 +61,15 @@ fn package_protocol(protocol: &str, version: &str) -> Vec<u8> {
     archive.into_inner().unwrap().finish().unwrap()
 }
 async fn fixture() -> Fixture {
+    static DIAGNOSTICS: std::sync::Once = std::sync::Once::new();
+    DIAGNOSTICS.call_once(|| {
+        tracing_subscriber::fmt()
+            .with_env_filter("off,runtime_extension_host::managed_worker::binding=debug,api_server::extension_bus::managed_activation=debug,api_server::routes::console_interface=debug")
+            .with_test_writer()
+            .with_ansi(false)
+            .try_init()
+            .expect("observer diagnostic fixture owns the test tracing subscriber");
+    });
     Fixture::new_with_package(package(), interface_grants()).await
 }
 fn interface_grants() -> Vec<GrantContributionPermission> {
