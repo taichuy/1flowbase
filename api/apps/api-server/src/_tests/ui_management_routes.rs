@@ -508,7 +508,19 @@ console_locale_catalog:
                 &[source],
             )
             .unwrap();
-        let plan = crate::app_state::compile_console_boot_plan([resolved]).unwrap();
+        let interface_snapshot = f
+            .state
+            .extension_boot_snapshot
+            .as_ref()
+            .unwrap()
+            .interface_registry()
+            .unwrap()
+            .snapshot();
+        let plan = crate::app_state::compile_console_boot_plan_with_interface_operations(
+            [resolved],
+            Some(interface_snapshot.as_ref()),
+        )
+        .unwrap();
         let state = Arc::new(crate::app_state::ApiState {
             settings_feature_registry: plan.settings_feature_registry,
             console_operation_registry: plan.console_operation_registry,
