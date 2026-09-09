@@ -1447,6 +1447,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "base64",
+ "jsonschema",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2111,6 +2112,7 @@ name = "interface-runtime"
 version = "0.4.1"
 dependencies = [
  "domain",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",

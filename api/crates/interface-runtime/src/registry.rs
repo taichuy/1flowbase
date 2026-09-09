@@ -27,6 +27,17 @@ use thiserror::Error;
 pub trait InterfaceContract: Send + Sync + 'static {
     const CONTRACT_ID: &'static str;
     const CONTRACT_VERSION: &'static str;
+
+    /// Explicit safe-view schema, separate from HTTP DTO serialization and credential handling.
+    /// None is not an empty schema: managed admission must reject an unregistered projection.
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Only explicitly projected fields may leave the trusted host. No blanket Serialize fallback.
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

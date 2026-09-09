@@ -9,7 +9,9 @@ mod hook;
 pub use finalization::{InterfaceObserverRecord, InterfaceObserverStatus};
 mod identity;
 mod invocation;
+mod managed_projection;
 mod principal;
+pub use managed_projection::ManagedInterfaceProjection;
 mod registry;
 mod stream;
 
