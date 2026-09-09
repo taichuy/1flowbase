@@ -1328,6 +1328,95 @@
       "auth": [],
       "env": [],
       "originRoot": 2014
+    },
+    {
+      "target": "extension-contracts:lib",
+      "source": "api/crates/extension-contracts/src/_tests/managed_interface_reference_tests.rs",
+      "name": "_tests::managed_interface_reference_tests::root_2014_r3_probe_independent_budgets",
+      "expected": 1,
+      "ac": [
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "extension-package-runtime:lib",
+      "source": "api/crates/extension-package-runtime/src/_tests/managed_manifest_tests.rs",
+      "name": "_tests::managed_manifest_tests::root_2014_r3_probe_explicit_protocol_selection",
+      "expected": 1,
+      "ac": [
+        "AC-017"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-sdk:lib",
+      "source": "api/crates/runtime-extension-sdk/src/_tests/managed_hook_tests.rs",
+      "name": "_tests::managed_hook_tests::root_2014_r3_probe_v1_schema_consumer_and_v2_reference",
+      "expected": 1,
+      "ac": [
+        "AC-015",
+        "AC-017",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "name": "_tests::managed_hook_transport::root_2014_r3_probe_reference_worker_roundtrip",
+      "expected": 1,
+      "ac": [
+        "AC-016",
+        "AC-017",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_r3_probe_complete_contract_compilation",
+      "expected": 1,
+      "ac": [
+        "AC-001",
+        "AC-016",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_projection.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_projection::root_2014_r3_probe_reference_binding_and_projection",
+      "expected": 1,
+      "ac": [
+        "AC-004",
+        "AC-016"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_015_017_protocol_equivalence",
+      "expected": 1,
+      "ac": [
+        "AC-015",
+        "AC-017"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
     }
   ],
   "node": [
@@ -1413,7 +1502,11 @@
     "AC-011",
     "AC-012",
     "AC-013",
-    "AC-014"
+    "AC-014",
+    "AC-015",
+    "AC-016",
+    "AC-017",
+    "AC-018"
   ],
   "requiredAuth": [
     "AUTH-01",
@@ -1455,5 +1548,7 @@
   "browserBinary": {
     "package": "api-server",
     "binary": "api-server"
-  }
+  },
+  "batchMode": "full",
+  "showTestOutput": true
 }

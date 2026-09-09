@@ -6,6 +6,10 @@ function loadManifest(root, filename = process.env.PLUGIN_COMPOSITION_MANIFEST) 
   const data = JSON.parse(fs.readFileSync(resolved, 'utf8'));
   if (!Array.isArray(data.targets) || !Array.isArray(data.required)
       || !/^plugin-composition-\d+$/u.test(data.scope)) throw new Error('invalid finite manifest');
+  if (data.batchMode === 'r3-probe' && (data.browserBinary || data.node.length
+      || data.targets.some(target => target.regressionFilters.length)
+      || data.rootPrefixes?.join(',') !== 'root_2014_r3_probe_'
+      || data.required.length !== 6)) throw new Error('R3 probe must remain the frozen six-test batch');
   return { data, filename: resolved };
 }
 function rootPrefixes(data) { return data.rootPrefixes || ['root_2007_']; }

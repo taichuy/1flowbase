@@ -201,9 +201,24 @@ Core deny 不可被 extension allow 恢复；拒绝后不运行 Handler。Defini
 
 接口管理可以用受控 typed registration 验证执行契约。三级插件开放则需真实 declaration → loader/activation → graph/registry → invocation，覆盖依赖、冲突、停用、版本切换和在途隔离。native HostExtension 的 restart-scoped 管理不能被快照测试解释成 Rust 热卸载。
 
-受管接口从 compiled Canonical Interface 的契约与执行计划生成 `1flowbase.interface.{interface_id}.{phase}` 坐标，共用 `ManagedInterfaceInput` wire。Authorization / Admission 可继续或拒绝；Before、After、Failure、Completion 仅观察，不能 patch 输入、改写主结果或恢复错误，核心拒绝不可推翻。旧 Create adapter 保留既有兼容契约与回归，不将它的可否决 Before 推广为新通用契约。
+受管接口从 compiled Canonical Interface 的契约与执行计划生成 `1flowbase.interface.{interface_id}.{phase}` 坐标，使用版本化的受管接口协议。Authorization / Admission 可继续或拒绝；Before、After、Failure、Completion 仅观察，不能 patch 输入、改写主结果或恢复错误，核心拒绝不可推翻。旧 Create adapter 保留既有兼容契约与回归，不将它的可否决 Before 推广为新通用契约。
 
 每个实际 Rust contract 显式提供有界 schema 和 encoder；缺任一项均不可开放。输入与成功输出都排除原始 credential、session/token、header bag、native handle、本地路径、无界二进制和原始错误链。动态 JSON 只表达预先定义的安全字段或有限元数据。schema 经标准 JSON Schema engine 校验，受限词汇不接受外部引用；它不代替当前授权和宿主 sealed 身份。发现目录、调用工厂与 Handler 消费同一冻结身份及 schema。流式 Completion 由真实 stream owner 在流终态执行一次，观察失败不能替换业务结果。认证 factory 继续留在可信宿主边界。
+
+### 结构登记与调用传输
+
+宿主在完整目录登记时编译每个接口的完整安全投影 schema，将校验器、contract ID/version 和规范化 schema fingerprint 绑定到冻结快照。目录任何契约无效时整批拒绝；错误报告契约身份、schema 路径、规则与实际预算。发送调用前用这个已编译校验器验证原安全投影，不每次重编译，不减少字段或输出分支。
+
+```text
+登记：完整 schema → 有界校验/编译 → 冻结契约及 handler 绑定
+调用：原安全投影 → 绑定校验器验证 → 精确契约引用 + 数据 → 单次 worker
+```
+
+引用协议的调用不携带 schema。引用包含 `contract_id`、`contract_version`、`schema_fingerprint`，它标识结构而不授予权限。调用继续受精确安装、handler、binding fingerprint、冻结候选和当前权限约束；未知或不匹配引用、过期绑定和非法投影在宿主边界拒绝。SDK 解析引用和数据边界，检查请求/回复关联；无需跨调用常驻缓存，也不隐式下载 schema。
+
+旧 `ManagedProjectionContract.compile()`、完整 schema frame 和 `serve_managed_interface_hook` 的公开能力保留。执行绑定用可选 `interface_protocol` 明确选择新引用协议；字段缺省省略序列化，既有 manifest 的指纹和选择行为保持。显式选择参与原 binding fingerprint；不根据解析失败降级。`runtime.protocol` 仍描述执行运输方式，扩展点 `contract_version` 仍描述贡献契约，二者不承担 wire 协议版本选择。旧 Create、带 schema 的 interface v1 与引用 v2 保持独立分支。
+
+资源分别限制：宿主登记 schema 128 KiB，引用协议单个安全投影 64 KiB、请求 96 KiB、回复 8 KiB；深度、闭合对象、数组、字符串等原结构限制保持。旧 schema 编译入口仍为32 KiB，旧 interface/Create 帧仍为64 KiB，事件沿用原校验入口。这些上限互不推导；结构变大不扩大引用调用帧。完整目录与边界场景的实际准入、编译耗时和可测内存证据由候选绑定的有限探针和集中验收提供，不以常量存在代替通过结论。
 
 ### 契约驱动的插件事件
 

@@ -8,7 +8,7 @@ const { loadManifest, parseList, selectTests, passedExact, nodeTapResult, valida
 const root = path.resolve(__dirname, '../../..');
 const { data: manifest, filename: manifestPath } = loadManifest(root);
 const output = path.resolve(root, manifest.outputDirectory || 'tmp/test-governance/2007');
-const report = { schema: 1, scope: manifest.scope, startedAt: new Date().toISOString(), status: 'running', candidate: null, commands: [], node: [], targets: [], tests: [], blockers: [], identities: [], manifest };
+const report = { schema: 1, scope: manifest.scope, batchMode: manifest.batchMode || 'full', startedAt: new Date().toISOString(), status: 'running', candidate: null, commands: [], node: [], targets: [], tests: [], blockers: [], identities: [], manifest };
 fs.mkdirSync(output, { recursive: true });
 let commandIndex = 0;
 const env = { ...process.env };
@@ -65,7 +65,11 @@ try {
   for (const file of ['api/Cargo.lock', 'api/crates/runtime-extension-sdk/Cargo.toml', 'api/crates/runtime-extension-sdk/src/_tests/managed_hook_worker.rs', 'api/crates/runtime-extension-sdk/src/_tests/managed_event_worker.rs', 'api/plugins/fixtures/acme.composition-a/manifest.yaml', 'api/plugins/fixtures/acme.composition-a/event-manifest.yaml', 'api/plugins/fixtures/acme.composition-b/manifest.yaml', 'api/plugins/fixtures/acme.composition-c/manifest.yaml']) identity(path.join(root, file));
   // Dependency-boundary regressions use locked offline cargo metadata; fetch this same lock first.
   requireCommand('locked-fetch', 'cargo', ['fetch', '--locked', '--manifest-path', 'api/Cargo.toml']);
-  for (const [example, variable] of [['managed_hook_worker', 'MANAGED_HOOK_WORKER_FIXTURE'], ['managed_event_worker', 'MANAGED_EVENT_WORKER_FIXTURE']]) {
+  const workerFixtures = manifest.workerFixtures || [
+    { example: 'managed_hook_worker', env: 'MANAGED_HOOK_WORKER_FIXTURE' },
+    { example: 'managed_event_worker', env: 'MANAGED_EVENT_WORKER_FIXTURE' },
+  ];
+  for (const { example, env: variable } of workerFixtures) {
     try {
       requireCommand(`build-${example}`, 'cargo', ['build', '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', example]);
       env[variable] = path.join(env.CARGO_TARGET_DIR, 'debug/examples', example);
@@ -108,7 +112,7 @@ try {
           report.blockers.push(`${target.id}/${name}: missing ${missing.join(', ')}`);
           continue;
         }
-        const result = run(`test-${target.id}`, binary, [name, '--exact', '--format=pretty', '--color=never'], { cwd, timeout: 5 * 60 * 1000 });
+        const result = run(`test-${target.id}`, binary, [name, '--exact', '--format=pretty', '--color=never', ...(manifest.showTestOutput ? ['--show-output'] : [])], { cwd, timeout: 5 * 60 * 1000 });
         const passed = passedExact(result.text, name, result.code);
         report.tests.push({ target: target.id, name, expected: 1, status: passed ? 'passed' : 'failed', commandIndex });
         if (!passed) report.blockers.push(`${target.id}/${name}: failed, ignored, timed out or wrong actual count`);

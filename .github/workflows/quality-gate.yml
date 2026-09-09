@@ -14,6 +14,13 @@ on:
         description: Frozen full SHA required for plugin-composition-2007 (dispatch workflow from the same candidate ref)
         type: string
         required: false
+      batch_mode:
+        description: Root 2014 full acceptance or approved finite R3 probe
+        type: choice
+        default: full
+        options:
+          - full
+          - r3-probe
       scope:
         description: Quality gate scope
         type: choice
@@ -292,7 +299,7 @@ jobs:
           --health-cmd "pg_isready -U postgres -d 1flowbase"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      PLUGIN_COMPOSITION_MANIFEST: scripts/node/plugin-composition-test-batch/root-2014-manifest.json
+      PLUGIN_COMPOSITION_MANIFEST: ${{ inputs.batch_mode == 'r3-probe' && 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-manifest.json' || 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json' }}
       PLUGIN_COMPOSITION_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/plugin-composition-2014/target
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -322,7 +329,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: plugin-composition-2014-${{ inputs.candidate_sha }}
+          name: plugin-composition-2014-${{ inputs.batch_mode || 'full' }}-${{ inputs.candidate_sha }}
           if-no-files-found: error
           path: tmp/test-governance/2014
 

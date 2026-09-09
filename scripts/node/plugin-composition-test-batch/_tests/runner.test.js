@@ -82,7 +82,7 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
     assert.deepEqual(actual, legacy);
   }
   validateSources(root, data);
-  assert.equal(data.requiredAc.length, 14);
+  assert.equal(data.requiredAc.length, 18);
   assert.deepEqual(rootTestNames('#[test]\nfn root_2014_real() {}\nfn root_2014_fixture() {}', data.rootPrefixes), ['root_2014_real']);
   const newRequired = [{ target: target.id, name: 'new::root_2014_real', expected: 1 }];
   assert.throws(() => selectTests(target, ['old::regression'], newRequired, data), /missing/u);
@@ -93,4 +93,27 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
   assert.deepEqual(inventory.approvedAddedDefinitions, ['ui_management.plugin_settings_page.view']);
   assert.equal(new Set(inventory.definitions).size, 457);
   assert.equal(new Set(inventory.bindings).size, 481);
+});
+
+
+test('R3 probe is finite and full acceptance retains every probe and compatibility case', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const full = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json').data;
+  const probe = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-manifest.json').data;
+  assert.equal(full.required.length, 86);
+  assert.equal(probe.required.length, 6);
+  assert.equal(probe.targets.length, 5);
+  assert.equal(probe.node.length, 0);
+  assert.equal(probe.browserBinary, undefined);
+  assert.deepEqual(probe.requiredAuth, []);
+  assert.ok(probe.targets.every(target => target.regressionFilters.length === 0));
+  for (const row of probe.required) {
+    assert.deepEqual(full.required.find(candidate => candidate.name === row.name && candidate.target === row.target), row);
+  }
+  validateSources(root, probe);
+  const sample = probe.targets[0];
+  const requiredNames = probe.required.filter(row => row.target === sample.id).map(row => row.name);
+  assert.deepEqual(selectTests(sample, [...requiredNames, 'old::root_2014_unrelated'], probe.required, probe), requiredNames);
+  assert.throws(() => selectTests(sample, [...requiredNames, 'new::root_2014_r3_probe_unmapped'], probe.required, probe), /unmapped/u);
 });
