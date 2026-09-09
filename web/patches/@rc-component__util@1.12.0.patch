@@ -1,0 +1,190 @@
+diff --git a/es/Dom/focus.js b/es/Dom/focus.js
+index 4969cabc17c476c25d20365028d40c577ffebfe1..0fa0762bf5777718d6d5c929669ac96352b54726 100644
+--- a/es/Dom/focus.js
++++ b/es/Dom/focus.js
+@@ -80,6 +80,22 @@ const ignoredElementMap = new Map();
+ function getLastElement() {
+   return focusElements[focusElements.length - 1];
+ }
++// Focus locks also run inside Shadow DOM. Resolve the focused control and
++// compare composed ancestry instead of treating its host as external focus.
++function getActiveElement() {
++  let activeElement = document.activeElement;
++  while (activeElement?.shadowRoot?.activeElement) {
++    activeElement = activeElement.shadowRoot.activeElement;
++  }
++  return activeElement;
++}
++function containsFocus(root, element) {
++  while (root && element) {
++    if (root.contains(element)) return true;
++    element = element.getRootNode().host;
++  }
++  return false;
++}
+ function isIgnoredElement(element) {
+   const lastElement = getLastElement();
+   if (element && lastElement) {
+@@ -92,21 +108,17 @@ function isIgnoredElement(element) {
+       }
+     }
+     const ignoredEle = ignoredElementMap.get(lockId);
+-    return !!ignoredEle && (ignoredEle === element || ignoredEle.contains(element));
++    return !!ignoredEle && containsFocus(ignoredEle, element);
+   }
+   return false;
+ }
+ function hasFocus(element) {
+-  const {
+-    activeElement
+-  } = document;
+-  return element === activeElement || element.contains(activeElement);
++  const activeElement = getActiveElement();
++  return containsFocus(element, activeElement);
+ }
+ function syncFocus() {
+   const lastElement = getLastElement();
+-  const {
+-    activeElement
+-  } = document;
++  const activeElement = getActiveElement();
+ 
+   // If current focus is on an ignored element, don't force it back
+   if (isIgnoredElement(activeElement)) {
+@@ -124,9 +136,7 @@ function syncFocus() {
+ }
+ function onWindowKeyDown(e) {
+   if (e.key === 'Tab') {
+-    const {
+-      activeElement
+-    } = document;
++    const activeElement = getActiveElement();
+     const lastElement = getLastElement();
+     const focusableList = getFocusNodeList(lastElement);
+     const last = focusableList[focusableList.length - 1];
+@@ -146,6 +156,7 @@ function onWindowKeyDown(e) {
+  * @param id - A stable ID for this lock instance
+  */
+ export function lockFocus(element, id) {
++  const focusRoot = element?.getRootNode();
+   if (element) {
+     // Store the mapping between ID and element
+     idToElementMap.set(id, element);
+@@ -156,6 +167,11 @@ export function lockFocus(element, id) {
+ 
+     // Just add event since it will de-duplicate
+     window.addEventListener('focusin', syncFocus);
++    // Focus transitions within one shadow root are retargeted away before
++    // reaching window. Listen at that root to keep the lock state current.
++    if (focusRoot && focusRoot !== document) {
++      focusRoot.addEventListener('focusin', syncFocus);
++    }
+     window.addEventListener('keydown', onWindowKeyDown, true);
+     syncFocus();
+   }
+@@ -166,6 +182,10 @@ export function lockFocus(element, id) {
+     focusElements = focusElements.filter(ele => ele !== element);
+     idToElementMap.delete(id);
+     ignoredElementMap.delete(id);
++    if (focusRoot && focusRoot !== document &&
++        !focusElements.some(ele => ele.getRootNode() === focusRoot)) {
++      focusRoot.removeEventListener('focusin', syncFocus);
++    }
+     if (focusElements.length === 0) {
+       window.removeEventListener('focusin', syncFocus);
+       window.removeEventListener('keydown', onWindowKeyDown, true);
+diff --git a/lib/Dom/focus.js b/lib/Dom/focus.js
+index 840664019cf88c791d01963b921451ee7bffa5d6..c72d05f44a45a08463b5371739731ad15ec7bbb7 100644
+--- a/lib/Dom/focus.js
++++ b/lib/Dom/focus.js
+@@ -90,6 +90,22 @@ const ignoredElementMap = new Map();
+ function getLastElement() {
+   return focusElements[focusElements.length - 1];
+ }
++// Focus locks also run inside Shadow DOM. Resolve the focused control and
++// compare composed ancestry instead of treating its host as external focus.
++function getActiveElement() {
++  let activeElement = document.activeElement;
++  while (activeElement?.shadowRoot?.activeElement) {
++    activeElement = activeElement.shadowRoot.activeElement;
++  }
++  return activeElement;
++}
++function containsFocus(root, element) {
++  while (root && element) {
++    if (root.contains(element)) return true;
++    element = element.getRootNode().host;
++  }
++  return false;
++}
+ function isIgnoredElement(element) {
+   const lastElement = getLastElement();
+   if (element && lastElement) {
+@@ -102,21 +118,17 @@ function isIgnoredElement(element) {
+       }
+     }
+     const ignoredEle = ignoredElementMap.get(lockId);
+-    return !!ignoredEle && (ignoredEle === element || ignoredEle.contains(element));
++    return !!ignoredEle && containsFocus(ignoredEle, element);
+   }
+   return false;
+ }
+ function hasFocus(element) {
+-  const {
+-    activeElement
+-  } = document;
+-  return element === activeElement || element.contains(activeElement);
++  const activeElement = getActiveElement();
++  return containsFocus(element, activeElement);
+ }
+ function syncFocus() {
+   const lastElement = getLastElement();
+-  const {
+-    activeElement
+-  } = document;
++  const activeElement = getActiveElement();
+ 
+   // If current focus is on an ignored element, don't force it back
+   if (isIgnoredElement(activeElement)) {
+@@ -134,9 +146,7 @@ function syncFocus() {
+ }
+ function onWindowKeyDown(e) {
+   if (e.key === 'Tab') {
+-    const {
+-      activeElement
+-    } = document;
++    const activeElement = getActiveElement();
+     const lastElement = getLastElement();
+     const focusableList = getFocusNodeList(lastElement);
+     const last = focusableList[focusableList.length - 1];
+@@ -156,6 +166,7 @@ function onWindowKeyDown(e) {
+  * @param id - A stable ID for this lock instance
+  */
+ function lockFocus(element, id) {
++  const focusRoot = element?.getRootNode();
+   if (element) {
+     // Store the mapping between ID and element
+     idToElementMap.set(id, element);
+@@ -166,6 +177,11 @@ function lockFocus(element, id) {
+ 
+     // Just add event since it will de-duplicate
+     window.addEventListener('focusin', syncFocus);
++    // Focus transitions within one shadow root are retargeted away before
++    // reaching window. Listen at that root to keep the lock state current.
++    if (focusRoot && focusRoot !== document) {
++      focusRoot.addEventListener('focusin', syncFocus);
++    }
+     window.addEventListener('keydown', onWindowKeyDown, true);
+     syncFocus();
+   }
+@@ -176,6 +192,10 @@ function lockFocus(element, id) {
+     focusElements = focusElements.filter(ele => ele !== element);
+     idToElementMap.delete(id);
+     ignoredElementMap.delete(id);
++    if (focusRoot && focusRoot !== document &&
++        !focusElements.some(ele => ele.getRootNode() === focusRoot)) {
++      focusRoot.removeEventListener('focusin', syncFocus);
++    }
+     if (focusElements.length === 0) {
+       window.removeEventListener('focusin', syncFocus);
+       window.removeEventListener('keydown', onWindowKeyDown, true);

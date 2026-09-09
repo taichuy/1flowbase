@@ -22,5 +22,7 @@ overrides:
   ws: 8.21.2
 
 patchedDependencies:
+  '@rc-component/dialog@1.10.0': patches/@rc-component__dialog@1.10.0.patch
   '@rc-component/drawer@1.4.2': patches/@rc-component__drawer@1.4.2.patch
+  '@rc-component/util@1.12.0': patches/@rc-component__util@1.12.0.patch
   react-grid-layout@2.2.3: patches/react-grid-layout@2.2.3.patch

@@ -997,14 +997,38 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
       }
       onMouseEnter={isDesignMode ? () => setIsHovered(true) : undefined}
       onMouseLeave={isDesignMode ? () => setIsHovered(false) : undefined}
-      onClick={handleSelect}
+      onClick={(event) => {
+        // Keyboard/assistive activation belongs to the originating control.
+        // Pointer selection keeps the existing design-canvas behavior.
+        if (
+          event.defaultPrevented ||
+          (event.detail === 0 &&
+            event.nativeEvent.composedPath()[0] !== event.currentTarget)
+        )
+          return;
+        handleSelect();
+      }}
       role={isDesignMode ? 'button' : undefined}
       tabIndex={isDesignMode ? 0 : -1}
       onKeyDown={(event) => {
-        if (isDesignMode && (event.key === 'Enter' || event.key === ' ')) {
-          event.preventDefault();
-          handleSelect();
-        }
+        // The slot owns only its own activation, never keys from runtime
+        // controls or portals. composedPath avoids Shadow DOM retargeting;
+        // unprevented input events still belong to the browser, not the canvas.
+        if (
+          !isDesignMode ||
+          event.defaultPrevented ||
+          event.nativeEvent.isComposing ||
+          event.nativeEvent.keyCode === 229 ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey ||
+          event.shiftKey ||
+          event.nativeEvent.composedPath()[0] !== event.currentTarget ||
+          (event.key !== 'Enter' && event.key !== ' ')
+        )
+          return;
+        event.preventDefault();
+        handleSelect();
       }}
     >
       {isDesignMode ? (

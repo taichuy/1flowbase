@@ -1,0 +1,124 @@
+diff --git a/es/Dialog/index.js b/es/Dialog/index.js
+index 6a970f7396c0b0c8573e44e4272cbfe930f551ba..d43bb5382f62092f489736e0d97e7b9e5973206b 100644
+--- a/es/Dialog/index.js
++++ b/es/Dialog/index.js
+@@ -1,6 +1,6 @@
+ function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
+ import { clsx } from 'clsx';
+-import { contains, useId, pickAttrs, warning } from '@rc-component/util';
++import { useId, pickAttrs, warning } from '@rc-component/util';
+ import * as React from 'react';
+ import { useEffect, useRef } from 'react';
+ import { getMotionName } from "../util";
+@@ -50,13 +50,29 @@ const Dialog = props => {
+ 
+   // ========================== Init ==========================
+   const ariaId = useId();
++  // A document reports the shadow host, not the focused control. Keep the
++  // original trigger and ownership checks in the composed focus tree.
++  function getActiveElement() {
++    let activeElement = wrapperRef.current?.ownerDocument.activeElement;
++    while (activeElement?.shadowRoot?.activeElement) {
++      activeElement = activeElement.shadowRoot.activeElement;
++    }
++    return activeElement;
++  }
++  function containsFocus(root, element) {
++    while (root && element) {
++      if (root.contains(element)) return true;
++      element = element.getRootNode().host;
++    }
++    return false;
++  }
+   function saveLastOutSideActiveElementRef() {
+-    if (!contains(wrapperRef.current, document.activeElement)) {
+-      lastOutSideActiveElementRef.current = document.activeElement;
++    if (!containsFocus(wrapperRef.current, getActiveElement())) {
++      lastOutSideActiveElementRef.current = getActiveElement();
+     }
+   }
+   function focusDialogContent() {
+-    if (!contains(wrapperRef.current, document.activeElement)) {
++    if (!containsFocus(wrapperRef.current, getActiveElement())) {
+       contentRef.current?.focus();
+     }
+   }
+@@ -114,6 +130,20 @@ const Dialog = props => {
+     mouseDownOnMaskRef.current = e.target === wrapperRef.current;
+   }
+ 
++  // Controlled callers may remove the Modal instead of setting visible=false.
++  // Restore only after child focus locks have unregistered. A StrictMode replay
++  // keeps the wrapper mounted and must not move focus back to the trigger.
++  useEffect(() => () => {
++    const trigger = lastOutSideActiveElementRef.current;
++    if (mask && focusTriggerAfterClose && trigger) {
++      queueMicrotask(() => {
++        if (!wrapperRef.current && trigger.isConnected) {
++          trigger.focus({ preventScroll: true });
++        }
++      });
++    }
++  }, [mask, focusTriggerAfterClose]);
++
+   // ========================= Effect =========================
+   useEffect(() => {
+     if (visible) {
+diff --git a/lib/Dialog/index.js b/lib/Dialog/index.js
+index e75771dba200925db532354f0bcf842995337952..c1c538fb7784231d0ded9b673350ab59a940d22a 100644
+--- a/lib/Dialog/index.js
++++ b/lib/Dialog/index.js
+@@ -59,13 +59,29 @@ const Dialog = props => {
+ 
+   // ========================== Init ==========================
+   const ariaId = (0, _util.useId)();
++  // A document reports the shadow host, not the focused control. Keep the
++  // original trigger and ownership checks in the composed focus tree.
++  function getActiveElement() {
++    let activeElement = wrapperRef.current?.ownerDocument.activeElement;
++    while (activeElement?.shadowRoot?.activeElement) {
++      activeElement = activeElement.shadowRoot.activeElement;
++    }
++    return activeElement;
++  }
++  function containsFocus(root, element) {
++    while (root && element) {
++      if (root.contains(element)) return true;
++      element = element.getRootNode().host;
++    }
++    return false;
++  }
+   function saveLastOutSideActiveElementRef() {
+-    if (!(0, _util.contains)(wrapperRef.current, document.activeElement)) {
+-      lastOutSideActiveElementRef.current = document.activeElement;
++    if (!containsFocus(wrapperRef.current, getActiveElement())) {
++      lastOutSideActiveElementRef.current = getActiveElement();
+     }
+   }
+   function focusDialogContent() {
+-    if (!(0, _util.contains)(wrapperRef.current, document.activeElement)) {
++    if (!containsFocus(wrapperRef.current, getActiveElement())) {
+       contentRef.current?.focus();
+     }
+   }
+@@ -123,6 +139,20 @@ const Dialog = props => {
+     mouseDownOnMaskRef.current = e.target === wrapperRef.current;
+   }
+ 
++  // Controlled callers may remove the Modal instead of setting visible=false.
++  // Restore only after child focus locks have unregistered. A StrictMode replay
++  // keeps the wrapper mounted and must not move focus back to the trigger.
++  (0, _react.useEffect)(() => () => {
++    const trigger = lastOutSideActiveElementRef.current;
++    if (mask && focusTriggerAfterClose && trigger) {
++      queueMicrotask(() => {
++        if (!wrapperRef.current && trigger.isConnected) {
++          trigger.focus({ preventScroll: true });
++        }
++      });
++    }
++  }, [mask, focusTriggerAfterClose]);
++
+   // ========================= Effect =========================
+   (0, _react.useEffect)(() => {
+     if (visible) {
