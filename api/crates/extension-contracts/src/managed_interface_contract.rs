@@ -280,11 +280,31 @@ fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
             return Ok(());
         }
     }
-    match object
+    let kind = object
         .get("type")
         .and_then(Value::as_str)
-        .ok_or_else(invalid_schema)?
-    {
+        .ok_or_else(invalid_schema)?;
+    let applicable: &[&str] = match kind {
+        "object" => &[
+            "type",
+            "properties",
+            "required",
+            "additionalProperties",
+            "enum",
+            "const",
+        ],
+        "array" => &["type", "items", "maxItems", "minItems", "enum", "const"],
+        "string" => &["type", "maxLength", "minLength", "enum", "const"],
+        "integer" | "number" => &["type", "minimum", "maximum", "enum", "const"],
+        "null" | "boolean" => &["type", "enum", "const"],
+        _ => return Err(invalid_schema()),
+    };
+    // JSON Schema compiles even inapplicable applicators. Do not let e.g. `items` on a
+    // string conceal a reference outside the recursively checked schema vocabulary.
+    if object.keys().any(|key| !applicable.contains(&key.as_str())) {
+        return Err(invalid_schema());
+    }
+    match kind {
         "object" => {
             if object.get("additionalProperties") != Some(&Value::Bool(false)) {
                 return Err(invalid_schema());

@@ -31,6 +31,8 @@ fn root_2014_managed_schema_rejects_unknown_fields_and_oversize() {
     }
     for schema in [
         json!({"$ref":"https://example.invalid/credential-schema"}),
+        json!({"type":"integer","properties":{"x":{"$ref":"https://example.invalid/hidden"}}}),
+        json!({"type":"string","maxLength":32,"items":{"$ref":"https://example.invalid/hidden"}}),
         json!({"type":"object"}),
         json!({"type":"array","items":{"type":"integer"}}),
         json!({"type":"string"}),
