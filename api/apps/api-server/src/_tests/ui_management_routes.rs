@@ -459,6 +459,12 @@ schema_version: 1flowbase.host-extension/v1
 extension_id: northwind.settings-page
 version: {version}
 bootstrap_phase: boot
+owned_resources: []
+extends_resources: []
+infrastructure_providers: []
+routes: []
+workers: []
+migrations: []
 native:
   abi_version: 1flowbase.host.native/v1
   library: builtin://northwind.settings-page
