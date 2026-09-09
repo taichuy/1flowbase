@@ -8,6 +8,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdin()
         .take((extension_contracts::MANAGED_HOOK_MAX_FRAME_BYTES + 1) as u64)
         .read_to_end(&mut raw)?;
+    let protocol: serde_json::Value = serde_json::from_slice(&raw)?;
+    if protocol["protocol"] == extension_contracts::MANAGED_INTERFACE_PROTOCOL_V1 {
+        return serve_interface(&raw);
+    }
     let request: extension_contracts::ManagedHookHostFrame = serde_json::from_slice(&raw)?;
     if request.handler.starts_with("trace.") {
         let executable = std::env::current_exe()?;
@@ -143,6 +147,81 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             input if input.is_observer() => ManagedHookOutcome::Observed,
             _ => ManagedHookOutcome::Continue,
+        }
+    })?;
+    Ok(())
+}
+
+/// Versioned generic peer exercises the same executable/process boundary as legacy fixtures.
+fn serve_interface(raw: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    use extension_contracts::{
+        HookPhase, ManagedInterfaceHostFrame, MANAGED_INTERFACE_PROTOCOL_V1,
+    };
+    let request: ManagedInterfaceHostFrame = serde_json::from_slice(raw)?;
+    let executable = std::env::current_exe()?;
+    if request.handler.starts_with("trace.") {
+        let mut trace = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(executable.with_extension("trace"))?;
+        serde_json::to_writer(&mut trace, &request)?;
+        trace.write_all(b"\n")?;
+    }
+    if let Some(attack) = request.handler.strip_prefix("attack.") {
+        let mut response = serde_json::json!({"protocol":MANAGED_INTERFACE_PROTOCOL_V1,
+            "call_id":request.call_id,"phase":request.input.phase(),"outcome":{"decision":"observed"}});
+        match attack {
+            "identity" => response["actor_id"] = serde_json::json!("forged"),
+            "patch" | "observed_patch" => {
+                response["outcome"]["patch"] = serde_json::json!({"code":"forged"})
+            }
+            "correlation" => response["call_id"] = serde_json::json!("forged"),
+            "observer_deny" => {
+                response["outcome"] =
+                    serde_json::json!({"decision":"deny","classification":"denied"})
+            }
+            "phase" => response["phase"] = serde_json::json!("authorization"),
+            _ => return Err("unknown interface fixture attack".into()),
+        }
+        serde_json::to_writer(std::io::stdout(), &response)?;
+        return Ok(());
+    }
+    runtime_extension_sdk::serve_managed_interface_hook(raw, std::io::stdout().lock(), |frame| {
+        let phase = frame
+            .handler
+            .strip_prefix("trace.")
+            .unwrap_or(&frame.handler);
+        let mode = std::fs::read_to_string(executable.with_extension("mode")).unwrap_or_default();
+        if mode.trim() == format!("deny.{phase}") {
+            return ManagedHookOutcome::Deny {
+                classification: "fixture.denied".into(),
+            };
+        }
+        if mode.trim() == format!("fail.{phase}") {
+            return ManagedHookOutcome::Failed {
+                classification: "fixture.failed".into(),
+            };
+        }
+        if frame.handler == "sleep" || mode.trim() == format!("timeout.{phase}") {
+            std::fs::write(
+                executable.with_extension("pid"),
+                std::process::id().to_string(),
+            )
+            .unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+        if mode.trim() == format!("barrier.{phase}") {
+            std::fs::write(executable.with_extension("started"), "started").unwrap();
+            while !executable.with_extension("release").is_file() {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        if frame.handler == "crash" {
+            std::process::exit(7);
+        }
+        match frame.input.phase() {
+            HookPhase::Authorization | HookPhase::Admission => ManagedHookOutcome::Continue,
+            _ => ManagedHookOutcome::Observed,
         }
     })?;
     Ok(())

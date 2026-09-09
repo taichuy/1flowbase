@@ -280,7 +280,25 @@ pub struct RuntimeManagedHookRequest {
     pub handle: extension_contracts::extension_bus::ManagedExecutionHandle,
     pub principal: RuntimeExecutionPrincipal,
     pub invocation: extension_contracts::ManagedHookInvocation,
-    pub input: extension_contracts::ManagedCreateHookInput,
+    pub input: RuntimeManagedHookInput,
+}
+
+/// Existing versioned Create peers remain a regression consumer; new canonical registrations
+/// always use Interface. Neither variant lets a worker supply trusted host identity.
+#[derive(Debug, Clone)]
+pub enum RuntimeManagedHookInput {
+    LegacyCreate(extension_contracts::ManagedCreateHookInput),
+    Interface {
+        interface_id: String,
+        interface_version: String,
+        input: extension_contracts::ManagedInterfaceInput,
+    },
+}
+
+impl From<extension_contracts::ManagedCreateHookInput> for RuntimeManagedHookInput {
+    fn from(input: extension_contracts::ManagedCreateHookInput) -> Self {
+        Self::LegacyCreate(input)
+    }
 }
 
 pub type AdmittedManagedEvent = std::pin::Pin<

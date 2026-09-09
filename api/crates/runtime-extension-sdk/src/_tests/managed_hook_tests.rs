@@ -38,3 +38,46 @@ fn root_2007_ac_003_004_hook_transport_sdk() {
     )
     .is_err());
 }
+
+#[test]
+fn root_2014_interface_sdk_correlates_and_rejects_observer_veto() {
+    let host = serde_json::json!({
+        "protocol":MANAGED_INTERFACE_PROTOCOL_V1,"call_id":"host-call", "handler":"completion",
+        "interface_id":"host_infrastructure.providers.view", "interface_version":"1",
+        "context": {
+            "invocation":{"invocation_id":"call", "registry_fingerprint":"registry", "graph_fingerprint":"graph", "authority_revision":2},
+            "execution_identity": ManagedExecutionIdentity::new(ManagedInstallationId::new("installation").unwrap(), ManagedWorkspaceId::new("workspace").unwrap(), ContributionId::new("completion").unwrap(), ManagedArtifactFingerprint::from_bytes(b"v1"), ManagedBindingFingerprint::from_bytes(b"binding")),
+            "generation":1, "deadline_unix_ms":10, "actor_id":null
+        },
+        "input":{"phase":"completion", "terminal":"succeeded"}
+    });
+    let raw = serde_json::to_vec(&host).unwrap();
+    let mut output = Vec::new();
+    crate::serve_managed_interface_hook(Cursor::new(&raw), &mut output, |_| {
+        ManagedHookOutcome::Observed
+    })
+    .unwrap();
+    let response: ManagedInterfaceWorkerFrame = serde_json::from_slice(&output).unwrap();
+    response
+        .validate_for(&serde_json::from_value(host.clone()).unwrap())
+        .unwrap();
+    assert_eq!(response.call_id, "host-call");
+    output.clear();
+    assert!(
+        crate::serve_managed_interface_hook(Cursor::new(&raw), &mut output, |_| {
+            ManagedHookOutcome::Deny {
+                classification: "denied".into(),
+            }
+        })
+        .is_err()
+    );
+    assert!(output.is_empty());
+    let mut forged = host;
+    forged["protocol"] = serde_json::json!("unknown/version");
+    assert!(crate::serve_managed_interface_hook(
+        Cursor::new(serde_json::to_vec(&forged).unwrap()),
+        Vec::new(),
+        |_| panic!("invalid frame reached author")
+    )
+    .is_err());
+}

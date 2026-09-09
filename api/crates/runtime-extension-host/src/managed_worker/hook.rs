@@ -4,7 +4,7 @@ use extension_contracts::{
     ManagedHookHostContext, ManagedHookHostFrame, ManagedHookOutcome, MANAGED_HOOK_PROTOCOL_V1,
 };
 use extension_package_runtime::{FrameworkResult, PluginExecutionMode};
-use runtime_core::runtime_backend::RuntimeManagedHookRequest;
+use runtime_core::runtime_backend::{RuntimeManagedHookInput, RuntimeManagedHookRequest};
 
 use super::{hook_stdio, invalid, ManagedWorkers};
 
@@ -23,8 +23,21 @@ impl ManagedWorkers {
         if request.principal.workspace_id != request.handle.identity().workspace_id().as_str() {
             return Err(invalid("managed hook workspace mismatch").into());
         }
+        let (point_id, phase) = match &request.input {
+            RuntimeManagedHookInput::LegacyCreate(input) => {
+                (input.point_id().to_owned(), input.phase())
+            }
+            RuntimeManagedHookInput::Interface {
+                interface_id,
+                input,
+                ..
+            } => (
+                extension_contracts::managed_interface_hook_point_id(interface_id, input.phase()),
+                input.phase(),
+            ),
+        };
         if binding.execution_mode != PluginExecutionMode::ProcessPerCall
-            || binding.contribution.point_id.as_str() != request.input.point_id()
+            || binding.contribution.point_id.as_str() != point_id
             || binding.contribution.contract_version.as_str() != "1"
         {
             return Err(
@@ -37,7 +50,12 @@ impl ManagedWorkers {
             .filter(|value| *value > 0)
             .ok_or_else(|| invalid("managed hook deadline has expired"))?;
         // Kernel owns the shared observer budget; this additional cap bounds a standalone port call.
-        let phase_limit = if request.input.is_observer() {
+        let phase_limit = if matches!(
+            phase,
+            extension_contracts::extension_bus::HookPhase::After
+                | extension_contracts::extension_bus::HookPhase::Failure
+                | extension_contracts::extension_bus::HookPhase::Completion
+        ) {
             1_000
         } else {
             30_000
@@ -52,27 +70,38 @@ impl ManagedWorkers {
                 value.checked_add(1)
             })
             .map_err(|_| invalid("managed hook call sequence exhausted"))?;
-        let frame = ManagedHookHostFrame {
-            protocol: MANAGED_HOOK_PROTOCOL_V1.into(),
-            call_id: format!("hook-{sequence}"),
-            handler: binding.handler.clone(),
-            context: ManagedHookHostContext {
-                invocation: request.invocation,
-                execution_identity: request.handle.identity().clone(),
-                generation: request.handle.generation(),
-                deadline_unix_ms,
-                actor_id: request.principal.actor_id,
-            },
-            input: request.input,
+        let context = ManagedHookHostContext {
+            invocation: request.invocation,
+            execution_identity: request.handle.identity().clone(),
+            generation: request.handle.generation(),
+            deadline_unix_ms,
+            actor_id: request.principal.actor_id,
         };
-        frame
-            .validate()
-            .map_err(|error| invalid(&error.to_string()))?;
-        let payload = serde_json::to_vec(&frame)
-            .map_err(|_| invalid("managed hook frame cannot be encoded"))?;
-        if payload.len() > extension_contracts::MANAGED_HOOK_MAX_FRAME_BYTES {
-            return Err(invalid("managed hook request exceeds frame limit").into());
-        }
+        let frame = match request.input {
+            RuntimeManagedHookInput::LegacyCreate(input) => {
+                hook_stdio::HookFrame::LegacyCreate(ManagedHookHostFrame {
+                    protocol: MANAGED_HOOK_PROTOCOL_V1.into(),
+                    call_id: format!("hook-{sequence}"),
+                    handler: binding.handler.clone(),
+                    context,
+                    input,
+                })
+            }
+            RuntimeManagedHookInput::Interface {
+                interface_id,
+                interface_version,
+                input,
+            } => hook_stdio::HookFrame::Interface(extension_contracts::ManagedInterfaceHostFrame {
+                protocol: extension_contracts::MANAGED_INTERFACE_PROTOCOL_V1.into(),
+                call_id: format!("hook-{sequence}"),
+                handler: binding.handler.clone(),
+                interface_id,
+                interface_version,
+                context,
+                input,
+            }),
+        };
+        let payload = frame.encode()?;
         let lease = mounted
             .scope
             .admit_generation(request.handle.generation().get())?;

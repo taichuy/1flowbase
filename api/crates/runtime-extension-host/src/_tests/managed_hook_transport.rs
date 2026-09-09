@@ -96,7 +96,7 @@ fn request(
 ) -> RuntimeManagedHookRequest {
     RuntimeManagedHookRequest {
         handle,
-        input,
+        input: input.into(),
         principal: RuntimeExecutionPrincipal {
             workspace_id: "workspace-1".into(),
             actor_id: Some("actor-1".into()),
@@ -592,4 +592,63 @@ async fn root_2007_ac_010_lane_budgets_capability_output_and_reap() {
         workers.finish_unmount(&handle);
         assert_eq!(workers.loaded_count(), 0);
     }
+}
+
+/// Root #2014 AC-004: actual generic worker wire, including malicious peer responses.
+#[tokio::test]
+async fn root_2014_interface_transport_real_sdk_and_peer_rejection() {
+    use runtime_core::runtime_backend::RuntimeManagedHookInput;
+    let fixture = WorkerFixture::new();
+    let legacy = ManagedCreateHookInput::Completion {
+        terminal: ManagedHookTerminal::Succeeded,
+    };
+    for handler in [
+        "completion",
+        "attack.identity",
+        "attack.patch",
+        "attack.correlation",
+        "attack.observer_deny",
+        "attack.phase",
+    ] {
+        let mut binding = fixture.binding(&legacy, handler);
+        binding.contribution.point_id = ExtensionPointId::new(managed_interface_hook_point_id(
+            "host_infrastructure.providers.view",
+            HookPhase::Completion,
+        ))
+        .unwrap();
+        let mut workers = ManagedWorkers::default();
+        let handle = workers.mount(identity(), binding).unwrap();
+        let mut call = request(handle.clone(), legacy.clone());
+        call.input = RuntimeManagedHookInput::Interface {
+            interface_id: "host_infrastructure.providers.view".into(),
+            interface_version: "1".into(),
+            input: ManagedInterfaceInput::Completion {
+                terminal: ManagedHookTerminal::Succeeded,
+            },
+        };
+        let result = workers.admit_hook(call).unwrap().await;
+        if handler == "completion" {
+            assert_eq!(result.unwrap(), ManagedHookOutcome::Observed);
+        } else {
+            assert!(result.is_err(), "malicious peer accepted: {handler}");
+        }
+        workers.unmount(&handle).unwrap().dispose().await.unwrap();
+    }
+    let mut workers = ManagedWorkers::default();
+    let handle = workers
+        .mount(identity(), fixture.binding(&legacy, "completion"))
+        .unwrap();
+    let mut call = request(handle.clone(), legacy);
+    call.input = RuntimeManagedHookInput::Interface {
+        interface_id: "different.interface".into(),
+        interface_version: "1".into(),
+        input: ManagedInterfaceInput::Completion {
+            terminal: ManagedHookTerminal::Succeeded,
+        },
+    };
+    assert!(
+        workers.admit_hook(call).is_err(),
+        "different bound interface must fail before spawn"
+    );
+    workers.unmount(&handle).unwrap().dispose().await.unwrap();
 }

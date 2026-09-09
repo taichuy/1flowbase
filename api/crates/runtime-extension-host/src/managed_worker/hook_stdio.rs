@@ -14,7 +14,7 @@ use super::{invalid, LoadedManagedBinding};
 /// Isolated additive wire family. Provider/capability stdout parsing is intentionally not involved.
 pub(super) async fn exchange(
     binding: &LoadedManagedBinding,
-    frame: &ManagedHookHostFrame,
+    frame: &HookFrame,
     payload: Vec<u8>,
     lease: std::sync::Arc<crate::plugin_scope::PluginScopeLease>,
 ) -> FrameworkResult<ManagedHookOutcome> {
@@ -75,10 +75,54 @@ pub(super) async fn exchange(
     if !status.success() {
         return Err(invalid("managed hook worker exited unsuccessfully"));
     }
-    let response: ManagedHookWorkerFrame = serde_json::from_slice(&bytes)
-        .map_err(|_| invalid("managed hook response is malformed"))?;
-    response
-        .validate_for(frame)
-        .map_err(|error| invalid(&error.to_string()))?;
-    Ok(response.outcome)
+    frame.decode_response(&bytes)
+}
+
+pub(super) enum HookFrame {
+    LegacyCreate(ManagedHookHostFrame),
+    Interface(extension_contracts::ManagedInterfaceHostFrame),
+}
+impl HookFrame {
+    pub(super) fn encode(&self) -> FrameworkResult<Vec<u8>> {
+        let bytes = match self {
+            Self::LegacyCreate(frame) => {
+                frame
+                    .validate()
+                    .map_err(|error| invalid(&error.to_string()))?;
+                serde_json::to_vec(frame)
+            }
+            Self::Interface(frame) => {
+                frame
+                    .validate()
+                    .map_err(|error| invalid(&error.to_string()))?;
+                serde_json::to_vec(frame)
+            }
+        }
+        .map_err(|_| invalid("managed hook frame cannot be encoded"))?;
+        if bytes.len() > MANAGED_HOOK_MAX_FRAME_BYTES {
+            return Err(invalid("managed hook request exceeds frame limit"));
+        }
+        Ok(bytes)
+    }
+    fn decode_response(&self, bytes: &[u8]) -> FrameworkResult<ManagedHookOutcome> {
+        match self {
+            Self::LegacyCreate(frame) => {
+                let response: ManagedHookWorkerFrame = serde_json::from_slice(bytes)
+                    .map_err(|_| invalid("managed hook response is malformed"))?;
+                response
+                    .validate_for(frame)
+                    .map_err(|error| invalid(&error.to_string()))?;
+                Ok(response.outcome)
+            }
+            Self::Interface(frame) => {
+                let response: extension_contracts::ManagedInterfaceWorkerFrame =
+                    serde_json::from_slice(bytes)
+                        .map_err(|_| invalid("managed interface response is malformed"))?;
+                response
+                    .validate_for(frame)
+                    .map_err(|error| invalid(&error.to_string()))?;
+                Ok(response.outcome)
+            }
+        }
+    }
 }

@@ -347,3 +347,16 @@ fn validate_schema_shape(schema: &Value, depth: usize) -> ContractResult {
     }
     Ok(())
 }
+
+/// Stable canonical registration identity, shared by boot compiler, grant policy and Host admission.
+pub fn managed_interface_hook_point_id(interface_id: &str, phase: HookPhase) -> String {
+    let phase = match phase {
+        HookPhase::Authorization => "authorization",
+        HookPhase::Admission => "admission",
+        HookPhase::Before => "before",
+        HookPhase::After => "after",
+        HookPhase::Failure => "failure",
+        HookPhase::Completion => "completion",
+    };
+    format!("1flowbase.interface.{interface_id}.{phase}")
+}
