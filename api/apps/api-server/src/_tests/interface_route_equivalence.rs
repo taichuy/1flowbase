@@ -95,3 +95,49 @@ fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
     assert!(!workflow_extension.contains("require_session(&state"));
     assert!(!workflow_extension.contains("require_csrf(&headers"));
 }
+
+
+// E00 metadata-only diagnostic; never invoked as a product acceptance test.
+#[tokio::test]
+async fn root_2014_e00_export_compiled_snapshot() {
+    use serde_json::json;
+    let (state, _) = test_api_state_with_database_url().await;
+    let boot = state.extension_boot_snapshot.as_ref().unwrap();
+    boot.publish_complete_catalog(&state).unwrap();
+    let registry = boot.interface_registry().unwrap().snapshot();
+    let contract = |c: &interface_runtime::ContractIdentity| json!({"id": c.contract_id(), "version": c.version()});
+    let definitions: Vec<_> = registry.definitions().map(|d| json!({
+        "interface_id": d.interface_id().as_str(), "version": d.version().as_str(),
+        "owner": d.owner().as_str(), "mode": format!("{:?}", d.execution_mode()),
+        "registration_lifecycle": format!("{:?}", d.lifecycle()),
+        "principal_profile": format!("{:?}", d.principal_profile()),
+        "authentication_policy": format!("{:?}", d.authentication()),
+        "scope": format!("{:?}", d.scope()), "authorization_operation": d.authorization_operation().as_str(),
+        "input": contract(d.input_contract()), "output": contract(d.output_contract()),
+        "error": contract(d.target_error_contract()), "stream_event": d.stream_event_contract().map(contract),
+        "definition_debug": format!("{:?}", d)
+    })).collect();
+    let bindings: Vec<_> = registry.bindings().map(|b| {
+        let p = registry.plan(b.binding_id()).expect("every binding has a compiled plan");
+        json!({"binding_id": b.binding_id().as_str(), "interface_id": b.interface_identity().interface_id().as_str(),
+            "interface_version": b.interface_identity().version().as_str(),
+            "projection": format!("{:?}", b.projection()),
+            "binding_fingerprint": p.binding_fingerprint().as_str(), "plan_fingerprint": p.fingerprint().as_str(),
+            "authentication_activation": format!("{:?}",p.authentication()),
+            "adapter_plan": format!("{:?}",p.adapter_plan()),
+            "effective_handler": format!("{:?}",p.effective_handler()),
+            "extension_plan": format!("{:?}",p.extension_plan()),
+            "has_executable_extensions": p.has_executable_extensions()})
+    }).collect();
+    let output = json!({"schema": "root-2014-e00/v1", "source_sha": "ce355a56a4a3ec91acc627b5691daf06814c1225",
+        "harness_sha": std::env::var("GITHUB_SHA").ok(),
+        "configuration": "default_test_config + DEFAULT_PLUGIN_SET_PATH; no filesystem dropins; isolated PostgreSQL schema",
+        "graph_fingerprint": boot.fingerprint(), "registry_fingerprint": registry.fingerprint().as_str(),
+        "effective_extension_plan": serde_json::from_str::<serde_json::Value>(&boot.render_effective_plan().unwrap()).unwrap(),
+        "definition_count": definitions.len(), "binding_count": bindings.len(),
+        "definitions": definitions,"bindings": bindings});
+    let output_path = std::env::var("E00_OUTPUT").unwrap();
+    std::fs::write(output_path, serde_json::to_vec_pretty(&output).unwrap()).unwrap();
+    drop(registry);
+    drop(state); // Existing TestResources drops isolated schema and temporary filesystem roots.
+}

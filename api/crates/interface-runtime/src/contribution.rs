@@ -194,6 +194,7 @@ fn validate_definition_contribution(
 }
 
 fn contract_identity<T: InterfaceContract>() -> crate::ContractIdentity {
+    eprintln!("E00TYPE\t{}\t{}\t{}", T::CONTRACT_ID, T::CONTRACT_VERSION, std::any::type_name::<T>());
     crate::ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("typed definition contribution contract constants must be valid identities")
 }

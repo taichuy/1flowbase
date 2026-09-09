@@ -1,0 +1,52 @@
+name: Root 2014 E00 metadata evidence
+on:
+  push:
+    branches: [codex/root-2014-e00]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/plugin-composition-2007/target
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      E00_OUTPUT: ${{ github.workspace }}/tmp/test-governance/2014/compiled-snapshot.json
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tmp/quality-gate-cache/plugin-composition-2007/target
+          key: rust-plugin-composition-2007-nodebug-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
+          restore-keys: rust-plugin-composition-2007-nodebug-${{ runner.os }}-
+      - name: Export metadata once using existing isolated startup fixture
+        shell: bash
+        run: |
+          mkdir -p tmp/test-governance/2014
+          git rev-parse HEAD > tmp/test-governance/2014/harness-sha.txt
+          CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo test --manifest-path api/Cargo.toml -p api-server --lib _tests::interface_route_equivalence::root_2014_e00_export_compiled_snapshot -- --exact --nocapture > tmp/test-governance/2014/export.log 2>&1
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: root-2014-e00-${{ github.sha }}
+          path: tmp/test-governance/2014/
+          if-no-files-found: error

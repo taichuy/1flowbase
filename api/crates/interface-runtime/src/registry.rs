@@ -2062,6 +2062,7 @@ impl DynamicInterfaceRegistry {
 }
 
 fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
+    eprintln!("E00TYPE\t{}\t{}\t{}", T::CONTRACT_ID, T::CONTRACT_VERSION, std::any::type_name::<T>());
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("typed interface contract constants must be valid identities")
 }
