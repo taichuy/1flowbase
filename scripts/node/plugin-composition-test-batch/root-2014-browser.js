@@ -19,6 +19,9 @@ let browser;
 let pgEnv;
 fs.mkdirSync(output, { recursive: true });
 const runtime = fs.mkdtempSync(path.join(output, 'runtime-'));
+// Optimized chunks must resolve external dependencies through the app's node_modules ancestry.
+const viteCache = fs.mkdtempSync(path.join(root, 'web/app/node_modules/.vite-root2014-'));
+report.viteCache = viteCache;
 const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function command(program, args, options = {}) {
@@ -205,7 +208,7 @@ async function main() {
   };
   const restartA = async () => { await disposeSession(ownerA); await stop(a); a = await startApi('a'); ownerA = await session(bases.a, password); };
   a = await startApi('a'); ownerA = await session(bases.a, password);
-  const web = launch('web', 'pnpm', ['--dir', path.join(root, 'web/app'), 'exec', 'vite', '--host', '127.0.0.1', '--port', String(ports.web), '--strictPort'], { ...process.env, VITE_API_BASE_URL: '', VITE_API_PROXY_TARGET: bases.a, VITE_DEV_SERVER_PORT: String(ports.web), VITE_DEV_CACHE_DIR: path.join(runtime, 'vite-cache') }, path.join(root, 'web/app'));
+  const web = launch('web', 'pnpm', ['--dir', path.join(root, 'web/app'), 'exec', 'vite', '--host', '127.0.0.1', '--port', String(ports.web), '--strictPort'], { ...process.env, VITE_API_BASE_URL: '', VITE_API_PROXY_TARGET: bases.a, VITE_DEV_SERVER_PORT: String(ports.web), VITE_DEV_CACHE_DIR: viteCache }, path.join(root, 'web/app'));
   await ready(bases.web, web, true);
   const playwright = createRequire(path.join(root, 'web/package.json'))('playwright');
   browser = await playwright.chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
@@ -248,6 +251,7 @@ main().catch(error => { report.status = 'failed'; report.errors.push(error.stack
   if (browser) try { await browser.close(); } catch (error) { report.errors.push(`browser cleanup: ${error.message}`); }
   for (const owner of sessions) try { await disposeSession(owner); } catch (error) { report.errors.push(`session cleanup: ${error.message}`); }
   for (const child of children) try { await stop(child); } catch (error) { report.errors.push(`process cleanup: ${error.message}`); }
+  try { fs.rmSync(viteCache, { recursive: true, force: true }); } catch (error) { report.errors.push(`cache cleanup: ${error.message}`); }
   if (schemaCreated) try { sql(`drop schema "${schema}" cascade`); } catch (error) { report.errors.push(`schema cleanup: ${error.message}`); }
   if (report.errors.length) report.status = 'failed';
   report.finishedAt = new Date().toISOString();

@@ -56,6 +56,16 @@ try {
   if (report.candidate !== expected) throw new Error('checkout SHA differs from frozen candidate');
   if (process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_SHA !== expected) throw new Error('workflow dispatch definition SHA differs from frozen candidate; dispatch from candidate ref');
   if (requireCommand('tracked-clean', 'git', ['status', '--porcelain', '--untracked-files=no']).trim()) throw new Error('candidate tracked files are dirty');
+  if (manifest.batchMode === 'browser-candidate') {
+    const evidence = manifest.sourceEvidence;
+    requireCommand('reuse-source-is-ancestor', 'git', ['merge-base', '--is-ancestor', evidence.candidate, 'HEAD']);
+    const changed = requireCommand('reuse-source-diff', 'git', ['diff', '--name-only', evidence.candidate, 'HEAD']).split(/\r?\n/u).filter(Boolean);
+    if (changed.some(file => !evidence.allowedChanges.includes(file))) {
+      throw new Error('browser-only reuse rejected: product, fixtures or verification dependencies changed');
+    }
+    report.reusedEvidence = { candidate: evidence.candidate, run: evidence.run, changed,
+      rustTestsExecuted: false, verification: 'QA must verify source artifact; this batch only builds the candidate and tests changed tooling' };
+  }
   if (process.platform !== manifest.supportedPlatform) throw new Error('this finite batch requires Linux');
   if (env.CARGO_BUILD_TARGET) throw new Error('this native Linux batch does not accept CARGO_BUILD_TARGET');
   validateSources(root, manifest);

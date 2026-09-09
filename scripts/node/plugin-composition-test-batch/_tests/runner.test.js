@@ -145,3 +145,18 @@ test('R3 observer diagnostic stays on the installed host-chain exact test', () =
   const names = data.required.map(row => row.name);
   assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
 });
+
+
+test('browser continuation declares source reuse and runs only changed tooling with candidate build', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-browser-candidate-manifest.json').data;
+  assert.deepEqual(data.targets, []);
+  assert.deepEqual(data.required, []);
+  assert.deepEqual(data.workerFixtures, []);
+  assert.deepEqual(data.node.map(row => row.id), ['finite-selector']);
+  assert.equal(data.browserBinary.binary, 'api-server');
+  assert.equal(data.sourceEvidence.candidate, '4ea165f232a224ea7cfbe6f530d25c90e313c51d');
+  assert.ok(data.sourceEvidence.allowedChanges.every(file => !file.startsWith('api/') && !file.startsWith('web/')));
+  validateSources(root, data);
+});

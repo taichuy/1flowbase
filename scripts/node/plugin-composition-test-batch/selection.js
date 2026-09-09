@@ -27,6 +27,13 @@ function loadManifest(root, filename = process.env.PLUGIN_COMPOSITION_MANIFEST) 
       || data.workerFixtures?.length !== 1 || data.workerFixtures[0].example !== 'managed_hook_worker')) {
     throw new Error('R3 observer diagnostic must remain the frozen one-test batch');
   }
+  if (data.batchMode === 'browser-candidate' && (data.targets.length || data.required.length
+      || data.workerFixtures?.length !== 0 || data.node.length !== 1 || data.node[0].id !== 'finite-selector'
+      || data.browserBinary?.package !== 'api-server' || data.browserBinary.binary !== 'api-server'
+      || !/^[a-f0-9]{40}$/u.test(data.sourceEvidence?.candidate || '')
+      || !Array.isArray(data.sourceEvidence?.allowedChanges) || !data.sourceEvidence.allowedChanges.length)) {
+    throw new Error('browser candidate is build/tooling evidence only and requires explicit source reuse');
+  }
   return { data, filename: resolved };
 }
 function rootPrefixes(data) { return data.rootPrefixes || ['root_2007_']; }
