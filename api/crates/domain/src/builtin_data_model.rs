@@ -180,6 +180,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "reasoning_tokens"
         | "input_cache_hit_tokens"
         | "input_cache_write_tokens"
+        | "cache_write_tokens"
         | "input_cache_hit_rate"
         | "sequence" => crate::ModelFieldKind::Number,
         "input_token_unit_size"
@@ -523,6 +524,7 @@ const MODEL_PROVIDER_REQUEST_LOGS_FIELDS: &[&str] = &[
     "output_tokens",
     "total_tokens",
     "input_cache_hit_tokens",
+    "cache_write_tokens",
     "input_cache_hit_rate",
     "started_at",
     "first_token_at",
@@ -753,6 +755,13 @@ const MODEL_PROVIDER_REQUEST_LOG_FIELD_CONTRACTS: &[BuiltinDataModelFieldContrac
     BuiltinDataModelFieldContract {
         code: "input_cache_hit_tokens",
         physical_column_name: "input_cache_hit_tokens",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "cache_write_tokens",
+        physical_column_name: "cache_write_tokens",
         field_kind: crate::ModelFieldKind::Number,
         is_required: false,
         is_unique: false,

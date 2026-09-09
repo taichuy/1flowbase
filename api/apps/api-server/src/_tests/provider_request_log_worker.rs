@@ -48,6 +48,7 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         output_tokens: Some(8),
         total_tokens: Some(20),
         input_cache_hit_tokens: Some(5),
+        cache_write_tokens: None,
         input_cache_hit_rate: Some(0.25),
         started_at,
         first_token_at: Some(started_at + Duration::milliseconds(25)),

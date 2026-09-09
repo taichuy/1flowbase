@@ -1465,11 +1465,13 @@ async fn live_provider_text_delta_with_think_tags_is_split_into_reasoning_and_an
 
     assert_eq!(reasoning_text, "先分析用户问题");
     assert_eq!(answer_text, "正式回答");
-    assert!(!events.iter().any(|event| event
-        .payload
-        .get("text")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|text| text.contains("<think>") || text.contains("</think>"))));
+    assert!(!events.iter().any(|event| {
+        event
+            .payload
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| text.contains("<think>") || text.contains("</think>"))
+    }));
 }
 
 #[tokio::test]
@@ -1498,6 +1500,7 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
                 input_cache_hit_tokens: None,
                 input_cache_miss_tokens: None,
                 cache_read_tokens: None,
+                cache_write_by_ttl_seconds: None,
                 cache_write_tokens: None,
                 total_tokens: Some(15),
             },
@@ -1571,7 +1574,9 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .map(|event| event.event_type)
         .collect::<Vec<_>>();
     assert!(
-        runtime_event_types.iter().any(|event_type| event_type == "text_delta"),
+        runtime_event_types
+            .iter()
+            .any(|event_type| event_type == "text_delta"),
         "provider text deltas should still be written to durable runtime_events: {runtime_event_types:?}"
     );
     assert!(
@@ -1593,7 +1598,9 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         "AI Gateway context snapshots should be recoverable from durable runtime_events: {runtime_event_types:?}"
     );
     assert!(
-        runtime_event_types.iter().any(|event_type| event_type == "finish"),
+        runtime_event_types
+            .iter()
+            .any(|event_type| event_type == "finish"),
         "provider finish events should still be written to durable runtime_events: {runtime_event_types:?}"
     );
 

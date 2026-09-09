@@ -8,7 +8,7 @@ impl PgControlPlaneStore {
         }
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, plugin_id, protocol, upstream_model_id, pricing_provider_code, pricing_model_id, total_cost, currency_code, billing_status, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, input_cache_hit_tokens, input_cache_hit_rate, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
+            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, plugin_id, protocol, upstream_model_id, pricing_provider_code, pricing_model_id, total_cost, currency_code, billing_status, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, input_cache_hit_tokens, cache_write_tokens, input_cache_hit_rate, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
         );
         query.push_values(records, |mut row, record| {
             row.push_bind(Uuid::now_v7())
@@ -17,11 +17,7 @@ impl PgControlPlaneStore {
                 .push_bind(record.flow_run_id)
                 .push_bind(record.node_run_id)
                 .push_bind(record.user_id)
-                .push("coalesce(")
-                .push_bind_unseparated(&record.user_account)
-                .push_unseparated(", (select account from users where id = ")
-                .push_bind_unseparated(record.user_id)
-                .push_unseparated("))")
+                .push_bind(&record.user_account)
                 .push_bind(record.application_id)
                 .push_bind(&record.conversation_id)
                 .push_bind(&record.application_name)
@@ -49,6 +45,7 @@ impl PgControlPlaneStore {
                 .push_bind(record.output_tokens)
                 .push_bind(record.total_tokens)
                 .push_bind(record.input_cache_hit_tokens)
+                .push_bind(record.cache_write_tokens)
                 .push_bind(record.input_cache_hit_rate)
                 .push_bind(record.started_at)
                 .push_bind(record.first_token_at)
@@ -73,7 +70,8 @@ impl PgControlPlaneStore {
             > control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT
         {
             return Err(
-                control_plane_contracts::ControlPlaneContractError::InvalidInput("attempt_ids").into(),
+                control_plane_contracts::ControlPlaneContractError::InvalidInput("attempt_ids")
+                    .into(),
             );
         }
 
@@ -92,7 +90,8 @@ impl PgControlPlaneStore {
         input: control_plane_contracts::ports::ClearModelProviderRequestLogsBatchInput,
     ) -> Result<control_plane_contracts::ports::ClearModelProviderRequestLogsBatchResult> {
         let candidate_limit =
-            (control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT + 1) as i64;
+            (control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT + 1)
+                as i64;
         let delete_limit =
             control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT as i64;
         let row = sqlx::query(

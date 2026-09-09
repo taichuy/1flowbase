@@ -303,6 +303,13 @@ export function ModelProviderRequestLogsPanel() {
         render: (value) => (typeof value === 'number' ? value : '—')
       },
       {
+        key: 'cache_write_tokens',
+        title: i18nText('settings', 'auto.request_log_cache_write_tokens'),
+        dataIndex: 'cache_write_tokens',
+        width: 140,
+        render: (value) => (typeof value === 'number' ? value : '—')
+      },
+      {
         key: 'input_cache_hit_rate',
         title: i18nText('settings', 'auto.request_log_cache_hit_rate'),
         dataIndex: 'input_cache_hit_rate',

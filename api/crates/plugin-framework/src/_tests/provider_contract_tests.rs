@@ -51,6 +51,7 @@ fn provider_usage_total_tokens_falls_back_to_known_segments() {
         output_tokens: Some(45),
         reasoning_tokens: Some(12),
         cache_read_tokens: Some(9),
+        cache_write_by_ttl_seconds: None,
         cache_write_tokens: Some(3),
         total_tokens: None,
     };

@@ -116,11 +116,11 @@ pub(super) fn collect_usage(
     events: &[ProviderStreamEvent],
     result_usage: &ProviderUsage,
 ) -> ProviderUsage {
-    let mut usage = result_usage.clone();
+    let mut usage = ProviderUsage::default();
     for event in events {
         match event {
             ProviderStreamEvent::UsageSnapshot { usage: snapshot } => {
-                usage = snapshot.clone();
+                merge_usage_snapshot(&mut usage, snapshot);
             }
             ProviderStreamEvent::UsageDelta { usage: delta } => {
                 apply_usage_delta(&mut usage, delta)
@@ -128,7 +128,33 @@ pub(super) fn collect_usage(
             _ => {}
         }
     }
+    // The final result is a snapshot, never another delta.
+    merge_usage_snapshot(&mut usage, result_usage);
     usage
+}
+
+fn merge_usage_snapshot(target: &mut ProviderUsage, snapshot: &ProviderUsage) {
+    macro_rules! replace_present {
+        ($($field:ident),+ $(,)?) => {
+            $(if snapshot.$field.is_some() { target.$field = snapshot.$field; })+
+        };
+    }
+    replace_present!(
+        input_tokens,
+        input_cache_hit_tokens,
+        input_cache_miss_tokens,
+        output_tokens,
+        reasoning_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        total_tokens
+    );
+    if let Some(buckets) = &snapshot.cache_write_by_ttl_seconds {
+        target
+            .cache_write_by_ttl_seconds
+            .get_or_insert_with(Default::default)
+            .extend(buckets.clone());
+    }
 }
 
 pub(super) fn apply_usage_delta(target: &mut ProviderUsage, delta: &ProviderUsage) {
@@ -145,6 +171,15 @@ pub(super) fn apply_usage_delta(target: &mut ProviderUsage, delta: &ProviderUsag
     add_usage_value(&mut target.reasoning_tokens, delta.reasoning_tokens);
     add_usage_value(&mut target.cache_read_tokens, delta.cache_read_tokens);
     add_usage_value(&mut target.cache_write_tokens, delta.cache_write_tokens);
+    if let Some(buckets) = &delta.cache_write_by_ttl_seconds {
+        let totals = target
+            .cache_write_by_ttl_seconds
+            .get_or_insert_with(Default::default);
+        for (ttl, quantity) in buckets {
+            let total = totals.entry(ttl.clone()).or_default();
+            *total = total.saturating_add(*quantity);
+        }
+    }
     add_usage_value(&mut target.total_tokens, delta.total_tokens);
 }
 
@@ -654,3 +689,7 @@ pub(super) fn normalize_runtime_contract_error(
         normalized
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/cache_write_usage.rs"]
+mod cache_write_usage_tests;

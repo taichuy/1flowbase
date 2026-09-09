@@ -450,7 +450,7 @@ impl PgControlPlaneStore {
             .get("total_count");
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "select attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, plugin_id, protocol, upstream_model_id, pricing_provider_code, pricing_model_id, total_cost::text as total_cost, currency_code, billing_status, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, input_cache_hit_tokens, input_cache_hit_rate, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms from model_provider_request_logs logs",
+            "select attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, plugin_id, protocol, upstream_model_id, pricing_provider_code, pricing_model_id, total_cost::text as total_cost, currency_code, billing_status, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, input_cache_hit_tokens, cache_write_tokens, input_cache_hit_rate, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms from model_provider_request_logs logs",
         );
         push_model_provider_request_log_filters(&mut query, &input);
         query
@@ -461,51 +461,56 @@ impl PgControlPlaneStore {
         let rows = query.build().fetch_all(self.pool()).await?;
         let items = rows
             .into_iter()
-            .map(|row| control_plane_contracts::ports::ModelProviderRequestLogRecord {
-                attempt_id: row.get("attempt_id"),
-                flow_run_id: row.get("flow_run_id"),
-                node_run_id: row.get("node_run_id"),
-                user_id: row.get("user_id"),
-                user_account: row.get("user_account"),
-                application_id: row.get("application_id"),
-                conversation_id: row.get("conversation_id"),
-                application_name: row.get("application_name"),
-                attempt_index: row.get("attempt_index"),
-                is_retry: row.get("is_retry"),
-                retry_reason: row.get("retry_reason"),
-                provider_instance_id: row.get("provider_instance_id"),
-                provider_instance_display_name: row.get("provider_instance_display_name"),
-                provider_code: row.get("provider_code"),
-                plugin_id: row.get("plugin_id"),
-                protocol: row.get("protocol"),
-                upstream_model_id: row.get("upstream_model_id"),
-                pricing_provider_code: row.get("pricing_provider_code"),
-                pricing_model_id: row.get("pricing_model_id"),
-                total_cost: row.get("total_cost"),
-                currency_code: row.get("currency_code"),
-                billing_status: row.get("billing_status"),
-                reasoning_effort: row.get("reasoning_effort"),
-                status: row.get("status"),
-                error_code: row.get("error_code"),
-                failed_after_first_token: row.get("failed_after_first_token"),
-                input_tokens: row.get("input_tokens"),
-                output_tokens: row.get("output_tokens"),
-                total_tokens: row.get("total_tokens"),
-                input_cache_hit_tokens: row.get("input_cache_hit_tokens"),
-                input_cache_hit_rate: row.get("input_cache_hit_rate"),
-                started_at: row.get("started_at"),
-                first_token_at: row.get("first_token_at"),
-                finished_at: row.get("finished_at"),
-                time_to_first_token_ms: row.get("time_to_first_token_ms"),
-                total_duration_ms: row.get("total_duration_ms"),
-            })
+            .map(
+                |row| control_plane_contracts::ports::ModelProviderRequestLogRecord {
+                    attempt_id: row.get("attempt_id"),
+                    flow_run_id: row.get("flow_run_id"),
+                    node_run_id: row.get("node_run_id"),
+                    user_id: row.get("user_id"),
+                    user_account: row.get("user_account"),
+                    application_id: row.get("application_id"),
+                    conversation_id: row.get("conversation_id"),
+                    application_name: row.get("application_name"),
+                    attempt_index: row.get("attempt_index"),
+                    is_retry: row.get("is_retry"),
+                    retry_reason: row.get("retry_reason"),
+                    provider_instance_id: row.get("provider_instance_id"),
+                    provider_instance_display_name: row.get("provider_instance_display_name"),
+                    provider_code: row.get("provider_code"),
+                    plugin_id: row.get("plugin_id"),
+                    protocol: row.get("protocol"),
+                    upstream_model_id: row.get("upstream_model_id"),
+                    pricing_provider_code: row.get("pricing_provider_code"),
+                    pricing_model_id: row.get("pricing_model_id"),
+                    total_cost: row.get("total_cost"),
+                    currency_code: row.get("currency_code"),
+                    billing_status: row.get("billing_status"),
+                    reasoning_effort: row.get("reasoning_effort"),
+                    status: row.get("status"),
+                    error_code: row.get("error_code"),
+                    failed_after_first_token: row.get("failed_after_first_token"),
+                    input_tokens: row.get("input_tokens"),
+                    output_tokens: row.get("output_tokens"),
+                    total_tokens: row.get("total_tokens"),
+                    input_cache_hit_tokens: row.get("input_cache_hit_tokens"),
+                    cache_write_tokens: row.get("cache_write_tokens"),
+                    input_cache_hit_rate: row.get("input_cache_hit_rate"),
+                    started_at: row.get("started_at"),
+                    first_token_at: row.get("first_token_at"),
+                    finished_at: row.get("finished_at"),
+                    time_to_first_token_ms: row.get("time_to_first_token_ms"),
+                    total_duration_ms: row.get("total_duration_ms"),
+                },
+            )
             .collect();
-        Ok(control_plane_contracts::ports::ModelProviderRequestLogsPage {
-            items,
-            total_count,
-            page,
-            page_size,
-        })
+        Ok(
+            control_plane_contracts::ports::ModelProviderRequestLogsPage {
+                items,
+                total_count,
+                page,
+                page_size,
+            },
+        )
     }
 
     async fn list_capability_invocations(
@@ -822,13 +827,15 @@ impl PgControlPlaneStore {
         let before_cursor = items.first().map(|run| run.id);
         let after_cursor = items.last().map(|run| run.id);
 
-        Ok(control_plane_contracts::ports::ApplicationConversationRunsPage {
-            items,
-            has_before: start_rn > 1,
-            has_after: end_rn < total,
-            before_cursor,
-            after_cursor,
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationConversationRunsPage {
+                items,
+                has_before: start_rn > 1,
+                has_after: end_rn < total,
+                before_cursor,
+                after_cursor,
+            },
+        )
     }
 
     async fn application_conversation_run_position(

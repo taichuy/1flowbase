@@ -40,6 +40,7 @@ fn request_log(
         output_tokens,
         total_tokens: output_tokens.map(|v| v + 120),
         input_cache_hit_tokens: Some(60),
+        cache_write_tokens: Some(5000),
         input_cache_hit_rate: output_tokens
             .map(|v| ((60.0 / (v + 120) as f64) * 10_000.0_f64).round() / 10_000.0),
         started_at,
@@ -94,12 +95,13 @@ async fn provider_request_log_user_projection_keeps_legacy_rows_null_and_rejects
     .unwrap();
 
     let legacy = sqlx::query(
-        "select user_id, user_account, pricing_provider_code, pricing_model_id, total_cost::text as total_cost, currency_code from model_provider_request_logs where attempt_id = $1",
+        "select cache_write_tokens, user_id, user_account, pricing_provider_code, pricing_model_id, total_cost::text as total_cost, currency_code from model_provider_request_logs where attempt_id = $1",
     )
     .bind(legacy_attempt_id)
     .fetch_one(&pool)
     .await
     .unwrap();
+    assert!(legacy.get::<Option<i64>, _>("cache_write_tokens").is_none());
     assert!(legacy.get::<Option<Uuid>, _>("user_id").is_none());
     assert!(legacy.get::<Option<String>, _>("user_account").is_none());
     assert!(legacy
@@ -174,7 +176,7 @@ async fn provider_request_logs_filter_flow_run_within_workspace_and_return_node_
     linked.flow_run_id = flow_run_id;
     linked.node_run_id = Some(node_run_id);
     linked.user_id = seeded.actor_user_id;
-    linked.user_account = None;
+    linked.user_account = Some(expected_user_account.clone());
     let mut legacy = request_log(
         scope_id,
         Uuid::now_v7(),
@@ -212,6 +214,10 @@ async fn provider_request_logs_filter_flow_run_within_workspace_and_return_node_
         .unwrap();
 
     assert_eq!(page.total_count, 2);
+    assert!(page
+        .items
+        .iter()
+        .all(|item| item.cache_write_tokens == Some(5000)));
     assert!(page
         .items
         .iter()

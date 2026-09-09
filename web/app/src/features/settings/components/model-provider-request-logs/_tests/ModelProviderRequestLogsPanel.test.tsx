@@ -90,6 +90,7 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
         output_tokens: 0,
         total_tokens: 35629,
         input_cache_hit_tokens: 32066,
+        cache_write_tokens: 5000,
         input_cache_hit_rate: 0.9,
         started_at: '2026-07-11T03:04:00Z',
         first_token_at: null,
@@ -136,6 +137,8 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   expect(screen.getByText('gemini@0.1.20')).toBeInTheDocument();
   expect(screen.getByText('命中缓存 tokens')).toBeInTheDocument();
   expect(screen.getByText('32066')).toBeInTheDocument();
+  expect(screen.getByText('缓存写入 tokens')).toBeInTheDocument();
+  expect(screen.getByText('5000')).toBeInTheDocument();
   expect(screen.getByText('缓存命中率')).toBeInTheDocument();
   expect(screen.getByText('90.00%')).toBeInTheDocument();
   expect(screen.getByText('root')).toBeInTheDocument();

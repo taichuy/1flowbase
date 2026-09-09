@@ -141,6 +141,7 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
     flow_run_id: Uuid,
     node_run_id: Uuid,
     user_id: Uuid,
+    user_account: Option<&str>,
     application_id: Option<Uuid>,
     conversation_id: Option<&str>,
     attempts: &[domain::ModelFailoverAttemptLedgerRecord],
@@ -154,7 +155,7 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
         let metric = metrics
             .and_then(|items| items.get(index))
             .unwrap_or(metrics_payload);
-        let task = provider_request_log_task_from_attempt(
+        let mut task = provider_request_log_task_from_attempt(
             scope_id,
             attempt.id,
             flow_run_id,
@@ -167,6 +168,11 @@ pub(crate) async fn enqueue_provider_request_log_tasks(
             attempt.finished_at.unwrap_or(attempt.started_at),
             metric,
         );
+        // Admission/preflight failures have no provider outcome metadata.
+        // The producer already holds the flow identity snapshot.
+        task.user_account = task
+            .user_account
+            .or_else(|| user_account.map(str::to_owned));
         let payload = match serde_json::to_value(&task) {
             Ok(payload) => payload,
             Err(error) => {
@@ -239,7 +245,10 @@ pub(super) fn provider_request_log_task_from_attempt(
         flow_run_id,
         node_run_id: Some(node_run_id),
         user_id,
-        user_account: None,
+        user_account: attempt
+            .get("user_account")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         application_id,
         conversation_id: conversation_id.map(str::to_string),
         application_name: application_name.to_string(),
@@ -318,6 +327,7 @@ pub(super) fn provider_request_log_task_from_attempt(
         output_tokens,
         total_tokens,
         input_cache_hit_tokens,
+        cache_write_tokens: usage_i64(&usage, "cache_write_tokens"),
         input_cache_hit_rate,
         started_at,
         first_token_at,

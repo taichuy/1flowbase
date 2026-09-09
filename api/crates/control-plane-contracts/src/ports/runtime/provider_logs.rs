@@ -47,6 +47,8 @@ pub struct ProviderRequestLogTask {
     #[serde(default)]
     pub input_cache_hit_tokens: Option<i64>,
     #[serde(default)]
+    pub cache_write_tokens: Option<i64>,
+    #[serde(default)]
     pub input_cache_hit_rate: Option<f64>,
     pub started_at: OffsetDateTime,
     pub first_token_at: Option<OffsetDateTime>,
@@ -126,6 +128,7 @@ pub struct ModelProviderRequestLogRecord {
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_cache_hit_tokens: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
     pub input_cache_hit_rate: Option<f64>,
     pub started_at: OffsetDateTime,
     pub first_token_at: Option<OffsetDateTime>,

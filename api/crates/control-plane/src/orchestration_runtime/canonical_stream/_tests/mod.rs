@@ -425,3 +425,36 @@ fn provider_output_item_rejects_unknown_type_mismatch_and_post_terminal_phase() 
         CanonicalStreamTransitionError::StreamAlreadyTerminal
     );
 }
+
+// AC3: malformed bucket deltas cannot partially mutate billable usage.
+#[test]
+fn cache_write_ttl_delta_overflow_is_atomic_and_snapshots_merge_present_buckets() {
+    let mut usage = super::CanonicalUsage::default();
+    usage.merge_snapshot(ProviderUsage {
+        cache_write_tokens: Some(5),
+        cache_write_by_ttl_seconds: Some([("300".to_string(), u64::MAX)].into()),
+        ..Default::default()
+    });
+    let before = usage.value().clone();
+    let error = usage
+        .add_delta(ProviderUsage {
+            cache_write_tokens: Some(1),
+            cache_write_by_ttl_seconds: Some([("300".to_string(), 1)].into()),
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert_eq!(
+        error,
+        CanonicalStreamTransitionError::UsageOverflow {
+            field: "cache_write_by_ttl_seconds"
+        }
+    );
+    assert_eq!(usage.value(), &before);
+    usage.merge_snapshot(ProviderUsage {
+        cache_write_by_ttl_seconds: Some([("3600".to_string(), 2)].into()),
+        ..Default::default()
+    });
+    let buckets = usage.value().cache_write_by_ttl_seconds.as_ref().unwrap();
+    assert_eq!(buckets.get("300"), Some(&u64::MAX));
+    assert_eq!(buckets.get("3600"), Some(&2));
+}

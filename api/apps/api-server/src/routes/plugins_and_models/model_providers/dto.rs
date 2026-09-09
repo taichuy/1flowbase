@@ -530,6 +530,7 @@ pub struct ModelProviderRequestLogResponse {
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_cache_hit_tokens: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
     pub input_cache_hit_rate: Option<f64>,
     pub started_at: String,
     pub first_token_at: Option<String>,

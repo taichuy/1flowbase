@@ -226,6 +226,7 @@ export interface ConsoleModelProviderRequestLog {
   output_tokens: number | null;
   total_tokens: number | null;
   input_cache_hit_tokens: number | null;
+  cache_write_tokens: number | null;
   input_cache_hit_rate: number | null;
   started_at: string;
   first_token_at: string | null;

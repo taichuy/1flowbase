@@ -79,30 +79,39 @@ export function PricingCatalogPanel() {
         title: i18nText('settings', 'auto.billing_input_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          formatPricingRate(
-            row.input_token_unit_price,
-            row.input_token_unit_size
-          )
+          row.rating_policy_enabled &&
+          row.rating_policy.type === 'token_pricing'
+            ? i18nText('settings', 'auto.billing_price_from_policy')
+            : formatPricingRate(
+                row.input_token_unit_price,
+                row.input_token_unit_size
+              )
       },
       {
         key: 'output_price',
         title: i18nText('settings', 'auto.billing_output_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          formatPricingRate(
-            row.output_token_unit_price,
-            row.output_token_unit_size
-          )
+          row.rating_policy_enabled &&
+          row.rating_policy.type === 'token_pricing'
+            ? i18nText('settings', 'auto.billing_price_from_policy')
+            : formatPricingRate(
+                row.output_token_unit_price,
+                row.output_token_unit_size
+              )
       },
       {
         key: 'cache_price',
         title: i18nText('settings', 'auto.billing_cache_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          formatPricingRate(
-            row.cache_hit_token_unit_price,
-            row.cache_hit_token_unit_size
-          )
+          row.rating_policy_enabled &&
+          row.rating_policy.type === 'token_pricing'
+            ? i18nText('settings', 'auto.billing_price_from_policy')
+            : formatPricingRate(
+                row.cache_hit_token_unit_price,
+                row.cache_hit_token_unit_size
+              )
       },
       {
         key: 'rating_policy',
@@ -111,9 +120,11 @@ export function PricingCatalogPanel() {
         render: (_: unknown, row: PricingCatalogRule) =>
           row.rating_policy_enabled ? (
             <Tag color="blue">
-              {row.rating_policy.type === 'input_token_tiers'
-                ? i18nText('settings', 'auto.billing_input_token_tiers')
-                : i18nText('settings', 'auto.enabled')}
+              {row.rating_policy.type === 'token_pricing'
+                ? i18nText('settings', 'auto.billing_token_pricing')
+                : row.rating_policy.type === 'input_token_tiers'
+                  ? i18nText('settings', 'auto.billing_input_token_tiers')
+                  : i18nText('settings', 'auto.enabled')}
             </Tag>
           ) : (
             i18nText('settings', 'auto.billing_no_rating_policy')

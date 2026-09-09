@@ -1132,6 +1132,7 @@ async fn live_debug_checkpoint_snapshot_stores_llm_output_metrics_without_proces
                 input_cache_hit_tokens: None,
                 input_cache_miss_tokens: None,
                 cache_read_tokens: None,
+                cache_write_by_ttl_seconds: None,
                 cache_write_tokens: None,
                 total_tokens: Some(12),
             },

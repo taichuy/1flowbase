@@ -647,6 +647,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         "protocol": "google_genai",
         "upstream_model_id": "gemini-3-flash",
         "status": "empty_response",
+        "user_account": "request-owner",
         "billing": {
             "pricing_provider_code": "zero",
             "pricing_model_id": "any",
@@ -659,6 +660,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         "usage": {
             "input_tokens": 12,
             "cache_read_tokens": 9,
+            "cache_write_tokens": 5000,
+            "cache_write_by_ttl_seconds": {"300": 3000, "3600": 2000},
             "output_tokens": 0,
             "total_tokens": 12
         }
@@ -681,7 +684,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.application_name, "应用快照");
     assert_eq!(task.node_run_id, Some(node_run_id));
     assert_eq!(task.user_id, user_id);
-    assert!(task.user_account.is_none());
+    assert_eq!(task.user_account.as_deref(), Some("request-owner"));
+    assert_eq!(task.cache_write_tokens, Some(5000));
     assert_eq!(task.application_id, Some(Uuid::nil()));
     assert_eq!(task.conversation_id.as_deref(), Some("conversation-1"));
     assert_eq!(task.attempt_index, 1);

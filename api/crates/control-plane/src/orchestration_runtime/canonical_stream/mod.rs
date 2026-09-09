@@ -245,6 +245,22 @@ impl CanonicalUsage {
             delta.cache_write_tokens,
             "cache_write_tokens",
         )?;
+        if let Some(buckets) = delta.cache_write_by_ttl_seconds {
+            let target = merged
+                .cache_write_by_ttl_seconds
+                .get_or_insert_with(Default::default);
+            for (ttl, quantity) in buckets {
+                let value = target
+                    .get(&ttl)
+                    .copied()
+                    .unwrap_or_default()
+                    .checked_add(quantity)
+                    .ok_or(CanonicalStreamTransitionError::UsageOverflow {
+                        field: "cache_write_by_ttl_seconds",
+                    })?;
+                target.insert(ttl, value);
+            }
+        }
         add_usage_field(&mut merged.total_tokens, delta.total_tokens, "total_tokens")?;
         self.value = merged;
         Ok(())
@@ -270,6 +286,12 @@ impl CanonicalUsage {
             &mut self.value.cache_write_tokens,
             snapshot.cache_write_tokens,
         );
+        if let Some(buckets) = snapshot.cache_write_by_ttl_seconds {
+            self.value
+                .cache_write_by_ttl_seconds
+                .get_or_insert_with(Default::default)
+                .extend(buckets);
+        }
         replace_present(&mut self.value.total_tokens, snapshot.total_tokens);
     }
 }

@@ -252,6 +252,7 @@ where
         task_queue,
         flow_run.id,
         flow_run.created_by,
+        flow_run.authorized_account.as_deref(),
         Some(flow_span.id),
         outcome,
         prepared_node_runs,

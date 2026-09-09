@@ -454,6 +454,15 @@ fn add_provider_usage(target: &mut ProviderUsage, source: &ProviderUsage) {
     add(&mut target.reasoning_tokens, source.reasoning_tokens);
     add(&mut target.cache_read_tokens, source.cache_read_tokens);
     add(&mut target.cache_write_tokens, source.cache_write_tokens);
+    if let Some(buckets) = &source.cache_write_by_ttl_seconds {
+        let totals = target
+            .cache_write_by_ttl_seconds
+            .get_or_insert_with(Default::default);
+        for (ttl, quantity) in buckets {
+            let total = totals.entry(ttl.clone()).or_default();
+            *total = total.saturating_add(*quantity);
+        }
+    }
     add(
         &mut target.input_cache_hit_tokens,
         source.input_cache_hit_tokens,

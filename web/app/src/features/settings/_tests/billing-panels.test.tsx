@@ -188,6 +188,32 @@ describe('billing settings panels', () => {
     billingApi.executeSettingsCreditCommand.mockResolvedValue({});
   });
 
+  test('AC5 v2 pricing displays policy authority instead of unused scalar prices', async () => {
+    const page = await billingApi.listSettingsPricingRules();
+    billingApi.listSettingsPricingRules.mockResolvedValue({
+      ...page,
+      items: page.items.map((row) => ({
+        ...row,
+        rating_policy_enabled: true,
+        rating_policy: {
+          schema_version: '1flowbase.model-rating-policy/v2',
+          type: 'token_pricing',
+          unit_size: 1000000,
+          rates: {
+            input: '10',
+            output: '50',
+            cache_hit: '0.25',
+            cache_write: { by_ttl_seconds: { '300': '12.50', '3600': '20' } }
+          }
+        }
+      }))
+    });
+    renderWithProviders(<PricingRulesPanel canManage />);
+    expect(await screen.findByText('gpt-test')).toBeInTheDocument();
+    expect(screen.getAllByText('按计价规则')).toHaveLength(3);
+    expect(screen.queryByText('1M / 5.00$')).not.toBeInTheDocument();
+  });
+
   test('shows fixed pricing columns and opens the validated rule editor', async () => {
     renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();

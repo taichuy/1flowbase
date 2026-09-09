@@ -400,6 +400,9 @@ pub struct ProviderUsage {
     pub reasoning_tokens: Option<u64>,
     pub cache_read_tokens: Option<u64>,
     pub cache_write_tokens: Option<u64>,
+    /// Provider-reported cache writes grouped by TTL in seconds; absent is not an inferred TTL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_by_ttl_seconds: Option<std::collections::BTreeMap<String, u64>>,
     pub total_tokens: Option<u64>,
 }
 
