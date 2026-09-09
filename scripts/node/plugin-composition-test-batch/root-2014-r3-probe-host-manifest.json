@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2014",
+  "supportedPlatform": "linux",
+  "targets": [
+    {
+      "id": "runtime-extension-host:lib",
+      "package": "runtime-extension-host",
+      "packageRoot": "api/crates/runtime-extension-host",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    }
+  ],
+  "required": [
+    {
+      "target": "runtime-extension-host:lib",
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "name": "_tests::managed_hook_transport::root_2014_r3_probe_reference_worker_roundtrip",
+      "expected": 1,
+      "ac": [
+        "AC-016",
+        "AC-017",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    }
+  ],
+  "node": [],
+  "outputDirectory": "tmp/test-governance/2014/r3-probe-host",
+  "rootPrefixes": [
+    "root_2014_r3_probe_"
+  ],
+  "requiredAc": [
+    "AC-016",
+    "AC-017",
+    "AC-018"
+  ],
+  "requiredAuth": [],
+  "identityFiles": [
+    "scripts/node/plugin-composition-test-batch/root-2014-inventory.json",
+    "api/plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml",
+    "api/plugins/fixtures/orion.shipments/manifest.yaml",
+    "api/plugins/fixtures/lyra.audit-log/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/host-extension.yaml",
+    "api/plugins/fixtures/northwind.settings-page/settings.tsx"
+  ],
+  "batchMode": "r3-probe-host",
+  "showTestOutput": true,
+  "workerFixtures": [
+    {
+      "example": "managed_hook_worker",
+      "env": "MANAGED_HOOK_WORKER_FIXTURE"
+    }
+  ]
+}

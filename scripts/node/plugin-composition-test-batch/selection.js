@@ -10,6 +10,15 @@ function loadManifest(root, filename = process.env.PLUGIN_COMPOSITION_MANIFEST) 
       || data.targets.some(target => target.regressionFilters.length)
       || data.rootPrefixes?.join(',') !== 'root_2014_r3_probe_'
       || data.required.length !== 6)) throw new Error('R3 probe must remain the frozen six-test batch');
+  if (data.batchMode === 'r3-probe-host' && (data.browserBinary || data.node.length
+      || data.targets.length !== 1 || data.targets[0].id !== 'runtime-extension-host:lib'
+      || data.targets[0].regressionFilters.length || data.required.length !== 1
+      || data.required[0].target !== 'runtime-extension-host:lib'
+      || data.required[0].name !== '_tests::managed_hook_transport::root_2014_r3_probe_reference_worker_roundtrip'
+      || data.rootPrefixes?.join(',') !== 'root_2014_r3_probe_'
+      || data.workerFixtures?.length !== 1 || data.workerFixtures[0].example !== 'managed_hook_worker')) {
+    throw new Error('R3 Host continuation must remain the frozen one-test batch');
+  }
   return { data, filename: resolved };
 }
 function rootPrefixes(data) { return data.rootPrefixes || ['root_2007_']; }

@@ -117,3 +117,17 @@ test('R3 probe is finite and full acceptance retains every probe and compatibili
   assert.deepEqual(selectTests(sample, [...requiredNames, 'old::root_2014_unrelated'], probe.required, probe), requiredNames);
   assert.throws(() => selectTests(sample, [...requiredNames, 'new::root_2014_r3_probe_unmapped'], probe.required, probe), /unmapped/u);
 });
+
+
+test('R3 Host continuation selects only the previously compile-blocked exact probe', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-host-manifest.json').data;
+  assert.equal(data.required.length, 1);
+  assert.equal(data.targets.length, 1);
+  assert.equal(data.node.length, 0);
+  assert.equal(data.browserBinary, undefined);
+  validateSources(root, data);
+  const names = data.required.map(row => row.name);
+  assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
+});
