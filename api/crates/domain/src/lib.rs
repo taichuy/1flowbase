@@ -132,12 +132,12 @@ pub use model_provider::{
     ModelProviderInstanceRecord, ModelProviderInstanceStatus, ModelProviderMainInstanceRecord,
     ModelProviderMainModelRoutingPolicy, ModelProviderMainModelRoutingPolicyRecord,
     ModelProviderPreviewSessionRecord, ModelProviderSecretRecord, ModelProviderValidationStatus,
-    PluginArtifactCleanupRecord, PluginArtifactInstanceRecord, PluginArtifactInstanceStatus,
-    PluginArtifactStatus, PluginAssignmentRecord, PluginAvailabilityStatus, PluginDesiredState,
-    PluginInstallationRecord, PluginPackageCatalogProjectionRecord,
-    PluginPackageCatalogProjectionStatus, PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord,
-    PluginTaskStatus, PluginVerificationStatus, DEFAULT_MODEL_PRICING_MODEL_ID,
-    DEFAULT_MODEL_PRICING_PROVIDER_CODE,
+    NativePluginTarget, PluginArtifactCleanupRecord, PluginArtifactInstanceRecord,
+    PluginArtifactInstanceStatus, PluginArtifactStatus, PluginAssignmentRecord,
+    PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
+    PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
+    PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord, PluginTaskStatus,
+    PluginVerificationStatus, DEFAULT_MODEL_PRICING_MODEL_ID, DEFAULT_MODEL_PRICING_PROVIDER_CODE,
 };
 pub use modeling::{
     DataModelAdvisorFinding, DataModelAdvisorSeverity, DataModelOwnerKind, DataModelProtection,
