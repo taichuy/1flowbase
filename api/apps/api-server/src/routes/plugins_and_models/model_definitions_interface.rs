@@ -1,3 +1,4 @@
+#[path = "model_definitions_interface/managed_projection.rs"]
 mod managed_projection;
 
 #[path = "model_definitions_managed_hooks.rs"]
