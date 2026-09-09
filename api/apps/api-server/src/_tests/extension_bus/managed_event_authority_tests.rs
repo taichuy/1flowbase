@@ -30,7 +30,7 @@ pub(super) fn manifest(name: &str) -> serde_json::Value {
     });
     if name == "a" {
         value["managed"]["module"]["extension_points"] = json!([{
-            "point_id":MANAGED_PROCESSED_EVENT_ID,"owner_module_id":module,"point_kind":"event_stream","contract":{"contract_id":MANAGED_PROCESSED_EVENT_ID,"contract_version":"1"},
+            "point_id":MANAGED_PROCESSED_EVENT_ID,"owner_module_id":module,"point_kind":"event_stream","contract":{"contract_id":MANAGED_PROCESSED_EVENT_ID,"contract_version":"1","payload_schema":processed_schema()},
             "scope":"workspace","cardinality":"many","ordering":"lexicographic","failure":"isolate_contribution","delivery":"after_commit_durable","lifecycle":"workspace_assignment","allowed_permissions":["event.subscribe","event.publish"],"override_policy":"sealed"
         }]);
     }
@@ -91,7 +91,8 @@ fn root_2007_ac_005_event_authority_static_namespace_and_contract() {
         plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&wrong).unwrap()).is_err()
     );
     let mut wrong = a;
-    wrong["managed"]["module"]["extension_points"][0]["contract"]["contract_version"] = "2".into();
+    wrong["managed"]["module"]["extension_points"][0]["contract"]["payload_schema"] =
+        json!({"type":"object","additionalProperties":true});
     assert!(
         plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&wrong).unwrap()).is_err()
     );
@@ -348,7 +349,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     let fact: ManagedEventFact = serde_json::from_slice(&processed[0].canonical_payload).unwrap();
     assert_eq!(fact.causation_id, committed.event_id.to_string());
     assert_eq!(fact.correlation_id, committed.event_id.to_string());
-    assert_eq!(fact.payload.model_id, model.id.to_string());
+    assert_eq!(fact.payload["model_id"], model.id.to_string());
     for record in &processed {
         delivery.deliver(record).await.unwrap();
     }
@@ -369,7 +370,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     assert_eq!(replayed.graph_fingerprint, processed[0].graph_fingerprint);
     assert_eq!(replayed.occurred_at, processed[0].occurred_at);
     let mut changed = fact.clone();
-    changed.payload.result_reference = Some("processed_models/changed".into());
+    changed.payload["result_reference"] = "processed_models/changed".into();
     replay.canonical_payload = serde_json::to_vec(&changed).unwrap();
     assert!(control_plane_contracts::ports::DerivedLifecyclePublicationRepository::record_derived_lifecycle_fact(&store, &replay).await.is_err());
 
@@ -567,4 +568,8 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
             .get("actor_id")
             .is_none());
     }
+}
+
+pub(super) fn processed_schema() -> serde_json::Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"model_id":{"type":"string","maxLength":128},"status":{"type":"string","maxLength":32,"enum":["processed"]},"result_reference":{"anyOf":[{"type":"string","maxLength":512},{"type":"null"}]}},"required":["model_id","status","result_reference"]})
 }

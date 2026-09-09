@@ -1,4 +1,4 @@
-//! Publication command for the sealed composition event. The caller holds the current
+//! Publication command for registered plugin-owned events. The caller holds the current
 //! contribution-authority lease through the host Outbox commit on that same connection.
 use crate::plugin_management::HostContributionGrantPolicy;
 use anyhow::{bail, Result};
@@ -7,7 +7,6 @@ use control_plane_contracts::ports::{
 };
 use extension_contracts::{
     extension_bus::*, ManagedEventDelivery, ManagedEventFact, ManagedEventPublication,
-    MANAGED_PROCESSED_EVENT_ID,
 };
 use uuid::Uuid;
 
@@ -25,20 +24,37 @@ pub fn validate_managed_event_publication(
     cause.validate()?;
     let workspace_id = Uuid::parse_str(identity.workspace_id().as_str())?;
     if installation.id.to_string() != identity.installation_id().as_str()
-        || installation.organization != "acme"
-        || installation.provider_code != "acme.composition-a"
         || contribution.contributor_module_id.as_str() != installation.provider_code
         || contribution.contribution_id != *identity.contribution_id()
         || installation.desired_state != domain::PluginDesiredState::ActiveRequested
         || cause.workspace_id != workspace_id.to_string()
-        || cause.contract_id != extension_contracts::MANAGED_CREATE_EVENT_ID
-        || cause.contract_version != "v1"
-        || contribution.point_id.as_str() != extension_contracts::MANAGED_CREATE_EVENT_POINT
-        || cause.payload.model_id != publication.payload.model_id
-        || publication.contract_id != MANAGED_PROCESSED_EVENT_ID
+        || contribution.point_id.as_str() != cause.point_id
+        || contribution.contract_version.as_str() != cause.point_contract_version
     {
         bail!("managed event publisher or workspace mismatch");
     }
+    let managed: plugin_framework::ManagedManifest =
+        serde_json::from_value(installation.metadata_json["managed"].clone())?;
+    if managed.module.module_id.as_str() != installation.provider_code
+        || managed.module.module_version.as_str() != installation.plugin_version
+    {
+        bail!("managed publication installation identity mismatch");
+    }
+    let point = managed
+        .module
+        .extension_points
+        .iter()
+        .find(|point| {
+            point.contract.contract_id.as_str() == publication.contract_id
+                && point.contract.contract_version.as_str() == publication.contract_version
+                && point.is_managed_composition_event(&managed.module.module_id)
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("publication requires a registered publisher-owned namespace/schema")
+        })?;
+    publication.validate_against(&extension_contracts::ManagedEventSchema::from_descriptor(
+        &point.contract,
+    )?)?;
     let permissions = HostContributionGrantPolicy::root_composition().effective_permissions(
         installation,
         workspace_id,
@@ -124,7 +140,6 @@ fn derived_identity(
         kind,
         subject,
         cause_id,
-        MANAGED_PROCESSED_EVENT_ID,
         "1",
         0u8,
     ))?);

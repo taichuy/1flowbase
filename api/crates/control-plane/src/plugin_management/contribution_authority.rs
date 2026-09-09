@@ -41,7 +41,6 @@ struct HostContributionPermissionRule {
     permission_contract_id: &'static str,
     point_contract_version: &'static str,
     resource_scope: ContributionResourceScope,
-    publisher_artifact: Option<&'static str>,
 }
 
 /// Compiled host grant ceilings, never constructed from package permissions or extension points.
@@ -52,7 +51,7 @@ pub struct HostContributionGrantPolicy {
 
 impl HostContributionGrantPolicy {
     pub fn root_composition() -> Self {
-        let mut rules = [
+        let rules = [
             "authorization",
             "admission",
             "before",
@@ -67,59 +66,8 @@ impl HostContributionGrantPolicy {
             permission_contract_id: "managed-hook",
             point_contract_version: "1",
             resource_scope: ContributionResourceScope::Workspace,
-            publisher_artifact: None,
         })
         .collect::<Vec<_>>();
-        for permission in ["event.publish", "event.subscribe"] {
-            rules.push(HostContributionPermissionRule {
-                point_id: "acme.composition-a.processed".into(),
-                permission: permission.into(),
-                permission_contract_id: "managed-event",
-                point_contract_version: "1",
-                resource_scope: ContributionResourceScope::Workspace,
-                publisher_artifact: (permission == "event.publish").then_some("acme.composition-a"),
-            });
-        }
-        for artifact in ["acme.composition-b", "acme.composition-c"] {
-            rules.push(HostContributionPermissionRule {
-                point_id: extension_contracts::MANAGED_PROCESSED_EVENT_ID.into(),
-                permission: "plugin_data.owned.write".into(),
-                permission_contract_id: "plugin-data",
-                point_contract_version: "1",
-                resource_scope: ContributionResourceScope::OwnedCollection {
-                    collection_code: "processed_models".into(),
-                },
-                publisher_artifact: Some(artifact),
-            });
-        }
-        // A's one subscriber contribution has two independent grants. Publication remains
-        // restricted to its sealed processed@1 contract by the event publication command.
-        for permission in ["event.subscribe", "event.publish"] {
-            rules.push(HostContributionPermissionRule {
-                point_id: extension_contracts::MANAGED_CREATE_EVENT_POINT.into(),
-                permission: permission.into(),
-                permission_contract_id: "managed-event",
-                point_contract_version: "1",
-                resource_scope: ContributionResourceScope::Workspace,
-                publisher_artifact: Some("acme.composition-a"),
-            });
-        }
-        for artifact in [
-            "acme.composition-a",
-            "acme.composition-b",
-            "acme.composition-c",
-        ] {
-            rules.push(HostContributionPermissionRule {
-                point_id: "1flowbase.plugin-data.owned-collection".into(),
-                permission: "plugin_data.owned.write".into(),
-                permission_contract_id: "plugin-data",
-                point_contract_version: "1flowbase.plugin-data-model/v1",
-                resource_scope: ContributionResourceScope::OwnedCollection {
-                    collection_code: "processed_models".into(),
-                },
-                publisher_artifact: Some(artifact),
-            });
-        }
         Self { rules }
     }
 
@@ -132,7 +80,11 @@ impl HostContributionGrantPolicy {
             "{}:sha256:{:x}",
             Self::IDENTITY,
             sha2::Sha256::digest(
-                [bytes.as_slice(), b"canonical-interface-managed-hook/v1"].concat()
+                [
+                    bytes.as_slice(),
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2"
+                ]
+                .concat()
             )
         )
     }
@@ -188,7 +140,7 @@ impl HostContributionGrantPolicy {
 
     fn admits(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        _installation: &domain::PluginInstallationRecord,
         contribution: &plugin_framework::extension_bus::ContributionDescriptor,
         request: &GrantContributionPermission,
     ) -> bool {
@@ -202,6 +154,32 @@ impl HostContributionGrantPolicy {
                 && request.permission
                     == plugin_framework::extension_bus::managed_interface_permission(phase);
         }
+        // The host opens finite event/owned-data capabilities, never arbitrary RPC. Exact point
+        // registration is additionally enforced by graph compilation and admission; publication
+        // validates the publisher-owned registered schema under the current authority lease.
+        let event_subscriber = contribution
+            .required_permissions
+            .iter()
+            .any(|p| p.as_str() == "event.subscribe");
+        if event_subscriber
+            && matches!(
+                request.permission.as_str(),
+                "event.subscribe" | "event.publish"
+            )
+        {
+            return request.permission_contract_id == "managed-event"
+                && request.permission_contract_version == "1"
+                && request.resource_scope == ContributionResourceScope::Workspace;
+        }
+        if request.permission == "plugin_data.owned.write"
+            && (event_subscriber
+                || contribution.point_id.as_str() == "1flowbase.plugin-data.owned-collection")
+        {
+            return request.permission_contract_id == "plugin-data"
+                && request.permission_contract_version == "1"
+                && matches!(&request.resource_scope, ContributionResourceScope::OwnedCollection { collection_code }
+                    if !collection_code.is_empty() && collection_code.len() <= 128 && collection_code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+        }
         request.permission_contract_version == "1"
             && self.rules.iter().any(|rule| {
                 rule.point_id == contribution.point_id.as_str()
@@ -209,10 +187,6 @@ impl HostContributionGrantPolicy {
                     && rule.permission == request.permission
                     && rule.permission_contract_id == request.permission_contract_id
                     && rule.resource_scope == request.resource_scope
-                    && rule.publisher_artifact.is_none_or(|artifact| {
-                        installation.organization == "acme"
-                            && installation.provider_code == artifact
-                    })
             })
     }
 }

@@ -81,17 +81,18 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
         self.installations.get(&installation_id)
     }
-    fn commit_processed_model(
+    fn commit_owned_event_effect(
         mut self: Box<Self>,
         subject: ManagedContributionSubject,
         event_id: Uuid,
-        effect: extension_contracts::ManagedEventPayload,
+        point_id: String,
+        operations: Vec<extension_contracts::PluginDataOperation>,
         deadline_unix_ms: i64,
     ) -> Pin<Box<dyn Future<Output = Result<extension_contracts::PluginDataResponse>> + Send>> {
         Box::pin(async move {
             use extension_contracts::{
                 PluginDataBinding, PluginDataOperation, PluginDataPermission, PluginDataRequest,
-                PluginDataTarget, PluginDataValue,
+                PluginDataTarget,
             };
             let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
             let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
@@ -107,37 +108,52 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                         && snapshot.workspace_id == workspace_id
                 })
                 .ok_or(Error::PermissionDenied("managed_effect_scope"))?;
-            if installation.organization != "acme"
-                || !matches!(
-                    installation.provider_code.as_str(),
-                    "acme.composition-b" | "acme.composition-c"
-                )
-                || installation.desired_state != domain::PluginDesiredState::ActiveRequested
-                || !authority.authorizations.iter().any(|grant| {
+            extension_contracts::validate_owned_event_operations(&operations)?;
+            let module: extension_contracts::ModuleDescriptor =
+                serde_json::from_value(installation.metadata_json["managed"]["module"].clone())?;
+            let contribution = module
+                .contributions
+                .iter()
+                .find(|entry| {
+                    entry.contribution_id == *subject.contribution_id()
+                        && entry.point_id.as_str() == point_id
+                })
+                .ok_or(Error::PermissionDenied("managed_effect_contribution"))?;
+            if installation.desired_state != domain::PluginDesiredState::ActiveRequested
+                || contribution.contributor_module_id.as_str() != installation.provider_code
+                || !contribution
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "plugin_data.owned.write")
+            {
+                return Err(Error::PermissionDenied("managed_effect_current_identity").into());
+            }
+            for operation in &operations {
+                let PluginDataOperation::Upsert {
+                    target: PluginDataTarget::OwnedCollection { collection_code },
+                    ..
+                } = operation
+                else {
+                    return Err(Error::PermissionDenied("managed_effect_owned_collection").into());
+                };
+                if !authority.authorizations.iter().any(|grant| {
                     grant.contribution_id == subject.contribution_id().as_str()
-                        && grant.point_id == extension_contracts::MANAGED_PROCESSED_EVENT_ID
+                        && grant.point_id == point_id
                         && grant.permission == "plugin_data.owned.write"
                         && grant.permission_contract_id == "plugin-data"
                         && grant.permission_contract_version == "1"
                         && grant.resource_scope
                             == domain::ContributionResourceScope::OwnedCollection {
-                                collection_code: "processed_models".into(),
+                                collection_code: collection_code.clone(),
                             }
                         && grant.status == domain::ContributionAuthorizationStatus::Active
-                })
-            {
-                return Err(Error::PermissionDenied(
-                    "managed_effect_same_contribution_write_required",
-                )
-                .into());
+                }) {
+                    return Err(Error::PermissionDenied(
+                        "managed_effect_same_contribution_write_required",
+                    )
+                    .into());
+                }
             }
-            extension_contracts::ManagedEventPublication {
-                contract_id: extension_contracts::MANAGED_PROCESSED_EVENT_ID.into(),
-                contract_version: "1".into(),
-                payload: effect.clone(),
-            }
-            .validate()?;
-            Uuid::parse_str(&effect.model_id)?;
             let binding = PluginDataBinding {
                 publisher_namespace: installation.organization.clone(),
                 plugin_code: installation.provider_code.clone(),
@@ -157,26 +173,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
             };
             let request = PluginDataRequest {
                 idempotency_key: Some(format!("managed-event/v1/{event_id}")),
-                operations: vec![PluginDataOperation::Upsert {
-                    target: PluginDataTarget::OwnedCollection {
-                        collection_code: "processed_models".into(),
-                    },
-                    identity: [("model_id".into(), PluginDataValue::Uuid(effect.model_id))]
-                        .into_iter()
-                        .collect(),
-                    values: [
-                        ("status".into(), PluginDataValue::String("processed".into())),
-                        (
-                            "result_reference".into(),
-                            effect
-                                .result_reference
-                                .map(PluginDataValue::String)
-                                .unwrap_or(PluginDataValue::Null),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                }],
+                operations,
             };
             let response = crate::plugin_data_repository::execute_request_in_transaction(
                 &mut self.transaction,

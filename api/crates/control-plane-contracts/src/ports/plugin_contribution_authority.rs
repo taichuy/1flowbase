@@ -55,12 +55,13 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
-    /// Commit the sealed subscriber effect and its receipt under the current authority lock.
-    fn commit_processed_model(
+    /// Commit the typed owned subscriber effect and its receipt under the current authority lock.
+    fn commit_owned_event_effect(
         self: Box<Self>,
         subject: ManagedContributionSubject,
         event_id: Uuid,
-        effect: extension_contracts::ManagedEventPayload,
+        point_id: String,
+        operations: Vec<extension_contracts::PluginDataOperation>,
         deadline_unix_ms: i64,
     ) -> Pin<Box<dyn Future<Output = Result<extension_contracts::PluginDataResponse>> + Send>>;
     /// Commit a validated derived fact using the connection already owned by this lease.

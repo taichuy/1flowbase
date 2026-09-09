@@ -2,13 +2,13 @@
 mod candidate_switch;
 mod governance;
 mod lifetime;
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use control_plane::{
-    plugin_management::{HostContributionGrantPolicy, ready_current_node_plugin_installation},
+    plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
     ports::{ContributionAuthorityLease, PluginContributionAuthorityRepository, PluginRepository},
 };
 use lifetime::*;
-use plugin_framework::{ManagedManifest, PluginManifestV1, extension_bus::*};
+use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
     RuntimeManagedCapabilityRequest,
@@ -667,10 +667,23 @@ impl ManagedExtensionComposition {
                 extension_contracts::MANAGED_CREATE_EVENT_POINT => {
                     (extension_contracts::MANAGED_CREATE_EVENT_ID, "v1")
                 }
-                extension_contracts::MANAGED_PROCESSED_EVENT_ID => {
-                    (extension_contracts::MANAGED_PROCESSED_EVENT_ID, "1")
+                point_id => {
+                    let point = graph
+                        .points()
+                        .iter()
+                        .find(|point| point.descriptor().point_id.as_str() == point_id)
+                        .context("managed event point missing from frozen graph")?;
+                    if !point
+                        .descriptor()
+                        .is_managed_composition_event(&point.descriptor().owner_module_id)
+                    {
+                        bail!("managed event requires a registered namespaced schema");
+                    }
+                    (
+                        point.descriptor().contract.contract_id.as_str(),
+                        point.descriptor().contract.contract_version.as_str(),
+                    )
                 }
-                _ => bail!("managed event subscription contract is not opened"),
             };
             let id = format!(
                 "managed.{}.{}",
@@ -783,7 +796,7 @@ impl ManagedExtensionComposition {
             .ok_or(control_plane_contracts::ports::LifecycleDeliveryBlocked(
             control_plane_contracts::ports::LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
         ))?;
-        let delivery = decode_event_delivery(record)?;
+        let delivery = decode_event_delivery(snapshot, record)?;
         let workspace_id = Uuid::parse_str(binding.handle.identity().workspace_id().as_str())?;
         if delivery.workspace_id != workspace_id.to_string() {
             bail!("managed event cross-workspace delivery rejected");
@@ -833,17 +846,15 @@ impl ManagedExtensionComposition {
                     bail!("managed event owned effect required before acknowledgement");
                 }
             }
-            extension_contracts::ManagedEventOutcome::ApplyProcessed { effect } => {
-                if delivery.contract_id != extension_contracts::MANAGED_PROCESSED_EVENT_ID
-                    || delivery.contract_version != "1"
-                    || effect != delivery.payload
-                    || !binding
-                        .descriptor
-                        .required_permissions
-                        .iter()
-                        .any(|p| p.as_str() == "plugin_data.owned.write")
+            extension_contracts::ManagedEventOutcome::ApplyOwned { operations } => {
+                extension_contracts::validate_owned_event_operations(&operations)?;
+                if !binding
+                    .descriptor
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "plugin_data.owned.write")
                 {
-                    bail!("managed event processed effect contract mismatch");
+                    bail!("managed event owned effect permission missing");
                 }
                 let lease = self
                     .store
@@ -851,10 +862,11 @@ impl ManagedExtensionComposition {
                     .await?;
                 self.validate_event_current_binding(binding, workspace_id, lease.as_ref())?;
                 lease
-                    .commit_processed_model(
+                    .commit_owned_event_effect(
                         binding.handle.identity().subject().clone(),
                         Uuid::parse_str(&delivery.event_id)?,
-                        effect,
+                        delivery.point_id.clone(),
+                        operations,
                         ((time::OffsetDateTime::now_utc() + time::Duration::seconds(10))
                             .unix_timestamp_nanos()
                             / 1_000_000) as i64,
@@ -937,60 +949,100 @@ impl ManagedWorkspaceSnapshot {
 }
 
 fn decode_event_delivery(
+    snapshot: &ManagedWorkspaceSnapshot,
     record: &control_plane_contracts::ports::LifecycleOutboxRecord,
 ) -> Result<extension_contracts::ManagedEventDelivery> {
     use extension_contracts::*;
-    let delivery = match (
-        record.contract_id.as_str(),
-        record.contract_version.as_str(),
-    ) {
-        (MANAGED_CREATE_EVENT_ID, "v1") => {
-            let fact: AfterCommitFact<
-                control_plane_contracts::ports::ModelDefinitionCommittedFact,
-            > = serde_json::from_slice(&record.canonical_payload)?;
-            if fact.fact_id().as_str() != record.event_id.to_string()
-                || fact.transaction_id().as_str() != record.transaction_id.to_string()
-                || fact.contract().contract_id.as_str() != record.contract_id
-                || fact.contract().contract_version.as_str() != record.contract_version
-                || fact.payload().scope_kind != domain::DataModelScopeKind::Workspace
-            {
-                bail!("managed Create fact identity or workspace mismatch");
-            }
-            ManagedEventDelivery {
-                event_id: record.event_id.to_string(),
+    let (point_id, point_contract_version, schema) = if record.contract_id
+        == MANAGED_CREATE_EVENT_ID
+        && record.contract_version == "v1"
+    {
+        // Existing typed core event has a business adapter; plugin events never branch on names.
+        (
+            MANAGED_CREATE_EVENT_POINT.to_string(),
+            "1".to_string(),
+            ManagedEventSchema {
                 contract_id: record.contract_id.clone(),
                 contract_version: record.contract_version.clone(),
-                workspace_id: fact.payload().scope_id.to_string(),
-                causation_id: record.event_id.to_string(),
-                correlation_id: record.event_id.to_string(),
-                payload: ManagedEventPayload {
-                    model_id: fact.payload().model_definition_id.to_string(),
-                    status: ManagedEventStatus::Committed,
-                    result_reference: None,
-                },
-            }
+                payload_schema: serde_json::json!({"type":"object","additionalProperties":false,"properties":{
+                "model_id":{"type":"string","maxLength":128},"status":{"type":"string","maxLength":32,"enum":["committed"]},"result_reference":{"type":"null"}},"required":["model_id","status","result_reference"]}),
+            },
+        )
+    } else {
+        let point = snapshot
+            .graph
+            .points()
+            .iter()
+            .find(|point| {
+                point.descriptor().contract.contract_id.as_str() == record.contract_id
+                    && point.descriptor().contract.contract_version.as_str()
+                        == record.contract_version
+            })
+            .context("historical event schema unavailable in exact frozen graph")?;
+        if !point
+            .descriptor()
+            .is_managed_composition_event(&point.descriptor().owner_module_id)
+        {
+            bail!("event point is not an owned registered event");
         }
-        (MANAGED_PROCESSED_EVENT_ID, "1") => {
-            let fact: ManagedEventFact = serde_json::from_slice(&record.canonical_payload)?;
-            if fact.event_id != record.event_id.to_string()
-                || fact.transaction_id != record.transaction_id.to_string()
-                || fact.contract_id != record.contract_id
-                || fact.contract_version != record.contract_version
-                || fact.workspace_id != fact.publisher.workspace_id().as_str()
-            {
-                bail!("managed processed fact identity mismatch");
-            }
-            ManagedEventDelivery {
-                event_id: fact.event_id,
-                contract_id: fact.contract_id,
-                contract_version: fact.contract_version,
-                workspace_id: fact.workspace_id,
-                causation_id: fact.causation_id,
-                correlation_id: fact.correlation_id,
-                payload: fact.payload,
-            }
+        (
+            point.descriptor().point_id.as_str().to_string(),
+            point
+                .descriptor()
+                .contract
+                .contract_version
+                .as_str()
+                .to_string(),
+            ManagedEventSchema::from_descriptor(&point.descriptor().contract)?,
+        )
+    };
+    let delivery = if record.contract_id == MANAGED_CREATE_EVENT_ID
+        && record.contract_version == "v1"
+    {
+        let fact: AfterCommitFact<control_plane_contracts::ports::ModelDefinitionCommittedFact> =
+            serde_json::from_slice(&record.canonical_payload)?;
+        if fact.fact_id().as_str() != record.event_id.to_string()
+            || fact.transaction_id().as_str() != record.transaction_id.to_string()
+            || fact.contract().contract_id.as_str() != record.contract_id
+            || fact.contract().contract_version.as_str() != record.contract_version
+            || fact.payload().scope_kind != domain::DataModelScopeKind::Workspace
+        {
+            bail!("managed Create fact identity or workspace mismatch");
         }
-        _ => bail!("managed event contract is not opened"),
+        ManagedEventDelivery {
+            event_id: record.event_id.to_string(),
+            contract_id: record.contract_id.clone(),
+            contract_version: record.contract_version.clone(),
+            point_id,
+            point_contract_version,
+            schema,
+            workspace_id: fact.payload().scope_id.to_string(),
+            causation_id: record.event_id.to_string(),
+            correlation_id: record.event_id.to_string(),
+            payload: serde_json::json!({"model_id":fact.payload().model_definition_id.to_string(),"status":"committed","result_reference":null}),
+        }
+    } else {
+        let fact: ManagedEventFact = serde_json::from_slice(&record.canonical_payload)?;
+        if fact.event_id != record.event_id.to_string()
+            || fact.transaction_id != record.transaction_id.to_string()
+            || fact.contract_id != record.contract_id
+            || fact.contract_version != record.contract_version
+            || fact.workspace_id != fact.publisher.workspace_id().as_str()
+        {
+            bail!("managed fact identity mismatch");
+        }
+        ManagedEventDelivery {
+            event_id: fact.event_id,
+            contract_id: fact.contract_id,
+            contract_version: fact.contract_version,
+            point_id,
+            point_contract_version,
+            schema,
+            workspace_id: fact.workspace_id,
+            causation_id: fact.causation_id,
+            correlation_id: fact.correlation_id,
+            payload: fact.payload,
+        }
     };
     delivery.validate()?;
     Ok(delivery)

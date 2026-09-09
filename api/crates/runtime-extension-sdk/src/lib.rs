@@ -31,6 +31,6 @@ mod _tests;
 mod managed_event;
 pub use extension_contracts::{
     ManagedEventHostFrame, ManagedEventOutcome, ManagedEventPayload, ManagedEventPublication,
-    ManagedEventStatus,
+    ManagedEventSchema, ManagedEventStatus,
 };
 pub use managed_event::serve_managed_event;
