@@ -172,6 +172,8 @@ docker compose up -d web
 
 ## 本地构建缓存
 
+API 镜像的模型价格资源由 `docker/api-server.Dockerfile` 中的 `MODEL_PRICING_REF` 固定到官方仓库的提交。升级资源时更新该提交（或构建时传入明确的提交 SHA），不要使用 `main` 等可变分支作为缓存键。打包脚本会拒绝非 v2 的价格文件，避免构建成功后 API 才因格式不兼容退出。
+
 Dockerfile 已启用 BuildKit cache mount：
 
 - Rust 镜像缓存 cargo registry、git checkout 和 release `target` 中间产物。

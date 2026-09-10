@@ -37,6 +37,13 @@ done
 
 rule_file_count="$(find "${output_dir}" -type f -name pricing.json | wc -l | tr -d ' ')"
 test "${rule_file_count}" -gt 0
+# Reject incompatible external sources at build time, before issuing a receipt.
+find "${output_dir}" -type f -name pricing.json -print | while IFS= read -r source_file; do
+  if ! jq -e '.schema_version == "1flowbase.model-pricing-source/v2"' "${source_file}" >/dev/null; then
+    echo "invalid model pricing source document: ${source_file}; expected 1flowbase.model-pricing-source/v2" >&2
+    exit 1
+  fi
+done
 catalog_version="$(jq -er '.catalog_version' "${output_dir}/catalog-source.json")"
 directory_sha256="$(
   cd "${output_dir}"

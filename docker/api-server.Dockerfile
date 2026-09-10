@@ -26,7 +26,8 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
 FROM alpine:3.22 AS model-pricing-bootstrap
 
 ARG MODEL_PRICING_REPOSITORY=taichuy/1flowbase-official-plugins
-ARG MODEL_PRICING_REF=main
+# Keep the v2 source snapshot immutable so Docker cache tracks pricing updates.
+ARG MODEL_PRICING_REF=df9f7f279b8d2369c52238e66abc6dc964db213a
 
 RUN apk add --no-cache ca-certificates git jq
 
