@@ -8,12 +8,14 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    AgentFlowTemplatePreviewResponse, ApplicationArchiveEntry, ExportApplicationArchiveBody,
-    ImportAgentFlowTemplateResponse, ImportInstalledApplicationExtensionBody,
-    InstalledApplicationExtensionPreviewResponse, OrchestrationStateResponse, SaveDraftBody,
-    UpdateVersionBody, build_application_archive_zip, installed_application_archive_entry_with,
-    parse_change_kind, safe_archive_name, to_import_response_with, to_response_with,
-    to_template_preview_response,
+    build_application_archive_zip, installed_application_archive_entry_with, parse_change_kind,
+    safe_archive_name, to_import_response_with, to_response_with, to_template_preview_response,
+    ApplicationArchiveImportEntryResponse, ApplicationArchiveImportResponse,
+    ApplicationArchiveImportSelection, ApplicationArchivePackage,
+    ApplicationArchivePreviewEntryResponse, ApplicationArchivePreviewResponse,
+    ExportApplicationArchiveBody, ImportAgentFlowTemplateResponse,
+    ImportInstalledApplicationExtensionBody, InstalledApplicationExtensionPreviewResponse,
+    OrchestrationStateResponse, SaveDraftBody, UpdateVersionBody,
 };
 use crate::{
     error_response::ApiError,
@@ -44,11 +46,10 @@ pub(crate) enum ApplicationOrchestrationInput {
         body: UpdateVersionBody,
         locale: ConsoleLocaleHints,
     },
-    PreviewUploadedArchive(ApplicationArchiveEntry),
+    PreviewUploadedArchive(ApplicationArchivePackage),
     ImportUploadedArchive {
-        entry: ApplicationArchiveEntry,
-        name: Option<String>,
-        description: Option<String>,
+        package: ApplicationArchivePackage,
+        selections: Vec<ApplicationArchiveImportSelection>,
         locale: ConsoleLocaleHints,
     },
     ExportArchive(ExportApplicationArchiveBody),
@@ -66,8 +67,9 @@ pub(crate) enum ApplicationOrchestrationInput {
 )]
 pub(crate) enum ApplicationOrchestrationOutput {
     State(OrchestrationStateResponse),
-    ArchivePreview(AgentFlowTemplatePreviewResponse),
+    ArchivePreview(ApplicationArchivePreviewResponse),
     ArchiveImport(ImportAgentFlowTemplateResponse),
+    ArchiveBatchImport(ApplicationArchiveImportResponse),
     InstalledArchivePreview(InstalledApplicationExtensionPreviewResponse),
     ExportedArchive(ExportedApplicationArchive),
 }
@@ -83,9 +85,23 @@ impl ApplicationOrchestrationOutput {
         }
     }
 
-    pub(super) fn into_archive_preview(self) -> Result<AgentFlowTemplatePreviewResponse, ApiError> {
+    pub(super) fn into_archive_preview(
+        self,
+    ) -> Result<ApplicationArchivePreviewResponse, ApiError> {
         match self {
             Self::ArchivePreview(value) => Ok(value),
+            _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "application_orchestration_output",
+            )
+            .into()),
+        }
+    }
+
+    pub(super) fn into_archive_batch_import(
+        self,
+    ) -> Result<ApplicationArchiveImportResponse, ApiError> {
+        match self {
+            Self::ArchiveBatchImport(value) => Ok(value),
             _ => Err(control_plane::errors::ControlPlaneError::InvalidInput(
                 "application_orchestration_output",
             )
@@ -175,54 +191,81 @@ impl ApplicationOrchestrationAdapter {
         let user_id = actor.user_id;
         let service = FlowService::new(self.store.for_actor(actor.clone()));
         let input = match input {
-            ApplicationOrchestrationInput::PreviewUploadedArchive(entry) => {
+            ApplicationOrchestrationInput::PreviewUploadedArchive(package) => {
                 let resources = service.load_agent_flow_template_resources(user_id).await?;
-                let preview = control_plane::application::ApplicationArchiveService::new(
+                let previews = control_plane::application::ApplicationArchiveService::new(
                     self.store.for_actor(actor.clone()),
                 )
-                .preview_archive(
-                    control_plane::application::PreviewApplicationArchiveCommand {
-                        actor_user_id: user_id,
-                        entry,
-                        resources,
-                    },
-                )
+                .preview_archive_batch(user_id, package, resources)
                 .await?;
                 return Ok(ApplicationOrchestrationOutput::ArchivePreview(
-                    to_template_preview_response(preview),
+                    ApplicationArchivePreviewResponse {
+                        applications: previews
+                            .into_iter()
+                            .map(|entry| ApplicationArchivePreviewEntryResponse {
+                                entry_index: entry.entry_index,
+                                preview: to_template_preview_response(entry.preview),
+                            })
+                            .collect(),
+                    },
                 ));
             }
             ApplicationOrchestrationInput::ImportUploadedArchive {
-                entry,
-                name,
-                description,
+                package,
+                selections,
                 locale,
             } => {
                 let resources = service.load_agent_flow_template_resources(user_id).await?;
-                let imported = control_plane::application::ApplicationArchiveService::new(
+                let locale = locale.resolve(self.preferred_locale(principal).await?);
+                let outcomes = control_plane::application::ApplicationArchiveService::new(
                     self.store.for_actor(actor.clone()),
                 )
-                .import_archive(
-                    control_plane::application::ImportApplicationArchiveCommand {
-                        actor_user_id: user_id,
-                        entry,
-                        name,
-                        description,
-                        resources,
-                        source_extension_installation_id: None,
-                    },
-                )
+                .import_archive_batch(user_id, package, selections, resources)
                 .await?;
-                let locale = locale.resolve(self.preferred_locale(principal).await?);
-                return Ok(ApplicationOrchestrationOutput::ArchiveImport(
-                    to_import_response_with(
-                        &self.store,
-                        self.bootstrap_workspace_id,
-                        &locale,
-                        imported,
-                    )
-                    .await?,
-                ));
+                let mut response = ApplicationArchiveImportResponse {
+                    results: Vec::with_capacity(outcomes.len()),
+                    succeeded_count: 0,
+                    failed_count: 0,
+                    partial_count: 0,
+                };
+                for outcome in outcomes {
+                    let entry_index = outcome.entry_index;
+                    let result = match outcome.result {
+                        Ok(imported) => {
+                            let application_id = imported.application.id.to_string();
+                            match to_import_response_with(&self.store, self.bootstrap_workspace_id, &locale, imported).await {
+                                Ok(result) => {
+                                    response.succeeded_count += 1;
+                                    ApplicationArchiveImportEntryResponse::Succeeded { entry_index, result }
+                                }
+                                Err(error) => {
+                                    tracing::error!(%entry_index, %application_id, error = %error.0, "Imported application response projection failed");
+                                    response.partial_count += 1;
+                                    ApplicationArchiveImportEntryResponse::Partial { entry_index, application_id, code: "application_archive_import_incomplete".into() }
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(partial) = error.downcast_ref::<control_plane::application::ApplicationArchivePartialImport>() {
+                                tracing::error!(%entry_index, application_id = %partial.application_id, %error, "Application archive import incomplete");
+                                response.partial_count += 1;
+                                ApplicationArchiveImportEntryResponse::Partial { entry_index, application_id: partial.application_id.to_string(), code: "application_archive_import_incomplete".into() }
+                            } else {
+                                let code = match error.downcast_ref::<control_plane::errors::ControlPlaneError>() {
+                                    Some(control_plane::errors::ControlPlaneError::InvalidInput(code)) => *code,
+                                    Some(control_plane::errors::ControlPlaneError::PermissionDenied(code)) => *code,
+                                    Some(control_plane::errors::ControlPlaneError::Conflict(code)) => *code,
+                                    _ => "application_archive_import_failed",
+                                };
+                                tracing::warn!(%entry_index, %error, "Application archive entry import failed");
+                                response.failed_count += 1;
+                                ApplicationArchiveImportEntryResponse::Failed { entry_index, code: code.into() }
+                            }
+                        }
+                    };
+                    response.results.push(result);
+                }
+                return Ok(ApplicationOrchestrationOutput::ArchiveBatchImport(response));
             }
             ApplicationOrchestrationInput::ExportArchive(body) => {
                 let exported_at = time::OffsetDateTime::now_utc()

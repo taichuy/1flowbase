@@ -66,6 +66,26 @@ describe('console application orchestration client', () => {
     });
   });
 
+  test('sends batch entry indices and names in one multipart import', async () => {
+    const applications = [
+      { entry_index: 0, name: 'Workflow A' },
+      { entry_index: 3, name: 'Workflow D' }
+    ];
+    await importConsoleApplicationArchive(
+      {
+        file: new Blob(['zip']),
+        filename: 'applications-4-items.zip',
+        applications
+      },
+      'csrf'
+    );
+    const options = vi.mocked(transport.apiFetch).mock.calls.at(-1)![0];
+    expect((options.rawBody as FormData).get('applications')).toBe(
+      JSON.stringify(applications)
+    );
+    expect(options.csrfToken).toBe('csrf');
+  });
+
   test('does not export removed official Agent Flow route clients', () => {
     for (const exportName of [
       'listConsoleOfficialAgentFlowTemplateCatalog',

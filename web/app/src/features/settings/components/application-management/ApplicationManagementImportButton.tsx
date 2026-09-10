@@ -1,3 +1,4 @@
+import { ApiClientError } from '@1flowbase/api-client';
 import ImportOutlined from '@ant-design/icons/es/icons/ImportOutlined';
 import { useMutation } from '@tanstack/react-query';
 import { App, Button } from 'antd';
@@ -8,7 +9,7 @@ import {
   importApplicationArchive,
   previewApplicationArchive
 } from '../../../applications/api/applications';
-import { ApplicationTemplateImportModal } from '../../../applications/components/ApplicationTemplateImportModal';
+import { ApplicationArchiveImportModal } from '../../../applications/components/archive/ApplicationArchiveImportModal';
 
 export function ApplicationManagementImportButton({
   csrfToken,
@@ -20,13 +21,30 @@ export function ApplicationManagementImportButton({
   const { message } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [archive, setArchive] = useState<File | null>(null);
-  const [name, setName] = useState('');
+  const [names, setNames] = useState<Record<number, string>>({});
   const previewMutation = useMutation({
     mutationFn: previewApplicationArchive,
-    onSuccess: (preview) => setName(preview.application.name),
-    onError: () => {
+    onSuccess: (preview) => {
+      setNames(
+        Object.fromEntries(
+          preview.applications.map((entry) => [
+            entry.entry_index,
+            entry.preview.application.name
+          ])
+        )
+      );
+      importMutation.reset();
+    },
+    onError: (error) => {
       setArchive(null);
-      message.error(i18nText('applications', 'auto.template_preview_failed'));
+      const code = error instanceof ApiClientError ? error.code : null;
+      message.error(
+        code === 'application_archive_application_count'
+          ? i18nText('applications', 'archive_import.invalid_count')
+          : code?.startsWith('application_archive')
+            ? i18nText('applications', 'archive_import.invalid_archive')
+            : i18nText('applications', 'auto.template_preview_failed')
+      );
     }
   });
   const importMutation = useMutation({
@@ -34,16 +52,22 @@ export function ApplicationManagementImportButton({
       importApplicationArchive(
         file,
         {
-          name: name.trim(),
-          description: previewMutation.data?.application.description
+          applications: previewMutation.data?.applications.map(
+            ({ entry_index }) => ({
+              entry_index,
+              name: names[entry_index].trim()
+            })
+          )
         },
         csrfToken
       ),
-    onSuccess: async () => {
-      setArchive(null);
-      previewMutation.reset();
-      message.success(i18nText('applications', 'auto.template_imported'));
+    onSuccess: async (results) => {
       await onImported();
+      if (results.failed_count === 0 && results.partial_count === 0) {
+        setArchive(null);
+        previewMutation.reset();
+        message.success(i18nText('applications', 'auto.template_imported'));
+      }
     },
     onError: () => {
       message.error(i18nText('applications', 'auto.template_import_failed'));
@@ -76,12 +100,15 @@ export function ApplicationManagementImportButton({
       >
         {i18nText('applications', 'auto.import_template')}
       </Button>
-      <ApplicationTemplateImportModal
+      <ApplicationArchiveImportModal
         open={Boolean(archive && previewMutation.isSuccess)}
         preview={previewMutation.data ?? null}
-        name={name}
+        names={names}
+        results={importMutation.data}
         importing={importMutation.isPending}
-        onNameChange={setName}
+        onNameChange={(entry_index, name) =>
+          setNames((current) => ({ ...current, [entry_index]: name }))
+        }
         onCancel={() => {
           if (importMutation.isPending) return;
           setArchive(null);

@@ -554,12 +554,13 @@ fn map_mapping_draft_row(row: sqlx::postgres::PgRow) -> Result<ApplicationApiMap
     })
 }
 
-fn map_extension_slug_sqlx_error(error: sqlx::Error) -> anyhow::Error {
+pub(crate) fn map_extension_slug_sqlx_error(error: sqlx::Error) -> anyhow::Error {
     if let sqlx::Error::Database(database_error) = &error {
         if matches!(
             database_error.constraint(),
             Some(
-                "application_api_mappings_extension_slug_uidx"
+                "workflow_extension_triggers_subpath_uidx"
+                    | "application_api_mappings_extension_slug_uidx"
                     | "application_publication_versions_extension_slug_uidx"
             )
         ) {

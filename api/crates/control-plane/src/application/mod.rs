@@ -33,8 +33,10 @@ pub mod console_policy_migration;
 mod non_crud_console_access;
 
 pub use archive::{
-    ApplicationArchiveApplication, ApplicationArchiveEntry, ApplicationArchivePackage,
-    ApplicationArchiveService, ExportApplicationArchiveCommand, ImportApplicationArchiveCommand,
+    validate_archive_application_count, ApplicationArchiveApplication, ApplicationArchiveEntry,
+    ApplicationArchiveImportOutcome, ApplicationArchiveImportSelection, ApplicationArchivePackage,
+    ApplicationArchivePartialImport, ApplicationArchivePreviewEntry, ApplicationArchiveService,
+    ExportApplicationArchiveCommand, ImportApplicationArchiveCommand,
     PreviewApplicationArchiveCommand, WorkflowTriggerTemplateConfig,
     APPLICATION_ARCHIVE_SCHEMA_VERSION,
 };

@@ -231,15 +231,32 @@ describe('ApplicationManagementPanel', () => {
       tags: [{ id: 'tag-report', name: '报表' }]
     });
     applicationsApi.previewApplicationArchive.mockResolvedValue({
-      application: {
-        name: 'Imported Report',
-        description: 'Imported description'
-      },
-      dependencies: [],
-      unresolved_nodes: []
+      applications: [
+        {
+          entry_index: 0,
+          preview: {
+            application: {
+              name: 'Imported Report',
+              description: 'Imported description',
+              application_type: 'workflow'
+            },
+            dependencies: [],
+            unresolved_nodes: []
+          }
+        }
+      ]
     });
     applicationsApi.importApplicationArchive.mockResolvedValue({
-      application: { id: 'app-imported' }
+      succeeded_count: 1,
+      failed_count: 0,
+      partial_count: 0,
+      results: [
+        {
+          entry_index: 0,
+          status: 'succeeded',
+          result: { application: { id: 'app-imported' } }
+        }
+      ]
     });
     applicationsApi.updateApplication.mockResolvedValue({ id: 'app-workflow' });
     applicationsApi.exportApplicationArchive.mockResolvedValue({
@@ -682,6 +699,90 @@ describe('ApplicationManagementPanel', () => {
     ).toBeDisabled();
   });
 
+  test('batch import AC-001 AC-003 previews all four applications and reports per-entry results', async () => {
+    applicationsApi.previewApplicationArchive.mockResolvedValue({
+      applications: Array.from({ length: 4 }, (_, entry_index) => ({
+        entry_index,
+        preview: {
+          application: {
+            name: `Batch ${entry_index}`,
+            application_type: entry_index === 1 ? 'agent_flow' : 'workflow',
+            description: `Description ${entry_index}`
+          },
+          dependencies: [],
+          unresolved_nodes: []
+        }
+      }))
+    });
+    applicationsApi.importApplicationArchive.mockResolvedValue({
+      succeeded_count: 2,
+      failed_count: 1,
+      partial_count: 1,
+      results: [
+        {
+          entry_index: 0,
+          status: 'succeeded',
+          result: {
+            application: { id: 'imported-0', name: 'Renamed workflow' }
+          }
+        },
+        { entry_index: 1, status: 'failed', code: 'extension_slug' },
+        {
+          entry_index: 2,
+          status: 'succeeded',
+          result: { application: { id: 'imported-2', name: 'Batch 2' } }
+        },
+        {
+          entry_index: 3,
+          status: 'partial',
+          application_id: 'partial-3',
+          code: 'application_archive_import_incomplete'
+        }
+      ]
+    });
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    await screen.findByText('Daily Report');
+    const file = new File(['zip'], 'applications-4-items.zip', {
+      type: 'application/zip'
+    });
+    fireEvent.change(screen.getByLabelText('导入'), {
+      target: { files: [file] }
+    });
+    const dialog = await screen.findByRole('dialog');
+    const names = within(dialog).getAllByRole('textbox');
+    expect(names).toHaveLength(4);
+    fireEvent.change(names[0], { target: { value: 'Renamed workflow' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText('导入成功：2，失败：1，未完成：1')
+      ).toBeInTheDocument()
+    );
+    expect(
+      within(dialog).getByText('应用路径已被占用，无法导入。')
+    ).toBeInTheDocument();
+    expect(applicationsApi.importApplicationArchive).toHaveBeenCalledWith(
+      file,
+      {
+        applications: [
+          { entry_index: 0, name: 'Renamed workflow' },
+          { entry_index: 1, name: 'Batch 1' },
+          { entry_index: 2, name: 'Batch 2' },
+          { entry_index: 3, name: 'Batch 3' }
+        ]
+      },
+      'csrf-123'
+    );
+    expect(
+      within(dialog).queryByRole('button', { name: '导入应用' })
+    ).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/settings/applications');
+  });
+
   test('import AC-001 AC-002 previews, renames and refreshes applications in place', async () => {
     render(
       <AppProviders>
@@ -748,8 +849,7 @@ describe('ApplicationManagementPanel', () => {
     expect(applicationsApi.importApplicationArchive).toHaveBeenCalledWith(
       file,
       {
-        name: 'Daily Imported Report',
-        description: 'Imported description'
+        applications: [{ entry_index: 0, name: 'Daily Imported Report' }]
       },
       'csrf-123'
     );

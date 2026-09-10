@@ -17,6 +17,9 @@ const READY_STATUS: &str = "ready";
 
 const BUILTIN_NODE_TYPES: &[&str] = &[
     "start",
+    "workflow_start",
+    "workflow_end",
+    "sql",
     "answer",
     "llm",
     "if_else",

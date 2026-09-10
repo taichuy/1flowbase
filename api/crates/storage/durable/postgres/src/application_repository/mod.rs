@@ -445,7 +445,10 @@ impl ApplicationRepository for PgControlPlaneStore {
                     .bind(response_mode)
                     .bind(input.actor_user_id)
                     .execute(&mut *tx)
-                    .await?;
+                    .await
+                    .map_err(
+                        crate::application_public_api_repository::map_extension_slug_sqlx_error,
+                    )?;
 
                     let mapping_config = serde_json::json!({
                         "input": {
@@ -487,7 +490,10 @@ impl ApplicationRepository for PgControlPlaneStore {
                     .bind(subpath)
                     .bind(input.actor_user_id)
                     .execute(&mut *tx)
-                    .await?;
+                    .await
+                    .map_err(
+                        crate::application_public_api_repository::map_extension_slug_sqlx_error,
+                    )?;
                 }
             }
         }

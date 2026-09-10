@@ -19,7 +19,8 @@ use axum::{
 };
 use control_plane::{
     application::{
-        ApplicationArchiveApplication, ApplicationArchiveEntry, ApplicationArchivePackage,
+        validate_archive_application_count, ApplicationArchiveApplication, ApplicationArchiveEntry,
+        ApplicationArchiveImportSelection, ApplicationArchivePackage,
         APPLICATION_ARCHIVE_SCHEMA_VERSION,
     },
     errors::ControlPlaneError,
@@ -76,6 +77,8 @@ pub struct ExportApplicationArchiveBody {
 pub struct ApplicationArchiveUploadBody {
     #[schema(value_type = String, format = Binary)]
     pub file: String,
+    /// JSON array of entry_index, name and description overrides. Omit to import all entries.
+    pub applications: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
 }
@@ -194,6 +197,43 @@ pub struct ImportAgentFlowTemplateResponse {
     pub preview: AgentFlowTemplatePreviewResponse,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationArchivePreviewResponse {
+    pub applications: Vec<ApplicationArchivePreviewEntryResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationArchivePreviewEntryResponse {
+    pub entry_index: usize,
+    pub preview: AgentFlowTemplatePreviewResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ApplicationArchiveImportEntryResponse {
+    Succeeded {
+        entry_index: usize,
+        result: ImportAgentFlowTemplateResponse,
+    },
+    Failed {
+        entry_index: usize,
+        code: String,
+    },
+    Partial {
+        entry_index: usize,
+        application_id: String,
+        code: String,
+    },
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationArchiveImportResponse {
+    pub results: Vec<ApplicationArchiveImportEntryResponse>,
+    pub succeeded_count: usize,
+    pub failed_count: usize,
+    pub partial_count: usize,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
@@ -266,6 +306,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 struct ApplicationArchiveUpload {
     bytes: Vec<u8>,
+    applications: Option<Vec<ApplicationArchiveImportSelection>>,
     name: Option<String>,
     description: Option<String>,
 }
@@ -277,6 +318,7 @@ async fn read_application_archive_upload(
     let mut bytes = None;
     let mut name = None;
     let mut description = None;
+    let mut applications = None;
     while let Some(field) = multipart
         .next_field()
         .await
@@ -293,6 +335,14 @@ async fn read_application_archive_upload(
                 }
                 bytes = Some(value.to_vec());
             }
+            Some("applications") => {
+                let value = field.text().await.map_err(|_| {
+                    ControlPlaneError::InvalidInput("application_archive_selection")
+                })?;
+                applications = Some(serde_json::from_str(&value).map_err(|_| {
+                    ControlPlaneError::InvalidInput("application_archive_selection")
+                })?);
+            }
             Some("name") => {
                 name = field
                     .text()
@@ -308,6 +358,7 @@ async fn read_application_archive_upload(
     }
     Ok(ApplicationArchiveUpload {
         bytes: bytes.ok_or(ControlPlaneError::InvalidInput("application_archive"))?,
+        applications,
         name,
         description,
     })
@@ -380,16 +431,33 @@ fn single_application_entry(
     Ok(entry)
 }
 
-async fn uploaded_application_archive_entry(
+async fn uploaded_application_archive(
     multipart: &mut Multipart,
-) -> Result<(ApplicationArchiveEntry, Option<String>, Option<String>), ApiError> {
+) -> Result<
+    (
+        ApplicationArchivePackage,
+        Vec<ApplicationArchiveImportSelection>,
+    ),
+    ApiError,
+> {
     let upload = read_application_archive_upload(multipart).await?;
-    let name = upload.name;
-    let description = upload.description;
     let package = tokio::task::spawn_blocking(move || parse_application_archive(&upload.bytes))
         .await
         .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
-    Ok((single_application_entry(package)?, name, description))
+    validate_archive_application_count(&package)?;
+    if package.applications.len() != 1 && (upload.name.is_some() || upload.description.is_some()) {
+        return Err(ControlPlaneError::InvalidInput("application_archive_selection").into());
+    }
+    let selections = upload.applications.unwrap_or_else(|| {
+        (0..package.applications.len())
+            .map(|entry_index| ApplicationArchiveImportSelection {
+                entry_index,
+                name: upload.name.clone(),
+                description: upload.description.clone(),
+            })
+            .collect()
+    });
+    Ok((package, selections))
 }
 
 async fn installed_application_archive_entry_with(
@@ -517,7 +585,7 @@ pub async fn import_installed_application_extension(
     path = "/api/console/applications/archive/preview",
     request_body(content = inline(ApplicationArchiveUploadBody), content_type = "multipart/form-data"),
     responses(
-        (status = 200, body = AgentFlowTemplatePreviewResponse),
+        (status = 200, body = ApplicationArchivePreviewResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody)
     )
@@ -526,14 +594,14 @@ pub async fn preview_application_archive(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     mut multipart: Multipart,
-) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
-    let (entry, _, _) = uploaded_application_archive_entry(&mut multipart).await?;
+) -> Result<Json<ApiSuccess<ApplicationArchivePreviewResponse>>, ApiError> {
+    let (package, _) = uploaded_application_archive(&mut multipart).await?;
     let output: interface::ApplicationOrchestrationOutput =
         crate::routes::console_interface::invoke(
             Arc::clone(&state),
             "http.console.applications.archive.preview.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-            interface::ApplicationOrchestrationInput::PreviewUploadedArchive(entry),
+            interface::ApplicationOrchestrationInput::PreviewUploadedArchive(package),
         )
         .await?;
     Ok(Json(ApiSuccess::new(output.into_archive_preview()?)))
@@ -544,7 +612,7 @@ pub async fn preview_application_archive(
     path = "/api/console/applications/archive/import",
     request_body(content = inline(ApplicationArchiveUploadBody), content_type = "multipart/form-data"),
     responses(
-        (status = 201, body = ImportAgentFlowTemplateResponse),
+        (status = 201, body = ApplicationArchiveImportResponse),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody)
@@ -557,12 +625,12 @@ pub async fn import_application_archive(
 ) -> Result<
     (
         StatusCode,
-        Json<ApiSuccess<ImportAgentFlowTemplateResponse>>,
+        Json<ApiSuccess<ApplicationArchiveImportResponse>>,
     ),
     ApiError,
 > {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let (entry, name, description) = uploaded_application_archive_entry(&mut multipart).await?;
+    let (package, selections) = uploaded_application_archive(&mut multipart).await?;
     let output: interface::ApplicationOrchestrationOutput =
         crate::routes::console_interface::invoke(
             Arc::clone(&state),
@@ -572,16 +640,15 @@ pub async fn import_application_archive(
                 headers,
             },
             interface::ApplicationOrchestrationInput::ImportUploadedArchive {
-                entry,
-                name,
-                description,
+                package,
+                selections,
                 locale,
             },
         )
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(output.into_archive_import()?)),
+        Json(ApiSuccess::new(output.into_archive_batch_import()?)),
     ))
 }
 

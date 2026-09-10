@@ -16,3 +16,5 @@ pub(crate) use application_runtime_routes::{
     create_gated_provider_instance, create_marker_output_provider_instance,
     create_ready_provider_instance, ProviderInvocationGate,
 };
+
+mod application_archive_batch_routes;

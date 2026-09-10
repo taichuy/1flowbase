@@ -231,13 +231,17 @@ export function previewApplicationArchive(file: File) {
 
 export function importApplicationArchive(
   file: File,
-  input: { name?: string; description?: string },
+  input: Omit<
+    Parameters<typeof importConsoleApplicationArchive>[0],
+    'file' | 'filename'
+  >,
   csrfToken: string
 ) {
   return importConsoleApplicationArchive(
     {
       file,
       filename: file.name,
+      applications: input.applications,
       name: input.name,
       description: input.description
     },

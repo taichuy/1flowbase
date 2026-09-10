@@ -1,3 +1,4 @@
+import { ApiClientError } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -53,7 +54,7 @@ import {
 } from '../api/applications';
 import { ApplicationFormModal } from '../components/ApplicationFormModal';
 import { ApplicationTagManagerModal } from '../components/ApplicationTagManagerModal';
-import { ApplicationTemplateImportModal } from '../components/ApplicationTemplateImportModal';
+import { ApplicationArchiveImportModal } from '../components/archive/ApplicationArchiveImportModal';
 import { InstalledAgentFlowImportFlow } from '../components/InstalledAgentFlowImportFlow';
 import { InstalledAgentFlowPickerDrawer } from '../components/InstalledAgentFlowPickerDrawer';
 import { downloadApplicationArchive } from '../lib/template-download';
@@ -146,7 +147,7 @@ export function ApplicationListPage() {
     ApplicationTagCatalogEntry[]
   >([]);
   const [importArchive, setImportArchive] = useState<File | null>(null);
-  const [importName, setImportName] = useState('');
+  const [importNames, setImportNames] = useState<Record<number, string>>({});
   const [importPreview, setImportPreview] = useState<Awaited<
     ReturnType<typeof previewApplicationArchive>
   > | null>(null);
@@ -198,12 +199,27 @@ export function ApplicationListPage() {
     mutationFn: (archive: File) => previewApplicationArchive(archive),
     onSuccess: (preview) => {
       setImportPreview(preview);
-      setImportName(preview.application.name);
+      setImportNames(
+        Object.fromEntries(
+          preview.applications.map((entry) => [
+            entry.entry_index,
+            entry.preview.application.name
+          ])
+        )
+      );
+      importTemplateMutation.reset();
     },
-    onError: () => {
+    onError: (error) => {
       setImportArchive(null);
       setImportPreview(null);
-      messageApi.error(t('auto.template_preview_failed'));
+      const code = error instanceof ApiClientError ? error.code : null;
+      messageApi.error(
+        code === 'application_archive_application_count'
+          ? t('archive_import.invalid_count')
+          : code?.startsWith('application_archive')
+            ? t('archive_import.invalid_archive')
+            : t('auto.template_preview_failed')
+      );
     }
   });
 
@@ -216,18 +232,27 @@ export function ApplicationListPage() {
       return importApplicationArchive(
         importArchive,
         {
-          name: importName.trim(),
-          description: importPreview?.application.description
+          applications: importPreview?.applications.map(({ entry_index }) => ({
+            entry_index,
+            name: importNames[entry_index].trim()
+          }))
         },
         csrfToken ?? ''
       );
     },
     onSuccess: async (imported) => {
       await queryClient.invalidateQueries({ queryKey: applicationsQueryKey });
-      messageApi.success(t('auto.template_imported'));
-      window.location.assign(
-        `/applications/${imported.application.id}/orchestration`
-      );
+      if (imported.failed_count === 0 && imported.partial_count === 0) {
+        setImportArchive(null);
+        setImportPreview(null);
+        messageApi.success(t('auto.template_imported'));
+        const [entry] = imported.results;
+        if (imported.results.length === 1 && entry.status === 'succeeded') {
+          window.location.assign(
+            `/applications/${entry.result.application.id}/orchestration`
+          );
+        }
+      }
     },
     onError: () => {
       messageApi.error(t('auto.template_import_failed'));
@@ -781,12 +806,15 @@ export function ApplicationListPage() {
         }}
       />
 
-      <ApplicationTemplateImportModal
+      <ApplicationArchiveImportModal
         open={Boolean(importPreview)}
         preview={importPreview}
-        name={importName}
+        names={importNames}
+        results={importTemplateMutation.data}
         importing={importTemplateMutation.isPending}
-        onNameChange={setImportName}
+        onNameChange={(entry_index, name) =>
+          setImportNames((current) => ({ ...current, [entry_index]: name }))
+        }
         onCancel={() => {
           setImportArchive(null);
           setImportPreview(null);

@@ -1,3 +1,6 @@
+mod batch;
+pub use batch::*;
+
 use std::collections::BTreeSet;
 
 use anyhow::Result;
@@ -336,6 +339,12 @@ where
             .name
             .filter(|name| !name.trim().is_empty())
             .unwrap_or_else(|| preview.application.name.clone());
+        if application_name.trim().is_empty() || application_name.chars().count() > 80 {
+            return Err(
+                ControlPlaneError::InvalidInput("application_archive_application_name").into(),
+            );
+        }
+        validate_flow_draft_document(&preview.document)?;
         let application_description = command
             .description
             .unwrap_or_else(|| preview.application.description.clone());
@@ -355,56 +364,67 @@ where
                 },
             )
             .await?;
-        if let Some(mapping) = extension_mapping {
-            self.repository
-                .replace_application_api_mapping(&ReplaceApplicationApiMappingInput {
-                    actor_user_id: command.actor_user_id,
-                    application_id: application.id,
-                    mapping,
-                })
-                .await?;
-        }
-        let bootstrapped = self
-            .repository
-            .get_or_create_editor_state(
-                actor.current_workspace_id,
-                application.id,
-                command.actor_user_id,
-            )
-            .await?;
-        let (document, _) = import_application_template_document(
-            &template,
-            bootstrapped.flow.id,
-            &command.resources,
-        )?;
-        validate_flow_draft_document(&document)?;
-        let orchestration = self
-            .repository
-            .save_draft(
-                actor.current_workspace_id,
-                application.id,
-                command.actor_user_id,
-                document,
-                domain::FlowChangeKind::Logical,
-                "导入应用归档",
-            )
-            .await?;
-
-        if let Some(installation_id) = command.source_extension_installation_id {
-            self.repository
-                .record_application_extension_source(
+        let application_id = application.id;
+        let completion = async {
+            if let Some(mapping) = extension_mapping {
+                self.repository
+                    .replace_application_api_mapping(&ReplaceApplicationApiMappingInput {
+                        actor_user_id: command.actor_user_id,
+                        application_id: application.id,
+                        mapping,
+                    })
+                    .await?;
+            }
+            let bootstrapped = self
+                .repository
+                .get_or_create_editor_state(
                     actor.current_workspace_id,
                     application.id,
-                    installation_id,
                     command.actor_user_id,
                 )
                 .await?;
-        }
+            let (document, _) = import_application_template_document(
+                &template,
+                bootstrapped.flow.id,
+                &command.resources,
+            )?;
+            validate_flow_draft_document(&document)?;
+            let orchestration = self
+                .repository
+                .save_draft(
+                    actor.current_workspace_id,
+                    application.id,
+                    command.actor_user_id,
+                    document,
+                    domain::FlowChangeKind::Logical,
+                    "导入应用归档",
+                )
+                .await?;
 
-        Ok(ImportAgentFlowTemplateResult {
-            application,
-            orchestration,
-            preview,
+            if let Some(installation_id) = command.source_extension_installation_id {
+                self.repository
+                    .record_application_extension_source(
+                        actor.current_workspace_id,
+                        application.id,
+                        installation_id,
+                        command.actor_user_id,
+                    )
+                    .await?;
+            }
+
+            Ok(ImportAgentFlowTemplateResult {
+                application,
+                orchestration,
+                preview,
+            })
+        }
+        .await;
+        completion.map_err(|source| {
+            ApplicationArchivePartialImport {
+                application_id,
+                source,
+            }
+            .into()
         })
     }
 }

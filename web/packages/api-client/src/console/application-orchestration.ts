@@ -113,6 +113,40 @@ export interface ConsoleAgentFlowTemplatePreview {
   document: FlowAuthoringDocument;
 }
 
+export interface ConsoleApplicationArchivePreview {
+  applications: Array<{
+    entry_index: number;
+    preview: ConsoleAgentFlowTemplatePreview;
+  }>;
+}
+
+export interface ImportConsoleApplicationArchiveSelection {
+  entry_index: number;
+  name?: string;
+  description?: string;
+}
+
+export type ConsoleApplicationArchiveImportResult =
+  | {
+      entry_index: number;
+      status: 'succeeded';
+      result: ImportConsoleAgentFlowTemplateResponse;
+    }
+  | { entry_index: number; status: 'failed'; code: string }
+  | {
+      entry_index: number;
+      status: 'partial';
+      application_id: string;
+      code: string;
+    };
+
+export interface ImportConsoleApplicationArchiveResponse {
+  results: ConsoleApplicationArchiveImportResult[];
+  succeeded_count: number;
+  failed_count: number;
+  partial_count: number;
+}
+
 export interface PreviewConsoleAgentFlowTemplateInput {
   template: ConsoleAgentFlowTemplatePackage;
 }
@@ -124,6 +158,7 @@ export interface ImportConsoleAgentFlowTemplateInput {
 }
 
 export interface ImportConsoleApplicationArchiveInput {
+  applications?: ImportConsoleApplicationArchiveSelection[];
   file: Blob;
   filename?: string;
   name?: string;
@@ -189,10 +224,10 @@ export function previewConsoleApplicationArchive(
   file: Blob,
   filename = 'application.zip',
   baseUrl?: string
-): Promise<ConsoleAgentFlowTemplatePreview> {
+): Promise<ConsoleApplicationArchivePreview> {
   const formData = new FormData();
   formData.append('file', file, filename);
-  return apiFetch<ConsoleAgentFlowTemplatePreview>({
+  return apiFetch<ConsoleApplicationArchivePreview>({
     path: '/api/console/applications/archive/preview',
     method: 'POST',
     rawBody: formData,
@@ -204,14 +239,16 @@ export function importConsoleApplicationArchive(
   input: ImportConsoleApplicationArchiveInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ImportConsoleAgentFlowTemplateResponse> {
+): Promise<ImportConsoleApplicationArchiveResponse> {
   const formData = new FormData();
   formData.append('file', input.file, input.filename ?? 'application.zip');
+  if (input.applications)
+    formData.append('applications', JSON.stringify(input.applications));
   if (input.name) formData.append('name', input.name);
   if (input.description !== undefined) {
     formData.append('description', input.description);
   }
-  return apiFetch<ImportConsoleAgentFlowTemplateResponse>({
+  return apiFetch<ImportConsoleApplicationArchiveResponse>({
     path: '/api/console/applications/archive/import',
     method: 'POST',
     rawBody: formData,

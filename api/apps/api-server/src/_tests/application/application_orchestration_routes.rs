@@ -624,7 +624,7 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
     let preview_body: Value =
         serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
-        preview_body["data"]["application"]["name"],
+        preview_body["data"]["applications"][0]["preview"]["application"]["name"],
         json!("DeepSeek V4 测试")
     );
 
@@ -653,17 +653,20 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
     assert_eq!(imported.status(), StatusCode::CREATED);
     let imported_body: Value =
         serde_json::from_slice(&to_bytes(imported.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_ne!(imported_body["data"]["application"]["id"], source_id);
-    let imported_id = imported_body["data"]["application"]["id"]
+    assert_ne!(
+        imported_body["data"]["results"][0]["result"]["application"]["id"],
+        source_id
+    );
+    let imported_id = imported_body["data"]["results"][0]["result"]["application"]["id"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
-        imported_body["data"]["application"]["name"],
+        imported_body["data"]["results"][0]["result"]["application"]["name"],
         json!("Imported Portable Agent")
     );
     assert_eq!(
-        imported_body["data"]["application"]["application_type"],
+        imported_body["data"]["results"][0]["result"]["application"]["application_type"],
         json!("agent_flow")
     );
 
@@ -745,7 +748,7 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
     )
     .unwrap();
     assert_eq!(
-        legacy_import_body["data"]["application"]["name"],
+        legacy_import_body["data"]["results"][0]["result"]["application"]["name"],
         json!("Imported Legacy Agent")
     );
 }
@@ -1050,9 +1053,11 @@ async fn ac_004_workflow_schedule_json_import_preserves_disabled_trigger_config(
     assert_eq!(imported.status(), StatusCode::CREATED);
     let imported_body: Value =
         serde_json::from_slice(&to_bytes(imported.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let imported_id = imported_body["data"]["application"]["id"].as_str().unwrap();
+    let imported_id = imported_body["data"]["results"][0]["result"]["application"]["id"]
+        .as_str()
+        .unwrap();
     assert_eq!(
-        imported_body["data"]["application"]["application_type"],
+        imported_body["data"]["results"][0]["result"]["application"]["application_type"],
         json!("workflow")
     );
     let schedule = app
@@ -1172,7 +1177,9 @@ async fn ac_004_workflow_extension_json_round_trip_preserves_registration_config
     assert_eq!(imported.status(), StatusCode::CREATED);
     let imported_body: Value =
         serde_json::from_slice(&to_bytes(imported.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let imported_id = imported_body["data"]["application"]["id"].as_str().unwrap();
+    let imported_id = imported_body["data"]["results"][0]["result"]["application"]["id"]
+        .as_str()
+        .unwrap();
     let mapping = app
         .clone()
         .oneshot(

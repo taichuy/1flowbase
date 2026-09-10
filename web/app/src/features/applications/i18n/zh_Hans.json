@@ -319,5 +319,21 @@
     "schedule_enabled": "启用定时任务",
     "trigger_load_failed": "触发器配置加载失败",
     "tags": "标签"
+  },
+  "archive_import": {
+    "path_conflict": "应用路径已被占用，无法导入。",
+    "entry_failed": "应用导入未完成，请检查归档内容后重试。",
+    "close": "关闭",
+    "preview_summary": "共 {{count}} 个应用，确认名称后导入为草稿。",
+    "result_summary": "导入成功：{{succeeded_count}}，失败：{{failed_count}}，未完成：{{partial_count}}",
+    "partial_help": "部分应用已创建，但配置尚未全部保存。请查看应用后处理，避免重复导入。",
+    "application_type": "应用类型",
+    "result": "导入结果",
+    "succeeded": "成功",
+    "failed": "失败",
+    "partial": "未完成",
+    "inspect_application": "查看应用",
+    "invalid_count": "归档必须包含 1 至 100 个应用。",
+    "invalid_archive": "无法读取应用归档，请检查文件格式。"
   }
 }

@@ -319,5 +319,21 @@
     "schedule_enabled": "Enable schedule",
     "trigger_load_failed": "Failed to load trigger configuration",
     "tags": "Tags"
+  },
+  "archive_import": {
+    "path_conflict": "The application path is already in use. Import failed.",
+    "entry_failed": "Application import did not finish. Check the archive and try again.",
+    "close": "Close",
+    "preview_summary": "{{count}} applications. Confirm their names to import them as drafts.",
+    "result_summary": "Imported: {{succeeded_count}}, failed: {{failed_count}}, incomplete: {{partial_count}}",
+    "partial_help": "Some applications were created but their configuration was not fully saved. Review them before importing again.",
+    "application_type": "Application type",
+    "result": "Import result",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "partial": "Incomplete",
+    "inspect_application": "View application",
+    "invalid_count": "The archive must contain 1 to 100 applications.",
+    "invalid_archive": "Unable to read the application archive. Check the file format."
   }
 }

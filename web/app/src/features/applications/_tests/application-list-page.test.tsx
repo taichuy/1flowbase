@@ -5,7 +5,15 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi
+} from 'vitest';
 
 const applicationsApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
@@ -32,8 +40,12 @@ vi.mock('../api/applications', async (importOriginal) => ({
 }));
 
 import { AppProviders } from '../../../app/AppProviders';
-import { appI18n } from '../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+import { App } from 'antd';
 import { ApplicationListPage } from '../pages/ApplicationListPage';
 
 function authenticate() {
@@ -76,12 +88,15 @@ function authenticate() {
 function renderPage() {
   return render(
     <AppProviders>
-      <ApplicationListPage />
+      <App>
+        <ApplicationListPage />
+      </App>
     </AppProviders>
   );
 }
 
 describe('ApplicationListPage', () => {
+  beforeAll(() => loadApplicationI18nResources());
   beforeEach(async () => {
     window.localStorage.clear();
     await appI18n.changeLanguage('zh_Hans');
@@ -198,32 +213,39 @@ describe('ApplicationListPage', () => {
       new Promise(() => undefined)
     );
     applicationsApi.previewApplicationArchive.mockResolvedValue({
-      schema_version: '1flowbase.application-template/v1',
-      application: {
-        application_type: 'agent_flow',
-        name: '导入客服助手',
-        description: '导入描述',
-        icon: null,
-        icon_type: null,
-        icon_background: null
-      },
-      dependencies: [],
-      unresolved_nodes: [],
-      document: {
-        schemaVersion: '1flowbase.flow/v2',
-        meta: {
-          flowId: 'flow-template',
-          name: '导入客服助手',
-          description: '',
-          tags: []
-        },
-        graph: { nodes: [], edges: [] },
-        editor: {
-          viewport: { x: 0, y: 0, zoom: 1 },
-          annotations: [],
-          activeContainerPath: []
+      applications: [
+        {
+          entry_index: 0,
+          preview: {
+            schema_version: '1flowbase.application-template/v1',
+            application: {
+              application_type: 'agent_flow',
+              name: '导入客服助手',
+              description: '导入描述',
+              icon: null,
+              icon_type: null,
+              icon_background: null
+            },
+            dependencies: [],
+            unresolved_nodes: [],
+            document: {
+              schemaVersion: '1flowbase.flow/v2',
+              meta: {
+                flowId: 'flow-template',
+                name: '导入客服助手',
+                description: '',
+                tags: []
+              },
+              graph: { nodes: [], edges: [] },
+              editor: {
+                viewport: { x: 0, y: 0, zoom: 1 },
+                annotations: [],
+                activeContainerPath: []
+              }
+            }
+          }
         }
-      }
+      ]
     });
     applicationsApi.previewInstalledApplicationExtension.mockResolvedValue({
       extension_installation_id: 'agent-flow-installation-1',
@@ -462,8 +484,10 @@ describe('ApplicationListPage', () => {
     const dialog = await screen.findByRole('dialog', undefined, {
       timeout: 10_000
     });
-    expect(within(dialog).getByText('导入')).toBeInTheDocument();
-    expect(within(dialog).getByText('应用依赖已就绪')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('共 1 个应用，确认名称后导入为草稿。')
+    ).toBeInTheDocument();
+
     fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
 
     await waitFor(
@@ -471,8 +495,7 @@ describe('ApplicationListPage', () => {
         expect(applicationsApi.importApplicationArchive).toHaveBeenCalledWith(
           file,
           {
-            name: '导入客服助手',
-            description: '导入描述'
+            applications: [{ entry_index: 0, name: '导入客服助手' }]
           },
           'csrf-123'
         );
@@ -517,8 +540,8 @@ describe('ApplicationListPage', () => {
         applicationsApi.previewInstalledApplicationExtension
       ).toHaveBeenCalledWith('agent-flow-installation-1');
     });
-    const importTitle = (await screen.findAllByText('导入')).find(
-      (element) => element.closest('[role="dialog"]')
+    const importTitle = (await screen.findAllByText('导入')).find((element) =>
+      element.closest('[role="dialog"]')
     );
     const importDialog = importTitle?.closest('[role="dialog"]') ?? null;
     expect(importDialog).not.toBeNull();
