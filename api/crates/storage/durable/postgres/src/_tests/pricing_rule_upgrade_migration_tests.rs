@@ -225,8 +225,14 @@ async fn pricing_format_v2_migrates_fixed_tier_and_ttl_records_in_place() {
         1000
     );
     let ttl_row = store.get_pricing_rule(ttl).await.unwrap().unwrap();
-    assert_eq!(ttl_row.input_token_unit_price.to_string(), "10");
-    assert_eq!(ttl_row.cache_write_token_unit_price.to_string(), "12.5");
+    assert_eq!(
+        ttl_row.input_token_unit_price,
+        rust_decimal::Decimal::from(10)
+    );
+    assert_eq!(
+        ttl_row.cache_write_token_unit_price,
+        rust_decimal::Decimal::new(125, 1)
+    );
     assert_eq!(
         ttl_row.rules,
         serde_json::json!([{"when":{"cache_write_ttl_seconds":3600},"overrides":{"cache_write_token_unit_price":"20"}}])

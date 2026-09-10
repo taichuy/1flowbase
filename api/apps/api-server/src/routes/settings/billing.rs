@@ -255,7 +255,9 @@ pub(crate) fn body_to_rule(
         created_at: now,
         updated_at: now,
     };
-    rule.validate()?;
+    rule.validate().map_err(|_| {
+        control_plane::errors::ControlPlaneError::InvalidInput("pricing_rule_invalid")
+    })?;
     Ok(rule)
 }
 

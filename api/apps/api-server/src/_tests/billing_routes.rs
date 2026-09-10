@@ -226,6 +226,42 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
         Decimal::from_str("1.25").unwrap()
     );
 
+    // AC4: malformed rules are client errors and cannot create any record.
+    for (index, invalid_rules) in [
+        json!({}),
+        json!([{"when":{},"overrides":{"input_token_unit_price":"2"}}]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut input = rule_payload["data"].clone();
+        let fields = input.as_object_mut().unwrap();
+        for key in ["id", "created_by", "created_at", "updated_at"] {
+            fields.remove(key);
+        }
+        input["upstream_model_id"] = json!(format!("invalid-model-{index}"));
+        input["rules"] = invalid_rules;
+        let rejected = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/billing/pricing-rules")
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .header("content-type", "application/json")
+                    .body(Body::from(input.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response_json(rejected).await["code"],
+            "pricing_rule_invalid"
+        );
+    }
+
     // AC-005: pricing rules expose the same server-owned page contract used by
     // the shared settings data table instead of returning an uncounted array.
     let rules = app
