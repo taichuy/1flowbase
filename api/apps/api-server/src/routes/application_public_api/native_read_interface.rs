@@ -32,8 +32,8 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::native::{
-    NativeApiError, NativeModelListResponse, NativeModelObject, NativeRunResponse,
-    application_actor_from_principal, native_error,
+    application_actor_from_principal, native_error, NativeApiError, NativeModelListResponse,
+    NativeModelObject, NativeRunResponse,
 };
 use crate::routes::files::UploadedFileResponse;
 use crate::{
@@ -178,9 +178,9 @@ impl InterfaceContract for NativeModelsOutput {
                                                     "supported_efforts",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!(
-                                                            (&(item).supported_efforts).len()
-                                                        ),
+                                                        serde_json::json!((&(item)
+                                                            .supported_efforts)
+                                                            .len()),
                                                     )]),
                                                 ),
                                             ]),
@@ -931,6 +931,7 @@ impl NativeResumePort for NativeResumeAdapter {
                 self.provider_runtime.clone(),
                 Arc::clone(&self.runtime_engine),
                 self.provider_secret_master_key.clone(),
+                self.provider_transport_store.clone(),
             )
             .with_node_artifact_context(
                 self.api_node_id.clone(),
@@ -940,7 +941,6 @@ impl NativeResumePort for NativeResumeAdapter {
             .with_runtime_internal_tool_invoker(runtime_invoker)
             .with_llm_routing_counter_store(Arc::clone(&self.cache_store))
             .with_provider_request_log_queue(Arc::clone(&self.task_queue))
-            .with_provider_transport_store(Arc::clone(&self.provider_transport_store))
             .with_runtime_event_stream(Arc::clone(&self.runtime_event_stream));
             let _activity = self.runtime_activity.start(
                 actor.application_id,

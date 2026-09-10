@@ -8,11 +8,11 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::{
+        debug_stream_events, project_runtime_event_stream_terminal,
+        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
-        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand, debug_stream_events,
-        project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
-        wait_for_runtime_debug_event_persister,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
     },
     ports::{ApplicationRepository, OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
 };
@@ -21,10 +21,10 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    ApplicationActivityKind, ApplicationRunDetailResponse, CompleteCallbackTaskBody,
-    NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody, StartNodeDebugPreviewBody,
     offload_application_run_detail_artifacts_with_dependencies, scope_application_activity,
-    to_application_run_detail_response, to_node_last_run_response,
+    to_application_run_detail_response, to_node_last_run_response, ApplicationActivityKind,
+    ApplicationRunDetailResponse, CompleteCallbackTaskBody, NodeLastRunResponse, ResumeFlowRunBody,
+    StartFlowDebugRunBody, StartNodeDebugPreviewBody,
 };
 use crate::{
     app_state::ApiState,
@@ -143,6 +143,7 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_secret_master_key: String,
+    provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -161,6 +162,7 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         runtime_activity: state.runtime_activity.clone(),
         runtime_engine: state.runtime_engine.clone(),
         provider_secret_master_key: state.provider_secret_master_key.clone(),
+        provider_transport_store: state.infrastructure.provider_transport_store(),
         api_node_id: state.api_node_id.clone(),
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
@@ -180,9 +182,9 @@ pub(crate) fn port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-            ApplicationRuntimeDebugCommandsInput,
-            ApplicationRuntimeDebugCommandsOutput,
-        >,
+        ApplicationRuntimeDebugCommandsInput,
+        ApplicationRuntimeDebugCommandsOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -191,10 +193,10 @@ pub(crate) fn stream_port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleServerStreamPort<
-            ApplicationRuntimeDebugStreamInput,
-            ApplicationRuntimeDebugStreamEvent,
-            ApplicationRuntimeDebugStreamOutput,
-        >,
+        ApplicationRuntimeDebugStreamInput,
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -212,6 +214,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             ),
             self.dependencies.runtime_engine.clone(),
             self.dependencies.provider_secret_master_key.clone(),
+            self.dependencies.provider_transport_store.clone(),
         )
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),
@@ -335,6 +338,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 ),
                 dependencies.runtime_engine.clone(),
                 dependencies.provider_secret_master_key.clone(),
+                dependencies.provider_transport_store.clone(),
             )
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),
@@ -737,6 +741,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 ),
                 dependencies.runtime_engine.clone(),
                 dependencies.provider_secret_master_key.clone(),
+                dependencies.provider_transport_store.clone(),
             )
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),
@@ -840,7 +845,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 body,
                 headers,
             } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                self.start(principal, application_id, body, headers).await?,
+                Box::pin(self.start(principal, application_id, body, headers)).await?,
             )),
             ApplicationRuntimeDebugCommandsInput::Resume {
                 application_id,
@@ -848,14 +853,13 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 body,
                 headers,
             } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                self.resume(principal, application_id, run_id, body, headers)
-                    .await?,
+                Box::pin(self.resume(principal, application_id, run_id, body, headers)).await?,
             )),
             ApplicationRuntimeDebugCommandsInput::Cancel {
                 application_id,
                 run_id,
             } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                self.cancel(principal, application_id, run_id).await?,
+                Box::pin(self.cancel(principal, application_id, run_id)).await?,
             )),
             ApplicationRuntimeDebugCommandsInput::CompleteCallback {
                 application_id,
@@ -863,8 +867,14 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 body,
                 headers,
             } => Ok(ApplicationRuntimeDebugCommandsOutput::Run(
-                self.complete_callback(principal, application_id, callback_task_id, body, headers)
-                    .await?,
+                Box::pin(self.complete_callback(
+                    principal,
+                    application_id,
+                    callback_task_id,
+                    body,
+                    headers,
+                ))
+                .await?,
             )),
             ApplicationRuntimeDebugCommandsInput::StartNode {
                 application_id,
@@ -872,7 +882,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 body,
                 headers,
             } => Ok(ApplicationRuntimeDebugCommandsOutput::Node(
-                self.start_node(principal, application_id, node_id, body, headers)
+                Box::pin(self.start_node(principal, application_id, node_id, body, headers))
                     .await?,
             )),
         }
@@ -891,7 +901,7 @@ impl
         input: ApplicationRuntimeDebugCommandsInput,
     ) -> ConsoleInterfaceFuture<'a, ApplicationRuntimeDebugCommandsOutput> {
         Box::pin(async move {
-            self.execute_inner(principal, input)
+            Box::pin(self.execute_inner(principal, input))
                 .await
                 .map_err(ConsoleInterfaceTargetError)
         })
@@ -968,7 +978,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "applications.runtime.callback-tasks.complete",
         binding_id: "http.console.applications.runtime.callback-tasks.complete.v1",
         method: "POST",
-        path: "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
+        path:
+            "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

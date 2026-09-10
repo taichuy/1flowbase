@@ -95,6 +95,7 @@ pub async fn consume_one_workflow_schedule_run(
         api_provider_runtime(&state),
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
+        state.infrastructure.provider_transport_store(),
     )
     .with_node_artifact_context(
         state.api_node_id.clone(),

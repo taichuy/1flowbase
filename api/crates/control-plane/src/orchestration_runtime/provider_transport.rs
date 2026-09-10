@@ -49,22 +49,13 @@ where
                 );
             }
         };
-        let stored = match &self.provider_transport_store {
-            Some(store) => {
-                store
-                    .get_protocol_context(ProviderProtocolContextSlotId::for_locator(
-                        flow_run_id,
-                        &locator,
-                    ))
-                    .await
-            }
-            None => {
-                return context.with_unavailable_ephemeral_protocol_context(
-                    locator_value,
-                    "ephemeral_protocol_context_missing",
-                );
-            }
-        };
+        let stored = self
+            .provider_transport_store
+            .get_protocol_context(ProviderProtocolContextSlotId::for_locator(
+                flow_run_id,
+                &locator,
+            ))
+            .await;
         let stored = match stored {
             Ok(Some(stored)) if stored.matches_locator(&locator) => stored,
             Ok(Some(_)) => {
@@ -112,18 +103,12 @@ where
             self.delete_provider_transport_slot(slot_id).await;
             return Ok(None);
         }
-        let payload = match &self.provider_transport_store {
-            Some(store) => match store.get(slot_id).await {
-                Ok(payload) => payload,
-                Err(_) => {
-                    tracing::warn!(
-                        flow_run_id = %flow_run.id,
-                        "provider transport slot lookup failed"
-                    );
-                    None
-                }
-            },
-            None => None,
+        let payload = match self.provider_transport_store.get(slot_id).await {
+            Ok(payload) => payload,
+            Err(_) => {
+                tracing::warn!(flow_run_id = %flow_run.id, "provider transport slot lookup failed");
+                None
+            }
         };
         let Some(payload) = payload else {
             self.fail_published_run_for_missing_provider_transport(flow_run)
@@ -134,9 +119,7 @@ where
     }
 
     pub(super) async fn delete_provider_transport_slot(&self, slot_id: ProviderTransportSlotId) {
-        let Some(store) = &self.provider_transport_store else {
-            return;
-        };
+        let store = &self.provider_transport_store;
         if let Err(error) = store.delete(slot_id).await {
             tracing::warn!(
                 flow_run_id = %slot_id.as_uuid(),
@@ -147,9 +130,7 @@ where
     }
 
     pub(super) async fn clear_provider_protocol_contexts(&self, flow_run_id: uuid::Uuid) {
-        let Some(store) = &self.provider_transport_store else {
-            return;
-        };
+        let store = &self.provider_transport_store;
         if let Err(error) = store.delete_flow_run_protocol_contexts(flow_run_id).await {
             tracing::warn!(
                 flow_run_id = %flow_run_id,
@@ -206,7 +187,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::orchestration_runtime::test_support::{
         InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime,
@@ -219,13 +200,13 @@ mod tests {
     use uuid::Uuid;
 
     #[derive(Default)]
-    struct TestProviderTransportStore {
+    pub(crate) struct TestProviderTransportStore {
         entry: Mutex<Option<(ProviderTransportSlotId, ProviderTransportPayload)>>,
         protocol_context: Mutex<
-            Option<(
+            std::collections::HashMap<
                 crate::ports::ProviderProtocolContextSlotId,
                 crate::ports::ProviderProtocolContextValue,
-            )>,
+            >,
         >,
         continuation: Mutex<
             Option<(
@@ -276,7 +257,7 @@ mod tests {
             slot_id: crate::ports::ProviderProtocolContextSlotId,
             value: crate::ports::ProviderProtocolContextValue,
         ) -> anyhow::Result<()> {
-            *self.protocol_context.lock().await = Some((slot_id, value));
+            self.protocol_context.lock().await.insert(slot_id, value);
             Ok(())
         }
 
@@ -284,13 +265,7 @@ mod tests {
             &self,
             slot_id: crate::ports::ProviderProtocolContextSlotId,
         ) -> anyhow::Result<Option<crate::ports::ProviderProtocolContextValue>> {
-            Ok(self
-                .protocol_context
-                .lock()
-                .await
-                .as_ref()
-                .filter(|(stored_slot, _)| *stored_slot == slot_id)
-                .map(|(_, value)| value.clone()))
+            Ok(self.protocol_context.lock().await.get(&slot_id).cloned())
         }
 
         async fn delete_flow_run_protocol_contexts(
@@ -298,14 +273,9 @@ mod tests {
             flow_run_id: uuid::Uuid,
         ) -> anyhow::Result<usize> {
             let mut context = self.protocol_context.lock().await;
-            if context
-                .as_ref()
-                .is_some_and(|(slot_id, _)| slot_id.belongs_to(flow_run_id))
-            {
-                context.take();
-                return Ok(1);
-            }
-            Ok(0)
+            let before = context.len();
+            context.retain(|slot_id, _| !slot_id.belongs_to(flow_run_id));
+            Ok(before - context.len())
         }
 
         async fn put_continuation(
@@ -381,6 +351,7 @@ mod tests {
             InMemoryProviderRuntime::default(),
             std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
             "test-master-key",
+            std::sync::Arc::new(TestProviderTransportStore::default()),
         );
 
         let error = service
@@ -449,8 +420,8 @@ mod tests {
             InMemoryProviderRuntime::default(),
             std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
             "test-master-key",
-        )
-        .with_provider_transport_store(store.clone());
+            store.clone(),
+        );
 
         let resolved = service
             .resolve_provider_transport_payload(&flow_run, Some(slot))

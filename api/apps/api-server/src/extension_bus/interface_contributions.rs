@@ -1766,6 +1766,7 @@ pub(crate) fn production_interface_contributions(
                     crate::routes::application_public_api::native::api_provider_runtime(state),
                     Arc::clone(&state.runtime_engine),
                     state.provider_secret_master_key.clone(),
+                    state.infrastructure.provider_transport_store(),
                     state.api_node_id.clone(),
                     state.provider_install_root.clone(),
                     Arc::clone(&state.file_storage_registry),

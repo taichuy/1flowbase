@@ -35,6 +35,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             runtime,
             std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
             "test-master-key",
+            std::sync::Arc::new(
+                crate::orchestration_runtime::TestProviderTransportStore::default(),
+            ),
         )
         .with_node_artifact_context("local:test", std::env::temp_dir())
     }
@@ -86,6 +89,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             InMemoryProviderRuntime::default(),
             runtime_engine,
             "test-master-key",
+            std::sync::Arc::new(
+                crate::orchestration_runtime::TestProviderTransportStore::default(),
+            ),
         )
         .with_node_artifact_context("local:test", std::env::temp_dir())
         .with_file_storage_registry(std::sync::Arc::new(

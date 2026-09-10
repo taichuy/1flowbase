@@ -278,6 +278,7 @@ pub(crate) fn native_runtime_service(
         ),
         dependencies.runtime_engine.clone(),
         dependencies.provider_secret_master_key.clone(),
+        dependencies.provider_transport_store.clone(),
     )
     .with_node_artifact_context(
         dependencies.api_node_id.clone(),
@@ -287,7 +288,6 @@ pub(crate) fn native_runtime_service(
     .with_runtime_internal_tool_invoker(runtime_internal_tool_invoker)
     .with_llm_routing_counter_store(dependencies.cache_store.clone())
     .with_provider_request_log_queue(dependencies.task_queue.clone())
-    .with_provider_transport_store(dependencies.provider_transport_store.clone())
 }
 
 fn native_run_sse_dependencies(
@@ -307,6 +307,7 @@ pub(crate) fn native_run_terminal_dependencies(
         dependencies.runtime_engine.clone(),
         dependencies.provider_runtime.clone(),
         dependencies.provider_secret_master_key.clone(),
+        dependencies.provider_transport_store.clone(),
         dependencies.runtime_event_stream.clone(),
     )
 }

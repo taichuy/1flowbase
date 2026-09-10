@@ -3,8 +3,8 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::SystemTime,
 };
@@ -629,7 +629,7 @@ pub trait InterfaceTargetAdmissionPort: Send + Sync + 'static {
     fn adapter_reference(&self) -> AdmissionAdapterReference;
 
     fn admit(&self, request: InterfaceTargetAdmissionRequest)
-    -> InterfaceTargetAdmissionFuture<'_>;
+        -> InterfaceTargetAdmissionFuture<'_>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1071,8 +1071,9 @@ where
         O: InterfaceContract,
         E: InterfaceContract,
     {
-        self.invoke_internal::<I, O, E>(snapshot, envelope, None)
-            .await
+        // Keep the frozen invocation state out of the caller's inline future.
+        // Nested protocol dispatch still uses this same lifecycle and controls.
+        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, None)).await
     }
 
     pub async fn invoke_with_dispatch_target<I, O, E>(
@@ -1086,8 +1087,7 @@ where
         O: InterfaceContract,
         E: InterfaceContract,
     {
-        self.invoke_internal::<I, O, E>(snapshot, envelope, Some(target))
-            .await
+        Box::pin(self.invoke_internal::<I, O, E>(snapshot, envelope, Some(target))).await
     }
 
     pub async fn invoke_server_stream_with_dispatch_target<I, S, O, E>(

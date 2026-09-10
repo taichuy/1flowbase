@@ -277,6 +277,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
+        state.infrastructure.provider_transport_store(),
     )
     .with_node_artifact_context(
         state.api_node_id.clone(),
@@ -569,6 +570,7 @@ pub(crate) async fn start_compatible_typed_attach_stream(
                 state.runtime_engine.clone(),
                 state.provider_runtime.clone(),
                 state.provider_secret_master_key.clone(),
+                state.infrastructure.provider_transport_store(),
                 state.runtime_event_stream.clone(),
             ),
             initial_run: initial_run.clone(),

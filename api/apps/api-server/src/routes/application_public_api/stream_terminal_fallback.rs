@@ -29,6 +29,7 @@ pub(crate) struct NativeRunTerminalDependencies {
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_runtime: Arc<ApiRuntimeServices>,
     provider_secret_master_key: String,
+    provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
 }
 
@@ -38,6 +39,7 @@ impl NativeRunTerminalDependencies {
         runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
         provider_runtime: Arc<ApiRuntimeServices>,
         provider_secret_master_key: String,
+        provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
         runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     ) -> Self {
         Self {
@@ -45,6 +47,7 @@ impl NativeRunTerminalDependencies {
             runtime_engine,
             provider_runtime,
             provider_secret_master_key,
+            provider_transport_store,
             runtime_event_stream,
         }
     }
@@ -107,6 +110,7 @@ pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
         ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
         dependencies.runtime_engine.clone(),
         dependencies.provider_secret_master_key.clone(),
+        dependencies.provider_transport_store.clone(),
     )
     .with_runtime_event_stream(dependencies.runtime_event_stream.clone());
     let recovery_result = recovery_service

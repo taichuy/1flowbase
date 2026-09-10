@@ -13,9 +13,9 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::{
+    abort_assistant_execution_in, launch_assistant_execution, prepare_assistant_execution,
     AssistantClientToolBridge, AssistantClientToolId, AssistantConversationPageResponse,
-    AssistantRunDependencies, StartAssistantRunBody, abort_assistant_execution_in,
-    launch_assistant_execution, prepare_assistant_execution,
+    AssistantRunDependencies, StartAssistantRunBody,
 };
 use super::{
     conversation_events::{
@@ -603,6 +603,7 @@ impl AssistantWebSocketCommandAdapter {
             ),
             self.dependencies.runtime_engine.clone(),
             self.dependencies.provider_secret_master_key.clone(),
+            self.dependencies.provider_transport_store.clone(),
         )
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),
@@ -795,11 +796,9 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantWebSocketCommandPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

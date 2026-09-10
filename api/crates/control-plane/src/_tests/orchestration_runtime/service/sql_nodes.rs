@@ -136,6 +136,7 @@ fn sql_preview_service(
             InMemoryProviderRuntime::default(),
             Arc::new(runtime_engine),
             "test-master-key",
+            Arc::new(crate::orchestration_runtime::TestProviderTransportStore::default()),
         ),
         backend,
     )

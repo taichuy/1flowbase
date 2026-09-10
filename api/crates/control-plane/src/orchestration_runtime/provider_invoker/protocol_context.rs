@@ -221,17 +221,21 @@ fn collect_embedded_protocol_contexts(
     path: &mut Vec<JsonPathSegment>,
     contexts: &mut Vec<EmbeddedProtocolContext>,
 ) {
-    if serde_json::from_value::<ProtocolContextEnvelope>(value.clone()).is_ok() {
+    // Serde also accepts positional sequences for structs. Only the declared
+    // JSON object representation may participate in context protection.
+    if value.get("source_protocol").is_some_and(Value::is_string)
+        && serde_json::from_value::<ProtocolContextEnvelope>(value.clone()).is_ok()
+    {
         contexts.push(EmbeddedProtocolContext {
             path: path.clone(),
             serialized_string: false,
         });
         return;
     }
-    if value
-        .as_str()
-        .is_some_and(|text| serde_json::from_str::<ProtocolContextEnvelope>(text).is_ok())
-    {
+    if value.as_str().is_some_and(|text| {
+        text.trim_start().starts_with('{')
+            && serde_json::from_str::<ProtocolContextEnvelope>(text).is_ok()
+    }) {
         contexts.push(EmbeddedProtocolContext {
             path: path.clone(),
             serialized_string: true,
@@ -283,3 +287,7 @@ fn looks_like_protocol_context_text(value: &str) -> bool {
     value.contains("source_protocol")
         && (value.contains("headers") || value.contains("query") || value.contains("body"))
 }
+
+#[cfg(test)]
+#[path = "../../_tests/orchestration_runtime/provider_invoker/protocol_context_tests.rs"]
+mod tests;

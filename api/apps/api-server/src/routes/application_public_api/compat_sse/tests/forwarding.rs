@@ -38,6 +38,7 @@ fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
             state.runtime_engine.clone(),
             state.provider_runtime.clone(),
             state.provider_secret_master_key.clone(),
+            state.infrastructure.provider_transport_store(),
             state.runtime_event_stream.clone(),
         ),
     )

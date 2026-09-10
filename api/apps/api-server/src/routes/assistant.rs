@@ -289,6 +289,7 @@ pub(crate) struct AssistantRunDependencies {
     runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_secret_master_key: String,
+    provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -343,6 +344,7 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
         runtime_activity: state.runtime_activity.clone(),
         runtime_engine: state.runtime_engine.clone(),
         provider_secret_master_key: state.provider_secret_master_key.clone(),
+        provider_transport_store: state.infrastructure.provider_transport_store(),
         api_node_id: state.api_node_id.clone(),
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
@@ -756,6 +758,7 @@ pub(super) async fn launch_assistant_execution(
             ),
             background_dependencies.runtime_engine.clone(),
             background_dependencies.provider_secret_master_key.clone(),
+            background_dependencies.provider_transport_store.clone(),
         )
         .with_node_artifact_context(
             background_dependencies.api_node_id.clone(),
@@ -880,6 +883,7 @@ pub(crate) async fn execute_assistant_run(
         ),
         dependencies.runtime_engine.clone(),
         dependencies.provider_secret_master_key.clone(),
+        dependencies.provider_transport_store.clone(),
     )
     .with_node_artifact_context(
         dependencies.api_node_id.clone(),

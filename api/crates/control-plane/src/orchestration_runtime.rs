@@ -67,6 +67,8 @@ pub use stream_terminal_recovery::FinalizePublishedRunMissingStreamTerminalComma
 
 #[cfg(test)]
 pub(crate) use provider_invoker::test_support;
+#[cfg(test)]
+pub(crate) use provider_transport::tests::TestProviderTransportStore;
 
 use self::{
     compile_context::{ensure_compiled_plan_runnable, ensure_compiled_plan_runnable_for_node},
@@ -369,7 +371,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_secret_master_key: String,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
-    provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
+    provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
     api_node_id: Option<String>,
     provider_install_root: Option<PathBuf>,
     runtime_internal_tool_invoker:
@@ -401,6 +403,7 @@ where
         runtime: H,
         runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
         provider_secret_master_key: impl Into<String>,
+        provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
     ) -> Self {
         Self {
             repository,
@@ -412,7 +415,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             runtime_event_stream: None,
             provider_request_log_queue: None,
-            provider_transport_store: None,
+            provider_transport_store,
             api_node_id: None,
             provider_install_root: None,
             runtime_internal_tool_invoker: None,
@@ -459,14 +462,6 @@ where
 
     pub fn with_provider_request_log_queue(mut self, queue: Arc<dyn TaskQueue>) -> Self {
         self.provider_request_log_queue = Some(queue);
-        self
-    }
-
-    pub fn with_provider_transport_store(
-        mut self,
-        store: Arc<dyn crate::ports::ProviderTransportStore>,
-    ) -> Self {
-        self.provider_transport_store = Some(store);
         self
     }
 
@@ -528,7 +523,7 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
-            provider_transport_store: self.provider_transport_store.clone(),
+            provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
@@ -554,7 +549,7 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             provider_transport_payload: None,
-            provider_transport_store: self.provider_transport_store.clone(),
+            provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
@@ -593,10 +588,7 @@ where
             &input.snapshot.variable_pool,
             input.waiting_node_id,
         ) {
-            let store = self
-                .provider_transport_store
-                .as_ref()
-                .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?;
+            let store = &self.provider_transport_store;
             Some(
                 store
                     .consume_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
