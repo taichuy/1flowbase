@@ -14,3 +14,7 @@ decision_policy: verify_before_decision
 2026-09-08 19 用户明确更正提示词顺序：SYSTEM 内先 {{node-start.system}}，空行后追加内置提示词。此决定覆盖此前内置在前的顺序。生成 Workflow 和 test02 已同步更新发布，7 项测试通过。不据此宣称缓存命中改善。
 
 2026-09-08 21 自动生成 CRUD 删除响应契约修复：runtime_data_model_docs.rs 的 200 Deleted 原来没有 content，补齐 application/json 与 deleted:boolean schema；不改 Handler、权限、事务或分发器。生成契约和真实 Frontstage callable 删除/CSRF/持久效果两项定向测试通过。已重启本地后端，浏览器成功依次删除临时节点配置和网关记录，MCP 查询均为空。用户原有 test02 缺少 node_config 的先前部分删除状态未擅自恢复或删除。
+
+2026-09-09 16 用户指定参考 Block 01a08168-4d01-7341-9c16-6ca60be3a0ae（Drawer 示例页 01a07764-7e64-7ca3-b2f4-b8df39117fa4）替换网关抽屉。参考为内嵌 ResizableDrawer 壳，不是跨 Block import。目标已通过 MCP 使用同款壳（默认保留 800，480–1200、拖拽/键盘与页面宽度记忆），保存期间不可关闭。浏览器键盘调宽、重开记忆、Agent Modal 与移动端显示通过。仅更改低代码源码。
+
+2026-09-09 22 用户批准 Single Issue #2019 开发画布键盘归属修复，并进一步明确批准将第三方 Modal 焦点修复纳入同一 Issue。Codex 已实现并推送 dev 提交 0f186996d，Issue 阶段为 user-acceptance；无截止日期。动机为设计模式下区块表单能够正常输入，不将宿主事件细节泄漏给 Block 作者。PageCanvas 仅消费自身激活，配套固定 dialog/util 依赖补丁解决开场动画抢焦点、Shadow DOM 焦点锁和直接卸载 Modal 恢复触发器问题；未修改 Block、MCP、接口或用户记录。42 项定向测试及真实设计/浏览模式逐字输入、换行、模板选择、Escape/重开通过。系统中文输入法选字仍待用户验收；复用当前代码与 Issue #2019，不把本次证据扩大为 Native React 全基座验收。补丁边界/升级移除说明见 web/patches/rc-dialog-shadow-focus.md。
