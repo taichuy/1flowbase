@@ -12,6 +12,9 @@ import {
   fetchConsoleUiCatalogUpdateStatus,
   searchConsoleUiCatalog,
   fetchConsoleUiTemplates,
+  fetchConsolePluginSettingsPage,
+  type ConsolePluginSettingsPage,
+  type ConsoleUiManagedTemplate,
   publishConsoleUiTemplate,
   resetConsoleUiTemplateDefault,
   syncConsoleUiCatalogGroup,
@@ -38,6 +41,65 @@ describe('console UI management client', () => {
       csrfToken: 'csrf',
       baseUrl: undefined
     });
+  });
+
+  test('AC-009 reads an authorized registered page using the original route_id', async () => {
+    await expect(
+      fetchConsolePluginSettingsPage(
+        'plugin.acme/settings?variant=one',
+        'https://console.example'
+      )
+    ).resolves.toEqual({
+      path: '/api/console/settings/ui-management/plugin-settings-page?route_id=plugin.acme%2Fsettings%3Fvariant%3Done',
+      baseUrl: 'https://console.example'
+    });
+  });
+
+  test('AC-009/012 preserves published page and managed ownership field names', async () => {
+    const page: ConsolePluginSettingsPage = {
+      route_id: 'acme.settings',
+      feature_id: 'acme.preferences',
+      template_id: 'template-1',
+      provider_code: 'acme',
+      contribution_code: 'preferences',
+      source: 'export default () => <p>Published</p>',
+      language: 'tsx',
+      revision: 3,
+      applied_plugin_version: '2.0.0',
+      overwrite_on_plugin_upgrade: true
+    };
+    const template: ConsoleUiManagedTemplate = {
+      id: page.template_id,
+      provider_code: page.provider_code,
+      contribution_code: page.contribution_code,
+      name: 'Preferences',
+      latest_revision: {
+        revision: 3,
+        source: page.source,
+        language: 'tsx',
+        is_published: true
+      },
+      published_revision: {
+        revision: 3,
+        source: page.source,
+        language: 'tsx',
+        is_published: true
+      },
+      is_default: false,
+      owner_plugin_code: 'acme',
+      owner_feature_id: page.feature_id,
+      applied_plugin_version: page.applied_plugin_version,
+      overwrite_on_plugin_upgrade: true
+    };
+    vi.mocked(transport.apiFetch)
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce({
+        official: [],
+        managed: [template],
+        default_template: null
+      });
+    expect(await fetchConsolePluginSettingsPage(page.route_id)).toEqual(page);
+    expect((await fetchConsoleUiTemplates()).managed[0]).toEqual(template);
   });
 
   test('publishes an immutable template revision', async () => {

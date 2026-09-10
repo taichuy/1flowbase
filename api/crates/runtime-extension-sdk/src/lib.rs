@@ -11,7 +11,18 @@ pub use extension_contracts::{
     ManagedCreateHookInput, ManagedCreateView, ManagedHookHostFrame, ManagedHookOutcome,
     ManagedHookTerminal,
 };
-pub use managed_hook::serve_managed_hook;
+pub use extension_contracts::{
+    ManagedInterfaceHostFrame, ManagedInterfaceInput, ManagedInterfaceView,
+    ManagedProjectionContract,
+};
+pub use extension_contracts::{
+    ManagedInterfaceReferenceHostFrame, ManagedInterfaceReferenceInput,
+    ManagedInterfaceReferenceView, ManagedInterfaceReferenceWorkerFrame,
+    ManagedProjectionReference,
+};
+pub use managed_hook::{
+    serve_managed_hook, serve_managed_interface_hook, serve_managed_interface_reference_hook,
+};
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
 
@@ -27,6 +38,6 @@ mod _tests;
 mod managed_event;
 pub use extension_contracts::{
     ManagedEventHostFrame, ManagedEventOutcome, ManagedEventPayload, ManagedEventPublication,
-    ManagedEventStatus,
+    ManagedEventSchema, ManagedEventStatus,
 };
 pub use managed_event::serve_managed_event;

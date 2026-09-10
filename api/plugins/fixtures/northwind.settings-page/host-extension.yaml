@@ -1,0 +1,46 @@
+schema_version: 1flowbase.host-extension/v1
+extension_id: northwind.settings-page
+version: 1.0.0
+bootstrap_phase: boot
+native:
+  abi_version: 1flowbase.host.native/v1
+  library: builtin://northwind.settings-page
+  entry_symbol: oneflowbase_host_extension_entry_v1
+owned_resources: []
+extends_resources: []
+infrastructure_providers: []
+settings_features:
+  - feature_id: northwind.settings-page.settings
+    owner:
+      kind: host_extension
+      owner_id: northwind.settings-page
+      version: 1.0.0
+    lifecycle: active
+    console_surface:
+      route_id: northwind.settings-page.settings
+      surface_key: northwind.settings-page.settings
+      path: /settings/northwind.settings-page
+      label_key: northwind.settings-page.console.settings.label
+      description_key: northwind.settings-page.console.settings.description
+      order: 100
+    api_routes: []
+console_operations: []
+console_resources: []
+console_locale_catalog:
+  texts:
+    - reference: northwind.settings-page.console.settings.label
+      en_us: Fixture settings
+      zh_hans: 示例设置
+    - reference: northwind.settings-page.console.settings.description
+      en_us: Manage fixture settings
+      zh_hans: 管理示例设置
+  policy_groups: []
+console_surfaces: {}
+routes: []
+workers: []
+migrations: []
+settings_pages:
+  - feature_id: northwind.settings-page.settings
+    contribution_code: settings
+    source_file: settings.tsx
+    language: tsx

@@ -1,3 +1,5 @@
+import { fetchConsolePluginSettingsPage } from '@1flowbase/api-client';
+
 export {
   deleteConsoleUiTemplate as deleteSettingsUiTemplate,
   createConsoleUiComponent as createSettingsUiComponent,
@@ -40,3 +42,9 @@ export const settingsUiComponentsQueryKey = [
   'ui-management',
   'components'
 ] as const;
+
+export const pluginSettingsPageQueryOptions = (route_id: string) => ({
+  queryKey: ['settings', 'plugin-settings-page', route_id] as const,
+  queryFn: () => fetchConsolePluginSettingsPage(route_id),
+  retry: false
+});

@@ -737,6 +737,7 @@ fn installation_commit_input(
     };
 
     CommitPluginInstallationInput {
+        settings_templates: Vec::new(),
         installation: UpsertPluginInstallationInput {
             installation_id,
             category: domain::ExtensionCategory::CapabilityPlugins,

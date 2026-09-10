@@ -27,6 +27,291 @@ pub(crate) enum FrontstagePagesInput {
 }
 
 impl InterfaceContract for FrontstagePagesInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CreateGroup")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "icon",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "tooltip",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "parent_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "placement",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Topbar"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Sidebar"))]),
+                            ]),
+                        ),
+                        (
+                            "slug",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CreatePage")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "icon",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "tooltip",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "parent_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "placement",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Topbar"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Sidebar"))]),
+                            ]),
+                        ),
+                        (
+                            "slug",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Detail")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Update")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                        ),
+                        (
+                            "icon",
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                        ),
+                        (
+                            "tooltip",
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                        ),
+                        (
+                            "is_hidden",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "placement",
+                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Topbar"))]), mp::object_schema(&[("variant",mp::tag_schema("Sidebar"))])]), {"type":"null"}]}),
+                        ),
+                        (
+                            "content_presentation",
+                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Single"))]), mp::object_schema(&[("variant",mp::tag_schema("Tabs"))])]), {"type":"null"}]}),
+                        ),
+                        (
+                            "slug",
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Move")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        (
+                            "parent_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Delete")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ListTabs")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("CreateTab")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "route_segment",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("UpdateTab")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DeleteTab")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("SaveDocument")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[("payload", mp::json_summary_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("ListUiTemplates"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DispatchQuery")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        ("query_id", mp::text_schema()),
+                        ("params", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("DispatchAction")),
+                (
+                    "0",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "1",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "2",
+                    mp::object_schema(&[
+                        ("action_id", mp::text_schema()),
+                        ("params", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {Self::List => mp::object_value(&[("variant",serde_json::Value::String("List".to_owned()))]), Self::CreateGroup(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("CreateGroup".to_owned())), ("0",mp::object_value(&[("title",match (&(_field_0).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (&(_field_0).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(_field_0).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("parent_id",match (&(_field_0).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",match (&(_field_0).rank).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("placement",match &(_field_0).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("slug",match (&(_field_0).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::CreatePage(_field_0, _) => mp::object_value(&[("variant",serde_json::Value::String("CreatePage".to_owned())), ("0",mp::object_value(&[("title",match (&(_field_0).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (&(_field_0).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(_field_0).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("parent_id",match (&(_field_0).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",match (&(_field_0).rank).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("placement",match &(_field_0).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("slug",match (&(_field_0).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Detail(_field_0, _field_1, _) => mp::object_value(&[("variant",serde_json::Value::String("Detail".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::Update(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Update".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("title",match (&(_field_1).title).as_ref() { Some(item) => match (item).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }, None => serde_json::Value::Null }), ("icon",match (&(_field_1).icon).as_ref() { Some(item) => match (item).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }, None => serde_json::Value::Null }), ("tooltip",match (&(_field_1).tooltip).as_ref() { Some(item) => match (item).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }, None => serde_json::Value::Null }), ("is_hidden",match (&(_field_1).is_hidden).as_ref() { Some(item) => serde_json::Value::Bool(*(item)), None => serde_json::Value::Null }), ("placement",match (&(_field_1).placement).as_ref() { Some(item) => match item {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}, None => serde_json::Value::Null }), ("content_presentation",match (&(_field_1).content_presentation).as_ref() { Some(item) => match item {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}, None => serde_json::Value::Null }), ("slug",match (&(_field_1).slug).as_ref() { Some(item) => match (item).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }, None => serde_json::Value::Null })]))]), Self::Move(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("Move".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("parent_id",match (&(_field_1).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",match (&(_field_1).rank).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Delete(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Delete".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::ListTabs(_field_0, _) => mp::object_value(&[("variant",serde_json::Value::String("ListTabs".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::CreateTab(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("CreateTab".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("title",match (&(_field_1).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("route_segment",match (&(_field_1).route_segment).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rank",match (&(_field_1).rank).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::UpdateTab(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("UpdateTab".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("title",match (&(_field_2).title).as_ref() { Some(item) => match (item).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }, None => serde_json::Value::Null }), ("rank",match (&(_field_2).rank).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::DeleteTab(_field_0, _field_1) => mp::object_value(&[("variant",serde_json::Value::String("DeleteTab".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))]))]), Self::SaveDocument(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("SaveDocument".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("payload",mp::json_summary(&(_field_2).payload))]))]), Self::ListUiTemplates => mp::object_value(&[("variant",serde_json::Value::String("ListUiTemplates".to_owned()))]), Self::DispatchQuery(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("DispatchQuery".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("query_id",mp::text(&(_field_2).query_id)?), ("params",mp::json_summary(&(_field_2).params))]))]), Self::DispatchAction(_field_0, _field_1, _field_2) => mp::object_value(&[("variant",serde_json::Value::String("DispatchAction".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value(&[("byte_count",serde_json::json!((_field_1).len()))])), ("2",mp::object_value(&[("action_id",mp::text(&(_field_2).action_id)?), ("params",mp::json_summary(&(_field_2).params))]))])})
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-pages-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -43,6 +328,296 @@ pub(crate) enum FrontstagePagesOutput {
     NoContent,
 }
 impl InterfaceContract for FrontstagePagesOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Tree")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tooltip",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_hidden",serde_json::json!({"type":"boolean"})), ("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Group"))]), mp::object_schema(&[("variant",mp::tag_schema("Page"))])])), ("placement",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Topbar"))]), mp::object_schema(&[("variant",mp::tag_schema("Sidebar"))])])), ("content_presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Single"))]), mp::object_schema(&[("variant",mp::tag_schema("Tabs"))])])), ("slug",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("children",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("tooltip",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("is_hidden",serde_json::json!({"type":"boolean"})), ("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Group"))]), mp::object_schema(&[("variant",mp::tag_schema("Page"))])])), ("placement",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Topbar"))]), mp::object_schema(&[("variant",mp::tag_schema("Sidebar"))])])), ("content_presentation",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Single"))]), mp::object_schema(&[("variant",mp::tag_schema("Tabs"))])])), ("slug",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("children",mp::object_schema(&[("item_count",mp::count_schema())]))])}))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Page")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        (
+                            "icon",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "tooltip",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        ("is_hidden", serde_json::json!({"type":"boolean"})),
+                        (
+                            "kind",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Group"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Page"))]),
+                            ]),
+                        ),
+                        (
+                            "parent_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "placement",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Topbar"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Sidebar"))]),
+                            ]),
+                        ),
+                        (
+                            "content_presentation",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Single"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Tabs"))]),
+                            ]),
+                        ),
+                        (
+                            "slug",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Creation")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "page",
+                            mp::object_schema(&[
+                                ("id", mp::text_schema()),
+                                (
+                                    "icon",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "tooltip",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                ("is_hidden", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "kind",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Group"))]),
+                                        mp::object_schema(&[("variant", mp::tag_schema("Page"))]),
+                                    ]),
+                                ),
+                                (
+                                    "parent_id",
+                                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                                ),
+                                (
+                                    "rank",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "placement",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Topbar"))]),
+                                        mp::object_schema(&[(
+                                            "variant",
+                                            mp::tag_schema("Sidebar"),
+                                        )]),
+                                    ]),
+                                ),
+                                (
+                                    "content_presentation",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Single"))]),
+                                        mp::object_schema(&[("variant", mp::tag_schema("Tabs"))]),
+                                    ]),
+                                ),
+                                (
+                                    "slug",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "default_tab",
+                            mp::object_schema(&[
+                                ("id", mp::text_schema()),
+                                ("page_id", mp::text_schema()),
+                                (
+                                    "title",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "rank",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                ("is_default", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "route_segment",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "document_root_uid",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Detail")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "page",
+                            mp::object_schema(&[
+                                ("id", mp::text_schema()),
+                                (
+                                    "icon",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "tooltip",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                ("is_hidden", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "kind",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Group"))]),
+                                        mp::object_schema(&[("variant", mp::tag_schema("Page"))]),
+                                    ]),
+                                ),
+                                (
+                                    "parent_id",
+                                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                                ),
+                                (
+                                    "rank",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "placement",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Topbar"))]),
+                                        mp::object_schema(&[(
+                                            "variant",
+                                            mp::tag_schema("Sidebar"),
+                                        )]),
+                                    ]),
+                                ),
+                                (
+                                    "content_presentation",
+                                    mp::union_schema(vec![
+                                        mp::object_schema(&[("variant", mp::tag_schema("Single"))]),
+                                        mp::object_schema(&[("variant", mp::tag_schema("Tabs"))]),
+                                    ]),
+                                ),
+                                (
+                                    "slug",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "tab",
+                            mp::object_schema(&[
+                                ("id", mp::text_schema()),
+                                ("page_id", mp::text_schema()),
+                                (
+                                    "title",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "rank",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                ("is_default", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "route_segment",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                                (
+                                    "document_root_uid",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "document",
+                            mp::object_schema(&[
+                                (
+                                    "root_uid",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                ("payload", mp::json_summary_schema()),
+                            ]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Tabs")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("page_id",mp::text_schema()), ("title",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("rank",mp::object_schema(&[("byte_count",mp::count_schema())])), ("is_default",serde_json::json!({"type":"boolean"})), ("route_segment",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("document_root_uid",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Tab")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        ("page_id", mp::text_schema()),
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "rank",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("is_default", serde_json::json!({"type":"boolean"})),
+                        (
+                            "route_segment",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "document_root_uid",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("UiTemplates")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("template_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("provider_code",mp::text_schema()), ("contribution_code",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source",mp::object_schema(&[("byte_count",mp::count_schema())])), ("language",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Jsx"))]), mp::object_schema(&[("variant",mp::tag_schema("Tsx"))])])), ("version",mp::text_schema()), ("is_official",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"}))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Json")),
+                ("0", mp::json_summary_schema()),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {Self::Tree(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Tree".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (&(item).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(item).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("is_hidden",serde_json::Value::Bool(*(&(item).is_hidden))), ("kind",match &(item).kind {crate::routes::frontstage::FrontstagePageTreeNodeKind::Group => mp::object_value(&[("variant",serde_json::Value::String("Group".to_owned()))]), crate::routes::frontstage::FrontstagePageTreeNodeKind::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))])}), ("placement",match &(item).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("content_presentation",match &(item).content_presentation {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}), ("slug",match (&(item).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("children",{ if (&(item).children).len() > 32 { return None; } serde_json::Value::Array((&(item).children).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon",match (&(item).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(item).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("is_hidden",serde_json::Value::Bool(*(&(item).is_hidden))), ("kind",match &(item).kind {crate::routes::frontstage::FrontstagePageTreeNodeKind::Group => mp::object_value(&[("variant",serde_json::Value::String("Group".to_owned()))]), crate::routes::frontstage::FrontstagePageTreeNodeKind::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))])}), ("placement",match &(item).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("content_presentation",match &(item).content_presentation {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}), ("slug",match (&(item).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("children",mp::object_value(&[("item_count",serde_json::json!((&(item).children).len()))]))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?) })]), Self::Page(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned())), ("0",mp::object_value(&[("id",mp::text(&(_field_0).id)?), ("icon",match (&(_field_0).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(_field_0).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("is_hidden",serde_json::Value::Bool(*(&(_field_0).is_hidden))), ("kind",match &(_field_0).kind {crate::routes::frontstage::FrontstagePageTreeNodeKind::Group => mp::object_value(&[("variant",serde_json::Value::String("Group".to_owned()))]), crate::routes::frontstage::FrontstagePageTreeNodeKind::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))])}), ("parent_id",match (&(_field_0).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).rank).len()))])), ("placement",match &(_field_0).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("content_presentation",match &(_field_0).content_presentation {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}), ("slug",match (&(_field_0).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Creation(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Creation".to_owned())), ("0",mp::object_value(&[("page",mp::object_value(&[("id",mp::text(&(&(_field_0).page).id)?), ("icon",match (&(&(_field_0).page).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(&(_field_0).page).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("is_hidden",serde_json::Value::Bool(*(&(&(_field_0).page).is_hidden))), ("kind",match &(&(_field_0).page).kind {crate::routes::frontstage::FrontstagePageTreeNodeKind::Group => mp::object_value(&[("variant",serde_json::Value::String("Group".to_owned()))]), crate::routes::frontstage::FrontstagePageTreeNodeKind::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))])}), ("parent_id",match (&(&(_field_0).page).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).page).rank).len()))])), ("placement",match &(&(_field_0).page).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("content_presentation",match &(&(_field_0).page).content_presentation {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}), ("slug",match (&(&(_field_0).page).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })])), ("default_tab",mp::object_value(&[("id",mp::text(&(&(_field_0).default_tab).id)?), ("page_id",mp::text(&(&(_field_0).default_tab).page_id)?), ("title",match (&(&(_field_0).default_tab).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).default_tab).rank).len()))])), ("is_default",serde_json::Value::Bool(*(&(&(_field_0).default_tab).is_default))), ("route_segment",match (&(&(_field_0).default_tab).route_segment).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("document_root_uid",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).default_tab).document_root_uid).len()))]))]))]))]), Self::Detail(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Detail".to_owned())), ("0",mp::object_value(&[("page",mp::object_value(&[("id",mp::text(&(&(_field_0).page).id)?), ("icon",match (&(&(_field_0).page).icon).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("tooltip",match (&(&(_field_0).page).tooltip).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("is_hidden",serde_json::Value::Bool(*(&(&(_field_0).page).is_hidden))), ("kind",match &(&(_field_0).page).kind {crate::routes::frontstage::FrontstagePageTreeNodeKind::Group => mp::object_value(&[("variant",serde_json::Value::String("Group".to_owned()))]), crate::routes::frontstage::FrontstagePageTreeNodeKind::Page => mp::object_value(&[("variant",serde_json::Value::String("Page".to_owned()))])}), ("parent_id",match (&(&(_field_0).page).parent_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).page).rank).len()))])), ("placement",match &(&(_field_0).page).placement {crate::routes::frontstage::FrontstageNavigationPlacementResponse::Topbar => mp::object_value(&[("variant",serde_json::Value::String("Topbar".to_owned()))]), crate::routes::frontstage::FrontstageNavigationPlacementResponse::Sidebar => mp::object_value(&[("variant",serde_json::Value::String("Sidebar".to_owned()))])}), ("content_presentation",match &(&(_field_0).page).content_presentation {crate::routes::frontstage::FrontstagePageContentPresentationResponse::Single => mp::object_value(&[("variant",serde_json::Value::String("Single".to_owned()))]), crate::routes::frontstage::FrontstagePageContentPresentationResponse::Tabs => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned()))])}), ("slug",match (&(&(_field_0).page).slug).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })])), ("tab",mp::object_value(&[("id",mp::text(&(&(_field_0).tab).id)?), ("page_id",mp::text(&(&(_field_0).tab).page_id)?), ("title",match (&(&(_field_0).tab).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).tab).rank).len()))])), ("is_default",serde_json::Value::Bool(*(&(&(_field_0).tab).is_default))), ("route_segment",match (&(&(_field_0).tab).route_segment).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("document_root_uid",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).tab).document_root_uid).len()))]))])), ("document",mp::object_value(&[("root_uid",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).document).root_uid).len()))])), ("payload",mp::json_summary(&(&(_field_0).document).payload))]))]))]), Self::Tabs(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Tabs".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("page_id",mp::text(&(item).page_id)?), ("title",match (&(item).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(item).rank).len()))])), ("is_default",serde_json::Value::Bool(*(&(item).is_default))), ("route_segment",match (&(item).route_segment).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("document_root_uid",mp::object_value(&[("byte_count",serde_json::json!((&(item).document_root_uid).len()))]))]))).collect::<Option<Vec<_>>>()?) })]), Self::Tab(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Tab".to_owned())), ("0",mp::object_value(&[("id",mp::text(&(_field_0).id)?), ("page_id",mp::text(&(_field_0).page_id)?), ("title",match (&(_field_0).title).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("rank",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).rank).len()))])), ("is_default",serde_json::Value::Bool(*(&(_field_0).is_default))), ("route_segment",match (&(_field_0).route_segment).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("document_root_uid",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).document_root_uid).len()))]))]))]), Self::UiTemplates(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("UiTemplates".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("template_id",match (&(item).template_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("source",mp::object_value(&[("byte_count",serde_json::json!((&(item).source).len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("version",mp::text(&(item).version)?), ("is_official",serde_json::Value::Bool(*(&(item).is_official))), ("is_default",serde_json::Value::Bool(*(&(item).is_default)))]))).collect::<Option<Vec<_>>>()?) })]), Self::Json(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Json".to_owned())), ("0",mp::json_summary(_field_0))]), Self::NoContent => mp::object_value(&[("variant",serde_json::Value::String("NoContent".to_owned()))])})
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-pages-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

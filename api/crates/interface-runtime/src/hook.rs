@@ -25,6 +25,7 @@ pub struct InterfaceHookContext {
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
     extension_context: Option<InvocationExtensionContext>,
+    pub(crate) managed_invocation: Option<ManagedInvocationContext>,
     observer_failed: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -41,6 +42,7 @@ impl InterfaceHookContext {
             graph_fingerprint,
             registry_fingerprint,
             extension_context: None,
+            managed_invocation: None,
             observer_failed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -56,6 +58,7 @@ impl InterfaceHookContext {
             graph_fingerprint,
             registry_fingerprint,
             extension_context: None,
+            managed_invocation: None,
             observer_failed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -430,4 +433,158 @@ where
 fn typed_contract_identity<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("typed hook contract constants must be valid identities")
+}
+
+/// Protocol-independent, immutable safe-value calls; no mutation or recovery response exists.
+pub enum ManagedInterfaceCall {
+    Authorization,
+    Admission,
+    Before,
+    After(Option<crate::ManagedInterfaceProjection>),
+    Failure,
+    Completion(InterfaceInvocationTerminal),
+}
+
+pub struct ManagedInterfaceFreezeRequest {
+    pub definition: crate::InterfaceDefinition,
+    pub context: InterfaceHookContext,
+    pub input: Option<crate::ManagedInterfaceProjection>,
+    pub deadline: Option<std::time::SystemTime>,
+}
+
+pub type ManagedInterfaceFreezeFuture<'a> = Pin<
+    Box<dyn Future<Output = Result<Arc<dyn ManagedInterfaceInvocation>, &'static str>> + Send + 'a>,
+>;
+pub type ManagedInterfaceCallFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send + 'a>>;
+
+pub trait ManagedInterfaceInvocationFactory: Send + Sync + 'static {
+    fn freeze(&self, request: ManagedInterfaceFreezeRequest) -> ManagedInterfaceFreezeFuture<'_>;
+}
+pub trait ManagedInterfaceInvocation: Send + Sync + 'static {
+    fn run(
+        &self,
+        context: InterfaceHookContext,
+        call: ManagedInterfaceCall,
+    ) -> ManagedInterfaceCallFuture<'_>;
+}
+
+#[derive(Clone)]
+pub(crate) struct ManagedInvocationContext(pub(crate) Arc<dyn ManagedInterfaceInvocation>);
+impl std::fmt::Debug for ManagedInvocationContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ManagedInvocationContext(<frozen-host-owned>)")
+    }
+}
+
+pub(crate) fn managed_bridge_identity(point: InterfaceExtensionPoint) -> PluginIdentity {
+    PluginIdentity::new(format!("interface-runtime.managed.{point:?}").to_lowercase())
+        .expect("static managed bridge identity")
+}
+
+pub(crate) struct ManagedLifecycleBridge;
+impl ManagedLifecycleBridge {
+    async fn run(
+        context: InterfaceHookContext,
+        call: ManagedInterfaceCall,
+    ) -> Result<(), &'static str> {
+        // Invalid/unestablished attempts have no workspace execution authority to freeze.
+        let Some(invocation) = context.managed_invocation.clone() else {
+            return Ok(());
+        };
+        invocation.0.run(context, call).await
+    }
+}
+impl crate::InterfaceAuthorizationContribution for ManagedLifecycleBridge {
+    fn authorize(
+        &self,
+        request: crate::InterfaceAuthorizationContributionRequest,
+    ) -> crate::InterfaceAuthorizationContributionFuture<'_> {
+        Box::pin(async move {
+            Self::run(
+                request.context().clone(),
+                ManagedInterfaceCall::Authorization,
+            )
+            .await
+            .map_err(crate::InterfaceAuthorizationContributionError::classified)
+        })
+    }
+}
+impl crate::InterfaceAdmissionContribution for ManagedLifecycleBridge {
+    fn admit(
+        &self,
+        request: crate::InterfaceAdmissionContributionRequest,
+    ) -> crate::InterfaceAdmissionContributionFuture<'_> {
+        Box::pin(async move {
+            Self::run(request.context().clone(), ManagedInterfaceCall::Admission)
+                .await
+                .map_err(crate::InterfaceAdmissionContributionError::classified)
+        })
+    }
+}
+impl<I: InterfaceContract> InterfaceBeforeHook<I> for ManagedLifecycleBridge {
+    fn before<'a>(
+        &'a self,
+        context: InterfaceHookContext,
+        _input: &'a mut I,
+    ) -> InterfaceBeforeHookFuture<'a> {
+        Box::pin(async move {
+            Self::run(context, ManagedInterfaceCall::Before)
+                .await
+                .map_err(InterfaceBeforeHookError::classified)
+        })
+    }
+}
+impl<O: InterfaceContract> InterfaceAfterHook<O> for ManagedLifecycleBridge {
+    fn after<'a>(
+        &'a self,
+        context: InterfaceHookContext,
+        output: &'a O,
+    ) -> InterfaceAfterHookFuture<'a> {
+        Box::pin(async move {
+            if Self::run(
+                context.clone(),
+                ManagedInterfaceCall::After(crate::ManagedInterfaceProjection::from_contract(
+                    output,
+                )),
+            )
+            .await
+            .is_err()
+            {
+                context.report_observer_failure();
+            }
+        })
+    }
+}
+impl InterfaceFailureHook for ManagedLifecycleBridge {
+    fn failed<'a>(
+        &'a self,
+        context: InterfaceHookContext,
+        _classification: &'a str,
+    ) -> InterfaceFailureHookFuture<'a> {
+        Box::pin(async move {
+            if Self::run(context.clone(), ManagedInterfaceCall::Failure)
+                .await
+                .is_err()
+            {
+                context.report_observer_failure();
+            }
+        })
+    }
+}
+impl InterfaceCompletionHook for ManagedLifecycleBridge {
+    fn completed(
+        &self,
+        context: InterfaceHookContext,
+        terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'_> {
+        Box::pin(async move {
+            if Self::run(context.clone(), ManagedInterfaceCall::Completion(terminal))
+                .await
+                .is_err()
+            {
+                context.report_observer_failure();
+            }
+        })
+    }
 }

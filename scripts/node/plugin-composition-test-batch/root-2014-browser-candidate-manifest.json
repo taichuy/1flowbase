@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2014",
+  "supportedPlatform": "linux",
+  "targets": [],
+  "required": [],
+  "node": [
+    {
+      "id": "finite-selector",
+      "args": [
+        "--test",
+        "--test-reporter=tap",
+        "scripts/node/plugin-composition-test-batch/_tests/runner.test.js",
+        "scripts/node/github-quality-gate/_tests/plugin-composition.test.js"
+      ],
+      "ac": [
+        "AC-010"
+      ],
+      "auth": []
+    }
+  ],
+  "outputDirectory": "tmp/test-governance/2014/browser-candidate",
+  "rootPrefixes": [],
+  "requiredAc": [],
+  "requiredAuth": [],
+  "identityFiles": [
+    "scripts/node/plugin-composition-test-batch/root-2014-inventory.json",
+    "api/plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml",
+    "api/plugins/fixtures/orion.shipments/manifest.yaml",
+    "api/plugins/fixtures/lyra.audit-log/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/host-extension.yaml",
+    "api/plugins/fixtures/northwind.settings-page/settings.tsx"
+  ],
+  "batchMode": "browser-candidate",
+  "workerFixtures": [],
+  "browserBinary": {
+    "package": "api-server",
+    "binary": "api-server"
+  },
+  "sourceEvidence": {
+    "candidate": "4ea165f232a224ea7cfbe6f530d25c90e313c51d",
+    "run": "https://github.com/taichuy/1flowbase/actions/runs/34375249121",
+    "allowedChanges": [
+      "scripts/node/plugin-composition-test-batch/root-2014-browser.js",
+      "scripts/node/plugin-composition-test-batch/runner.js",
+      "scripts/node/plugin-composition-test-batch/selection.js",
+      "scripts/node/plugin-composition-test-batch/root-2014-browser-candidate-manifest.json",
+      "scripts/node/plugin-composition-test-batch/_tests/runner.test.js",
+      ".github/workflows/quality-gate.yml"
+    ]
+  }
+}

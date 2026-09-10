@@ -28,6 +28,7 @@ pub struct UpsertPluginInstallationInput {
 
 #[derive(Debug, Clone)]
 pub struct CommitPluginInstallationInput {
+    pub settings_templates: Vec<PluginSettingsTemplateInput>,
     pub installation: UpsertPluginInstallationInput,
     pub artifact_instance: UpsertPluginArtifactInstanceInput,
     pub package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
@@ -275,6 +276,39 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
+    async fn apply_native_plugin_settings_templates(
+        &self,
+        _target: &domain::NativePluginTarget,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("native settings template application is not supported")
+    }
+    async fn native_plugin_target_is_applied(
+        &self,
+        _target: &domain::NativePluginTarget,
+    ) -> anyhow::Result<bool> {
+        anyhow::bail!("native settings template application is not supported")
+    }
+    async fn list_native_plugin_targets(&self) -> anyhow::Result<Vec<domain::NativePluginTarget>> {
+        anyhow::bail!("native target selection is not supported")
+    }
+    /// Bootstrap only a legacy family without a target, rejecting multiple enabled candidates.
+    async fn reconcile_legacy_native_plugin_target(
+        &self,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::NativePluginTarget>> {
+        anyhow::bail!("native target reconciliation is not supported")
+    }
+    /// Fences both desired completion and node runtime observation in one transaction.
+    async fn complete_native_plugin_startup(
+        &self,
+        _target: &domain::NativePluginTarget,
+        _node_id: &str,
+        _status: domain::PluginRuntimeStatus,
+        _last_error: Option<&str>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("native startup completion is not supported")
+    }
+
     async fn begin_plugin_installation(
         &self,
         _admission: &PluginInstallationAdmission,
@@ -608,4 +642,13 @@ pub trait HostExtensionInventoryRepository: Send + Sync {
     async fn list_host_extension_inventory(
         &self,
     ) -> anyhow::Result<Vec<domain::HostExtensionInventoryRecord>>;
+}
+
+/// Verified fixed page source passed to the atomic plugin template application owner.
+#[derive(Debug, Clone)]
+pub struct PluginSettingsTemplateInput {
+    pub feature_id: String,
+    pub contribution_code: String,
+    pub source: String,
+    pub language: domain::UiCodeTemplateLanguage,
 }

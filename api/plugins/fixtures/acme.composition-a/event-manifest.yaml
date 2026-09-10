@@ -36,7 +36,20 @@ managed:
       - point_id: acme.composition-a.processed
         owner_module_id: acme.composition-a
         point_kind: event_stream
-        contract: {contract_id: acme.composition-a.processed, contract_version: '1'}
+        contract:
+          contract_id: acme.composition-a.processed
+          contract_version: '1'
+          payload_schema:
+            type: object
+            additionalProperties: false
+            properties:
+              model_id: {type: string, maxLength: 128}
+              status: {type: string, maxLength: 32, enum: [processed]}
+              result_reference:
+                anyOf:
+                  - {type: string, maxLength: 512}
+                  - {type: 'null'}
+            required: [model_id, status, result_reference]
         scope: workspace
         cardinality: many
         ordering: lexicographic

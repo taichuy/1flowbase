@@ -16,6 +16,18 @@ pub(crate) struct DataModelOpenApiInput {
 }
 
 impl InterfaceContract for DataModelOpenApiInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[("model_id", mp::text_schema())]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "model_id",
+            mp::text(&(self).model_id)?,
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-data-model-openapi-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -23,6 +35,15 @@ impl InterfaceContract for DataModelOpenApiInput {
 pub(crate) struct DataModelOpenApiOutput(pub(crate) serde_json::Value);
 
 impl InterfaceContract for DataModelOpenApiOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[("0", mp::json_summary_schema())]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("0", mp::json_summary(&(self).0))]))
+    }
+
     const CONTRACT_ID: &'static str = "console-data-model-openapi-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

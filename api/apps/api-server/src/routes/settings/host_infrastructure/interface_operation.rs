@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, future::Future, pin::Pin, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use control_plane::{
     host_infrastructure_config::HostInfrastructureProviderConfigList,
     ports::RoleConsolePolicyReader,
@@ -33,7 +33,7 @@ use plugin_framework::{
     HostExtensionInterfaceOperationMethod,
 };
 
-use super::{to_provider_response, HostInfrastructureProviderConfigResponse};
+use super::{HostInfrastructureProviderConfigResponse, to_provider_response};
 use crate::app_state::ApiState;
 
 pub const INTERFACE_OPERATION_POINT_ID: &str = "1flowbase.application.interface-operation";
@@ -80,6 +80,21 @@ impl HostInfrastructureProvidersViewInput {
 }
 
 impl InterfaceContract for HostInfrastructureProvidersViewInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("HostInfrastructureProvidersViewInput"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("HostInfrastructureProvidersViewInput".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_ID;
     const CONTRACT_VERSION: &'static str =
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_VERSION;
@@ -96,6 +111,274 @@ impl HostInfrastructureProvidersViewOutput {
 }
 
 impl InterfaceContract for HostInfrastructureProvidersViewOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "providers",
+            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("installation_id",mp::text_schema()), ("extension_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("display_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("runtime_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("desired_state",mp::object_schema(&[("byte_count",mp::count_schema())])), ("config_ref",mp::object_schema(&[("byte_count",mp::count_schema())])), ("contracts",mp::object_schema(&[("item_count",mp::count_schema())])), ("enabled_contracts",mp::object_schema(&[("item_count",mp::count_schema())])), ("config_schema",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("label",mp::object_schema(&[("byte_count",mp::count_schema())])), ("field_type",mp::text_schema()), ("control",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("group",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("order",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("advanced",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("required",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("send_mode",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("enabled_by_default",serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]})), ("description",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("placeholder",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("default_value",serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]})), ("min",serde_json::json!({"anyOf": [serde_json::json!({"type":"number"}), {"type":"null"}]})), ("max",serde_json::json!({"anyOf": [serde_json::json!({"type":"number"}), {"type":"null"}]})), ("step",serde_json::json!({"anyOf": [serde_json::json!({"type":"number"}), {"type":"null"}]})), ("precision",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("unit",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("options",mp::object_schema(&[("item_count",mp::count_schema())])), ("visible_when",mp::object_schema(&[("item_count",mp::count_schema())])), ("disabled_when",mp::object_schema(&[("item_count",mp::count_schema())]))])})), ("config_json",mp::json_summary_schema()), ("restart_required",serde_json::json!({"type":"boolean"}))])}),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("providers", {
+            if (&(self).providers).len() > 32 {
+                return None;
+            }
+            serde_json::Value::Array(
+                (&(self).providers)
+                    .iter()
+                    .map(|item| {
+                        Some(mp::object_value(&[
+                            ("installation_id", mp::text(&(item).installation_id)?),
+                            ("extension_id", mp::text(&(item).extension_id)?),
+                            ("provider_code", mp::text(&(item).provider_code)?),
+                            (
+                                "display_name",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).display_name).len()),
+                                )]),
+                            ),
+                            (
+                                "description",
+                                match (&(item).description).as_ref() {
+                                    Some(item) => mp::object_value(&[(
+                                        "byte_count",
+                                        serde_json::json!((item).len()),
+                                    )]),
+                                    None => serde_json::Value::Null,
+                                },
+                            ),
+                            (
+                                "runtime_status",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).runtime_status).len()),
+                                )]),
+                            ),
+                            (
+                                "desired_state",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).desired_state).len()),
+                                )]),
+                            ),
+                            (
+                                "config_ref",
+                                mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((&(item).config_ref).len()),
+                                )]),
+                            ),
+                            (
+                                "contracts",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(item).contracts).len()),
+                                )]),
+                            ),
+                            (
+                                "enabled_contracts",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(item).enabled_contracts).len()),
+                                )]),
+                            ),
+                            ("config_schema", {
+                                if (&(item).config_schema).len() > 32 {
+                                    return None;
+                                }
+                                serde_json::Value::Array(
+                                    (&(item).config_schema)
+                                        .iter()
+                                        .map(|item| {
+                                            Some(mp::object_value(&[
+                                                (
+                                                    "key",
+                                                    mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((&(item).key).len()),
+                                                    )]),
+                                                ),
+                                                (
+                                                    "label",
+                                                    mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((&(item).label).len()),
+                                                    )]),
+                                                ),
+                                                ("field_type", mp::text(&(item).field_type)?),
+                                                (
+                                                    "control",
+                                                    match (&(item).control).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "group",
+                                                    match (&(item).group).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "order",
+                                                    match (&(item).order).as_ref() {
+                                                        Some(item) => serde_json::json!(*(item)),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "advanced",
+                                                    match (&(item).advanced).as_ref() {
+                                                        Some(item) => {
+                                                            serde_json::Value::Bool(*(item))
+                                                        }
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "required",
+                                                    match (&(item).required).as_ref() {
+                                                        Some(item) => {
+                                                            serde_json::Value::Bool(*(item))
+                                                        }
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "send_mode",
+                                                    match (&(item).send_mode).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "enabled_by_default",
+                                                    match (&(item).enabled_by_default).as_ref() {
+                                                        Some(item) => {
+                                                            serde_json::Value::Bool(*(item))
+                                                        }
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "description",
+                                                    match (&(item).description).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "placeholder",
+                                                    match (&(item).placeholder).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "default_value",
+                                                    match (&(item).default_value).as_ref() {
+                                                        Some(item) => mp::json_summary(item),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "min",
+                                                    match (&(item).min).as_ref() {
+                                                        Some(item) => serde_json::json!(*(item)),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "max",
+                                                    match (&(item).max).as_ref() {
+                                                        Some(item) => serde_json::json!(*(item)),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "step",
+                                                    match (&(item).step).as_ref() {
+                                                        Some(item) => serde_json::json!(*(item)),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "precision",
+                                                    match (&(item).precision).as_ref() {
+                                                        Some(item) => serde_json::json!(*(item)),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "unit",
+                                                    match (&(item).unit).as_ref() {
+                                                        Some(item) => mp::object_value(&[(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "options",
+                                                    mp::object_value(&[(
+                                                        "item_count",
+                                                        serde_json::json!((&(item).options).len()),
+                                                    )]),
+                                                ),
+                                                (
+                                                    "visible_when",
+                                                    mp::object_value(&[(
+                                                        "item_count",
+                                                        serde_json::json!(
+                                                            (&(item).visible_when).len()
+                                                        ),
+                                                    )]),
+                                                ),
+                                                (
+                                                    "disabled_when",
+                                                    mp::object_value(&[(
+                                                        "item_count",
+                                                        serde_json::json!(
+                                                            (&(item).disabled_when).len()
+                                                        ),
+                                                    )]),
+                                                ),
+                                            ]))
+                                        })
+                                        .collect::<Option<Vec<_>>>()?,
+                                )
+                            }),
+                            ("config_json", mp::json_summary(&(item).config_json)),
+                            (
+                                "restart_required",
+                                serde_json::Value::Bool(*(&(item).restart_required)),
+                            ),
+                        ]))
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            )
+        })]))
+    }
+
     const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_ID;
     const CONTRACT_VERSION: &'static str =
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION;
@@ -124,6 +407,21 @@ struct HostInfrastructureProvidersViewHandler {
 struct HostInfrastructureProvidersViewTargetError(crate::error_response::ApiError);
 
 impl InterfaceContract for HostInfrastructureProvidersViewTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("HostInfrastructureProvidersViewTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("HostInfrastructureProvidersViewTargetError".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_ID;
     const CONTRACT_VERSION: &'static str =
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION;
@@ -658,8 +956,8 @@ pub fn validate_console_registry(
     Ok(())
 }
 
-pub(crate) fn official_local_infra_host_providers_view_descriptor(
-) -> HostExtensionInterfaceOperationManifest {
+pub(crate) fn official_local_infra_host_providers_view_descriptor()
+-> HostExtensionInterfaceOperationManifest {
     HostExtensionInterfaceOperationManifest {
         operation_id: HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
         method: HostExtensionInterfaceOperationMethod::Get,

@@ -1,3 +1,6 @@
+#[path = "model_definitions_interface/managed_projection.rs"]
+mod managed_projection;
+
 #[path = "model_definitions_managed_hooks.rs"]
 pub(crate) mod managed_hooks;
 
@@ -64,11 +67,6 @@ pub(crate) enum ModelDefinitionsInput {
     },
 }
 
-impl InterfaceContract for ModelDefinitionsInput {
-    const CONTRACT_ID: &'static str = "console-model-definitions-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum ModelDefinitionsOutput {
     Models(Vec<ModelDefinitionResponse>),
     Templates(Vec<CompatibleTemplateCatalogEntryResponse>),
@@ -80,11 +78,6 @@ pub(crate) enum ModelDefinitionsOutput {
     Field(ModelFieldResponse),
     Deleted,
     BatchDeleted(BatchDeletedResponse),
-}
-
-impl InterfaceContract for ModelDefinitionsOutput {
-    const CONTRACT_ID: &'static str = "console-model-definitions-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct ModelDefinitionDependencies {

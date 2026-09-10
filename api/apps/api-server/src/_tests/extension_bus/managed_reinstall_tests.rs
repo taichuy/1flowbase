@@ -368,6 +368,11 @@ async fn root_2007_ir_f01_changed_reinstall_preserves_history() {
     drop(fixture);
     // No retained Arc/host/registry survives reconstruction. Disabled installation builds no binding.
     let restarted = RuntimeFixture::new(&state);
+    // Publish the rebuilt host contract before freezing any workspace execution snapshot.
+    let mut state = (*state).clone();
+    state.store = restarted.store.clone();
+    state.provider_runtime = restarted.services.clone();
+    let app = crate::app_with_state(Arc::new(state));
     restarted
         .composition
         .rebuild_installation(id)
@@ -383,10 +388,6 @@ async fn root_2007_ir_f01_changed_reinstall_preserves_history() {
             .values()
             .all(|b| b.handle.identity().installation_id().as_str() != id.to_string()));
     }
-    let mut state = (*state).clone();
-    state.store = restarted.store.clone();
-    state.provider_runtime = restarted.services.clone();
-    let app = crate::app_with_state(Arc::new(state));
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let base = format!("/api/console/settings/extension-center/installed/{id}");
     let (status, view) = request(

@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::{convert::Infallible, future::Future, pin::Pin, sync::Arc};
 
 use axum::http::HeaderMap;
@@ -6,11 +8,11 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::{
-        debug_stream_events, project_runtime_event_stream_terminal,
-        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
-        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand, debug_stream_events,
+        project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
+        wait_for_runtime_debug_event_persister,
     },
     ports::{ApplicationRepository, OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
 };
@@ -19,10 +21,10 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
+    ApplicationActivityKind, ApplicationRunDetailResponse, CompleteCallbackTaskBody,
+    NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody, StartNodeDebugPreviewBody,
     offload_application_run_detail_artifacts_with_dependencies, scope_application_activity,
-    to_application_run_detail_response, to_node_last_run_response, ApplicationActivityKind,
-    ApplicationRunDetailResponse, CompleteCallbackTaskBody, NodeLastRunResponse, ResumeFlowRunBody,
-    StartFlowDebugRunBody, StartNodeDebugPreviewBody,
+    to_application_run_detail_response, to_node_last_run_response,
 };
 use crate::{
     app_state::ApiState,
@@ -68,11 +70,6 @@ pub(crate) enum ApplicationRuntimeDebugCommandsInput {
     },
 }
 
-impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-debug-commands-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 #[expect(
     clippy::large_enum_variant,
     reason = "the typed debug output is projected immediately into the console response"
@@ -100,29 +97,9 @@ pub(crate) enum ApplicationRuntimeDebugStreamInput {
     },
 }
 
-impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct ApplicationRuntimeDebugStreamEvent(pub(crate) Result<Event, Infallible>);
 
-impl InterfaceContract for ApplicationRuntimeDebugStreamEvent {
-    const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-event";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct ApplicationRuntimeDebugStreamOutput;
-
-impl InterfaceContract for ApplicationRuntimeDebugStreamOutput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
-impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-debug-commands-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
 
 pub(crate) trait RuntimeDebugMcpFactory: Send + Sync + 'static {
     fn for_actor<'a>(
@@ -203,9 +180,9 @@ pub(crate) fn port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-        ApplicationRuntimeDebugCommandsInput,
-        ApplicationRuntimeDebugCommandsOutput,
-    >,
+            ApplicationRuntimeDebugCommandsInput,
+            ApplicationRuntimeDebugCommandsOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -214,10 +191,10 @@ pub(crate) fn stream_port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleServerStreamPort<
-        ApplicationRuntimeDebugStreamInput,
-        ApplicationRuntimeDebugStreamEvent,
-        ApplicationRuntimeDebugStreamOutput,
-    >,
+            ApplicationRuntimeDebugStreamInput,
+            ApplicationRuntimeDebugStreamEvent,
+            ApplicationRuntimeDebugStreamOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -991,8 +968,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "applications.runtime.callback-tasks.complete",
         binding_id: "http.console.applications.runtime.callback-tasks.complete.v1",
         method: "POST",
-        path:
-            "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
+        path: "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

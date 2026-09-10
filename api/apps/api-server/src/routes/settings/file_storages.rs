@@ -5,9 +5,9 @@ use access_control::{
     FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::file_management::{
     CreateFileStorageCommand, DeleteFileStorageCommand, FileStorageService,
@@ -28,7 +28,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError, ConsoleLocaleHints,
         },
-        console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get, console_put},
     },
 };
 
@@ -87,6 +87,121 @@ enum FileStoragesInput {
 }
 
 impl InterfaceContract for FileStoragesInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Create")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("code", mp::text_schema()),
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("driver_type", mp::text_schema()),
+                        ("enabled", serde_json::json!({"type":"boolean"})),
+                        ("is_default", serde_json::json!({"type":"boolean"})),
+                        ("config_json", mp::json_summary_schema()),
+                        ("rule_json", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Update")),
+                ("file_storage_id", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("enabled", serde_json::json!({"type":"boolean"})),
+                        ("is_default", serde_json::json!({"type":"boolean"})),
+                        ("config_json", mp::json_summary_schema()),
+                        ("rule_json", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Delete")),
+                ("file_storage_id", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List { .. } => {
+                mp::object_value(&[("variant", serde_json::Value::String("List".to_owned()))])
+            }
+            Self::Create(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("code", mp::text(&(_field_0).code)?),
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).title).len()),
+                            )]),
+                        ),
+                        ("driver_type", mp::text(&(_field_0).driver_type)?),
+                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        (
+                            "is_default",
+                            serde_json::Value::Bool(*(&(_field_0).is_default)),
+                        ),
+                        ("config_json", mp::json_summary(&(_field_0).config_json)),
+                        ("rule_json", mp::json_summary(&(_field_0).rule_json)),
+                    ]),
+                ),
+            ]),
+            Self::Update {
+                file_storage_id: _field_file_storage_id,
+                body: _field_body,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Update".to_owned())),
+                ("file_storage_id", mp::text(_field_file_storage_id)?),
+                (
+                    "body",
+                    mp::object_value(&[
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_body).title).len()),
+                            )]),
+                        ),
+                        (
+                            "enabled",
+                            serde_json::Value::Bool(*(&(_field_body).enabled)),
+                        ),
+                        (
+                            "is_default",
+                            serde_json::Value::Bool(*(&(_field_body).is_default)),
+                        ),
+                        ("config_json", mp::json_summary(&(_field_body).config_json)),
+                        ("rule_json", mp::json_summary(&(_field_body).rule_json)),
+                    ]),
+                ),
+            ]),
+            Self::Delete {
+                file_storage_id: _field_file_storage_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Delete".to_owned())),
+                ("file_storage_id", mp::text(_field_file_storage_id)?),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-file-storages-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -102,6 +217,145 @@ enum FileStoragesOutput {
 }
 
 impl InterfaceContract for FileStoragesOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("List")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("code",mp::text_schema()), ("title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("driver_type",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("is_default",serde_json::json!({"type":"boolean"})), ("config_json",mp::json_summary_schema()), ("rule_json",mp::json_summary_schema()), ("health_status",mp::object_schema(&[("byte_count",mp::count_schema())])), ("last_health_error",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Item")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        ("code", mp::text_schema()),
+                        (
+                            "title",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("driver_type", mp::text_schema()),
+                        ("enabled", serde_json::json!({"type":"boolean"})),
+                        ("is_default", serde_json::json!({"type":"boolean"})),
+                        ("config_json", mp::json_summary_schema()),
+                        ("rule_json", mp::json_summary_schema()),
+                        (
+                            "health_status",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "last_health_error",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("List".to_owned())),
+                ("0", {
+                    if (_field_0).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (_field_0)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("id", mp::text(&(item).id)?),
+                                    ("code", mp::text(&(item).code)?),
+                                    (
+                                        "title",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).title).len()),
+                                        )]),
+                                    ),
+                                    ("driver_type", mp::text(&(item).driver_type)?),
+                                    ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
+                                    ("is_default", serde_json::Value::Bool(*(&(item).is_default))),
+                                    ("config_json", mp::json_summary(&(item).config_json)),
+                                    ("rule_json", mp::json_summary(&(item).rule_json)),
+                                    (
+                                        "health_status",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).health_status).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "last_health_error",
+                                        match (&(item).last_health_error).as_ref() {
+                                            Some(item) => mp::object_value(&[(
+                                                "byte_count",
+                                                serde_json::json!((item).len()),
+                                            )]),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+            Self::Item(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Item".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("id", mp::text(&(_field_0).id)?),
+                        ("code", mp::text(&(_field_0).code)?),
+                        (
+                            "title",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).title).len()),
+                            )]),
+                        ),
+                        ("driver_type", mp::text(&(_field_0).driver_type)?),
+                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        (
+                            "is_default",
+                            serde_json::Value::Bool(*(&(_field_0).is_default)),
+                        ),
+                        ("config_json", mp::json_summary(&(_field_0).config_json)),
+                        ("rule_json", mp::json_summary(&(_field_0).rule_json)),
+                        (
+                            "health_status",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).health_status).len()),
+                            )]),
+                        ),
+                        (
+                            "last_health_error",
+                            match (&(_field_0).last_health_error).as_ref() {
+                                Some(item) => mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Deleted => {
+                mp::object_value(&[("variant", serde_json::Value::String("Deleted".to_owned()))])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-file-storages-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -406,4 +660,50 @@ pub async fn delete_file_storage(
         unreachable!("file storage delete binding returned a different output")
     };
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Constructs private owner values without widening their production visibility.
+#[cfg(test)]
+pub(crate) fn root_2014_projection_fixture(
+    sentinel: &str,
+) -> (
+    interface_runtime::ManagedInterfaceProjection,
+    interface_runtime::ManagedInterfaceProjection,
+) {
+    let config = serde_json::json!({"innocent": {"access_key": sentinel, "secret_key": sentinel},
+        "endpoint": format!("https://user:{sentinel}@example.invalid"),
+        "schema": {"default": sentinel, "examples": [sentinel]}});
+    let input = FileStoragesInput::Create(CreateFileStorageBody {
+        code: "projection-fixture".into(),
+        title: "Storage".into(),
+        driver_type: "rustfs".into(),
+        enabled: true,
+        is_default: false,
+        config_json: config.clone(),
+        rule_json: config.clone(),
+    });
+    let output = FileStoragesOutput::Item(FileStorageResponse {
+        id: uuid::Uuid::nil().to_string(),
+        code: "projection-fixture".into(),
+        title: "Storage".into(),
+        driver_type: "rustfs".into(),
+        enabled: true,
+        is_default: false,
+        config_json: config.clone(),
+        rule_json: config.clone(),
+        health_status: "healthy".into(),
+        last_health_error: Some(sentinel.into()),
+    });
+    let input_view = interface_runtime::ManagedInterfaceProjection::from_contract(&input).unwrap();
+    let output_view =
+        interface_runtime::ManagedInterfaceProjection::from_contract(&output).unwrap();
+    match input {
+        FileStoragesInput::Create(original) => assert_eq!(original.config_json, config),
+        _ => unreachable!(),
+    }
+    match output {
+        FileStoragesOutput::Item(original) => assert_eq!(original.config_json, config),
+        _ => unreachable!(),
+    }
+    (input_view, output_view)
 }

@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2014",
+  "supportedPlatform": "linux",
+  "targets": [
+    {
+      "id": "api-server:lib",
+      "package": "api-server",
+      "packageRoot": "api/apps/api-server",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    }
+  ],
+  "required": [
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_002_installed_two_interface_plugin",
+      "expected": 1,
+      "ac": [
+        "AC-002"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ],
+      "originRoot": 2014
+    }
+  ],
+  "node": [],
+  "outputDirectory": "tmp/test-governance/2014/r3-observer",
+  "rootPrefixes": [
+    "root_2014_ac_002_installed_two_interface_plugin"
+  ],
+  "requiredAc": [
+    "AC-002"
+  ],
+  "requiredAuth": [],
+  "identityFiles": [
+    "scripts/node/plugin-composition-test-batch/root-2014-inventory.json",
+    "api/plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml",
+    "api/plugins/fixtures/orion.shipments/manifest.yaml",
+    "api/plugins/fixtures/lyra.audit-log/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/host-extension.yaml",
+    "api/plugins/fixtures/northwind.settings-page/settings.tsx"
+  ],
+  "batchMode": "r3-observer",
+  "showTestOutput": true,
+  "workerFixtures": [
+    {
+      "example": "managed_hook_worker",
+      "env": "MANAGED_HOOK_WORKER_FIXTURE"
+    }
+  ]
+}

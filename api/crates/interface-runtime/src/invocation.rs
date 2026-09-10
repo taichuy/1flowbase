@@ -3,8 +3,8 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::SystemTime,
 };
@@ -629,7 +629,7 @@ pub trait InterfaceTargetAdmissionPort: Send + Sync + 'static {
     fn adapter_reference(&self) -> AdmissionAdapterReference;
 
     fn admit(&self, request: InterfaceTargetAdmissionRequest)
-        -> InterfaceTargetAdmissionFuture<'_>;
+    -> InterfaceTargetAdmissionFuture<'_>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1162,7 +1162,7 @@ where
                 )
                 .await);
         }
-        let hook_context = InterfaceHookContext::new(
+        let mut hook_context = InterfaceHookContext::new(
             principal.summary(),
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
@@ -1236,6 +1236,44 @@ where
                 )
                 .await);
         }
+        if let Some(factory) = &plan.managed_factory {
+            let frozen = await_in_flight(
+                &controls,
+                factory.freeze(crate::ManagedInterfaceFreezeRequest {
+                    definition: definition.clone(),
+                    context: hook_context.clone(),
+                    input: crate::ManagedInterfaceProjection::from_contract(&input),
+                    deadline: controls.deadline(),
+                }),
+            )
+            .await;
+            match frozen {
+                Ok(Ok(invocation)) => {
+                    let context = crate::hook::ManagedInvocationContext(invocation);
+                    hook_context.managed_invocation = Some(context.clone());
+                    receipt.managed_invocation = Some(context);
+                }
+                Ok(Err(classification)) => {
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::BeforeHookRejected(
+                                crate::InterfaceBeforeHookError::classified(classification),
+                            ),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
+                }
+                Err(interruption) => {
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
+                }
+            }
+        }
+
         let authorization = await_in_flight(
             &controls,
             self.authorization
@@ -1582,7 +1620,7 @@ where
             &controls,
         );
         receipt.extension_context = extension_context.clone();
-        let hook_context = InterfaceHookContext::new(
+        let mut hook_context = InterfaceHookContext::new(
             principal.summary(),
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
@@ -1695,6 +1733,44 @@ where
                 )
                 .await);
         }
+        if let Some(factory) = &plan.managed_factory {
+            let frozen = await_in_flight(
+                &controls,
+                factory.freeze(crate::ManagedInterfaceFreezeRequest {
+                    definition: definition.clone(),
+                    context: hook_context.clone(),
+                    input: crate::ManagedInterfaceProjection::from_contract(&input),
+                    deadline: controls.deadline(),
+                }),
+            )
+            .await;
+            match frozen {
+                Ok(Ok(invocation)) => {
+                    let context = crate::hook::ManagedInvocationContext(invocation);
+                    hook_context.managed_invocation = Some(context.clone());
+                    receipt.managed_invocation = Some(context);
+                }
+                Ok(Err(classification)) => {
+                    return Err(receipt
+                        .fail(
+                            InterfaceInvocationError::BeforeHookRejected(
+                                crate::InterfaceBeforeHookError::classified(classification),
+                            ),
+                            InterfaceInvocationTerminal::Rejected,
+                        )
+                        .await);
+                }
+                Err(interruption) => {
+                    return Err(receipt
+                        .fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
+                        .await);
+                }
+            }
+        }
+
         let authorization = await_in_flight(
             &controls,
             self.authorization
@@ -1972,6 +2048,7 @@ async fn run_failure_hooks<I, O>(
 }
 
 struct ReceiptBuilder {
+    managed_invocation: Option<crate::hook::ManagedInvocationContext>,
     extension_context: Option<crate::hook::InvocationExtensionContext>,
     finalization: InvocationFinalization,
     frozen_plan: Option<crate::CompiledInvocationPlan>,
@@ -1999,6 +2076,7 @@ impl ReceiptBuilder {
         controls: &InvocationControls,
     ) -> Self {
         Self {
+            managed_invocation: None,
             extension_context: None,
             finalization: InvocationFinalization::default(),
             frozen_plan: None,
@@ -2071,13 +2149,14 @@ impl ReceiptBuilder {
             .as_ref()
             .and_then(|plan| plan.erased_hook_plan())
         {
-            let context = InterfaceHookContext::new(
+            let mut context = InterfaceHookContext::new(
                 self.principal.clone(),
                 self.invocation_id,
                 self.graph_fingerprint.clone(),
                 self.registry_fingerprint.clone(),
             )
             .with_extension_context(self.extension_context.clone());
+            context.managed_invocation = self.managed_invocation.clone();
             hooks
                 .run_completion(&mut self.finalization, &context, terminal)
                 .await;

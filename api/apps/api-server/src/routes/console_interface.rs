@@ -97,6 +97,21 @@ pub(crate) struct ConsoleInterfaceDeclaration {
 pub(crate) struct ConsoleInterfaceTargetError(pub(crate) ApiError);
 
 impl InterfaceContract for ConsoleInterfaceTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("ConsoleInterfaceTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("ConsoleInterfaceTargetError".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-interface-error";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -490,10 +505,20 @@ where
         .await
     {
         Ok(outcome) => {
+            log_observer_receipt(outcome.receipt());
             let _receipt = outcome.receipt().clone().projected();
             Ok(outcome.into_value())
         }
-        Err(failure) => Err(console_invocation_error(failure.into_error())),
+        Err(failure) => {
+            log_observer_receipt(failure.receipt());
+            Err(console_invocation_error(failure.into_error()))
+        }
+    }
+}
+
+fn log_observer_receipt(receipt: &interface_runtime::InterfaceInvocationReceipt) {
+    for observer in receipt.observer_records() {
+        tracing::debug!(invocation_id = %receipt.invocation_id().value(), interface_id = ?receipt.interface_id(), plugin = ?observer.plugin(), point = ?observer.point(), status = ?observer.status(), reason = observer.reason(), "console interface observer finalization");
     }
 }
 

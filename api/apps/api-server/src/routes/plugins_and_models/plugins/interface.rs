@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
@@ -109,11 +111,6 @@ pub(crate) enum PluginInterfaceInput {
     },
 }
 
-impl InterfaceContract for PluginInterfaceInput {
-    const CONTRACT_ID: &'static str = "console-plugin-management-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 #[expect(
     clippy::large_enum_variant,
     reason = "the typed plugin output is projected immediately into the console response"
@@ -127,11 +124,6 @@ pub(crate) enum PluginInterfaceOutput {
     Artifact(PluginArtifactInstanceResponse),
     Task(PluginTaskResponse),
     Tasks(Vec<PluginTaskResponse>),
-}
-
-impl InterfaceContract for PluginInterfaceOutput {
-    const CONTRACT_ID: &'static str = "console-plugin-management-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct PluginInterfaceDependencies {
@@ -858,16 +850,76 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         path: "/api/console/plugins/tasks/:task_id",
         mutating: false,
     },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.view", binding_id: "http.console.model-provider-plugins.families.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/families", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.official_catalog.view", binding_id: "http.console.model-provider-plugins.official-catalog.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/official-catalog", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.install.official", binding_id: "http.console.model-provider-plugins.install-official.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/install-official", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.install.upload", binding_id: "http.console.model-provider-plugins.install-upload.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/install-upload", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.artifact.refresh", binding_id: "http.console.model-provider-plugins.artifact-refresh.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/refresh", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.artifact.install", binding_id: "http.console.model-provider-plugins.artifact-install.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/install-current-node", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.upgrade", binding_id: "http.console.model-provider-plugins.family-upgrade.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/families/:provider_code/upgrade-latest", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.switch", binding_id: "http.console.model-provider-plugins.family-switch.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/families/:provider_code/switch-version", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.delete", binding_id: "http.console.model-provider-plugins.family-delete.v1", method: "DELETE", path: "/api/console/settings/model-providers/plugins/families/:provider_code", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.tasks.view", binding_id: "http.console.model-provider-plugins.task.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/tasks/:task_id", mutating: false },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.families.view",
+        binding_id: "http.console.model-provider-plugins.families.v1",
+        method: "GET",
+        path: "/api/console/settings/model-providers/plugins/families",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.official_catalog.view",
+        binding_id: "http.console.model-provider-plugins.official-catalog.v1",
+        method: "GET",
+        path: "/api/console/settings/model-providers/plugins/official-catalog",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.install.official",
+        binding_id: "http.console.model-provider-plugins.install-official.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/install-official",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.install.upload",
+        binding_id: "http.console.model-provider-plugins.install-upload.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/install-upload",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.artifact.refresh",
+        binding_id: "http.console.model-provider-plugins.artifact-refresh.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/refresh",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.artifact.install",
+        binding_id: "http.console.model-provider-plugins.artifact-install.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/install-current-node",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.families.upgrade",
+        binding_id: "http.console.model-provider-plugins.family-upgrade.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/families/:provider_code/upgrade-latest",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.families.switch",
+        binding_id: "http.console.model-provider-plugins.family-switch.v1",
+        method: "POST",
+        path: "/api/console/settings/model-providers/plugins/families/:provider_code/switch-version",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.families.delete",
+        binding_id: "http.console.model-provider-plugins.family-delete.v1",
+        method: "DELETE",
+        path: "/api/console/settings/model-providers/plugins/families/:provider_code",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "model_provider_plugins.tasks.view",
+        binding_id: "http.console.model-provider-plugins.task.v1",
+        method: "GET",
+        path: "/api/console/settings/model-providers/plugins/tasks/:task_id",
+        mutating: false,
+    },
 ];
 
 pub(crate) fn compile_registry(

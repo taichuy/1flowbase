@@ -1,11 +1,13 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+        projection_status_needs_lazy_rebuild,
     },
     ports::{
         ApplicationRunTraceProjectionStatistics, CacheStore,
@@ -89,11 +91,6 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     },
 }
 
-impl InterfaceContract for ApplicationRuntimeReadsInput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-reads-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 #[expect(
     clippy::large_enum_variant,
     reason = "the typed read output is projected immediately into the console response"
@@ -111,11 +108,6 @@ pub(crate) enum ApplicationRuntimeReadsOutput {
     RuntimeActivity(crate::runtime_activity::ApplicationRuntimeActivitySnapshot),
     RuntimeDebugStream(RuntimeDebugStreamResponse),
     NodeLastRun(Option<NodeLastRunResponse>),
-}
-
-impl InterfaceContract for ApplicationRuntimeReadsOutput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-reads-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct ApplicationRuntimeReadsAdapter {
@@ -1003,9 +995,11 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

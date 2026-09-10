@@ -131,6 +131,42 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
+    async fn apply_native_plugin_settings_templates(
+        &self,
+        target: &domain::NativePluginTarget,
+    ) -> Result<()> {
+        crate::plugin_settings_template_repository::apply_at_startup(self, target).await
+    }
+    async fn native_plugin_target_is_applied(
+        &self,
+        target: &domain::NativePluginTarget,
+    ) -> Result<bool> {
+        crate::plugin_settings_template_repository::is_applied(self, target).await
+    }
+    async fn list_native_plugin_targets(&self) -> Result<Vec<domain::NativePluginTarget>> {
+        crate::native_plugin_target_repository::list(self).await
+    }
+
+    async fn reconcile_legacy_native_plugin_target(
+        &self,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::NativePluginTarget>> {
+        crate::native_plugin_target_repository::reconcile_legacy(self, installation_id).await
+    }
+
+    async fn complete_native_plugin_startup(
+        &self,
+        target: &domain::NativePluginTarget,
+        node_id: &str,
+        status: domain::PluginRuntimeStatus,
+        last_error: Option<&str>,
+    ) -> Result<()> {
+        crate::native_plugin_target_repository::complete_startup(
+            self, target, node_id, status, last_error,
+        )
+        .await
+    }
+
     async fn begin_plugin_installation(
         &self,
         admission: &control_plane_contracts::ports::PluginInstallationAdmission,
@@ -551,6 +587,13 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         input: &UpdatePluginDesiredStateInput,
     ) -> Result<domain::PluginInstallationRecord> {
+        let installation = self
+            .get_installation(input.installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        if installation.category == domain::ExtensionCategory::HostExtensions {
+            return crate::native_plugin_target_repository::update_desired_state(self, input).await;
+        }
         let mut transaction = self.pool().begin().await?;
         let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 order by workspace_id")
             .bind(input.installation_id).fetch_all(&mut *transaction).await?;

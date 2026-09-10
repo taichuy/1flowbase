@@ -19,6 +19,22 @@ pub(crate) enum ConsoleNavigationInput {
 }
 
 impl InterfaceContract for ConsoleNavigationInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![mp::object_schema(&[(
+            "variant",
+            mp::tag_schema("Get"),
+        )])]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Get => {
+                mp::object_value(&[("variant", serde_json::Value::String("Get".to_owned()))])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-navigation-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -28,6 +44,154 @@ pub(crate) enum ConsoleNavigationOutput {
 }
 
 impl InterfaceContract for ConsoleNavigationOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![mp::object_schema(&[
+            ("variant", mp::tag_schema("Navigation")),
+            (
+                "0",
+                mp::object_schema(&[
+                    (
+                        "route_definitions",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("route_id",mp::text_schema()), ("surface_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("path",mp::object_schema(&[("byte_count",mp::count_schema())])), ("surface_kind",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                    ),
+                    (
+                        "navigation_items",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("item_id",mp::text_schema()), ("route_id",mp::text_schema()), ("parent_item_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("label_key",mp::object_schema(&[("byte_count",mp::count_schema())])), ("navigation_slot",mp::object_schema(&[("byte_count",mp::count_schema())])), ("order",serde_json::json!({"type":"integer"}))])}),
+                    ),
+                    (
+                        "permission_bindings",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("binding_id",mp::text_schema()), ("route_id",mp::text_schema()), ("permission_codes",mp::object_schema(&[("item_count",mp::count_schema())])), ("requirement",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                    ),
+                ]),
+            ),
+        ])]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Navigation(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("Navigation".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("route_definitions", {
+                            if (&(_field_0).route_definitions).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).route_definitions)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("route_id", mp::text(&(item).route_id)?),
+                                            (
+                                                "surface_key",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).surface_key).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "path",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).path).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "surface_kind",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).surface_kind).len()),
+                                                )]),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                        ("navigation_items", {
+                            if (&(_field_0).navigation_items).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).navigation_items)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("item_id", mp::text(&(item).item_id)?),
+                                            ("route_id", mp::text(&(item).route_id)?),
+                                            (
+                                                "parent_item_id",
+                                                match (&(item).parent_item_id).as_ref() {
+                                                    Some(item) => mp::text(item)?,
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "label_key",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).label_key).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "navigation_slot",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!(
+                                                        (&(item).navigation_slot).len()
+                                                    ),
+                                                )]),
+                                            ),
+                                            ("order", serde_json::json!(*(&(item).order))),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                        ("permission_bindings", {
+                            if (&(_field_0).permission_bindings).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_0).permission_bindings)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("binding_id", mp::text(&(item).binding_id)?),
+                                            ("route_id", mp::text(&(item).route_id)?),
+                                            (
+                                                "permission_codes",
+                                                mp::object_value(&[(
+                                                    "item_count",
+                                                    serde_json::json!(
+                                                        (&(item).permission_codes).len()
+                                                    ),
+                                                )]),
+                                            ),
+                                            (
+                                                "requirement",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).requirement).len()),
+                                                )]),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-navigation-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -56,6 +220,29 @@ impl ConsoleNavigationAdapter {
         match input {
             ConsoleNavigationInput::Get => {
                 let mut navigation = self.0.surfaces.accessible_navigation(actor);
+                let mut unavailable = std::collections::HashSet::new();
+                for page in self.0.surfaces.pages() {
+                    use control_plane::ports::PluginRepository;
+                    let available = match self.0.surfaces.target_for_feature(&page.feature_id) {
+                        Some(target) => {
+                            self.0.store.native_plugin_target_is_applied(target).await?
+                        }
+                        None => false,
+                    };
+                    if !available {
+                        unavailable.insert(page.route_id.as_str());
+                    }
+                }
+                navigation
+                    .route_definitions
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                navigation
+                    .navigation_items
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                navigation
+                    .permission_bindings
+                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+
                 let stored_order = self
                     .0
                     .store

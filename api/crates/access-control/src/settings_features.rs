@@ -1187,12 +1187,6 @@ fn validate_registration(
             "settings feature console path must start with /settings/",
         ));
     }
-    if registration.api_routes.is_empty() {
-        return Err(SettingsFeatureRegistryError::new(format!(
-            "settings feature {} must own at least one API route",
-            registration.feature_id
-        )));
-    }
     if registration.lifecycle == SettingsFeatureLifecycle::Inactive {
         return Err(SettingsFeatureRegistryError::new(format!(
             "inactive settings feature {} cannot own API routes",

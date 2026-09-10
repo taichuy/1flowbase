@@ -110,17 +110,17 @@ pub fn compile_lifecycle_subscriber_plan(
             let module_kind = contribution.provenance().module_kind();
             let lifecycle = point.descriptor().lifecycle;
             let managed = matches!(module_kind, ModuleKind::Runtime | ModuleKind::Capability);
-            let managed_contract = match binding.point_id.as_str() {
-                extension_contracts::MANAGED_CREATE_EVENT_POINT => {
-                    binding.fact_contract_id == extension_contracts::MANAGED_CREATE_EVENT_ID
-                        && binding.fact_contract_version == "v1"
-                }
-                extension_contracts::MANAGED_PROCESSED_EVENT_ID => {
-                    binding.fact_contract_id == extension_contracts::MANAGED_PROCESSED_EVENT_ID
-                        && binding.fact_contract_version == "1"
-                }
-                _ => false,
-            };
+            let managed_contract = (binding.point_id.as_str()
+                == extension_contracts::MANAGED_CREATE_EVENT_POINT
+                && binding.fact_contract_id == extension_contracts::MANAGED_CREATE_EVENT_ID
+                && binding.fact_contract_version == "v1")
+                || (point
+                    .descriptor()
+                    .is_managed_composition_event(&point.descriptor().owner_module_id)
+                    && binding.fact_contract_id
+                        == point.descriptor().contract.contract_id.as_str()
+                    && binding.fact_contract_version
+                        == point.descriptor().contract.contract_version.as_str());
             if !allows_lifecycle(module_kind, lifecycle)
                 || (managed
                     && (!managed_contract

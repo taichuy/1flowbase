@@ -1,6 +1,6 @@
 use super::compat_routes::{
-    test_app_with_runtime_event_stream, DropTerminalRuntimeEventStream,
-    NeverCloseDropTerminalRuntimeEventStream,
+    DropTerminalRuntimeEventStream, NeverCloseDropTerminalRuntimeEventStream,
+    test_app_with_runtime_event_stream,
 };
 use super::native_routes::{
     assert_published_native_generate_route, configure_runnable_native_generate_target,
@@ -9,13 +9,13 @@ use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_config,
 };
 use axum::{
-    body::{to_bytes, Body},
-    http::{Request, StatusCode},
     Router,
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -142,7 +142,7 @@ async fn test_app_with_state() -> (Router, std::sync::Arc<crate::app_state::ApiS
     (app, state)
 }
 
-async fn setup_published_native_app(
+pub(crate) async fn setup_published_native_app(
     app: &Router,
     state: &crate::app_state::ApiState,
     name: &str,

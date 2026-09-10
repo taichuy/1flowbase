@@ -63,6 +63,7 @@ pub struct UiComponentRecordPage {
 pub struct UiManagementService<R> {
     repository: R,
     node_id: String,
+    native_targets: Vec<domain::NativePluginTarget>,
 }
 
 impl<R> UiManagementService<R>
@@ -73,15 +74,70 @@ where
         Self {
             repository,
             node_id: node_id.into(),
+            native_targets: Vec::new(),
         }
     }
 
+    pub fn with_native_targets(mut self, targets: Vec<domain::NativePluginTarget>) -> Self {
+        self.native_targets = targets;
+        self
+    }
+    async fn assert_template_available(&self, template_id: Uuid) -> Result<()> {
+        let template = self
+            .repository
+            .get_ui_code_template(template_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("ui_code_template"))?;
+        if template.owner_plugin_code.is_none() {
+            return Ok(());
+        }
+        if !self
+            .repository
+            .native_template_is_available(template_id, &self.native_targets)
+            .await?
+        {
+            return Err(ControlPlaneError::Conflict("native_plugin_version_mismatch").into());
+        }
+        Ok(())
+    }
+    pub async fn plugin_settings_template(
+        &self,
+        owner: &str,
+        contribution_code: &str,
+    ) -> Result<UiCodeTemplate> {
+        let template = self
+            .repository
+            .list_ui_code_templates()
+            .await?
+            .into_iter()
+            .find(|t| {
+                t.owner_plugin_code.as_deref() == Some(owner)
+                    && t.contribution_code == contribution_code
+                    && t.is_default
+                    && t.published_revision.is_some()
+            })
+            .ok_or(ControlPlaneError::NotFound("plugin_settings_template"))?;
+        self.assert_template_available(template.id).await?;
+        Ok(template)
+    }
     pub async fn list_templates(&self) -> Result<UiCodeTemplateList> {
         let blocks = self
             .repository
             .list_system_frontend_blocks(&self.node_id)
             .await?;
         let managed = self.repository.list_ui_code_templates().await?;
+        let mut available = Vec::new();
+        for template in managed {
+            if template.owner_plugin_code.is_none()
+                || self
+                    .repository
+                    .native_template_is_available(template.id, &self.native_targets)
+                    .await?
+            {
+                available.push(template);
+            }
+        }
+        let managed = available;
         let mut official = blocks
             .into_iter()
             .filter_map(|block| {
@@ -149,7 +205,8 @@ where
             let custom = managed
                 .iter()
                 .filter(|template| {
-                    template.provider_code == block.provider_code
+                    template.owner_plugin_code.is_none()
+                        && template.provider_code == block.provider_code
                         && template.contribution_code == block.contribution_code
                         && template.published_revision.is_some()
                 })
@@ -239,6 +296,7 @@ where
         &self,
         input: ReviseUiCodeTemplateInput,
     ) -> Result<UiCodeTemplate> {
+        self.assert_template_available(input.template_id).await?;
         self.repository.revise_ui_code_template(&input).await
     }
 
@@ -248,12 +306,14 @@ where
         revision: i32,
         actor_user_id: Uuid,
     ) -> Result<UiCodeTemplate> {
+        self.assert_template_available(template_id).await?;
         self.repository
             .publish_ui_code_template_revision(template_id, revision, actor_user_id)
             .await
     }
 
     pub async fn set_template_default(&self, template_id: Uuid, actor_user_id: Uuid) -> Result<()> {
+        self.assert_template_available(template_id).await?;
         self.repository
             .set_ui_code_template_default(template_id, actor_user_id)
             .await
@@ -264,12 +324,21 @@ where
         provider_code: &str,
         contribution_code: &str,
     ) -> Result<()> {
+        for template in self.repository.list_ui_code_templates().await? {
+            if template.provider_code == provider_code
+                && template.contribution_code == contribution_code
+                && template.owner_plugin_code.is_some()
+            {
+                self.assert_template_available(template.id).await?;
+            }
+        }
         self.repository
             .reset_ui_code_template_default(provider_code, contribution_code)
             .await
     }
 
     pub async fn delete_template(&self, template_id: Uuid) -> Result<()> {
+        self.assert_template_available(template_id).await?;
         if self.repository.delete_ui_code_template(template_id).await? {
             Ok(())
         } else {

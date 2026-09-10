@@ -40,6 +40,7 @@ function getSettingsItem() {
       pathname: '/settings/data-models',
       useRouterLinks: false,
       sections: settingsSectionDefinitions.map(({ key, label_key, to }) => ({
+        route_id: `settings.${key}`,
         key,
         label_key,
         to

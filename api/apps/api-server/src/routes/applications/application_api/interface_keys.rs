@@ -9,9 +9,9 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
+    ApplicationApiKeyResponse, CreateApplicationApiKeyBody, CreatedApplicationApiKeyResponse,
     map_application_api_key_not_found, parse_expires_at, to_api_key_response,
-    to_created_api_key_response, ApplicationApiKeyResponse, CreateApplicationApiKeyBody,
-    CreatedApplicationApiKeyResponse,
+    to_created_api_key_response,
 };
 use crate::{
     error_response::ApiError,
@@ -36,6 +36,98 @@ pub(crate) enum ApplicationApiKeyInput {
 }
 
 impl InterfaceContract for ApplicationApiKeyInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("List")),
+                ("application_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Create")),
+                ("application_id", mp::text_schema()),
+                (
+                    "body",
+                    mp::object_schema(&[
+                        (
+                            "name",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "expires_at",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Revoke")),
+                ("application_id", mp::text_schema()),
+                ("key_id", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List {
+                application_id: _field_application_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("List".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+            ]),
+            Self::Create {
+                application_id: _field_application_id,
+                body: _field_body,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "body",
+                    mp::object_value(&[
+                        (
+                            "name",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_body).name).len()),
+                            )]),
+                        ),
+                        (
+                            "expires_at",
+                            match (&(_field_body).expires_at).as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Revoke {
+                application_id: _field_application_id,
+                key_id: _field_key_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Revoke".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "key_id",
+                    serde_json::Value::String((_field_key_id).to_string()),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-application-api-key-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -69,6 +161,147 @@ impl ApplicationApiKeyOutput {
 }
 
 impl InterfaceContract for ApplicationApiKeyOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("List")),
+                (
+                    "0",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("creator_user_id",mp::text_schema()), ("enabled",serde_json::json!({"type":"boolean"})), ("expires_at",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("last_used_at",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema())])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Created")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("id", mp::text_schema()),
+                        (
+                            "name",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("creator_user_id", mp::text_schema()),
+                        ("enabled", serde_json::json!({"type":"boolean"})),
+                        (
+                            "expires_at",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "last_used_at",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        ("created_at", mp::text_schema()),
+                        ("updated_at", mp::text_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("List".to_owned())),
+                ("0", {
+                    if (_field_0).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (_field_0)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("id", serde_json::Value::String((&(item).id).to_string())),
+                                    (
+                                        "name",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).name).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "creator_user_id",
+                                        serde_json::Value::String(
+                                            (&(item).creator_user_id).to_string(),
+                                        ),
+                                    ),
+                                    ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
+                                    (
+                                        "expires_at",
+                                        match (&(item).expires_at).as_ref() {
+                                            Some(item) => mp::text(item)?,
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    (
+                                        "last_used_at",
+                                        match (&(item).last_used_at).as_ref() {
+                                            Some(item) => mp::object_value(&[(
+                                                "byte_count",
+                                                serde_json::json!((item).len()),
+                                            )]),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    ("created_at", mp::text(&(item).created_at)?),
+                                    ("updated_at", mp::text(&(item).updated_at)?),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+            Self::Created(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Created".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "id",
+                            serde_json::Value::String((&(_field_0).id).to_string()),
+                        ),
+                        (
+                            "name",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).name).len()),
+                            )]),
+                        ),
+                        (
+                            "creator_user_id",
+                            serde_json::Value::String((&(_field_0).creator_user_id).to_string()),
+                        ),
+                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        (
+                            "expires_at",
+                            match (&(_field_0).expires_at).as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "last_used_at",
+                            match (&(_field_0).last_used_at).as_ref() {
+                                Some(item) => mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        ("created_at", mp::text(&(_field_0).created_at)?),
+                        ("updated_at", mp::text(&(_field_0).updated_at)?),
+                    ]),
+                ),
+            ]),
+            Self::NoContent => {
+                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-application-api-key-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

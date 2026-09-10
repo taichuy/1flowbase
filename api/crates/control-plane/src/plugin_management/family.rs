@@ -117,6 +117,15 @@ where
         &self,
         command: EnablePluginCommand,
     ) -> Result<domain::PluginTaskRecord> {
+        self.request_plugin_enable(command, domain::PluginTaskKind::Enable)
+            .await
+    }
+
+    async fn request_plugin_enable(
+        &self,
+        command: EnablePluginCommand,
+        task_kind: domain::PluginTaskKind,
+    ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
@@ -139,7 +148,7 @@ where
                 installation_id: Some(command.installation_id),
                 workspace_id: None,
                 provider_code: installation.provider_code.clone(),
-                task_kind: domain::PluginTaskKind::Enable,
+                task_kind,
                 status: domain::PluginTaskStatus::Queued,
                 status_message: Some("pending".to_string()),
                 detail_json: json!({}),
@@ -219,7 +228,14 @@ where
                 self.transition_task(
                     &running_task,
                     domain::PluginTaskStatus::Succeeded,
-                    Some("enabled".to_string()),
+                    Some(
+                        if requires_restart {
+                            "pending_restart"
+                        } else {
+                            "enabled"
+                        }
+                        .to_string(),
+                    ),
                     json!({
                         "installation_id": updated.id,
                         "enabled": !matches!(
@@ -457,6 +473,28 @@ where
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
 
+        let native_target = self
+            .repository
+            .get_installation(command.target_installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&native_target)?;
+        if is_host_extension_installation(&native_target) {
+            if native_target.provider_code != command.provider_code {
+                return Err(
+                    ControlPlaneError::InvalidInput("plugin_family_target_mismatch").into(),
+                );
+            }
+            return self
+                .request_plugin_enable(
+                    EnablePluginCommand {
+                        actor_user_id: command.actor_user_id,
+                        installation_id: native_target.id,
+                    },
+                    domain::PluginTaskKind::SwitchVersion,
+                )
+                .await;
+        }
         let current = self
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
             .await?;
@@ -858,6 +896,27 @@ where
         workspace_id: Uuid,
         provider_code: &str,
     ) -> Result<domain::PluginInstallationRecord> {
+        let native = self
+            .repository
+            .list_installations()
+            .await?
+            .into_iter()
+            .filter(|i| is_host_extension_installation(i) && i.provider_code == provider_code)
+            .collect::<Vec<_>>();
+        if !native.is_empty() {
+            let targets = self.repository.list_native_plugin_targets().await?;
+            let matches = targets
+                .into_iter()
+                .filter(|t| t.artifact_id == provider_code)
+                .collect::<Vec<_>>();
+            if matches.len() != 1 {
+                return Err(ControlPlaneError::Conflict("native_plugin_selection_required").into());
+            }
+            return native
+                .into_iter()
+                .find(|i| i.id == matches[0].installation_id)
+                .ok_or_else(|| ControlPlaneError::NotFound("native_plugin_installation").into());
+        }
         let assignment = self
             .repository
             .list_assignments(workspace_id)
@@ -881,6 +940,26 @@ where
         actor_user_id: Uuid,
         compatibility_override: Option<&serde_json::Value>,
     ) -> Result<domain::PluginTaskRecord> {
+        if is_host_extension_installation(current) {
+            if target.category != current.category
+                || target.scope_id != current.scope_id
+                || target.organization != current.organization
+                || target.provider_code != current.provider_code
+            {
+                return Err(
+                    ControlPlaneError::InvalidInput("plugin_family_target_mismatch").into(),
+                );
+            }
+            return self
+                .request_plugin_enable(
+                    EnablePluginCommand {
+                        actor_user_id,
+                        installation_id: target.id,
+                    },
+                    domain::PluginTaskKind::SwitchVersion,
+                )
+                .await;
+        }
         let task_id = Uuid::now_v7();
         let task = self
             .repository

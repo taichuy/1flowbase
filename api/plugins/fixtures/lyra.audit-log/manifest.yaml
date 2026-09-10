@@ -1,0 +1,139 @@
+manifest_version: 2
+schema_version: 1flowbase.plugin.manifest/v2
+plugin_id: lyra.audit-log
+version: 1.0.0
+publisher_namespace: lyra
+vendor: Acme
+display_name: lyra.audit-log
+description: Explicit managed contribution activation fixture
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: []
+binding_targets:
+- workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.extension-bus/v1
+permissions:
+  network: none
+  secrets: none
+  storage: host_managed
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/worker.py
+  limits:
+    timeout_ms: 30000
+managed:
+  module:
+    bus_version: v1
+    module_id: lyra.audit-log
+    module_version: 1.0.0
+    module_kind: runtime
+    extension_points:
+    - point_id: lyra.audit-log.recorded
+      owner_module_id: lyra.audit-log
+      point_kind: event_stream
+      contract:
+        contract_id: lyra.audit-log.recorded
+        contract_version: '1'
+        payload_schema:
+          type: object
+          additionalProperties: false
+          properties:
+            audit_ref:
+              type: string
+              maxLength: 128
+            accepted:
+              type: boolean
+            route_code:
+              type: string
+              maxLength: 32
+          required:
+          - audit_ref
+          - accepted
+          - route_code
+      scope: workspace
+      cardinality: many
+      ordering: lexicographic
+      failure: isolate_contribution
+      delivery: after_commit_durable
+      lifecycle: workspace_assignment
+      allowed_permissions:
+      - event.subscribe
+      - event.publish
+      - plugin_data.owned.write
+      override_policy: sealed
+    contributions:
+    - contribution_id: lyra.audit-log.publish
+      contributor_module_id: lyra.audit-log
+      point_id: orion.shipments.created
+      contract_version: '1'
+      required_permissions:
+      - event.subscribe
+      - event.publish
+      mode: append
+    - contribution_id: lyra.audit-log.store
+      contributor_module_id: lyra.audit-log
+      point_id: lyra.audit-log.recorded
+      contract_version: '1'
+      required_permissions:
+      - event.subscribe
+      - plugin_data.owned.write
+      mode: append
+    - contribution_id: lyra.audit-log.observe
+      contributor_module_id: lyra.audit-log
+      point_id: lyra.audit-log.recorded
+      contract_version: '1'
+      required_permissions:
+      - event.subscribe
+      mode: append
+    - contribution_id: lyra.audit-log.data
+      contributor_module_id: lyra.audit-log
+      point_id: 1flowbase.plugin-data.owned-collection
+      contract_version: 1flowbase.plugin-data-model/v1
+      required_permissions:
+      - plugin_data.owned.write
+      mode: append
+  execution_bindings:
+  - contribution_id: lyra.audit-log.publish
+    execution_mode: process_per_call
+    runtime:
+      protocol: stdio_json
+      entry: bin/worker.py
+    handler: publish.audit
+  - contribution_id: lyra.audit-log.store
+    execution_mode: process_per_call
+    runtime:
+      protocol: stdio_json
+      entry: bin/worker.py
+    handler: apply.audit
+  - contribution_id: lyra.audit-log.observe
+    execution_mode: process_per_call
+    runtime:
+      protocol: stdio_json
+      entry: bin/worker.py
+    handler: ack
+  - contribution_id: lyra.audit-log.data
+    execution_mode: declarative_only
+    runtime:
+      protocol: stdio_json
+      entry: manifest.yaml
+    handler: owned_collections
+    payload:
+      kind: data_models
+data_models:
+- contribution_version: 1flowbase.plugin-data-model/v1
+  storage_binding: main
+  owned_collections:
+  - collection_code: audit_records
+    fields:
+    - field_code: audit_ref
+      field_type: text
+    - field_code: accepted
+      field_type: boolean
+    - field_code: route_code
+      field_type: text

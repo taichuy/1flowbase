@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
@@ -10,17 +12,17 @@ use interface_runtime::InterfaceContract;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
+    MemoryEntriesResponse, MemoryEntryRevealBody, MemoryEntryValueResponse, MemoryOverviewResponse,
+    MemoryPageQuery, MemoryPathQuery, MemorySearchQuery, MemoryStatsOverviewResponse,
+    MemoryStatsResponse, MemoryTreeResponse,
     memory_support::{
-        empty_memory_entry_page, empty_memory_tree_page, format_memory_reveal_mode,
-        format_memory_value_state, memory_contract_definitions, memory_contract_label,
-        memory_contract_stats_response, memory_contract_summary, memory_contract_supported,
-        memory_inspection_target, memory_page_request, memory_query_path, parse_memory_reveal_mode,
-        MemoryInspectionDependencies,
+        MemoryInspectionDependencies, empty_memory_entry_page, empty_memory_tree_page,
+        format_memory_reveal_mode, format_memory_value_state, memory_contract_definitions,
+        memory_contract_label, memory_contract_stats_response, memory_contract_summary,
+        memory_contract_supported, memory_inspection_target, memory_page_request,
+        memory_query_path, parse_memory_reveal_mode,
     },
-    to_memory_entry_metadata_response, to_memory_tree_node_response, MemoryEntriesResponse,
-    MemoryEntryRevealBody, MemoryEntryValueResponse, MemoryOverviewResponse, MemoryPageQuery,
-    MemoryPathQuery, MemorySearchQuery, MemoryStatsOverviewResponse, MemoryStatsResponse,
-    MemoryTreeResponse,
+    to_memory_entry_metadata_response, to_memory_tree_node_response,
 };
 use crate::{
     error_response::ApiError,
@@ -55,11 +57,6 @@ pub(crate) enum MemoryInspectionInput {
     },
 }
 
-impl InterfaceContract for MemoryInspectionInput {
-    const CONTRACT_ID: &'static str = "console-host-infrastructure-memory-inspection-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 #[expect(
     clippy::large_enum_variant,
     reason = "the typed inspection output is projected immediately into the console response"
@@ -71,11 +68,6 @@ pub(crate) enum MemoryInspectionOutput {
     Stats(MemoryStatsResponse),
     Tree(MemoryTreeResponse),
     Revealed(MemoryEntryValueResponse),
-}
-
-impl InterfaceContract for MemoryInspectionOutput {
-    const CONTRACT_ID: &'static str = "console-host-infrastructure-memory-inspection-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct MemoryInspectionInterfaceDependencies {
@@ -536,9 +528,11 @@ mod tests {
         })
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

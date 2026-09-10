@@ -17,7 +17,24 @@ export interface ConsoleUiManagedTemplate {
   latest_revision: ConsoleUiTemplateRevision;
   published_revision: ConsoleUiTemplateRevision | null;
   is_default: boolean;
+  owner_plugin_code: string | null;
+  owner_feature_id: string | null;
+  applied_plugin_version: string | null;
+  overwrite_on_plugin_upgrade: boolean;
 }
+export interface ConsolePluginSettingsPage {
+  route_id: string;
+  feature_id: string;
+  template_id: string;
+  provider_code: string;
+  contribution_code: string;
+  source: string;
+  language: UiCodeTemplateLanguage;
+  revision: number;
+  applied_plugin_version: string;
+  overwrite_on_plugin_upgrade: boolean;
+}
+
 export interface ConsoleUiOfficialTemplate {
   provider_code: string;
   contribution_code: string;
@@ -152,6 +169,15 @@ export interface ConsoleUiCatalogUpdateStatus {
 }
 
 const root = '/api/console/settings/ui-management';
+export const fetchConsolePluginSettingsPage = (
+  route_id: string,
+  baseUrl?: string
+) =>
+  apiFetch<ConsolePluginSettingsPage>({
+    path: `${root}/plugin-settings-page?route_id=${encodeURIComponent(route_id)}`,
+    baseUrl
+  });
+
 export const fetchConsoleUiTemplates = (baseUrl?: string) =>
   apiFetch<ConsoleUiTemplateList>({
     path: `${root}/templates`,

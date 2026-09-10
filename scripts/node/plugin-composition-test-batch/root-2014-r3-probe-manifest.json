@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "scope": "plugin-composition-2014",
+  "supportedPlatform": "linux",
+  "targets": [
+    {
+      "id": "extension-contracts:lib",
+      "package": "extension-contracts",
+      "packageRoot": "api/crates/extension-contracts",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    },
+    {
+      "id": "extension-package-runtime:lib",
+      "package": "extension-package-runtime",
+      "packageRoot": "api/crates/extension-package-runtime",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    },
+    {
+      "id": "runtime-extension-sdk:lib",
+      "package": "runtime-extension-sdk",
+      "packageRoot": "api/crates/runtime-extension-sdk",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    },
+    {
+      "id": "runtime-extension-host:lib",
+      "package": "runtime-extension-host",
+      "packageRoot": "api/crates/runtime-extension-host",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    },
+    {
+      "id": "api-server:lib",
+      "package": "api-server",
+      "packageRoot": "api/apps/api-server",
+      "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    }
+  ],
+  "required": [
+    {
+      "target": "extension-contracts:lib",
+      "source": "api/crates/extension-contracts/src/_tests/managed_interface_reference_tests.rs",
+      "name": "_tests::managed_interface_reference_tests::root_2014_r3_probe_independent_budgets",
+      "expected": 1,
+      "ac": [
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "extension-package-runtime:lib",
+      "source": "api/crates/extension-package-runtime/src/_tests/managed_manifest_tests.rs",
+      "name": "_tests::managed_manifest_tests::root_2014_r3_probe_explicit_protocol_selection",
+      "expected": 1,
+      "ac": [
+        "AC-017"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-sdk:lib",
+      "source": "api/crates/runtime-extension-sdk/src/_tests/managed_hook_tests.rs",
+      "name": "_tests::managed_hook_tests::root_2014_r3_probe_v1_schema_consumer_and_v2_reference",
+      "expected": 1,
+      "ac": [
+        "AC-015",
+        "AC-017",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "runtime-extension-host:lib",
+      "source": "api/crates/runtime-extension-host/src/_tests/managed_hook_transport.rs",
+      "name": "_tests::managed_hook_transport::root_2014_r3_probe_reference_worker_roundtrip",
+      "expected": 1,
+      "ac": [
+        "AC-016",
+        "AC-017",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": [
+        "MANAGED_HOOK_WORKER_FIXTURE"
+      ]
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_r3_probe_complete_contract_compilation",
+      "expected": 1,
+      "ac": [
+        "AC-001",
+        "AC-016",
+        "AC-018"
+      ],
+      "auth": [],
+      "env": []
+    },
+    {
+      "target": "api-server:lib",
+      "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_projection.rs",
+      "name": "_tests::interface_lifecycle_acceptance::managed_projection::root_2014_r3_probe_reference_binding_and_projection",
+      "expected": 1,
+      "ac": [
+        "AC-004",
+        "AC-016"
+      ],
+      "auth": [],
+      "env": []
+    }
+  ],
+  "node": [],
+  "outputDirectory": "tmp/test-governance/2014/r3-probe",
+  "rootPrefixes": [
+    "root_2014_r3_probe_"
+  ],
+  "requiredAc": [
+    "AC-015",
+    "AC-016",
+    "AC-017",
+    "AC-018"
+  ],
+  "requiredAuth": [],
+  "identityFiles": [
+    "scripts/node/plugin-composition-test-batch/root-2014-inventory.json",
+    "api/plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml",
+    "api/plugins/fixtures/orion.shipments/manifest.yaml",
+    "api/plugins/fixtures/lyra.audit-log/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/manifest.yaml",
+    "api/plugins/fixtures/northwind.settings-page/host-extension.yaml",
+    "api/plugins/fixtures/northwind.settings-page/settings.tsx"
+  ],
+  "batchMode": "r3-probe",
+  "showTestOutput": true,
+  "workerFixtures": [
+    {
+      "example": "managed_hook_worker",
+      "env": "MANAGED_HOOK_WORKER_FIXTURE"
+    }
+  ]
+}

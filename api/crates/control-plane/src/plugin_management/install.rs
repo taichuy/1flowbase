@@ -213,6 +213,7 @@ impl InstallationProjectionIdentity for domain::PluginInstallationRecord {
     }
 }
 
+mod plugin_settings_templates;
 mod projections;
 use projections::{
     build_frontend_block_sync_input, build_js_dependency_sync_input,
@@ -242,6 +243,8 @@ fn prepare_installation_commit(
     if let Some(managed) = &manifest.managed {
         installation.metadata_json["managed"] = serde_json::to_value(managed)?;
     }
+    let settings_templates =
+        plugin_settings_templates::prepare_settings_templates(package_root, manifest)?;
     let package_kind = route_plugin_package(manifest)?;
     let category = match &package_kind {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
@@ -318,6 +321,7 @@ fn prepare_installation_commit(
         actor_user_id: installation.actor_user_id,
     };
     Ok(CommitPluginInstallationInput {
+        settings_templates,
         installation: root,
         artifact_instance,
         package_catalog,
@@ -1060,6 +1064,9 @@ where
             .into_iter()
             .find(|installation| {
                 installation.provider_code == command.provider_code
+                    && installation.category == current.category
+                    && installation.scope_id == current.scope_id
+                    && installation.organization == current.organization
                     && installation.plugin_version == official_entry.latest_version
             });
         let target = match installed_target {
@@ -1295,10 +1302,10 @@ where
                             source_kind: source_metadata.source_kind.clone(),
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
-                            desired_state: domain::PluginDesiredState::PendingRestart,
+                            desired_state: domain::PluginDesiredState::Disabled,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
-                                domain::PluginDesiredState::PendingRestart,
+                                domain::PluginDesiredState::Disabled,
                                 domain::PluginArtifactStatus::Ready,
                                 domain::PluginRuntimeStatus::Inactive,
                             ),

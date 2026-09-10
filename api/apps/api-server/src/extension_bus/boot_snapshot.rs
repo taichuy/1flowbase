@@ -5,20 +5,19 @@ use std::{
 
 use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
-    compile_hook_plans, ContractDescriptor, ContributionId, ContributionResolutionReceipt,
-    EffectiveExtensionGraph, EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract,
-    HookMutationCapability, HookPhase, HookPointBinding, HookPointContract, ModuleId,
-    ModuleResolutionReceipt, Provenance,
+    ContractDescriptor, ContributionId, ContributionResolutionReceipt, EffectiveExtensionGraph,
+    EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract, HookMutationCapability,
+    HookPhase, HookPointBinding, HookPointContract, ModuleId, ModuleResolutionReceipt, Provenance,
+    compile_hook_plans,
 };
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    input_assembly::ExtensionGraphInputAssembly,
-    production_host_extension_authentication_factories, production_interface_contributions,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    InterfaceContributionCollector, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
-    INTERFACE_COMPLETION_HOOK_POINT_ID,
+    INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID,
+    InterfaceContributionCollector, input_assembly::ExtensionGraphInputAssembly,
+    production_host_extension_authentication_factories, production_interface_contributions,
 };
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
@@ -271,9 +270,12 @@ impl ExtensionBootSnapshot {
             .interface_registry
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("interface registry is absent"))?;
+        let managed =
+            super::managed_interface::ManagedInterfaceFactory::new(state, self.graph.clone());
         let mut collector = InterfaceContributionCollector::new(
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
-        );
+        )
+        .with_managed_invocations(managed.clone());
         collector.absorb_published_interface(
             registry.snapshot(),
             interface_runtime::InterfaceId::new(
@@ -291,6 +293,15 @@ impl ExtensionBootSnapshot {
         }
         let (candidate, console_operation_snapshot) = collector
             .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
+        managed.bind_registry(&candidate)?;
+        let module = plugin_framework::extension_bus::compile_managed_interface_module(
+            candidate
+                .definitions()
+                .map(|definition| definition.interface_id().as_str()),
+        )?;
+        if let Ok(composition) = state.provider_runtime.managed_composition() {
+            composition.attach_interface_module(module)?;
+        }
         self.authentication_factories
             .validate_registry(&candidate)?;
         registry.publish(candidate);

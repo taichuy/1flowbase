@@ -10,16 +10,16 @@ use crate::contribution::ErasedDefinitionContribution;
 use crate::decision::ErasedInterfaceDecisionPlan;
 use crate::hook::ErasedInterfaceHookPlan;
 use crate::{
-    compile_effective_handler, ActivatedAuthenticationAdapter, AdmissionAdapterReference,
-    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
-    BindingFingerprint, BindingId, CompiledInterfaceExtensionPlan, ContractIdentity,
-    ExecutionAttempt, GraphFingerprint, HandlerReference, InterfaceExtensionPoint,
-    InterfaceExtensionRegistration, InterfaceHandlerCandidate, InterfaceId, InterfaceOwner,
-    InterfaceStreamHandler, InterfaceTargetFailure, InterfaceVersion, InvocationId,
-    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalProfile, PrincipalSummary,
-    RegistryFingerprint, RouteIdentity, TargetReference, TypedInterfaceAdmissionPlan,
-    TypedInterfaceAuthorizationPlan, TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
-    TypedInterfaceStreamDefinitionContribution, UserPrincipal,
+    ActivatedAuthenticationAdapter, AdmissionAdapterReference, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
+    CompiledInterfaceExtensionPlan, ContractIdentity, ExecutionAttempt, GraphFingerprint,
+    HandlerReference, InterfaceExtensionPoint, InterfaceExtensionRegistration,
+    InterfaceHandlerCandidate, InterfaceId, InterfaceOwner, InterfaceStreamHandler,
+    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
+    PluginIdentity, PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity,
+    TargetReference, TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
+    TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
+    TypedInterfaceStreamDefinitionContribution, UserPrincipal, compile_effective_handler,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -27,6 +27,17 @@ use thiserror::Error;
 pub trait InterfaceContract: Send + Sync + 'static {
     const CONTRACT_ID: &'static str;
     const CONTRACT_VERSION: &'static str;
+
+    /// Explicit safe-view schema, separate from HTTP DTO serialization and credential handling.
+    /// None is not an empty schema: managed admission must reject an unregistered projection.
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Only explicitly projected fields may leave the trusted host. No blanket Serialize fallback.
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -565,6 +576,7 @@ pub struct CompiledInvocationPlan {
     authorization_extensions: Option<Arc<dyn ErasedInterfaceDecisionPlan>>,
     admission_extensions: Option<Arc<dyn ErasedInterfaceDecisionPlan>>,
     effective_handler: InterfaceHandlerCandidate,
+    pub(crate) managed_factory: Option<Arc<dyn crate::ManagedInterfaceInvocationFactory>>,
     fingerprint: PlanFingerprint,
 }
 
@@ -585,6 +597,10 @@ impl std::fmt::Debug for CompiledInvocationPlan {
 }
 
 impl CompiledInvocationPlan {
+    pub fn has_managed_invocation_bridge(&self) -> bool {
+        self.managed_factory.is_some()
+    }
+
     pub fn definition(&self) -> &InterfaceDefinition {
         &self.definition
     }
@@ -763,10 +779,16 @@ where
     P: InvocationPrincipal,
 {
     fn invoke(&self, context: InterfaceHandlerContext<P>, input: I)
-        -> InterfaceHandlerFuture<O, E>;
+    -> InterfaceHandlerFuture<O, E>;
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
+    fn managed_contracts(&self) -> Vec<ManagedContractSchema>;
+    fn install_managed(
+        &self,
+        compiler: &mut RegistryCompiler,
+        id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError>;
     fn contracts(&self) -> &InterfaceContracts;
     fn handler_reference(&self) -> &HandlerReference;
     fn principal_profile(&self) -> PrincipalProfile;
@@ -813,6 +835,22 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn managed_contracts(&self) -> Vec<ManagedContractSchema> {
+        vec![
+            managed_contract_schema::<I>(),
+            managed_contract_schema::<S>(),
+            managed_contract_schema::<O>(),
+            managed_contract_schema::<E>(),
+        ]
+    }
+    fn install_managed(
+        &self,
+        compiler: &mut RegistryCompiler,
+        id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError> {
+        compiler.install_managed_typed::<I, O>(id)
+    }
+
     fn contracts(&self) -> &InterfaceContracts {
         &self.contracts
     }
@@ -837,6 +875,21 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn managed_contracts(&self) -> Vec<ManagedContractSchema> {
+        vec![
+            managed_contract_schema::<I>(),
+            managed_contract_schema::<O>(),
+            managed_contract_schema::<E>(),
+        ]
+    }
+    fn install_managed(
+        &self,
+        compiler: &mut RegistryCompiler,
+        id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError> {
+        compiler.install_managed_typed::<I, O>(id)
+    }
+
     fn contracts(&self) -> &InterfaceContracts {
         &self.contracts
     }
@@ -856,6 +909,8 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RegistryCompilationError {
+    #[error("managed projection is absent or inconsistent for interface {0}")]
+    ManagedProjectionMismatch(InterfaceId),
     #[error("duplicate interface identity {0}")]
     DuplicateInterface(InterfaceId),
     #[error("duplicate binding identity {0}")]
@@ -912,13 +967,16 @@ pub enum RegistryCompilationError {
     UnexpectedAuthenticationActivation(InterfaceId),
     #[error("interface {0} authentication adapter is activated more than once")]
     DuplicateAuthenticationActivation(InterfaceId),
-    #[error("interface {0} authentication activation identity does not match its registration or binding")]
+    #[error(
+        "interface {0} authentication activation identity does not match its registration or binding"
+    )]
     AuthenticationActivationMismatch(InterfaceId),
     #[error(transparent)]
     Extension(#[from] crate::InterfaceExtensionCompilationError),
 }
 
 pub struct RegistryCompiler {
+    managed_factory: Option<Arc<dyn crate::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
     known_operations: BTreeSet<AuthorizationOperation>,
     active_owners: BTreeSet<InterfaceOwner>,
@@ -957,6 +1015,7 @@ impl RegistryCompiler {
         active_owners: impl IntoIterator<Item = InterfaceOwner>,
     ) -> Self {
         Self {
+            managed_factory: None,
             graph_fingerprint,
             known_operations: known_operations.into_iter().collect(),
             active_owners: active_owners.into_iter().collect(),
@@ -1683,6 +1742,29 @@ impl RegistryCompiler {
             effective_handler_bindings.insert(interface_id.clone(), binding);
         }
 
+        let mut managed_contracts = BTreeMap::new();
+        for (id, binding) in &effective_handler_bindings {
+            for descriptor in binding.managed_contracts() {
+                if self.managed_factory.is_some() && descriptor.schema.is_none() {
+                    return Err(RegistryCompilationError::ManagedProjectionMismatch(
+                        id.clone(),
+                    ));
+                }
+                if let Some(previous) =
+                    managed_contracts.insert(descriptor.contract.clone(), descriptor.clone())
+                {
+                    if self.managed_factory.is_some() && previous != descriptor {
+                        return Err(RegistryCompilationError::ManagedProjectionMismatch(
+                            id.clone(),
+                        ));
+                    }
+                }
+            }
+            if self.managed_factory.is_some() {
+                binding.install_managed(&mut self, id)?;
+            }
+        }
+
         for interface_id in self.definitions.keys() {
             let registrations = self
                 .extensions
@@ -1877,6 +1959,7 @@ impl RegistryCompiler {
                         .get(definition.interface_id())
                         .cloned(),
                     effective_handler,
+                    managed_factory: self.managed_factory.clone(),
                     fingerprint,
                 },
             );
@@ -1891,7 +1974,24 @@ impl RegistryCompiler {
                 .collect(),
             &plans,
         );
+        let schema_identity = managed_contracts
+            .values()
+            .map(|entry| {
+                serde_json::json!({
+                    "id": entry.contract.contract_id(), "version": entry.contract.version(),
+                    "rust_type": entry.rust_type, "schema": entry.schema,
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut digest = Sha256::new();
+        digest.update(fingerprint.as_str().as_bytes());
+        digest.update(
+            serde_json::to_vec(&schema_identity).expect("static projection schemas serialize"),
+        );
+        let fingerprint = RegistryFingerprint::new(format!("sha256:{:x}", digest.finalize()))
+            .expect("schema fingerprint has a valid identity");
         Ok(Arc::new(CompiledInterfaceRegistry {
+            managed_contracts,
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
             definitions: self.definitions,
@@ -1909,6 +2009,7 @@ impl RegistryCompiler {
 }
 
 pub struct CompiledInterfaceRegistry {
+    managed_contracts: BTreeMap<ContractIdentity, ManagedContractSchema>,
     graph_fingerprint: GraphFingerprint,
     fingerprint: RegistryFingerprint,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
@@ -1931,6 +2032,10 @@ impl std::fmt::Debug for CompiledInterfaceRegistry {
 }
 
 impl CompiledInterfaceRegistry {
+    pub fn managed_contracts(&self) -> impl Iterator<Item = &ManagedContractSchema> {
+        self.managed_contracts.values()
+    }
+
     pub fn graph_fingerprint(&self) -> &GraphFingerprint {
         &self.graph_fingerprint
     }
@@ -2299,4 +2404,176 @@ fn plan_fingerprint(
     digest.update(extension_plan.as_str().as_bytes());
     PlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
         .expect("SHA-256 plan fingerprint must be a valid identity")
+}
+
+/// Frozen explicit schema metadata from the actual selected Rust handler binding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedContractSchema {
+    pub contract: ContractIdentity,
+    pub rust_type: &'static str,
+    pub schema: Option<serde_json::Value>,
+}
+fn managed_contract_schema<T: InterfaceContract>() -> ManagedContractSchema {
+    ManagedContractSchema {
+        contract: contract_identity::<T>(),
+        rust_type: std::any::type_name::<T>(),
+        schema: T::managed_projection_schema(),
+    }
+}
+
+impl RegistryCompiler {
+    pub fn with_managed_invocations(
+        mut self,
+        factory: Arc<dyn crate::ManagedInterfaceInvocationFactory>,
+    ) -> Self {
+        self.managed_factory = Some(factory);
+        self
+    }
+
+    fn install_managed_typed<I: InterfaceContract, O: InterfaceContract>(
+        &mut self,
+        id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError> {
+        use crate::hook::{ManagedLifecycleBridge, managed_bridge_identity};
+        use crate::{
+            InterfaceExtensionFact as Fact, InterfaceExtensionIsolation,
+            InterfaceExtensionPermission as Permission, InterfaceExtensionTier,
+        };
+        let already_bound = self
+            .extensions
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter(|(_, registration)| {
+                registration.plugin() == &managed_bridge_identity(registration.point())
+            })
+            .count();
+        if already_bound == 6 {
+            return Ok(());
+        }
+        if already_bound != 0 {
+            return Err(RegistryCompilationError::ManagedProjectionMismatch(
+                id.clone(),
+            ));
+        }
+        let bridge = Arc::new(ManagedLifecycleBridge);
+        let graph = self.graph_fingerprint.clone();
+        let hooks = self
+            .hook_bindings
+            .get(id)
+            .map(|plan| {
+                plan.as_any()
+                    .downcast_ref::<TypedInterfaceHookPlan<I, O>>()
+                    .cloned()
+                    .ok_or_else(|| RegistryCompilationError::HookContractMismatch(id.clone()))
+            })
+            .transpose()?
+            .unwrap_or_else(|| TypedInterfaceHookPlan::new(graph.clone()));
+        let auth = self
+            .authorization_bindings
+            .get(id)
+            .map(|plan| {
+                plan.as_any()
+                    .downcast_ref::<TypedInterfaceAuthorizationPlan<I, O>>()
+                    .cloned()
+                    .ok_or_else(|| RegistryCompilationError::HookContractMismatch(id.clone()))
+            })
+            .transpose()?
+            .unwrap_or_else(|| TypedInterfaceAuthorizationPlan::new(graph.clone()));
+        let admission = self
+            .admission_bindings
+            .get(id)
+            .map(|plan| {
+                plan.as_any()
+                    .downcast_ref::<TypedInterfaceAdmissionPlan<I, O>>()
+                    .cloned()
+                    .ok_or_else(|| RegistryCompilationError::HookContractMismatch(id.clone()))
+            })
+            .transpose()?
+            .unwrap_or_else(|| TypedInterfaceAdmissionPlan::new(graph));
+        let scope = self.definitions[id].scope();
+        for (point, permission, fact) in [
+            (
+                InterfaceExtensionPoint::Authorization,
+                Permission::Authorize,
+                Fact::PrincipalSummary,
+            ),
+            (
+                InterfaceExtensionPoint::Admission,
+                Permission::Admit,
+                Fact::AuthorizationDecision,
+            ),
+            (
+                InterfaceExtensionPoint::Before,
+                Permission::ObserveInput,
+                Fact::TypedInput,
+            ),
+            (
+                InterfaceExtensionPoint::After,
+                Permission::ObserveOutput,
+                Fact::TypedOutput,
+            ),
+            (
+                InterfaceExtensionPoint::Failure,
+                Permission::ObserveFailure,
+                Fact::FailureClassification,
+            ),
+            (
+                InterfaceExtensionPoint::Completion,
+                Permission::ObserveCompletion,
+                Fact::Terminal,
+            ),
+        ] {
+            self.register_extension(
+                id,
+                u32::MAX,
+                InterfaceExtensionRegistration::new(
+                    managed_bridge_identity(point),
+                    InterfaceExtensionTier::HostExtension,
+                    point,
+                    permission,
+                    scope,
+                    InterfaceExtensionIsolation::TrustedInProcess,
+                    vec![fact],
+                )?,
+            )?;
+        }
+        self.hook_bindings.insert(
+            id.clone(),
+            Arc::new(
+                hooks
+                    .bind_before(
+                        managed_bridge_identity(InterfaceExtensionPoint::Before),
+                        bridge.clone(),
+                    )
+                    .bind_after(
+                        managed_bridge_identity(InterfaceExtensionPoint::After),
+                        bridge.clone(),
+                    )
+                    .bind_failure(
+                        managed_bridge_identity(InterfaceExtensionPoint::Failure),
+                        bridge.clone(),
+                    )
+                    .bind_completion(
+                        managed_bridge_identity(InterfaceExtensionPoint::Completion),
+                        bridge.clone(),
+                    ),
+            ),
+        );
+        self.authorization_bindings.insert(
+            id.clone(),
+            Arc::new(auth.bind(
+                managed_bridge_identity(InterfaceExtensionPoint::Authorization),
+                bridge.clone(),
+            )),
+        );
+        self.admission_bindings.insert(
+            id.clone(),
+            Arc::new(admission.bind(
+                managed_bridge_identity(InterfaceExtensionPoint::Admission),
+                bridge,
+            )),
+        );
+        Ok(())
+    }
 }

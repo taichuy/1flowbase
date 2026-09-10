@@ -275,6 +275,8 @@ pub struct ManagedExecutionReference {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManagedLifecycleDelivery {
     pub event_id: Uuid,
+    pub contract_id: String,
+    pub contract_version: String,
     pub subscriber_id: String,
     pub target: ManagedFrozenExecutionTarget,
     pub status: String,

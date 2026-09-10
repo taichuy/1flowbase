@@ -792,7 +792,7 @@ async fn app_and_runtime_host_from_config(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is absent at production boot"))?
         .snapshot();
-    let compiled_console_plan =
+    let mut compiled_console_plan =
         app_state::compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
             console_host_extensions,
             Some(interface_snapshot.as_ref()),
@@ -802,8 +802,18 @@ async fn app_and_runtime_host_from_config(
         interface_snapshot.as_ref(),
         &compiled_console_plan.console_operation_registry,
     )?;
-    activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
+    compiled_console_plan.console_surface_registry = Arc::new(
+        compiled_console_plan
+            .console_surface_registry
+            .as_ref()
+            .clone()
+            .with_native_targets(prepared_host_extensions.native_targets()),
+    );
+    prepared_host_extensions
+        .apply_templates(&store, &config.api_node_id)
         .await?;
+    let boot_result: Result<(Router, ApiRuntimeShutdown)> = async {
+
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let assistant_conversation_events =
         Arc::new(routes::assistant::conversation_events::AssistantConversationEventHub::default());
@@ -916,6 +926,27 @@ async fn app_and_runtime_host_from_config(
             lifecycle_worker,
         },
     ))
+    }.await;
+    match boot_result {
+        Ok(result) => {
+            if let Err(error) = activate_prepared_host_extensions(
+                &store,
+                &config.api_node_id,
+                prepared_host_extensions,
+            )
+            .await
+            {
+                return Err(error);
+            }
+            Ok(result)
+        }
+        Err(error) => {
+            prepared_host_extensions
+                .record_boot_failure(&store, &config.api_node_id, &error)
+                .await;
+            Err(error)
+        }
+    }
 }
 
 #[cfg(not(test))]

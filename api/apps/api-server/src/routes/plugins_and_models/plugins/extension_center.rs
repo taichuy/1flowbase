@@ -288,6 +288,7 @@ fn to_local_inventory_family(
         status: entry.status.as_str().to_string(),
         is_current: entry.is_current,
         desired_state: None,
+        runtime_status: None,
         availability_status: None,
         application_action: entry.application_action.as_str().to_string(),
         application_status: default_application_status(entry.application_action).to_string(),

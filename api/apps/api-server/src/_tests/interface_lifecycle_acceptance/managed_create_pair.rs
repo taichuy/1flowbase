@@ -14,8 +14,12 @@ use crate::{
     provider_runtime::{ApiProviderRuntime, ApiRuntimeArtifactResolver, ApiRuntimeServices},
 };
 use axum::{http::StatusCode, Router};
-use control_plane::{plugin_management::*, ports::AuthRepository};
+use control_plane::{
+    plugin_management::*,
+    ports::{AuthRepository, PluginRepository},
+};
 use extension_contracts::ManagedHookHostFrame;
+use runtime_extension_host::RuntimeArtifactResolver;
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
@@ -32,15 +36,70 @@ const PHASES: [&str; 6] = [
     "failure",
     "completion",
 ];
-struct Fixture {
-    state: Arc<ApiState>,
-    app: Router,
-    cookie: String,
-    csrf: String,
-    token: String,
-    actor: domain::ActorContext,
-    installation_id: Uuid,
-    worker: PathBuf,
+pub(super) struct Fixture {
+    pub(super) state: Arc<ApiState>,
+    pub(super) app: Router,
+    pub(super) cookie: String,
+    pub(super) csrf: String,
+    pub(super) token: String,
+    pub(super) actor: domain::ActorContext,
+    pub(super) installation_id: Uuid,
+    pub(super) worker: PathBuf,
+}
+
+/// The production managed binding uses installation IDs; cfg(test) Provider bindings use
+/// installed package paths. Both fixture dialects resolve through the same durable owner.
+struct FixtureArtifactResolver {
+    store: storage_durable_postgres::MainDurableStore,
+    node_id: String,
+    install_root: PathBuf,
+    installed: ApiRuntimeArtifactResolver,
+}
+
+#[async_trait::async_trait]
+impl RuntimeArtifactResolver for FixtureArtifactResolver {
+    async fn resolve(
+        &self,
+        artifact: &runtime_core::runtime_backend::RuntimeArtifactReference,
+    ) -> Result<PathBuf, runtime_core::runtime_backend::RuntimeBackendError> {
+        use runtime_core::runtime_backend::{RuntimeArtifactReference, RuntimeBackendError};
+        let reject = || {
+            RuntimeBackendError::InvalidRequest(
+                "fixture artifact does not identify an exact current-node installation".into(),
+            )
+        };
+        let declared_path = Path::new(artifact.as_str());
+        if declared_path.is_absolute() {
+            let root = std::fs::canonicalize(&self.install_root).map_err(|_| reject())?;
+            let canonical = std::fs::canonicalize(declared_path).map_err(|_| reject())?;
+            if canonical != declared_path || !canonical.starts_with(&root) {
+                return Err(reject());
+            }
+            let artifacts = self
+                .store
+                .list_artifact_instances(&self.node_id)
+                .await
+                .map_err(|_| reject())?;
+            let mut matches = artifacts.iter().filter(|record| {
+                record.node_id == self.node_id
+                    && record.local_path.as_deref() == Some(artifact.as_str())
+            });
+            let installation_id = matches.next().ok_or_else(reject)?.installation_id;
+            if matches.next().is_some() {
+                return Err(reject());
+            }
+            let reference = RuntimeArtifactReference::new(installation_id.to_string())?;
+            let resolved = self.installed.resolve(&reference).await?;
+            // A changed durable mapping cannot retarget this exact path admission.
+            if resolved != declared_path {
+                return Err(reject());
+            }
+            Ok(resolved)
+        } else {
+            Uuid::parse_str(artifact.as_str()).map_err(|_| reject())?;
+            self.installed.resolve(artifact).await
+        }
+    }
 }
 
 fn package() -> Vec<u8> {
@@ -88,6 +147,12 @@ fn grant(phase: &str) -> GrantContributionPermission {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_package(package(), PHASES.into_iter().map(grant).collect()).await
+    }
+    pub(super) async fn new_with_package(
+        package_bytes: Vec<u8>,
+        grants: Vec<GrantContributionPermission>,
+    ) -> Self {
         let (initial, _) = test_api_state_with_database_url().await;
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
@@ -98,11 +163,16 @@ impl Fixture {
         let host = Arc::new(
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
-                Arc::new(ApiRuntimeArtifactResolver::new(
-                    initial.store.clone(),
-                    &initial.api_node_id,
-                    &initial.provider_install_root,
-                )),
+                Arc::new(FixtureArtifactResolver {
+                    store: initial.store.clone(),
+                    node_id: initial.api_node_id.clone(),
+                    install_root: PathBuf::from(&initial.provider_install_root),
+                    installed: ApiRuntimeArtifactResolver::new(
+                        initial.store.clone(),
+                        &initial.api_node_id,
+                        &initial.provider_install_root,
+                    ),
+                }),
             )
             .unwrap(),
         );
@@ -147,7 +217,7 @@ impl Fixture {
             .install_uploaded_plugin(InstallUploadedPluginCommand {
                 actor_user_id: user_id,
                 file_name: "acme.composition-a.1flowbasepkg".into(),
-                package_bytes: package(),
+                package_bytes,
             })
             .await
             .unwrap();
@@ -163,9 +233,9 @@ impl Fixture {
             state.store.clone(),
             HostContributionGrantPolicy::root_composition(),
         );
-        for phase in PHASES {
+        for grant in grants {
             authority
-                .grant(&actor, installation_id, grant(phase))
+                .grant(&actor, installation_id, grant)
                 .await
                 .unwrap();
         }
@@ -189,7 +259,7 @@ impl Fixture {
             worker,
         }
     }
-    fn mode(&self, mode: &str) {
+    pub(super) fn mode(&self, mode: &str) {
         std::fs::write(self.worker.with_extension("mode"), mode).unwrap();
         let _ = std::fs::remove_file(self.worker.with_extension("trace"));
         let _ = std::fs::remove_file(self.worker.with_extension("started"));
@@ -202,7 +272,7 @@ impl Fixture {
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
     }
-    async fn call(&self, mcp: bool, body: Value) -> (u16, Value) {
+    pub(super) async fn call(&self, mcp: bool, body: Value) -> (u16, Value) {
         if mcp {
             let response = call_mcp(&self.app, &self.token, create_pair::mcp_request(body)).await;
             if response.get("error").is_some() {
@@ -770,16 +840,31 @@ async fn cancelled_and_observer_receipt(fixture: &Fixture) {
         } else {
             let outcome = invocation.await.unwrap();
             assert_eq!(fixture.model_count(code).await, 1);
-            assert_eq!(
-                outcome
-                    .receipt()
-                    .observer_records()
+            let records = outcome.receipt().observer_records();
+            for (owner, expected) in [
+                (
+                    "api-server.managed-create.after",
+                    InterfaceObserverStatus::Failed,
+                ),
+                (
+                    "interface-runtime.managed.after",
+                    InterfaceObserverStatus::Executed,
+                ),
+            ] {
+                let selected = records
                     .iter()
-                    .find(|record| record.point() == InterfaceExtensionPoint::After)
-                    .unwrap()
-                    .status(),
-                InterfaceObserverStatus::Failed
-            );
+                    .filter(|record| {
+                        record.point() == InterfaceExtensionPoint::After
+                            && record.plugin().as_str() == owner
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(selected.len(), 1, "owner={owner} records={records:?}");
+                assert_eq!(
+                    selected[0].status(),
+                    expected,
+                    "owner={owner} records={records:?}"
+                );
+            }
             assert_eq!(
                 outcome.receipt().terminal(),
                 InterfaceInvocationTerminal::Completed

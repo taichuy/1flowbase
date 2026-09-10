@@ -1,13 +1,15 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use access_control::{
-    ConsoleRouteOwnership::ConsoleOperation, AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID,
+    AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID, ConsoleRouteOwnership::ConsoleOperation,
     DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use control_plane::data_source::{
     CreateDataSourceInstanceCommand, DataSourceBackendView, DataSourceCatalogEntryView,
@@ -36,11 +38,11 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError,
         },
-        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
     },
 };
 
-use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
+use super::model_definitions::{ModelDefinitionResponse, to_model_definition_response};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateDataSourceBody {
@@ -256,11 +258,6 @@ enum DataSourcesInput {
     },
 }
 
-impl InterfaceContract for DataSourcesInput {
-    const CONTRACT_ID: &'static str = "console-data-sources-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 enum DataSourcesOutput {
     AgentFlowOptions(Vec<AgentFlowDataSourceOptionResponse>),
     Catalog(DataSourceCatalogResponse),
@@ -270,11 +267,6 @@ enum DataSourcesOutput {
     Resources(DataSourceResourcesResponse),
     Preview(PreviewDataSourceReadResponse),
     Model(ModelDefinitionResponse),
-}
-
-impl InterfaceContract for DataSourcesOutput {
-    const CONTRACT_ID: &'static str = "console-data-sources-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct DataSourcesAdapter {
@@ -384,8 +376,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "data_sources.map_to_model",
         binding_id: "http.console.data-sources.resources.map-to-model.v1",
         method: "POST",
-        path:
-            "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
         mutating: true,
     },
 ];

@@ -6,7 +6,7 @@ use std::{
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
     response::Response,
 };
 use control_plane::model_provider::ModelProviderService;
@@ -25,6 +25,15 @@ use crate::{
 
 pub(crate) struct ProviderIconInput(pub(crate) String);
 impl InterfaceContract for ProviderIconInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[("0", mp::text_schema())]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[("0", mp::text(&(self).0)?)]))
+    }
+
     const CONTRACT_ID: &'static str = "console-provider-icon-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -34,6 +43,27 @@ pub(crate) struct ProviderIconOutput {
     pub(crate) content: Vec<u8>,
 }
 impl InterfaceContract for ProviderIconOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            ("content_type", mp::text_schema()),
+            (
+                "content",
+                mp::object_schema(&[("byte_count", mp::count_schema())]),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            ("content_type", mp::text(&(self).content_type)?),
+            (
+                "content",
+                mp::object_value(&[("byte_count", serde_json::json!((&(self).content).len()))]),
+            ),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "console-provider-icon-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

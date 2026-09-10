@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
+    Json,
     body::Body,
     extract::{Path, State},
     http::{
-        header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE},
         HeaderMap, HeaderName, HeaderValue, StatusCode,
+        header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE},
     },
     response::{IntoResponse, Response},
-    Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
@@ -18,14 +18,14 @@ use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::callable_interfaces::{host_injected_parameters, DispatchFrontstageCallableBody};
+use super::callable_interfaces::{DispatchFrontstageCallableBody, host_injected_parameters};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     openapi_interface::{
-        get_openapi_capability_by_route_with, CallableDispatchError, CallableDispatchForwarding,
-        CallableDispatchHttpResponse, CallableDispatchPort, CallableDispatchResult,
-        OpenApiCapabilityCatalogDependencies,
+        CallableDispatchError, CallableDispatchForwarding, CallableDispatchHttpResponse,
+        CallableDispatchPort, CallableDispatchResult, OpenApiCapabilityCatalogDependencies,
+        get_openapi_capability_by_route_with,
     },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
@@ -44,6 +44,80 @@ pub(crate) struct FrontstageCallableDispatchInput {
 }
 
 impl InterfaceContract for FrontstageCallableDispatchInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            ("page_id", mp::text_schema()),
+            ("tab_id", mp::text_schema()),
+            (
+                "body",
+                mp::object_schema(&[
+                    ("block_id", mp::text_schema()),
+                    ("method", mp::text_schema()),
+                    (
+                        "path",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    ),
+                    (
+                        "request",
+                        mp::object_schema(&[
+                            (
+                                "path",
+                                mp::object_schema(&[("item_count", mp::count_schema())]),
+                            ),
+                            (
+                                "query",
+                                mp::object_schema(&[("item_count", mp::count_schema())]),
+                            ),
+                            ("body", mp::json_summary_schema()),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            ("page_id", mp::text(&(self).page_id)?),
+            ("tab_id", mp::text(&(self).tab_id)?),
+            (
+                "body",
+                mp::object_value(&[
+                    ("block_id", mp::text(&(&(self).body).block_id)?),
+                    ("method", mp::text(&(&(self).body).method)?),
+                    (
+                        "path",
+                        mp::object_value(&[(
+                            "byte_count",
+                            serde_json::json!((&(&(self).body).path).len()),
+                        )]),
+                    ),
+                    (
+                        "request",
+                        mp::object_value(&[
+                            (
+                                "path",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(&(&(self).body).request).path).len()),
+                                )]),
+                            ),
+                            (
+                                "query",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(&(&(self).body).request).query).len()),
+                                )]),
+                            ),
+                            ("body", mp::json_summary(&(&(&(self).body).request).body)),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-callable-dispatch-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -56,6 +130,87 @@ pub(crate) enum FrontstageCallableDispatchOutput {
 }
 
 impl InterfaceContract for FrontstageCallableDispatchOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Json")),
+                ("0", mp::json_summary_schema()),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("NoContent"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Media")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("status", serde_json::json!({"type":"integer"})),
+                        (
+                            "body",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Target")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("status", serde_json::json!({"type":"integer"})),
+                        (
+                            "body",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Json(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Json".to_owned())),
+                ("0", mp::json_summary(_field_0)),
+            ]),
+            Self::NoContent => {
+                mp::object_value(&[("variant", serde_json::Value::String("NoContent".to_owned()))])
+            }
+            Self::Media(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Media".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        (
+                            "body",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).body).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Target(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Target".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        (
+                            "body",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).body).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-callable-dispatch-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

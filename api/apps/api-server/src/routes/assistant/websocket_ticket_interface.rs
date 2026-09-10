@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use control_plane::ports::CacheStore;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use rand_core::{OsRng, RngCore};
@@ -33,6 +33,34 @@ pub(crate) enum AssistantWebSocketTicketInput {
 }
 
 impl InterfaceContract for AssistantWebSocketTicketInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![mp::object_schema(&[
+            ("variant", mp::tag_schema("Create")),
+            (
+                "body",
+                mp::object_schema(&[("application_id", mp::text_schema())]),
+            ),
+        ])]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Create {
+                body: _field_body, ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "body",
+                    mp::object_value(&[(
+                        "application_id",
+                        serde_json::Value::String((&(_field_body).application_id).to_string()),
+                    )]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-assistant-websocket-ticket-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -42,6 +70,49 @@ pub(crate) enum AssistantWebSocketTicketOutput {
 }
 
 impl InterfaceContract for AssistantWebSocketTicketOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![mp::object_schema(&[
+            ("variant", mp::tag_schema("Ticket")),
+            (
+                "0",
+                mp::object_schema(&[
+                    (
+                        "ticket",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    ),
+                    ("protocol", mp::text_schema()),
+                    ("expires_in_seconds", serde_json::json!({"type":"integer"})),
+                ]),
+            ),
+        ])]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Ticket(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Ticket".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "ticket",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_0).ticket).len()),
+                            )]),
+                        ),
+                        ("protocol", mp::text(&(_field_0).protocol)?),
+                        (
+                            "expires_in_seconds",
+                            serde_json::json!(*(&(_field_0).expires_in_seconds)),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-assistant-websocket-ticket-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -215,9 +286,11 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantWebSocketTicketPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

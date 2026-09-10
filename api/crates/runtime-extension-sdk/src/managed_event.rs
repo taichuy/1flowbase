@@ -3,13 +3,13 @@ use std::io::{Read, Write};
 
 use extension_contracts::{
     ManagedEventHostFrame, ManagedEventOutcome, ManagedEventWorkerFrame,
-    MANAGED_EVENT_MAX_FRAME_BYTES, MANAGED_EVENT_PROTOCOL_V1,
+    MANAGED_EVENT_MAX_FRAME_BYTES, MANAGED_EVENT_PROTOCOL_V2,
 };
 
 use crate::RuntimeExtensionSdkError;
 
 /// Reads exactly one bounded host request and emits a correlated, contract-checked response.
-/// Authors acknowledge, publish, or request the finite processed-model effect. The host checks
+/// Authors acknowledge, publish, or request the finite owned-collection effect. The host checks
 /// current contribution authority and commits effects before acknowledging delivery.
 pub fn serve_managed_event<R: Read, W: Write>(
     reader: R,
@@ -30,7 +30,7 @@ pub fn serve_managed_event<R: Read, W: Write>(
         .validate()
         .map_err(|error| RuntimeExtensionSdkError::InvalidRequest(error.to_string()))?;
     let response = ManagedEventWorkerFrame {
-        protocol: MANAGED_EVENT_PROTOCOL_V1.into(),
+        protocol: MANAGED_EVENT_PROTOCOL_V2.into(),
         call_id: request.call_id.clone(),
         result: event(&request),
     };

@@ -16,6 +16,7 @@ pub mod error {
 pub mod managed_manifest;
 pub mod manifest_v1;
 pub mod network_egress_provider_package;
+pub mod plugin_settings_page;
 pub mod provider_count_tokens_estimator;
 pub mod provider_package;
 
@@ -30,6 +31,7 @@ pub use extension_contracts::*;
 pub use managed_manifest::*;
 pub use manifest_v1::*;
 pub use network_egress_provider_package::*;
+pub use plugin_settings_page::*;
 pub use provider_count_tokens_estimator::*;
 pub use provider_package::*;
 

@@ -261,7 +261,7 @@ async fn root_2007_ac_009_pause_revoke_retire_candidate_switch() {
         handle: g1.bindings[&contribution].handle.clone(),
         principal: principal(workspace, fixture.actor.user_id),
         invocation: hook_invocation(&g1),
-        input: hook_input("identify"),
+        input: hook_input("identify").into(),
     };
     assert!(fixture
         .runtime
@@ -304,7 +304,7 @@ async fn root_2007_ac_009_pause_revoke_retire_candidate_switch() {
                     handle: g1.bindings[&contribution].handle.clone(),
                     principal: principal(workspace, fixture.actor.user_id),
                     invocation: hook_invocation(&g1),
-                    input: hook_input("identify"),
+                    input: hook_input("identify").into(),
                 };
                 match fixture.runtime.host.admit_managed_hook(request).await {
                     Ok(operation) => drop(operation),

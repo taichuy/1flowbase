@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::{
@@ -5,13 +7,13 @@ use control_plane::{
     errors::ControlPlaneError,
     orchestration_runtime::{
         debug_artifacts::{
+            RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON, RUNTIME_DEBUG_ARTIFACT_RETENTION_ACTIVE,
             build_runtime_debug_artifact_object_path, build_runtime_debug_artifact_preview,
-            inline_budget_for_kind, RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON,
-            RUNTIME_DEBUG_ARTIFACT_RETENTION_ACTIVE,
+            inline_budget_for_kind,
         },
         trace_projection::{
-            build_application_run_trace_projection, merge_trace_node_run_detail,
-            projection_status_needs_lazy_rebuild, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+            APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+            merge_trace_node_run_detail, projection_status_needs_lazy_rebuild,
         },
     },
     ports::{
@@ -54,20 +56,10 @@ pub(crate) enum ApplicationRuntimeTracePayloadsInput {
     },
 }
 
-impl InterfaceContract for ApplicationRuntimeTracePayloadsInput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-trace-payloads-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum ApplicationRuntimeTracePayloadsOutput {
     NodeContent(ApplicationRunTraceNodeContentResponse),
     NodeDetail(ApplicationRunTraceNodeDetailResponse),
     ToolCallbackContent(ApplicationRunTraceToolCallbackContentResponse),
-}
-
-impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
-    const CONTRACT_ID: &'static str = "console-application-runtime-trace-payloads-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct TracePayloadArtifactWriter {
@@ -239,9 +231,9 @@ pub(crate) fn trace_payloads_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-        ApplicationRuntimeTracePayloadsInput,
-        ApplicationRuntimeTracePayloadsOutput,
-    >,
+            ApplicationRuntimeTracePayloadsInput,
+            ApplicationRuntimeTracePayloadsOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeTracePayloadsAdapter {
         store,
@@ -758,9 +750,27 @@ fn parse_preview(raw_query: Option<&str>) -> Option<TracePayloadPreview> {
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trace-node.content.get", binding_id: "http.console.applications.runtime.trace-node.content.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/content", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trace-node.detail.get", binding_id: "http.console.applications.runtime.trace-node.detail.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/details/:detail_ref_id", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trace-tool-callback.content.get", binding_id: "http.console.applications.runtime.trace-tool-callback.content.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/tool-callbacks/:tool_call_id/content", mutating: false },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.trace-node.content.get",
+        binding_id: "http.console.applications.runtime.trace-node.content.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/content",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.trace-node.detail.get",
+        binding_id: "http.console.applications.runtime.trace-node.detail.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/details/:detail_ref_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.trace-tool-callback.content.get",
+        binding_id: "http.console.applications.runtime.trace-tool-callback.content.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/tool-callbacks/:tool_call_id/content",
+        mutating: false,
+    },
 ];
 
 pub(crate) fn compile_registry(

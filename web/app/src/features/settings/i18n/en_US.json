@@ -1145,6 +1145,12 @@
     "network_center_proxy_plugins_search": "Search proxy plugins",
     "network_center_no_proxy_plugins": "No proxy plugins are available.",
     "network_center_proxy_plugin_installed": "Installed",
-    "ui_components": "UI components"
+    "ui_components": "UI components",
+    "plugin_settings_upgrade_warning": "For plugins that provide settings pages, first activation and a version change apply the bundled templates at restart and overwrite your edits. Save custom code beforehand. Ordinary restarts and re-enabling the same version preserve your edits. Business configuration and credentials are unchanged.",
+    "plugin_settings_page_failed": "Unable to open this plugin settings page. Check access and whether the selected plugin version has finished restarting.",
+    "plugin_runtime_inactive": "Inactive",
+    "plugin_runtime_load_failed": "Load failed",
+    "plugin_pending_restart": "Pending restart",
+    "select_installed_plugin_version": "Select this version"
   }
 }

@@ -1,8 +1,10 @@
+mod managed_projection;
+
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use axum::response::{
-    sse::{KeepAlive, Sse},
     IntoResponse, Response,
+    sse::{KeepAlive, Sse},
 };
 use control_plane::{
     application_public_api::{
@@ -31,7 +33,7 @@ use interface_runtime::{
 };
 
 mod models;
-pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
+pub(crate) use models::{CompatibilityModelsPort, compatibility_models_port, invoke_models};
 
 use crate::{
     app_state::ApiState,
@@ -103,33 +105,13 @@ pub(crate) struct CompatibilityProviderTransport {
     pub(crate) payload: Option<ProviderTransportPayload>,
 }
 
-impl InterfaceContract for CompatibilityBlockingInput {
-    const CONTRACT_ID: &'static str = "application-compatibility-blocking-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct CompatibilityBlockingOutput(pub(crate) NativeRunResult);
 
-impl InterfaceContract for CompatibilityBlockingOutput {
-    const CONTRACT_ID: &'static str = "application-compatibility-blocking-output";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
-
-impl InterfaceContract for CompatibilityBlockingTargetError {
-    const CONTRACT_ID: &'static str = "application-compatibility-blocking-error";
-    const CONTRACT_VERSION: &'static str = "1";
-}
 
 pub(crate) struct CompatibilityStreamEvent {
     run: NativeRunResult,
     envelope: RuntimeEventEnvelope,
-}
-
-impl InterfaceContract for CompatibilityStreamEvent {
-    const CONTRACT_ID: &'static str = "application-compatibility-stream-event";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct CompatibilityTypedStreamInvocation {
@@ -498,8 +480,8 @@ pub(crate) fn compile_registry(
 }
 
 #[cfg(test)]
-pub(crate) fn compile_registry_for_test(
-) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+pub(crate) fn compile_registry_for_test()
+-> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(
         Arc::new(UnavailableCompatibilityBlockingPort),
         models::unavailable_port(),

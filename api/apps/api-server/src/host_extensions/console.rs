@@ -51,7 +51,11 @@ pub(crate) fn resolve_linked_host_extension_console_contribution(
 fn contribution_requires_console_route_source(
     contribution: &HostExtensionContributionManifest,
 ) -> bool {
-    !contribution.settings_features.is_empty() || !contribution.console_operations.is_empty()
+    contribution
+        .settings_features
+        .iter()
+        .any(|feature| !feature.api_routes.is_empty())
+        || !contribution.console_operations.is_empty()
 }
 
 fn validate_linked_host_console_route_sources(

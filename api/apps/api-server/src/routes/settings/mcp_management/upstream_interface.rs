@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,11 +13,11 @@ use control_plane::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use super::{
-    to_tool_response_with_operation,
+    McpToolResponse, to_tool_response_with_operation,
     upstream::{
         DebugMcpProxyToolBody, DebugMcpProxyToolResponse, ImportMcpUpstreamToolsBody,
         McpUpstreamConnectionResponse, McpUpstreamDiscoverResponse, McpUpstreamDraftTestResponse,
@@ -23,7 +25,6 @@ use super::{
         SaveMcpUpstreamCredentialBody, TestMcpUpstreamConnectionDraftBody,
     },
     upstream_client::{McpDiscoveryResult, McpProxyExecutionTrace, McpUpstreamServerInfo},
-    McpToolResponse,
 };
 use crate::{
     error_response::ApiError,
@@ -119,11 +120,6 @@ pub(crate) enum McpUpstreamInput {
     },
 }
 
-impl InterfaceContract for McpUpstreamInput {
-    const CONTRACT_ID: &'static str = "console-mcp-upstream-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum McpUpstreamOutput {
     Connections(Vec<McpUpstreamConnectionResponse>),
     Created(McpUpstreamConnectionResponse),
@@ -134,11 +130,6 @@ pub(crate) enum McpUpstreamOutput {
     Imported(Vec<McpToolResponse>),
     Debug(DebugMcpProxyToolResponse),
     NoContent,
-}
-
-impl InterfaceContract for McpUpstreamOutput {
-    const CONTRACT_ID: &'static str = "console-mcp-upstream-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct McpUpstreamAdapter(McpUpstreamDependencies);

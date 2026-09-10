@@ -1,7 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
-    model_catalog::{extract_agent_model_catalog_from_start_node, AgentModelDescriptor},
+    model_catalog::{AgentModelDescriptor, extract_agent_model_catalog_from_start_node},
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
 };
 use interface_runtime::{
@@ -17,9 +17,9 @@ use interface_runtime::{
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    invocation_error, register_authentication, CompatibilityBlockingAuthorization,
-    CompatibilityBlockingTargetError, AUTHENTICATION_ADAPTER, AUTHORIZATION_ADAPTER,
-    OPENAI_CHAT_MODELS_BINDING_ID, OPENAI_MODELS_BINDING_ID, OPENAI_MODELS_ROOT_BINDING_ID,
+    AUTHENTICATION_ADAPTER, AUTHORIZATION_ADAPTER, CompatibilityBlockingAuthorization,
+    CompatibilityBlockingTargetError, OPENAI_CHAT_MODELS_BINDING_ID, OPENAI_MODELS_BINDING_ID,
+    OPENAI_MODELS_ROOT_BINDING_ID, invocation_error, register_authentication,
 };
 use crate::{
     app_state::ApiState,
@@ -30,6 +30,21 @@ use crate::{
 pub(crate) struct CompatibilityModelsInput;
 
 impl InterfaceContract for CompatibilityModelsInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("CompatibilityModelsInput"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("CompatibilityModelsInput".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "application-compatibility-models-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -40,6 +55,124 @@ pub(crate) struct CompatibilityModelsOutput {
 }
 
 impl InterfaceContract for CompatibilityModelsOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[
+            (
+                "models",
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("name",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("max_context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("capabilities",mp::object_schema(&[("reasoning",serde_json::json!({"type":"boolean"})), ("tool_call",serde_json::json!({"type":"boolean"})), ("multimodal",serde_json::json!({"type":"boolean"})), ("structured_output",serde_json::json!({"type":"boolean"}))])), ("reasoning",serde_json::json!({"anyOf": [mp::object_schema(&[("default_effort",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("supported_efforts",mp::object_schema(&[("item_count",mp::count_schema())]))]), {"type":"null"}]}))])}),
+            ),
+            (
+                "publication_created_at",
+                serde_json::json!({"type":"integer"}),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[
+            ("models", {
+                if (&(self).models).len() > 32 {
+                    return None;
+                }
+                serde_json::Value::Array(
+                    (&(self).models)
+                        .iter()
+                        .map(|item| {
+                            Some(mp::object_value(&[
+                                ("id", mp::text(&(item).id)?),
+                                (
+                                    "name",
+                                    match (&(item).name).as_ref() {
+                                        Some(item) => mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "context_window",
+                                    match (&(item).context_window).as_ref() {
+                                        Some(item) => serde_json::json!(*(item)),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "max_context_window",
+                                    match (&(item).max_context_window).as_ref() {
+                                        Some(item) => serde_json::json!(*(item)),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "capabilities",
+                                    mp::object_value(&[
+                                        (
+                                            "reasoning",
+                                            serde_json::Value::Bool(
+                                                *(&(&(item).capabilities).reasoning),
+                                            ),
+                                        ),
+                                        (
+                                            "tool_call",
+                                            serde_json::Value::Bool(
+                                                *(&(&(item).capabilities).tool_call),
+                                            ),
+                                        ),
+                                        (
+                                            "multimodal",
+                                            serde_json::Value::Bool(
+                                                *(&(&(item).capabilities).multimodal),
+                                            ),
+                                        ),
+                                        (
+                                            "structured_output",
+                                            serde_json::Value::Bool(
+                                                *(&(&(item).capabilities).structured_output),
+                                            ),
+                                        ),
+                                    ]),
+                                ),
+                                (
+                                    "reasoning",
+                                    match (&(item).reasoning).as_ref() {
+                                        Some(item) => mp::object_value(&[
+                                            (
+                                                "default_effort",
+                                                match (&(item).default_effort).as_ref() {
+                                                    Some(item) => mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((item).len()),
+                                                    )]),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "supported_efforts",
+                                                mp::object_value(&[(
+                                                    "item_count",
+                                                    serde_json::json!(
+                                                        (&(item).supported_efforts).len()
+                                                    ),
+                                                )]),
+                                            ),
+                                        ]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                            ]))
+                        })
+                        .collect::<Option<Vec<_>>>()?,
+                )
+            }),
+            (
+                "publication_created_at",
+                serde_json::json!(*(&(self).publication_created_at)),
+            ),
+        ]))
+    }
+
     const CONTRACT_ID: &'static str = "application-compatibility-models-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

@@ -35,6 +35,7 @@ fn fixture(
                 ),
                 runtime_executable: executable,
                 execution_mode: PluginExecutionMode::ProcessPerCall,
+                interface_protocol: None,
                 limits: PluginRuntimeLimits::default(),
                 handler: handler.into(),
                 contribution: ContributionDescriptor {
@@ -73,11 +74,14 @@ fn request(handle: ManagedExecutionHandle) -> RuntimeManagedEventRequest {
             workspace_id: "workspace".into(),
             causation_id: "event".into(),
             correlation_id: "event".into(),
-            payload: ManagedEventPayload {
-                model_id: "model-1".into(),
-                status: ManagedEventStatus::Committed,
-                result_reference: None,
+            point_id: MANAGED_CREATE_EVENT_POINT.into(),
+            point_contract_version: "1".into(),
+            schema: ManagedEventSchema {
+                contract_id: MANAGED_CREATE_EVENT_ID.into(),
+                contract_version: "v1".into(),
+                payload_schema: serde_json::json!({"type":"object","additionalProperties":false,"properties":{"model_id":{"type":"string","maxLength":128},"status":{"type":"string","maxLength":32,"enum":["committed"]},"result_reference":{"type":"null"}},"required":["model_id","status","result_reference"]}),
             },
+            payload: serde_json::json!({"model_id":"model-1","status":"committed","result_reference":null}),
         },
     }
 }

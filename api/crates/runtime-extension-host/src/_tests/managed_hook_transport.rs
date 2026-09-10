@@ -39,6 +39,7 @@ impl WorkerFixture {
             ),
             runtime_executable: self.executable.clone(),
             execution_mode: PluginExecutionMode::ProcessPerCall,
+            interface_protocol: None,
             limits: PluginRuntimeLimits::default(),
             handler: handler.into(),
             contribution: ContributionDescriptor {
@@ -96,7 +97,7 @@ fn request(
 ) -> RuntimeManagedHookRequest {
     RuntimeManagedHookRequest {
         handle,
-        input,
+        input: input.into(),
         principal: RuntimeExecutionPrincipal {
             workspace_id: "workspace-1".into(),
             actor_id: Some("actor-1".into()),
@@ -591,5 +592,244 @@ async fn root_2007_ac_010_lane_budgets_capability_output_and_reap() {
         assert_process_exited(pid).await;
         workers.finish_unmount(&handle);
         assert_eq!(workers.loaded_count(), 0);
+    }
+}
+
+/// Root #2014 AC-004: actual generic worker wire, including malicious peer responses.
+#[tokio::test]
+async fn root_2014_interface_transport_real_sdk_and_peer_rejection() {
+    use runtime_core::runtime_backend::RuntimeManagedHookInput;
+    let fixture = WorkerFixture::new();
+    let legacy = ManagedCreateHookInput::Completion {
+        terminal: ManagedHookTerminal::Succeeded,
+    };
+    for handler in [
+        "completion",
+        "attack.identity",
+        "attack.patch",
+        "attack.correlation",
+        "attack.observer_deny",
+        "attack.phase",
+    ] {
+        let mut binding = fixture.binding(&legacy, handler);
+        binding.contribution.point_id = ExtensionPointId::new(managed_interface_hook_point_id(
+            "host_infrastructure.providers.view",
+            HookPhase::Completion,
+        ))
+        .unwrap();
+        let mut workers = ManagedWorkers::default();
+        let handle = workers.mount(identity(), binding).unwrap();
+        let mut call = request(handle.clone(), legacy.clone());
+        call.input = RuntimeManagedHookInput::Interface {
+            interface_id: "host_infrastructure.providers.view".into(),
+            interface_version: "1".into(),
+            input: ManagedInterfaceInput::Completion {
+                terminal: ManagedHookTerminal::Succeeded,
+            },
+        };
+        let result = workers.admit_hook(call).unwrap().await;
+        if handler == "completion" {
+            assert_eq!(result.unwrap(), ManagedHookOutcome::Observed);
+        } else {
+            assert!(result.is_err(), "malicious peer accepted: {handler}");
+        }
+        workers.unmount(&handle).unwrap().dispose().await.unwrap();
+    }
+    let mut workers = ManagedWorkers::default();
+    let handle = workers
+        .mount(identity(), fixture.binding(&legacy, "completion"))
+        .unwrap();
+    let mut call = request(handle.clone(), legacy);
+    call.input = RuntimeManagedHookInput::Interface {
+        interface_id: "different.interface".into(),
+        interface_version: "1".into(),
+        input: ManagedInterfaceInput::Completion {
+            terminal: ManagedHookTerminal::Succeeded,
+        },
+    };
+    assert!(
+        workers.admit_hook(call).is_err(),
+        "different bound interface must fail before spawn"
+    );
+    workers.unmount(&handle).unwrap().dispose().await.unwrap();
+}
+
+/// Root #2014 AC-015/016/018: exact installed binding and a fresh real SDK process per call.
+#[tokio::test]
+async fn root_2014_r3_probe_reference_worker_roundtrip() {
+    use runtime_core::runtime_backend::{
+        RuntimeArtifactReference, RuntimeManagedActivation, RuntimeManagedHookInput,
+    };
+    let fixture = WorkerFixture::new();
+    let raw =
+        include_str!("../../../../plugins/fixtures/northwind.lifecycle-auditor/manifest.yaml");
+    let package_header = raw.split_once("\nmanaged:\n").unwrap().0;
+    // Author documents are serialized; the parsed package model remains validation-only.
+    let mut managed_document = serde_json::json!({
+        "module": {
+            "bus_version": "v1",
+            "module_id": "northwind.lifecycle-auditor",
+            "module_version": "1.0.0",
+            "module_kind": "runtime",
+            "contributions": [{
+                "contribution_id": "northwind.lifecycle-auditor.i0.authorization",
+                "contributor_module_id": "northwind.lifecycle-auditor",
+                "point_id": managed_interface_hook_point_id("probe.values", HookPhase::Before),
+                "contract_version": "1",
+                "required_permissions": ["hook.interface.authorization"],
+                "mode": "append"
+            }]
+        },
+        "execution_bindings": [{
+            "contribution_id": "northwind.lifecycle-auditor.i0.authorization",
+            "execution_mode": "process_per_call",
+            "interface_protocol": "reference-v2",
+            "runtime": {"protocol": "stdio_json", "entry": "worker"},
+            "handler": "trace.before"
+        }]
+    });
+    let contract = ManagedProjectionContract {
+        contract_id: "probe.values".into(),
+        contract_version: "1".into(),
+        schema: serde_json::json!({"type":"array","items":{"type":"string","maxLength":16384},"maxItems":256}),
+    };
+    let compiled = contract.compile_for_registration().unwrap();
+    let value = serde_json::json!([
+        "x".repeat(16384),
+        "x".repeat(16384),
+        "x".repeat(16384),
+        "x".repeat(16368),
+        ""
+    ]);
+    let view = ManagedInterfaceReferenceView {
+        contract: compiled.reference(),
+        value,
+    };
+    compiled.validate_reference(&view).unwrap();
+    for handler in [
+        "trace.before",
+        "attack.identity",
+        "attack.patch",
+        "attack.correlation",
+        "attack.observer_deny",
+        "attack.phase",
+        "attack.protocol",
+        "attack.fingerprint",
+        "attack.flood",
+    ] {
+        managed_document["execution_bindings"][0]["handler"] = handler.into();
+        let raw = format!("{package_header}\nmanaged: {managed_document}\n").into_bytes();
+        let manifest =
+            extension_package_runtime::parse_plugin_manifest(std::str::from_utf8(&raw).unwrap())
+                .unwrap();
+        std::fs::write(fixture.root.join("manifest.yaml"), &raw).unwrap();
+        let managed = manifest.managed.as_ref().unwrap();
+        let contribution = &managed.module.contributions[0].contribution_id;
+        let bound = ManagedExecutionIdentity::new(
+            ManagedInstallationId::new("installation-1").unwrap(),
+            ManagedWorkspaceId::new("workspace-1").unwrap(),
+            contribution.clone(),
+            ManagedArtifactFingerprint::from_bytes(&raw),
+            managed.execution_binding_fingerprint(contribution).unwrap(),
+        );
+        let activation = RuntimeManagedActivation {
+            plugin_id: manifest.versioned_plugin_id().unwrap(),
+            artifact: RuntimeArtifactReference::new("installation-1").unwrap(),
+            identity: bound.clone(),
+        };
+        let loaded =
+            crate::package_loader::PackageLoader::load_managed(&fixture.root, &activation).unwrap();
+        assert_eq!(
+            loaded.interface_protocol,
+            Some(ManagedInterfaceProtocol::ReferenceV2)
+        );
+        let mut wrong = activation.clone();
+        wrong.identity = ManagedExecutionIdentity::new(
+            bound.installation_id().clone(),
+            bound.workspace_id().clone(),
+            contribution.clone(),
+            bound.artifact_fingerprint().clone(),
+            ManagedBindingFingerprint::from_bytes(b"forged-binding"),
+        );
+        assert!(crate::package_loader::PackageLoader::load_managed(&fixture.root, &wrong).is_err());
+        let mut workers = ManagedWorkers::default();
+        let handle = workers.mount(bound, loaded).unwrap();
+        let mut call = request(handle.clone(), before("unused"));
+        call.input = RuntimeManagedHookInput::InterfaceReference {
+            interface_id: "probe.values".into(),
+            interface_version: "1".into(),
+            input: ManagedInterfaceReferenceInput::Before {
+                input: view.clone(),
+            },
+        };
+        let result = workers.admit_hook(call.clone()).unwrap().await;
+        if handler == "trace.before" {
+            assert_eq!(result.unwrap(), ManagedHookOutcome::Observed);
+            assert_eq!(
+                workers.admit_hook(call.clone()).unwrap().await.unwrap(),
+                ManagedHookOutcome::Observed
+            );
+            let frames: Vec<ManagedInterfaceReferenceHostFrame> =
+                std::fs::read_to_string(fixture.executable.with_extension("trace"))
+                    .unwrap()
+                    .lines()
+                    .map(|line| serde_json::from_str(line).unwrap())
+                    .collect();
+            assert_eq!(frames.len(), 2);
+            for frame in frames {
+                let size = serde_json::to_vec(&frame).unwrap().len();
+                assert!(
+                    size > MANAGED_INTERFACE_MAX_FRAME_BYTES
+                        && size <= MANAGED_INTERFACE_MAX_REQUEST_BYTES
+                );
+                let ManagedInterfaceReferenceInput::Before { input } = frame.input else {
+                    panic!("wrong phase")
+                };
+                assert_eq!(input, view);
+            }
+            let pids: std::collections::BTreeSet<String> =
+                std::fs::read_to_string(fixture.executable.with_extension("pids"))
+                    .unwrap()
+                    .lines()
+                    .map(str::to_owned)
+                    .collect();
+            assert_eq!(
+                pids.len(),
+                2,
+                "fresh worker per call, no resident schema cache"
+            );
+            let mut malformed = call.clone();
+            if let RuntimeManagedHookInput::InterfaceReference {
+                input: ManagedInterfaceReferenceInput::Before { input },
+                ..
+            } = &mut malformed.input
+            {
+                input.contract.schema_fingerprint = "malformed".into();
+            }
+            assert!(
+                workers.admit_hook(malformed).is_err(),
+                "malformed reference rejected before spawn"
+            );
+            call.input = RuntimeManagedHookInput::Interface {
+                interface_id: "probe.values".into(),
+                interface_version: "1".into(),
+                input: ManagedInterfaceInput::Before {
+                    input: ManagedInterfaceView {
+                        contract: contract.clone(),
+                        value: serde_json::json!(["old"]),
+                    },
+                },
+            };
+            assert!(
+                workers.admit_hook(call).is_err(),
+                "installed v2 rejects old input before spawn"
+            );
+        } else {
+            assert!(
+                result.is_err(),
+                "malicious reference peer accepted: {handler}"
+            );
+        }
+        workers.unmount(&handle).unwrap().dispose().await.unwrap();
     }
 }

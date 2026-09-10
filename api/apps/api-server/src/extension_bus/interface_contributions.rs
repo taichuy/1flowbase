@@ -57,6 +57,7 @@ struct PublishedInterfaceContribution {
 }
 
 pub(crate) struct InterfaceContributionCollector {
+    managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
     published: Vec<PublishedInterfaceContribution>,
     contributions: Vec<InterfaceRegistryContribution>,
@@ -92,6 +93,7 @@ impl crate::routes::mcp_management::interface_debug::McpDebugActivatedOperationP
 impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
+            managed_factory: None,
             graph_fingerprint,
             published: Vec::new(),
             contributions: Vec::new(),
@@ -145,6 +147,9 @@ impl InterfaceContributionCollector {
         }
 
         let mut compiler = RegistryCompiler::new(self.graph_fingerprint, operations, owners);
+        if let Some(factory) = self.managed_factory {
+            compiler = compiler.with_managed_invocations(factory);
+        }
         for published in self.published {
             compiler.absorb_interface(published.registry.as_ref(), &published.interface_id)?;
         }
@@ -302,6 +307,7 @@ pub(crate) fn production_interface_contributions(
         crate::routes::ui_management_interface::UiManagementDependencies {
             store: state.store.clone(),
             api_node_id: state.api_node_id.clone(),
+            surfaces: state.console_surface_registry.clone(),
         },
     );
     let console_billing = crate::routes::billing_interface::port(
@@ -889,6 +895,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-ui-management",
             &[
+                "ui_management.plugin_settings_page.view",
                 "ui_management.templates.list",
                 "ui_management.templates.create",
                 "ui_management.templates.default.reset",
@@ -1781,4 +1788,14 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
     ])
+}
+
+impl InterfaceContributionCollector {
+    pub(crate) fn with_managed_invocations(
+        mut self,
+        factory: Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>,
+    ) -> Self {
+        self.managed_factory = Some(factory);
+        self
+    }
 }

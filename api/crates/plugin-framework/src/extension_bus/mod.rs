@@ -12,10 +12,13 @@ mod lifecycle_handler_registry;
 mod lifecycle_subscriber_plan;
 
 pub use compiler::{
-    compile_extension_graph, compile_extension_graph_with_authority, CompilationError,
+    CompilationError, compile_extension_graph, compile_extension_graph_with_authority,
 };
 pub use deployment_set::*;
 pub use extension_contracts::extension_bus::*;
 pub use hook_plan::*;
 pub use lifecycle_handler_registry::*;
 pub use lifecycle_subscriber_plan::*;
+
+mod managed_interface_plan;
+pub use managed_interface_plan::*;

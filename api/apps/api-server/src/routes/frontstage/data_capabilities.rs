@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::Json;
 use control_plane::errors::ControlPlaneError;
 use control_plane::frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand};
 use control_plane::model_definition::ModelDefinitionService;
@@ -11,7 +11,7 @@ use control_plane::resource_crud::parse_resource_filter_expr;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use runtime_core::runtime_acl::RuntimeDataAction;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use utoipa::ToSchema;
 
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
@@ -537,12 +537,121 @@ pub async fn list_frontstage_data_capabilities(
 
 pub(crate) struct FrontstageDataCapabilitiesInput;
 impl InterfaceContract for FrontstageDataCapabilitiesInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "kind",
+            mp::tag_schema("FrontstageDataCapabilitiesInput"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "kind",
+            serde_json::Value::String("FrontstageDataCapabilitiesInput".to_owned()),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-data-capabilities-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct FrontstageDataCapabilitiesOutput(FrontstageDataCapabilitiesResponse);
 impl InterfaceContract for FrontstageDataCapabilitiesOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema(&[(
+            "0",
+            mp::object_schema(&[
+                (
+                    "queries",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
+                ),
+                (
+                    "actions",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("kind",mp::text_schema()), ("params_schema",mp::json_summary_schema()), ("result_schema",mp::json_summary_schema())])}),
+                ),
+                (
+                    "models",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("code",mp::text_schema()), ("scope_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("fields",mp::object_schema(&[("item_count",mp::count_schema())]))])}),
+                ),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value(&[(
+            "0",
+            mp::object_value(&[
+                ("queries", {
+                    if (&(&(self).0).queries).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (&(&(self).0).queries)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("id", mp::text(&(item).id)?),
+                                    ("kind", mp::text(&(item).kind)?),
+                                    ("params_schema", mp::json_summary(&(item).params_schema)),
+                                    ("result_schema", mp::json_summary(&(item).result_schema)),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+                ("actions", {
+                    if (&(&(self).0).actions).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (&(&(self).0).actions)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("id", mp::text(&(item).id)?),
+                                    ("kind", mp::text(&(item).kind)?),
+                                    ("params_schema", mp::json_summary(&(item).params_schema)),
+                                    ("result_schema", mp::json_summary(&(item).result_schema)),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+                ("models", {
+                    if (&(&(self).0).models).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (&(&(self).0).models)
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value(&[
+                                    ("code", mp::text(&(item).code)?),
+                                    (
+                                        "scope_kind",
+                                        mp::object_value(&[(
+                                            "byte_count",
+                                            serde_json::json!((&(item).scope_kind).len()),
+                                        )]),
+                                    ),
+                                    (
+                                        "fields",
+                                        mp::object_value(&[(
+                                            "item_count",
+                                            serde_json::json!((&(item).fields).len()),
+                                        )]),
+                                    ),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+        )]))
+    }
+
     const CONTRACT_ID: &'static str = "console-frontstage-data-capabilities-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

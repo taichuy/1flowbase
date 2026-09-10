@@ -9,14 +9,18 @@ mod hook;
 pub use finalization::{InterfaceObserverRecord, InterfaceObserverStatus};
 mod identity;
 mod invocation;
+mod managed_projection;
 mod principal;
+pub use managed_projection::ManagedInterfaceProjection;
 mod registry;
 mod stream;
 
 pub use hook::{
     InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceBeforeHook, InterfaceBeforeHookError,
     InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
-    InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, TypedInterfaceHookPlan,
+    InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, ManagedInterfaceCall,
+    ManagedInterfaceCallFuture, ManagedInterfaceFreezeFuture, ManagedInterfaceFreezeRequest,
+    ManagedInterfaceInvocation, ManagedInterfaceInvocationFactory, TypedInterfaceHookPlan,
 };
 pub use identity::{
     AdmissionAdapterReference, ArtifactIdentity, AuthenticationActivationIdentity,
@@ -51,13 +55,13 @@ pub use registry::{
     InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
     InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceIdentity,
     InterfaceLifecycle, InterfaceResultContracts, InterfaceScope, InterfaceTargetError,
-    InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
-    RegistryCompiler,
+    InvocationAdapterPlan, ManagedContractSchema, ProtocolBinding, ProtocolProjection,
+    RegistryCompilationError, RegistryCompiler,
 };
 pub use stream::{
-    interface_stream_channel, InterfaceEventStream, InterfaceStreamCompletion,
-    InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceStreamInvocation,
-    InterfaceStreamPublisher, InterfaceStreamTerminalOutcome,
+    InterfaceEventStream, InterfaceStreamCompletion, InterfaceStreamHandler,
+    InterfaceStreamHandlerFuture, InterfaceStreamInvocation, InterfaceStreamPublisher,
+    InterfaceStreamTerminalOutcome, interface_stream_channel,
 };
 
 #[cfg(test)]
@@ -78,8 +82,8 @@ pub use decision::{
     TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
 };
 pub use extension::{
-    compile_effective_handler, CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError,
-    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
-    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
-    InterfaceHandlerCandidate, OrderedInterfaceExtensionRegistration,
+    CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError, InterfaceExtensionFact,
+    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandlerCandidate,
+    OrderedInterfaceExtensionRegistration, compile_effective_handler,
 };

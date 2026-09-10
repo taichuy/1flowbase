@@ -243,6 +243,8 @@ pub struct FrontendBlockContributionManifest {
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
     #[serde(default)]
+    pub settings_pages: Vec<crate::PluginSettingsPageManifest>,
+    #[serde(default)]
     pub managed: Option<crate::managed_manifest::ManagedManifest>,
 
     pub manifest_version: u32,
@@ -445,6 +447,15 @@ fn validate_plugin_manifest(
     validate_execution_runtime_pair(manifest)?;
     validate_permission_values(&manifest.permissions)?;
     validate_binding_targets(&manifest.binding_targets)?;
+    crate::validate_plugin_settings_pages(manifest.plugin_code()?, &manifest.settings_pages)?;
+    if !manifest.settings_pages.is_empty()
+        && (manifest.consumption_kind != PluginConsumptionKind::HostExtension
+            || manifest.execution_mode != PluginExecutionMode::InProcess)
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "settings_pages requires a native HostExtension",
+        ));
+    }
     if manifest.manifest_version == 2 {
         return crate::managed_manifest::validate_managed_manifest(manifest);
     }

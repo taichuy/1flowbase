@@ -505,7 +505,7 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         use control_plane_contracts::ports::*;
         // The extra row makes truncation explicit. Ownership filtering cannot turn this window
         // into a complete-history claim when a different installation reused the contribution ID.
-        let sql = format!("select o.event_id,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} order by o.event_id,d.subscriber_id limit $3");
+        let sql = format!("select o.event_id,o.contract_id,o.contract_version,o.graph_fingerprint,d.subscriber_id,d.handler_id,d.handler_version,d.status,d.pause_reason {MANAGED_HISTORY_SCOPE} order by o.event_id,d.subscriber_id limit $3");
         let rows = sqlx::query(&sql)
             .bind(installation_id)
             .bind(workspace_id)
@@ -522,6 +522,8 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
             }
             deliveries.push(ManagedLifecycleDelivery {
                 event_id: row.try_get("event_id")?,
+                contract_id: row.try_get("contract_id")?,
+                contract_version: row.try_get("contract_version")?,
                 subscriber_id: row.try_get("subscriber_id")?,
                 target: ManagedFrozenExecutionTarget {
                     graph_fingerprint: row.try_get("graph_fingerprint")?,
@@ -622,8 +624,11 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
         // Neither historical canonical bytes nor a list of workspaces is materialized in Rust.
         let result = tokio::time::timeout(MANAGED_BACKLOG_DEADLINE, async {
             let mut transaction = self.pool().begin().await?;
-            sqlx::query("set local statement_timeout = '5s'").execute(&mut *transaction).await?;
-            let found: bool = sqlx::query_scalar(r#"
+            sqlx::query("set local statement_timeout = '5s'")
+                .execute(&mut *transaction)
+                .await?;
+            let found: bool = sqlx::query_scalar(
+                r#"
             select exists (
                 select 1 from lifecycle_outbox o
                 join lifecycle_outbox_deliveries d using(event_id)
@@ -640,7 +645,7 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
                         and f.fact#>>'{contract,contract_version}'=o.contract_version
                         and f.fact#>>'{payload,scope_kind}'='workspace')
                       or (f.fact#>>'{payload,scope_id}')::uuid=$5
-                    when o.contract_id='acme.composition-a.processed' and o.contract_version='1' then
+                    when jsonb_typeof(f.fact->'publisher')='object' and f.fact ? 'event_id' then
                       not (f.fact->>'event_id'=o.event_id::text
                         and f.fact->>'transaction_id'=o.transaction_id::text
                         and f.fact->>'contract_id'=o.contract_id
@@ -649,10 +654,19 @@ impl control_plane_contracts::ports::ManagedLifecycleOutboxRepository for PgCont
                       or (f.fact->>'workspace_id')::uuid=$5
                     else true end, true)
             )
-        "#).bind(graph_fingerprint).bind(&target.subscriber_id).bind(&target.handler_id)
-            .bind(&target.handler_version).bind(workspace_id).fetch_one(&mut *transaction).await?;
+        "#,
+            )
+            .bind(graph_fingerprint)
+            .bind(&target.subscriber_id)
+            .bind(&target.handler_id)
+            .bind(&target.handler_version)
+            .bind(workspace_id)
+            .fetch_one(&mut *transaction)
+            .await?;
             Ok::<bool, anyhow::Error>(found)
-        }).await.map_err(|_| anyhow!(ManagedLifecycleBacklogCheckBusy))?;
+        })
+        .await
+        .map_err(|_| anyhow!(ManagedLifecycleBacklogCheckBusy))?;
         result.map_err(backlog_query_error)
     }
 }

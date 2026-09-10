@@ -1,4 +1,3 @@
-import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 import {
   fireEvent,
   render,
@@ -74,6 +73,11 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
+// Component-record editing does not exercise Monaco's browser worker setup.
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates'],
@@ -96,6 +100,10 @@ const uiManagementApi = vi.hoisted(() => ({
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
 
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { AppProviders } from '../../../../app/AppProviders';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -133,6 +141,7 @@ const custom = {
 describe('UiManagementPanel component records', () => {
   beforeAll(async () => {
     await loadApplicationI18nResources();
+    await appI18n.changeLanguage('zh_Hans');
   });
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');

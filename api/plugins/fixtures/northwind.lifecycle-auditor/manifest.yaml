@@ -1,0 +1,270 @@
+manifest_version: 2
+schema_version: 1flowbase.plugin.manifest/v2
+plugin_id: northwind.lifecycle-auditor
+version: 1.0.0
+publisher_namespace: northwind
+vendor: Northwind
+display_name: Lifecycle auditor
+description: Explicit managed contribution activation fixture
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: []
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.extension-bus/v1
+permissions:
+  network: none
+  secrets: none
+  storage: host_managed
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/worker.py
+  limits:
+    timeout_ms: 30000
+managed:
+  module:
+    bus_version: v1
+    module_id: northwind.lifecycle-auditor
+    module_version: 1.0.0
+    module_kind: runtime
+    contributions:
+      - contribution_id: northwind.lifecycle-auditor.i0.authorization
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.authorization
+        contract_version: 1
+        required_permissions: [hook.interface.authorization]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i0.admission
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.admission
+        contract_version: 1
+        required_permissions: [hook.interface.admission]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i0.before
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.before
+        contract_version: 1
+        required_permissions: [hook.interface.before]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i0.after
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.after
+        contract_version: 1
+        required_permissions: [hook.interface.after]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i0.failure
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.failure
+        contract_version: 1
+        required_permissions: [hook.interface.failure]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i0.completion
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.model_definitions.create.completion
+        contract_version: 1
+        required_permissions: [hook.interface.completion]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.authorization
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.authorization
+        contract_version: 1
+        required_permissions: [hook.interface.authorization]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.admission
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.admission
+        contract_version: 1
+        required_permissions: [hook.interface.admission]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.before
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.before
+        contract_version: 1
+        required_permissions: [hook.interface.before]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.after
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.after
+        contract_version: 1
+        required_permissions: [hook.interface.after]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.failure
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.failure
+        contract_version: 1
+        required_permissions: [hook.interface.failure]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i1.completion
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.host_infrastructure.providers.view.completion
+        contract_version: 1
+        required_permissions: [hook.interface.completion]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.authorization
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.authorization
+        contract_version: 1
+        required_permissions: [hook.interface.authorization]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.admission
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.admission
+        contract_version: 1
+        required_permissions: [hook.interface.admission]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.before
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.before
+        contract_version: 1
+        required_permissions: [hook.interface.before]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.after
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.after
+        contract_version: 1
+        required_permissions: [hook.interface.after]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.failure
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.failure
+        contract_version: 1
+        required_permissions: [hook.interface.failure]
+        mode: append
+      - contribution_id: northwind.lifecycle-auditor.i2.completion
+        contributor_module_id: northwind.lifecycle-auditor
+        point_id: 1flowbase.interface.application.native.runs.execute-stream.completion
+        contract_version: 1
+        required_permissions: [hook.interface.completion]
+        mode: append
+  execution_bindings:
+    - contribution_id: northwind.lifecycle-auditor.i0.authorization
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.authorization
+    - contribution_id: northwind.lifecycle-auditor.i0.admission
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.admission
+    - contribution_id: northwind.lifecycle-auditor.i0.before
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.before
+    - contribution_id: northwind.lifecycle-auditor.i0.after
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.after
+    - contribution_id: northwind.lifecycle-auditor.i0.failure
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.failure
+    - contribution_id: northwind.lifecycle-auditor.i0.completion
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.completion
+    - contribution_id: northwind.lifecycle-auditor.i1.authorization
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.authorization
+    - contribution_id: northwind.lifecycle-auditor.i1.admission
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.admission
+    - contribution_id: northwind.lifecycle-auditor.i1.before
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.before
+    - contribution_id: northwind.lifecycle-auditor.i1.after
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.after
+    - contribution_id: northwind.lifecycle-auditor.i1.failure
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.failure
+    - contribution_id: northwind.lifecycle-auditor.i1.completion
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.completion
+    - contribution_id: northwind.lifecycle-auditor.i2.authorization
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.authorization
+    - contribution_id: northwind.lifecycle-auditor.i2.admission
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.admission
+    - contribution_id: northwind.lifecycle-auditor.i2.before
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.before
+    - contribution_id: northwind.lifecycle-auditor.i2.after
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.after
+    - contribution_id: northwind.lifecycle-auditor.i2.failure
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.failure
+    - contribution_id: northwind.lifecycle-auditor.i2.completion
+      interface_protocol: reference-v2
+      execution_mode: process_per_call
+      runtime:
+        protocol: stdio_json
+        entry: bin/worker.py
+      handler: trace.completion

@@ -13,9 +13,9 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::{
-    abort_assistant_execution_in, launch_assistant_execution, prepare_assistant_execution,
     AssistantClientToolBridge, AssistantClientToolId, AssistantConversationPageResponse,
-    AssistantRunDependencies, StartAssistantRunBody,
+    AssistantRunDependencies, StartAssistantRunBody, abort_assistant_execution_in,
+    launch_assistant_execution, prepare_assistant_execution,
 };
 use super::{
     conversation_events::{
@@ -65,6 +65,237 @@ pub(crate) enum AssistantWebSocketCommandInput {
 }
 
 impl InterfaceContract for AssistantWebSocketCommandInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("SubscribeConversations")),
+                ("application_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Create")),
+                ("application_id", mp::text_schema()),
+                (
+                    "request",
+                    mp::object_schema(&[
+                        ("application_id", mp::text_schema()),
+                        (
+                            "conversation_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "query",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "page_references",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("page_title",mp::object_schema(&[("byte_count",mp::count_schema())])), ("outer_html",mp::object_schema(&[("byte_count",mp::count_schema())]))])}),
+                        ),
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+                (
+                    "client_tool_ids",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("GetClientContext"))]), mp::object_schema(&[("variant",mp::tag_schema("RefreshClientView"))]), mp::object_schema(&[("variant",mp::tag_schema("ListPageBlocks"))]), mp::object_schema(&[("variant",mp::tag_schema("InspectBlockRender"))]), mp::object_schema(&[("variant",mp::tag_schema("SearchBlockRender"))]), mp::object_schema(&[("variant",mp::tag_schema("ReadBlockRenderFragment"))]), mp::object_schema(&[("variant",mp::tag_schema("ClickBlockElement"))]), mp::object_schema(&[("variant",mp::tag_schema("RecompileBlock"))])])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Attach")),
+                ("application_id", mp::text_schema()),
+                ("run_id", mp::text_schema()),
+                (
+                    "after_event_id",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                (
+                    "client_tool_ids",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("GetClientContext"))]), mp::object_schema(&[("variant",mp::tag_schema("RefreshClientView"))]), mp::object_schema(&[("variant",mp::tag_schema("ListPageBlocks"))]), mp::object_schema(&[("variant",mp::tag_schema("InspectBlockRender"))]), mp::object_schema(&[("variant",mp::tag_schema("SearchBlockRender"))]), mp::object_schema(&[("variant",mp::tag_schema("ReadBlockRenderFragment"))]), mp::object_schema(&[("variant",mp::tag_schema("ClickBlockElement"))]), mp::object_schema(&[("variant",mp::tag_schema("RecompileBlock"))])])}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Cancel")),
+                ("application_id", mp::text_schema()),
+                ("run_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ClientToolResult")),
+                ("connection_id", mp::text_schema()),
+                ("call_id", mp::text_schema()),
+                ("result", mp::json_summary_schema()),
+                ("is_error", serde_json::json!({"type":"boolean"})),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::SubscribeConversations {
+                application_id: _field_application_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("SubscribeConversations".to_owned()),
+                ),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+            ]),
+            Self::Create {
+                application_id: _field_application_id,
+                request: _field_request,
+                client_tool_ids: _field_client_tool_ids,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "request",
+                    mp::object_value(&[
+                        (
+                            "application_id",
+                            serde_json::Value::String(
+                                (&(_field_request).application_id).to_string(),
+                            ),
+                        ),
+                        (
+                            "conversation_id",
+                            match (&(_field_request).conversation_id).as_ref() {
+                                Some(item) => serde_json::Value::String((item).to_string()),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "query",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_request).query).len()),
+                            )]),
+                        ),
+                        ("page_references", {
+                            if (&(_field_request).page_references).len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (&(_field_request).page_references)
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            (
+                                                "page_title",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).page_title).len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "outer_html",
+                                                mp::object_value(&[(
+                                                    "byte_count",
+                                                    serde_json::json!((&(item).outer_html).len()),
+                                                )]),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                        (
+                            "title",
+                            match (&(_field_request).title).as_ref() {
+                                Some(item) => mp::object_value(&[(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+                ("client_tool_ids", {
+                    if (_field_client_tool_ids).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array((_field_client_tool_ids).iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value(&[("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value(&[("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value(&[("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value(&[("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value(&[("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value(&[("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value(&[("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value(&[("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
+                }),
+            ]),
+            Self::Attach {
+                application_id: _field_application_id,
+                run_id: _field_run_id,
+                after_event_id: _field_after_event_id,
+                client_tool_ids: _field_client_tool_ids,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Attach".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "run_id",
+                    serde_json::Value::String((_field_run_id).to_string()),
+                ),
+                (
+                    "after_event_id",
+                    match (_field_after_event_id).as_ref() {
+                        Some(item) => mp::text(item)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                ("client_tool_ids", {
+                    if (_field_client_tool_ids).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array((_field_client_tool_ids).iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value(&[("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value(&[("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value(&[("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value(&[("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value(&[("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value(&[("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value(&[("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value(&[("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
+                }),
+            ]),
+            Self::Cancel {
+                application_id: _field_application_id,
+                run_id: _field_run_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Cancel".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "run_id",
+                    serde_json::Value::String((_field_run_id).to_string()),
+                ),
+            ]),
+            Self::ClientToolResult {
+                connection_id: _field_connection_id,
+                call_id: _field_call_id,
+                result: _field_result,
+                is_error: _field_is_error,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ClientToolResult".to_owned()),
+                ),
+                (
+                    "connection_id",
+                    serde_json::Value::String((_field_connection_id).to_string()),
+                ),
+                (
+                    "call_id",
+                    serde_json::Value::String((_field_call_id).to_string()),
+                ),
+                ("result", mp::json_summary(_field_result)),
+                ("is_error", serde_json::Value::Bool(*(_field_is_error))),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-assistant-websocket-command-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -77,6 +308,112 @@ pub(crate) enum AssistantWebSocketCommandOutput {
 }
 
 impl InterfaceContract for AssistantWebSocketCommandOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ConversationSubscription")),
+                (
+                    "0",
+                    mp::object_schema(&[(
+                        "snapshot",
+                        mp::object_schema(&[
+                            (
+                                "items",
+                                mp::object_schema(&[("item_count", mp::count_schema())]),
+                            ),
+                            ("total", serde_json::json!({"type":"integer"})),
+                            ("page", serde_json::json!({"type":"integer"})),
+                            ("page_size", serde_json::json!({"type":"integer"})),
+                        ]),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Run")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("run_id", mp::text_schema()),
+                        (
+                            "from_sequence",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Cancelled"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ClientToolResult")),
+                ("completed", serde_json::json!({"type":"boolean"})),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::ConversationSubscription(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ConversationSubscription".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[(
+                        "snapshot",
+                        mp::object_value(&[
+                            (
+                                "items",
+                                mp::object_value(&[(
+                                    "item_count",
+                                    serde_json::json!((&(&(_field_0).snapshot).items).len()),
+                                )]),
+                            ),
+                            ("total", serde_json::json!(*(&(&(_field_0).snapshot).total))),
+                            ("page", serde_json::json!(*(&(&(_field_0).snapshot).page))),
+                            (
+                                "page_size",
+                                serde_json::json!(*(&(&(_field_0).snapshot).page_size)),
+                            ),
+                        ]),
+                    )]),
+                ),
+            ]),
+            Self::Run(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Run".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        (
+                            "run_id",
+                            serde_json::Value::String((&(_field_0).run_id).to_string()),
+                        ),
+                        (
+                            "from_sequence",
+                            match (&(_field_0).from_sequence).as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Cancelled => {
+                mp::object_value(&[("variant", serde_json::Value::String("Cancelled".to_owned()))])
+            }
+            Self::ClientToolResult {
+                completed: _field_completed,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ClientToolResult".to_owned()),
+                ),
+                ("completed", serde_json::Value::Bool(*(_field_completed))),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-assistant-websocket-command-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -458,9 +795,11 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantWebSocketCommandPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

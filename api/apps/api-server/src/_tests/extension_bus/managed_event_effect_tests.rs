@@ -216,14 +216,11 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
                 .lock_contribution_authority(&denied_subject)
                 .await
                 .unwrap()
-                .commit_processed_model(
+                .commit_owned_event_effect(
                     denied_subject,
                     Uuid::now_v7(),
-                    ManagedEventPayload {
-                        model_id: Uuid::now_v7().to_string(),
-                        status: ManagedEventStatus::Processed,
-                        result_reference: None,
-                    },
+                    MANAGED_PROCESSED_EVENT_ID.into(),
+                    effect_operations(&serde_json::json!({"model_id":Uuid::now_v7().to_string(),"status":"processed","result_reference":null})),
                     deadline(),
                 )
                 .await;
@@ -321,7 +318,7 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .find(|r| r.subscriber_id.ends_with("acme.composition-c.events"))
         .unwrap();
     let fact: ManagedEventFact = serde_json::from_slice(&b.canonical_payload).unwrap();
-    assert_eq!(fact.payload.model_id, model.id.to_string());
+    assert_eq!(fact.payload["model_id"], model.id.to_string());
     let tables: Vec<(String,String)> = sqlx::query_as("select owner_id,physical_table from plugin_schema_ownership where object_kind='owned_collection' and logical_name='processed_models' order by owner_id").fetch_all(&pool).await.unwrap();
     assert_eq!(tables.len(), 2);
     assert_ne!(tables[0].1, tables[1].1);
@@ -412,7 +409,9 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
             vec![(
                 model.id,
                 "processed".into(),
-                fact.payload.result_reference.clone()
+                fact.payload["result_reference"]
+                    .as_str()
+                    .map(str::to_string)
             )]
         );
     }
@@ -430,7 +429,13 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     let lease = store.lock_contribution_authority(&b_subject).await.unwrap();
     assert!(
         lease
-            .commit_processed_model(c_subject, b.event_id, fact.payload.clone(), deadline())
+            .commit_owned_event_effect(
+                c_subject,
+                b.event_id,
+                MANAGED_PROCESSED_EVENT_ID.into(),
+                effect_operations(&fact.payload),
+                deadline()
+            )
             .await
             .is_err(),
         "cross-owner subject cannot use B's lock"
@@ -491,11 +496,17 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     .await
     .unwrap();
     let mut last_effect = fact.payload.clone();
-    last_effect.model_id = Uuid::now_v7().to_string();
+    last_effect["model_id"] = serde_json::Value::String(Uuid::now_v7().to_string());
     let last_event = Uuid::now_v7();
     assert!(
         !lease
-            .commit_processed_model(b_subject.clone(), last_event, last_effect, deadline())
+            .commit_owned_event_effect(
+                b_subject.clone(),
+                last_event,
+                MANAGED_PROCESSED_EVENT_ID.into(),
+                effect_operations(&last_effect),
+                deadline()
+            )
             .await
             .unwrap()
             .replayed
@@ -506,7 +517,13 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .lock_contribution_authority(&b_subject)
         .await
         .unwrap()
-        .commit_processed_model(b_subject, b.event_id, fact.payload, deadline())
+        .commit_owned_event_effect(
+            b_subject,
+            b.event_id,
+            MANAGED_PROCESSED_EVENT_ID.into(),
+            effect_operations(&fact.payload),
+            deadline()
+        )
         .await
         .is_err());
     assert!(store
@@ -552,4 +569,30 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
     assert_eq!(count(&pool, &tables[0].1).await, 2);
     revoker_pool.close().await;
     pool.close().await;
+}
+
+fn effect_operations(payload: &serde_json::Value) -> Vec<PluginDataOperation> {
+    vec![PluginDataOperation::Upsert {
+        target: PluginDataTarget::OwnedCollection {
+            collection_code: "processed_models".into(),
+        },
+        identity: [(
+            "model_id".into(),
+            PluginDataValue::Uuid(payload["model_id"].as_str().unwrap().into()),
+        )]
+        .into_iter()
+        .collect(),
+        values: [
+            ("status".into(), PluginDataValue::String("processed".into())),
+            (
+                "result_reference".into(),
+                payload["result_reference"]
+                    .as_str()
+                    .map(|value| PluginDataValue::String(value.into()))
+                    .unwrap_or(PluginDataValue::Null),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    }]
 }

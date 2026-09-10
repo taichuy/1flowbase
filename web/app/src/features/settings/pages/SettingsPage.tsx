@@ -15,6 +15,7 @@ import {
   isSettingsSectionKey,
   settingsSectionItemsFromConsoleNavigation
 } from '../lib/settings-sections';
+import { PluginSettingsPage } from './settings-page/PluginSettingsPage';
 import { SettingsRouteShell } from './settings-page/SettingsRouteShell';
 import { SettingsSectionBody } from './settings-page/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/use-settings-sections';
@@ -115,6 +116,10 @@ export function SettingsPage({
       sections: registrySections
     });
 
+  const registeredPage = registrySections.find(
+    (section) => section.key === activeSection?.key
+  );
+
   if (registryState === 'loading') {
     return (
       <SettingsRouteShell
@@ -176,6 +181,11 @@ export function SettingsPage({
           extensionCenterCategory={extensionCenterCategory}
           extensionCenterCursor={extensionCenterCursor}
           extensionCenterQ={extensionCenterQ}
+        />
+      ) : registeredPage ? (
+        <PluginSettingsPage
+          key={registeredPage.route_id}
+          route_id={registeredPage.route_id}
         />
       ) : null}
     </SettingsRouteShell>

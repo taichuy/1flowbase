@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type HTMLAttributes } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Space, Table, Tag } from 'antd';
@@ -27,6 +27,7 @@ import {
 type StudioSession = {
   mode: UiCodeTemplateStudioMode;
   templateId: string | null;
+  managedTemplate?: SettingsUiManagedTemplate;
   initialValue: SettingsUiTemplateInput;
 };
 
@@ -167,6 +168,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     setStudio({
       mode,
       templateId: mode === 'edit' ? row.id : null,
+      managedTemplate: mode === 'edit' ? row : undefined,
       initialValue: {
         provider_code: row.provider_code,
         contribution_code: row.contribution_code,
@@ -194,6 +196,11 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
       <Table<TemplateRow>
         loading={query.isLoading}
         rowKey="key"
+        onRow={(row) =>
+          ({
+            'data-template-id': row.kind === 'managed' ? row.id : undefined
+          }) as HTMLAttributes<HTMLTableRowElement>
+        }
         scroll={{ x: 980 }}
         dataSource={rows}
         columns={[
@@ -332,6 +339,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
       {studio ? (
         <UiCodeTemplateStudio
           initialValue={studio.initialValue}
+          managedTemplate={studio.managedTemplate}
           mode={studio.mode}
           officialTemplates={officialTemplates}
           open

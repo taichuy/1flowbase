@@ -67,3 +67,96 @@ test('zero, ignored, failed and wrong-count executions cannot satisfy a required
   ]) assert.equal(nodeTapResult(output, 0).passed, false, output);
   for (const exitCode of [1, null]) assert.equal(nodeTapResult(tap, exitCode).passed, false);
 });
+
+test('Root 2014 retains legacy requirements and rejects missing new candidate evidence', () => {
+  const fs = require('node:fs');
+  const { loadManifest, rootTestNames } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const { data } = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json');
+  assert.equal(data.scope, 'plugin-composition-2014');
+  for (const legacy of manifest.required) {
+    const inherited = data.required.find(row => row.target === legacy.target && row.name === legacy.name);
+    assert.ok(inherited, `legacy required test retained: ${legacy.name}`);
+    const { originRoot, ...actual } = inherited;
+    assert.equal(originRoot, 2007);
+    assert.deepEqual(actual, legacy);
+  }
+  validateSources(root, data);
+  assert.equal(data.requiredAc.length, 18);
+  assert.deepEqual(rootTestNames('#[test]\nfn root_2014_real() {}\nfn root_2014_fixture() {}', data.rootPrefixes), ['root_2014_real']);
+  const newRequired = [{ target: target.id, name: 'new::root_2014_real', expected: 1 }];
+  assert.throws(() => selectTests(target, ['old::regression'], newRequired, data), /missing/u);
+  assert.throws(() => selectTests(target, ['old::regression', 'new::root_2014_real', 'new::root_2014_unmapped'], newRequired, data), /unmapped/u);
+  const inventory = JSON.parse(fs.readFileSync(path.join(root, 'scripts/node/plugin-composition-test-batch/root-2014-inventory.json'), 'utf8'));
+  assert.equal(inventory.definitions.length, 457);
+  assert.equal(inventory.bindings.length, 481);
+  assert.deepEqual(inventory.approvedAddedDefinitions, ['ui_management.plugin_settings_page.view']);
+  assert.equal(new Set(inventory.definitions).size, 457);
+  assert.equal(new Set(inventory.bindings).size, 481);
+});
+
+
+test('R3 probe is finite and full acceptance retains every probe and compatibility case', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const full = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-manifest.json').data;
+  const probe = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-manifest.json').data;
+  assert.equal(full.required.length, 86);
+  assert.equal(probe.required.length, 6);
+  assert.equal(probe.targets.length, 5);
+  assert.equal(probe.node.length, 0);
+  assert.equal(probe.browserBinary, undefined);
+  assert.deepEqual(probe.requiredAuth, []);
+  assert.ok(probe.targets.every(target => target.regressionFilters.length === 0));
+  for (const row of probe.required) {
+    assert.deepEqual(full.required.find(candidate => candidate.name === row.name && candidate.target === row.target), row);
+  }
+  validateSources(root, probe);
+  const sample = probe.targets[0];
+  const requiredNames = probe.required.filter(row => row.target === sample.id).map(row => row.name);
+  assert.deepEqual(selectTests(sample, [...requiredNames, 'old::root_2014_unrelated'], probe.required, probe), requiredNames);
+  assert.throws(() => selectTests(sample, [...requiredNames, 'new::root_2014_r3_probe_unmapped'], probe.required, probe), /unmapped/u);
+});
+
+
+test('R3 Host continuation selects only the previously compile-blocked exact probe', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-probe-host-manifest.json').data;
+  assert.equal(data.required.length, 1);
+  assert.equal(data.targets.length, 1);
+  assert.equal(data.node.length, 0);
+  assert.equal(data.browserBinary, undefined);
+  validateSources(root, data);
+  const names = data.required.map(row => row.name);
+  assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
+});
+
+
+test('R3 observer diagnostic stays on the installed host-chain exact test', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-r3-observer-manifest.json').data;
+  assert.equal(data.required.length, 1);
+  assert.equal(data.targets.length, 1);
+  assert.equal(data.node.length, 0);
+  assert.equal(data.browserBinary, undefined);
+  validateSources(root, data);
+  const names = data.required.map(row => row.name);
+  assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
+});
+
+
+test('browser continuation declares source reuse and runs only changed tooling with candidate build', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  const data = loadManifest(root, 'scripts/node/plugin-composition-test-batch/root-2014-browser-candidate-manifest.json').data;
+  assert.deepEqual(data.targets, []);
+  assert.deepEqual(data.required, []);
+  assert.deepEqual(data.workerFixtures, []);
+  assert.deepEqual(data.node.map(row => row.id), ['finite-selector']);
+  assert.equal(data.browserBinary.binary, 'api-server');
+  assert.equal(data.sourceEvidence.candidate, '4ea165f232a224ea7cfbe6f530d25c90e313c51d');
+  assert.ok(data.sourceEvidence.allowedChanges.every(file => !file.startsWith('api/') && !file.startsWith('web/')));
+  validateSources(root, data);
+});

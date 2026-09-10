@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use argon2::{
-    password_hash::{PasswordHash, PasswordVerifier},
     Argon2,
+    password_hash::{PasswordHash, PasswordVerifier},
 };
 use control_plane::{errors::ControlPlaneError, system_recovery::ConfirmedRecoveryIntent};
 use domain::{BackupSetId, ContentDigest, RecoveryJobId};
@@ -13,12 +13,12 @@ use tokio::io::{AsyncWriteExt, DuplexStream};
 use uuid::Uuid;
 
 use super::{
-    canonical_backup_name, detail_response, mutation_response, preflight_response,
-    require_compatible_digest, validate_exact_name, BackupJobStatusResponse,
-    BackupMutationResponse, BackupSetDetailResponse, BackupSetListResponse,
-    BackupSetSummaryResponse, BackupVerificationResponse, CreateRecoveryIntentRequest,
-    QueuedBackupResponse, RecoveryIntentResponse, RecoveryPreflightResponse, RecoveryReauthRequest,
-    RecoveryReauthResponse, RecoveryStatusResponse,
+    BackupJobStatusResponse, BackupMutationResponse, BackupSetDetailResponse,
+    BackupSetListResponse, BackupSetSummaryResponse, BackupVerificationResponse,
+    CreateRecoveryIntentRequest, QueuedBackupResponse, RecoveryIntentResponse,
+    RecoveryPreflightResponse, RecoveryReauthRequest, RecoveryReauthResponse,
+    RecoveryStatusResponse, canonical_backup_name, detail_response, mutation_response,
+    preflight_response, require_compatible_digest, validate_exact_name,
 };
 use crate::{
     error_response::{ApiError, ApiServiceUnavailable},
@@ -75,6 +75,249 @@ pub(crate) enum SystemBackupsInput {
 }
 
 impl InterfaceContract for SystemBackupsInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("List"))]),
+            mp::object_schema(&[("variant", mp::tag_schema("Create"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Import")),
+                (
+                    "bytes",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("GetJobStatus")),
+                ("backup_job_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("GetDetail")),
+                ("backup_set_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Delete")),
+                ("backup_set_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Verify")),
+                ("backup_set_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Download")),
+                ("backup_set_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("GetRecoveryStatus")),
+                (
+                    "recovery_job_id",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryPreflight")),
+                ("backup_set_id", mp::text_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryReauth")),
+                (
+                    "request",
+                    mp::object_schema(&[
+                        (
+                            "exact_backup_name",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "plan_digest",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryIntent")),
+                ("backup_set_id", mp::text_schema()),
+                (
+                    "request",
+                    mp::object_schema(&[
+                        (
+                            "exact_backup_name",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "plan_digest",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::List => {
+                mp::object_value(&[("variant", serde_json::Value::String("List".to_owned()))])
+            }
+            Self::Create { .. } => {
+                mp::object_value(&[("variant", serde_json::Value::String("Create".to_owned()))])
+            }
+            Self::Import {
+                bytes: _field_bytes,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Import".to_owned())),
+                (
+                    "bytes",
+                    mp::object_value(&[("byte_count", serde_json::json!((_field_bytes).len()))]),
+                ),
+            ]),
+            Self::GetJobStatus {
+                backup_job_id: _field_backup_job_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("GetJobStatus".to_owned()),
+                ),
+                (
+                    "backup_job_id",
+                    serde_json::Value::String((_field_backup_job_id).to_string()),
+                ),
+            ]),
+            Self::GetDetail {
+                backup_set_id: _field_backup_set_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("GetDetail".to_owned())),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+            ]),
+            Self::Delete {
+                backup_set_id: _field_backup_set_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Delete".to_owned())),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+            ]),
+            Self::Verify {
+                backup_set_id: _field_backup_set_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Verify".to_owned())),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+            ]),
+            Self::Download {
+                backup_set_id: _field_backup_set_id,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Download".to_owned())),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+            ]),
+            Self::GetRecoveryStatus {
+                recovery_job_id: _field_recovery_job_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("GetRecoveryStatus".to_owned()),
+                ),
+                (
+                    "recovery_job_id",
+                    match (_field_recovery_job_id).as_ref() {
+                        Some(item) => serde_json::Value::String((item).to_string()),
+                        None => serde_json::Value::Null,
+                    },
+                ),
+            ]),
+            Self::RecoveryPreflight {
+                backup_set_id: _field_backup_set_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("RecoveryPreflight".to_owned()),
+                ),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+            ]),
+            Self::RecoveryReauth {
+                request: _field_request,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("RecoveryReauth".to_owned()),
+                ),
+                (
+                    "request",
+                    mp::object_value(&[
+                        (
+                            "exact_backup_name",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_request).exact_backup_name).len()),
+                            )]),
+                        ),
+                        (
+                            "plan_digest",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_request).plan_digest).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::RecoveryIntent {
+                backup_set_id: _field_backup_set_id,
+                request: _field_request,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("RecoveryIntent".to_owned()),
+                ),
+                (
+                    "backup_set_id",
+                    serde_json::Value::String((_field_backup_set_id).to_string()),
+                ),
+                (
+                    "request",
+                    mp::object_value(&[
+                        (
+                            "exact_backup_name",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_request).exact_backup_name).len()),
+                            )]),
+                        ),
+                        (
+                            "plan_digest",
+                            mp::object_value(&[(
+                                "byte_count",
+                                serde_json::json!((&(_field_request).plan_digest).len()),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-system-backups-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -102,6 +345,240 @@ pub(crate) enum SystemBackupsOutput {
 }
 
 impl InterfaceContract for SystemBackupsOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Listed")),
+                (
+                    "0",
+                    mp::object_schema(&[(
+                        "items",
+                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("exact_backup_name",mp::object_schema(&[("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("availability",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Ready"))]), mp::object_schema(&[("variant",mp::tag_schema("Corrupt"))]), mp::object_schema(&[("variant",mp::tag_schema("Incompatible"))])])), ("total_size_bytes",serde_json::json!({"type":"integer"})), ("envelope_digest",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Created"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Imported")),
+                (
+                    "0",
+                    mp::object_schema(&[(
+                        "exact_backup_name",
+                        mp::object_schema(&[("byte_count", mp::count_schema())]),
+                    )]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("JobStatus")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "status",
+                            mp::union_schema(vec![
+                                mp::object_schema(&[("variant", mp::tag_schema("Queued"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Fencing"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Capturing"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Sealing"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Verifying"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Succeeded"))]),
+                                mp::object_schema(&[("variant", mp::tag_schema("Failed"))]),
+                            ]),
+                        ),
+                        (
+                            "failure_code",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        ("sealed_components", serde_json::json!({"type":"integer"})),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Detail")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "exact_backup_name",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("created_at", mp::text_schema()),
+                        (
+                            "content",
+                            mp::object_schema(&[
+                                ("component_count", serde_json::json!({"type":"integer"})),
+                                ("postgresql_count", serde_json::json!({"type":"integer"})),
+                                (
+                                    "business_object_count",
+                                    serde_json::json!({"type":"integer"}),
+                                ),
+                                (
+                                    "extension_artifact_count",
+                                    serde_json::json!({"type":"integer"}),
+                                ),
+                                ("mcp_artifact_count", serde_json::json!({"type":"integer"})),
+                                (
+                                    "embedded_component_count",
+                                    serde_json::json!({"type":"integer"}),
+                                ),
+                                (
+                                    "identity_only_component_count",
+                                    serde_json::json!({"type":"integer"}),
+                                ),
+                                ("total_size_bytes", serde_json::json!({"type":"integer"})),
+                                (
+                                    "excluded_domains",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "components",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("component_id",mp::text_schema()), ("kind",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("PostgreSql"))]), mp::object_schema(&[("variant",mp::tag_schema("BusinessObject"))]), mp::object_schema(&[("variant",mp::tag_schema("ExtensionArtifact"))]), mp::object_schema(&[("variant",mp::tag_schema("McpArtifact"))])])), ("source_identity",mp::object_schema(&[("byte_count",mp::count_schema())])), ("content_type",mp::text_schema()), ("size_bytes",serde_json::json!({"type":"integer"})), ("content_digest",mp::object_schema(&[("byte_count",mp::count_schema())])), ("disposition",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Embedded"))]), mp::object_schema(&[("variant",mp::tag_schema("IdentityOnly"))])])), ("rebuildability",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Rebuildable"))]), mp::object_schema(&[("variant",mp::tag_schema("NonRebuildable"))]), mp::object_schema(&[("variant",mp::tag_schema("NotApplicable"))])])), ("restore_target",mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("PostgreSql"))]), mp::object_schema(&[("variant",mp::tag_schema("BusinessObject")), ("storage_id",mp::text_schema()), ("object_path",mp::object_schema(&[("byte_count",mp::count_schema())]))]), mp::object_schema(&[("variant",mp::tag_schema("Artifact")), ("category",mp::object_schema(&[("byte_count",mp::count_schema())])), ("organization",mp::object_schema(&[("byte_count",mp::count_schema())])), ("artifact_id",mp::text_schema()), ("version",mp::text_schema())])]))])}),
+                        ),
+                        (
+                            "compatibility",
+                            mp::object_schema(&[
+                                ("compatible", serde_json::json!({"type":"boolean"})),
+                                (
+                                    "failures",
+                                    mp::object_schema(&[("item_count", mp::count_schema())]),
+                                ),
+                                ("format_version", serde_json::json!({"type":"integer"})),
+                                (
+                                    "application_build",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                                (
+                                    "migration_head",
+                                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "verification",
+                            mp::object_schema(&[
+                                (
+                                    "verified",
+                                    serde_json::json!({"anyOf": [serde_json::json!({"type":"boolean"}), {"type":"null"}]}),
+                                ),
+                                (
+                                    "checked_at",
+                                    serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                                ),
+                            ]),
+                        ),
+                        (
+                            "creation_journal",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("sequence",serde_json::json!({"type":"integer"})), ("occurred_at",mp::object_schema(&[("byte_count",mp::count_schema())])), ("state",serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Queued"))]), mp::object_schema(&[("variant",mp::tag_schema("Fencing"))]), mp::object_schema(&[("variant",mp::tag_schema("Capturing"))]), mp::object_schema(&[("variant",mp::tag_schema("Sealing"))]), mp::object_schema(&[("variant",mp::tag_schema("Verifying"))]), mp::object_schema(&[("variant",mp::tag_schema("Succeeded"))]), mp::object_schema(&[("variant",mp::tag_schema("Failed"))])]), {"type":"null"}]})), ("component_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("failure_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
+                        ),
+                        (
+                            "recovery_history",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("status",serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Preflight"))]), mp::object_schema(&[("variant",mp::tag_schema("AwaitingConfirmation"))]), mp::object_schema(&[("variant",mp::tag_schema("SafetyBackup"))]), mp::object_schema(&[("variant",mp::tag_schema("Fencing"))]), mp::object_schema(&[("variant",mp::tag_schema("Draining"))]), mp::object_schema(&[("variant",mp::tag_schema("Restoring"))]), mp::object_schema(&[("variant",mp::tag_schema("Reconciling"))]), mp::object_schema(&[("variant",mp::tag_schema("Verifying"))]), mp::object_schema(&[("variant",mp::tag_schema("Succeeded"))]), mp::object_schema(&[("variant",mp::tag_schema("RolledBack"))]), mp::object_schema(&[("variant",mp::tag_schema("ManualRecoveryRequired"))])]), {"type":"null"}]})), ("started_at",mp::object_schema(&[("byte_count",mp::count_schema())])), ("updated_at",mp::text_schema()), ("failure_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Deleted"))]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Verified")),
+                (
+                    "0",
+                    mp::object_schema(&[("verified", serde_json::json!({"type":"boolean"}))]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Download")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("status", serde_json::json!({"type":"integer"})),
+                        ("content_type", mp::text_schema()),
+                        (
+                            "content_disposition",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryStatus")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "phase",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("active_write_count", serde_json::json!({"type":"integer"})),
+                        (
+                            "started_at",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "plan_digest",
+                            serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                        (
+                            "journal_state",
+                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema(&[("variant",mp::tag_schema("Preflight"))]), mp::object_schema(&[("variant",mp::tag_schema("AwaitingConfirmation"))]), mp::object_schema(&[("variant",mp::tag_schema("SafetyBackup"))]), mp::object_schema(&[("variant",mp::tag_schema("Fencing"))]), mp::object_schema(&[("variant",mp::tag_schema("Draining"))]), mp::object_schema(&[("variant",mp::tag_schema("Restoring"))]), mp::object_schema(&[("variant",mp::tag_schema("Reconciling"))]), mp::object_schema(&[("variant",mp::tag_schema("Verifying"))]), mp::object_schema(&[("variant",mp::tag_schema("Succeeded"))]), mp::object_schema(&[("variant",mp::tag_schema("RolledBack"))]), mp::object_schema(&[("variant",mp::tag_schema("ManualRecoveryRequired"))])]), {"type":"null"}]}),
+                        ),
+                        (
+                            "journal_events",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryPreflight")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        (
+                            "plan_digest",
+                            mp::object_schema(&[("byte_count", mp::count_schema())]),
+                        ),
+                        ("compatible", serde_json::json!({"type":"boolean"})),
+                        (
+                            "required_space_bytes",
+                            serde_json::json!({"type":"integer"}),
+                        ),
+                        (
+                            "available_space_bytes",
+                            serde_json::json!({"type":"integer"}),
+                        ),
+                        ("impact", mp::json_summary_schema()),
+                        (
+                            "failures",
+                            mp::object_schema(&[("item_count", mp::count_schema())]),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryReauth")),
+                ("0", mp::object_schema(&[("expires_at", mp::text_schema())])),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("RecoveryIntent")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("intent_id", mp::text_schema()),
+                        ("status", mp::text_schema()),
+                        ("expires_at", mp::text_schema()),
+                    ]),
+                ),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {Self::Listed(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Listed".to_owned())), ("0",mp::object_value(&[("items",{ if (&(_field_0).items).len() > 32 { return None; } serde_json::Value::Array((&(_field_0).items).iter().map(|item| Some(mp::object_value(&[("exact_backup_name",mp::object_value(&[("byte_count",serde_json::json!((&(item).exact_backup_name).len()))])), ("created_at",mp::text(&(item).created_at)?), ("availability",match &(item).availability {domain::system_backup::BackupSetAvailability::Ready => mp::object_value(&[("variant",serde_json::Value::String("Ready".to_owned()))]), domain::system_backup::BackupSetAvailability::Corrupt => mp::object_value(&[("variant",serde_json::Value::String("Corrupt".to_owned()))]), domain::system_backup::BackupSetAvailability::Incompatible => mp::object_value(&[("variant",serde_json::Value::String("Incompatible".to_owned()))])}), ("total_size_bytes",serde_json::json!(*(&(item).total_size_bytes))), ("envelope_digest",match (&(item).envelope_digest).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) })]))]), Self::Created(_) => mp::object_value(&[("variant",serde_json::Value::String("Created".to_owned()))]), Self::Imported(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Imported".to_owned())), ("0",mp::object_value(&[("exact_backup_name",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).exact_backup_name).len()))]))]))]), Self::JobStatus(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("JobStatus".to_owned())), ("0",mp::object_value(&[("status",match &(_field_0).status {domain::system_backup::BackupJobState::Queued => mp::object_value(&[("variant",serde_json::Value::String("Queued".to_owned()))]), domain::system_backup::BackupJobState::Fencing => mp::object_value(&[("variant",serde_json::Value::String("Fencing".to_owned()))]), domain::system_backup::BackupJobState::Capturing => mp::object_value(&[("variant",serde_json::Value::String("Capturing".to_owned()))]), domain::system_backup::BackupJobState::Sealing => mp::object_value(&[("variant",serde_json::Value::String("Sealing".to_owned()))]), domain::system_backup::BackupJobState::Verifying => mp::object_value(&[("variant",serde_json::Value::String("Verifying".to_owned()))]), domain::system_backup::BackupJobState::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), domain::system_backup::BackupJobState::Failed => mp::object_value(&[("variant",serde_json::Value::String("Failed".to_owned()))])}), ("failure_code",match (&(_field_0).failure_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("sealed_components",serde_json::json!(*(&(_field_0).sealed_components)))]))]), Self::Detail(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Detail".to_owned())), ("0",mp::object_value(&[("exact_backup_name",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).exact_backup_name).len()))])), ("created_at",mp::text(&(_field_0).created_at)?), ("content",mp::object_value(&[("component_count",serde_json::json!(*(&(&(_field_0).content).component_count))), ("postgresql_count",serde_json::json!(*(&(&(_field_0).content).postgresql_count))), ("business_object_count",serde_json::json!(*(&(&(_field_0).content).business_object_count))), ("extension_artifact_count",serde_json::json!(*(&(&(_field_0).content).extension_artifact_count))), ("mcp_artifact_count",serde_json::json!(*(&(&(_field_0).content).mcp_artifact_count))), ("embedded_component_count",serde_json::json!(*(&(&(_field_0).content).embedded_component_count))), ("identity_only_component_count",serde_json::json!(*(&(&(_field_0).content).identity_only_component_count))), ("total_size_bytes",serde_json::json!(*(&(&(_field_0).content).total_size_bytes))), ("excluded_domains",mp::object_value(&[("item_count",serde_json::json!((&(&(_field_0).content).excluded_domains).len()))]))])), ("components",{ if (&(_field_0).components).len() > 32 { return None; } serde_json::Value::Array((&(_field_0).components).iter().map(|item| Some(mp::object_value(&[("component_id",mp::text(&(item).component_id)?), ("kind",match &(item).kind {domain::system_backup::BackupComponentKind::PostgreSql => mp::object_value(&[("variant",serde_json::Value::String("PostgreSql".to_owned()))]), domain::system_backup::BackupComponentKind::BusinessObject => mp::object_value(&[("variant",serde_json::Value::String("BusinessObject".to_owned()))]), domain::system_backup::BackupComponentKind::ExtensionArtifact => mp::object_value(&[("variant",serde_json::Value::String("ExtensionArtifact".to_owned()))]), domain::system_backup::BackupComponentKind::McpArtifact => mp::object_value(&[("variant",serde_json::Value::String("McpArtifact".to_owned()))])}), ("source_identity",mp::object_value(&[("byte_count",serde_json::json!((&(item).source_identity).len()))])), ("content_type",mp::text(&(item).content_type)?), ("size_bytes",serde_json::json!(*(&(item).size_bytes))), ("content_digest",mp::object_value(&[("byte_count",serde_json::json!((&(item).content_digest).len()))])), ("disposition",match &(item).disposition {domain::system_backup::BackupComponentDisposition::Embedded => mp::object_value(&[("variant",serde_json::Value::String("Embedded".to_owned()))]), domain::system_backup::BackupComponentDisposition::IdentityOnly => mp::object_value(&[("variant",serde_json::Value::String("IdentityOnly".to_owned()))])}), ("rebuildability",match &(item).rebuildability {domain::system_backup::ArtifactRebuildability::Rebuildable => mp::object_value(&[("variant",serde_json::Value::String("Rebuildable".to_owned()))]), domain::system_backup::ArtifactRebuildability::NonRebuildable => mp::object_value(&[("variant",serde_json::Value::String("NonRebuildable".to_owned()))]), domain::system_backup::ArtifactRebuildability::NotApplicable => mp::object_value(&[("variant",serde_json::Value::String("NotApplicable".to_owned()))])}), ("restore_target",match &(item).restore_target {domain::system_backup::BackupComponentRestoreTarget::PostgreSql => mp::object_value(&[("variant",serde_json::Value::String("PostgreSql".to_owned()))]), domain::system_backup::BackupComponentRestoreTarget::BusinessObject {storage_id: _field_storage_id, object_path: _field_object_path, .. } => mp::object_value(&[("variant",serde_json::Value::String("BusinessObject".to_owned())), ("storage_id",serde_json::Value::String((_field_storage_id).to_string())), ("object_path",mp::object_value(&[("byte_count",serde_json::json!((_field_object_path).len()))]))]), domain::system_backup::BackupComponentRestoreTarget::Artifact {category: _field_category, organization: _field_organization, artifact_id: _field_artifact_id, version: _field_version, .. } => mp::object_value(&[("variant",serde_json::Value::String("Artifact".to_owned())), ("category",mp::object_value(&[("byte_count",serde_json::json!((_field_category).len()))])), ("organization",mp::object_value(&[("byte_count",serde_json::json!((_field_organization).len()))])), ("artifact_id",mp::text(_field_artifact_id)?), ("version",mp::text(_field_version)?)])})]))).collect::<Option<Vec<_>>>()?) }), ("compatibility",mp::object_value(&[("compatible",serde_json::Value::Bool(*(&(&(_field_0).compatibility).compatible))), ("failures",mp::object_value(&[("item_count",serde_json::json!((&(&(_field_0).compatibility).failures).len()))])), ("format_version",serde_json::json!(*(&(&(_field_0).compatibility).format_version))), ("application_build",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).compatibility).application_build).len()))])), ("migration_head",mp::object_value(&[("byte_count",serde_json::json!((&(&(_field_0).compatibility).migration_head).len()))]))])), ("verification",mp::object_value(&[("verified",match (&(&(_field_0).verification).verified).as_ref() { Some(item) => serde_json::Value::Bool(*(item)), None => serde_json::Value::Null }), ("checked_at",match (&(&(_field_0).verification).checked_at).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })])), ("creation_journal",{ if (&(_field_0).creation_journal).len() > 32 { return None; } serde_json::Value::Array((&(_field_0).creation_journal).iter().map(|item| Some(mp::object_value(&[("sequence",serde_json::json!(*(&(item).sequence))), ("occurred_at",mp::object_value(&[("byte_count",serde_json::json!((&(item).occurred_at).len()))])), ("state",match (&(item).state).as_ref() { Some(item) => match item {domain::system_backup::BackupJobState::Queued => mp::object_value(&[("variant",serde_json::Value::String("Queued".to_owned()))]), domain::system_backup::BackupJobState::Fencing => mp::object_value(&[("variant",serde_json::Value::String("Fencing".to_owned()))]), domain::system_backup::BackupJobState::Capturing => mp::object_value(&[("variant",serde_json::Value::String("Capturing".to_owned()))]), domain::system_backup::BackupJobState::Sealing => mp::object_value(&[("variant",serde_json::Value::String("Sealing".to_owned()))]), domain::system_backup::BackupJobState::Verifying => mp::object_value(&[("variant",serde_json::Value::String("Verifying".to_owned()))]), domain::system_backup::BackupJobState::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), domain::system_backup::BackupJobState::Failed => mp::object_value(&[("variant",serde_json::Value::String("Failed".to_owned()))])}, None => serde_json::Value::Null }), ("component_id",match (&(item).component_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("failure_code",match (&(item).failure_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) }), ("recovery_history",{ if (&(_field_0).recovery_history).len() > 32 { return None; } serde_json::Value::Array((&(_field_0).recovery_history).iter().map(|item| Some(mp::object_value(&[("status",match (&(item).status).as_ref() { Some(item) => match item {domain::system_backup::RecoveryJobState::Preflight => mp::object_value(&[("variant",serde_json::Value::String("Preflight".to_owned()))]), domain::system_backup::RecoveryJobState::AwaitingConfirmation => mp::object_value(&[("variant",serde_json::Value::String("AwaitingConfirmation".to_owned()))]), domain::system_backup::RecoveryJobState::SafetyBackup => mp::object_value(&[("variant",serde_json::Value::String("SafetyBackup".to_owned()))]), domain::system_backup::RecoveryJobState::Fencing => mp::object_value(&[("variant",serde_json::Value::String("Fencing".to_owned()))]), domain::system_backup::RecoveryJobState::Draining => mp::object_value(&[("variant",serde_json::Value::String("Draining".to_owned()))]), domain::system_backup::RecoveryJobState::Restoring => mp::object_value(&[("variant",serde_json::Value::String("Restoring".to_owned()))]), domain::system_backup::RecoveryJobState::Reconciling => mp::object_value(&[("variant",serde_json::Value::String("Reconciling".to_owned()))]), domain::system_backup::RecoveryJobState::Verifying => mp::object_value(&[("variant",serde_json::Value::String("Verifying".to_owned()))]), domain::system_backup::RecoveryJobState::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), domain::system_backup::RecoveryJobState::RolledBack => mp::object_value(&[("variant",serde_json::Value::String("RolledBack".to_owned()))]), domain::system_backup::RecoveryJobState::ManualRecoveryRequired => mp::object_value(&[("variant",serde_json::Value::String("ManualRecoveryRequired".to_owned()))])}, None => serde_json::Value::Null }), ("started_at",mp::object_value(&[("byte_count",serde_json::json!((&(item).started_at).len()))])), ("updated_at",mp::text(&(item).updated_at)?), ("failure_code",match (&(item).failure_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) })]))]), Self::Deleted => mp::object_value(&[("variant",serde_json::Value::String("Deleted".to_owned()))]), Self::Verified(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Verified".to_owned())), ("0",mp::object_value(&[("verified",serde_json::Value::Bool(*(&(_field_0).verified)))]))]), Self::Download(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Download".to_owned())), ("0",mp::object_value(&[("status",serde_json::json!(*(&(_field_0).status))), ("content_type",mp::text(&(_field_0).content_type)?), ("content_disposition",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).content_disposition).len()))]))]))]), Self::RecoveryStatus(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("RecoveryStatus".to_owned())), ("0",mp::object_value(&[("phase",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).phase).len()))])), ("active_write_count",serde_json::json!(*(&(_field_0).active_write_count))), ("started_at",match (&(_field_0).started_at).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("plan_digest",match (&(_field_0).plan_digest).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("journal_state",match (&(_field_0).journal_state).as_ref() { Some(item) => match item {domain::system_backup::RecoveryJobState::Preflight => mp::object_value(&[("variant",serde_json::Value::String("Preflight".to_owned()))]), domain::system_backup::RecoveryJobState::AwaitingConfirmation => mp::object_value(&[("variant",serde_json::Value::String("AwaitingConfirmation".to_owned()))]), domain::system_backup::RecoveryJobState::SafetyBackup => mp::object_value(&[("variant",serde_json::Value::String("SafetyBackup".to_owned()))]), domain::system_backup::RecoveryJobState::Fencing => mp::object_value(&[("variant",serde_json::Value::String("Fencing".to_owned()))]), domain::system_backup::RecoveryJobState::Draining => mp::object_value(&[("variant",serde_json::Value::String("Draining".to_owned()))]), domain::system_backup::RecoveryJobState::Restoring => mp::object_value(&[("variant",serde_json::Value::String("Restoring".to_owned()))]), domain::system_backup::RecoveryJobState::Reconciling => mp::object_value(&[("variant",serde_json::Value::String("Reconciling".to_owned()))]), domain::system_backup::RecoveryJobState::Verifying => mp::object_value(&[("variant",serde_json::Value::String("Verifying".to_owned()))]), domain::system_backup::RecoveryJobState::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), domain::system_backup::RecoveryJobState::RolledBack => mp::object_value(&[("variant",serde_json::Value::String("RolledBack".to_owned()))]), domain::system_backup::RecoveryJobState::ManualRecoveryRequired => mp::object_value(&[("variant",serde_json::Value::String("ManualRecoveryRequired".to_owned()))])}, None => serde_json::Value::Null }), ("journal_events",mp::object_value(&[("item_count",serde_json::json!((&(_field_0).journal_events).len()))]))]))]), Self::RecoveryPreflight(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("RecoveryPreflight".to_owned())), ("0",mp::object_value(&[("plan_digest",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).plan_digest).len()))])), ("compatible",serde_json::Value::Bool(*(&(_field_0).compatible))), ("required_space_bytes",serde_json::json!(*(&(_field_0).required_space_bytes))), ("available_space_bytes",serde_json::json!(*(&(_field_0).available_space_bytes))), ("impact",mp::json_summary(&(_field_0).impact)), ("failures",mp::object_value(&[("item_count",serde_json::json!((&(_field_0).failures).len()))]))]))]), Self::RecoveryReauth(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("RecoveryReauth".to_owned())), ("0",mp::object_value(&[("expires_at",mp::text(&(_field_0).expires_at)?)]))]), Self::RecoveryIntent(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("RecoveryIntent".to_owned())), ("0",mp::object_value(&[("intent_id",serde_json::Value::String((&(_field_0).intent_id).to_string())), ("status",mp::text(&(_field_0).status)?), ("expires_at",mp::text(&(_field_0).expires_at)?)]))])})
+    }
+
     const CONTRACT_ID: &'static str = "console-system-backups-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -644,9 +1121,11 @@ mod tests {
             "system_backups.recovery.reauth",
             "system_backups.recovery.intent",
         ] {
-            assert!(DECLARATIONS
-                .iter()
-                .any(|declaration| declaration.interface_id == operation));
+            assert!(
+                DECLARATIONS
+                    .iter()
+                    .any(|declaration| declaration.interface_id == operation)
+            );
         }
     }
 }

@@ -423,3 +423,221 @@ async fn template_creation_uses_backend_code_block_default() {
     }
     pool.close().await;
 }
+
+#[tokio::test]
+async fn root_2014_ac_014_old_process_cannot_serve_new_target_template() {
+    use crate::_tests::host_extensions::host_extension_boot_tests::NativeSettingsFixture;
+    use control_plane::ports::PluginRepository;
+    let f = NativeSettingsFixture::new().await;
+    let first = f.select("1.0.0").await;
+    f.state
+        .store
+        .apply_native_plugin_settings_templates(&first)
+        .await
+        .unwrap();
+    let old = crate::app_with_state(f.process_state("1.0.0", first));
+    let (cookie, csrf) = login_and_capture_cookie(&old, "root", "change-me").await;
+    let second = f.select("2.0.0").await;
+    f.state
+        .store
+        .apply_native_plugin_settings_templates(&second)
+        .await
+        .unwrap();
+    let new = crate::app_with_state(f.process_state("2.0.0", second));
+    let uri = "/api/console/settings/ui-management/plugin-settings-page?route_id=northwind.settings-page.settings";
+    let response = old
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let response = new
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+            .unwrap();
+    assert_eq!(body["data"]["applied_plugin_version"], "2.0.0");
+    assert_eq!(
+        body["data"]["feature_id"],
+        "northwind.settings-page.settings"
+    );
+    assert!(body["data"]["source"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
+    let member_id = create_member(&new, &cookie, &csrf, "native-page-denied", "temp-pass").await;
+    create_role(&new, &cookie, &csrf, "native_page_denied").await;
+    replace_member_roles(&new, &cookie, &csrf, &member_id, &["native_page_denied"]).await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&new, "native-page-denied", "temp-pass").await;
+    let forbidden = new
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+    let denied = new
+        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+}
+
+fn native_probe_route_assembly() -> crate::routes::console_route_assembly::ConsoleRouteAssembly<
+    std::sync::Arc<crate::app_state::ApiState>,
+> {
+    use crate::routes::console_route_assembly::{console_get, ConsoleRouteAssembly};
+    ConsoleRouteAssembly::new().route(
+        "/northwind.settings-page/probe",
+        console_get(
+            native_probe,
+            access_control::ConsoleRouteOwnership::ConsoleOperation(
+                "northwind.settings-page.probe".into(),
+            ),
+        ),
+    )
+}
+async fn native_probe() -> StatusCode {
+    StatusCode::NO_CONTENT
+}
+
+#[tokio::test]
+async fn root_2014_ac_014_old_process_plugin_operation_version_gate() {
+    use crate::_tests::host_extensions::host_extension_boot_tests::NativeSettingsFixture;
+    use control_plane::ports::PluginRepository;
+    use std::sync::Arc;
+    let f = NativeSettingsFixture::new().await;
+    let first = f.select("1.0.0").await;
+    f.state
+        .store
+        .apply_native_plugin_settings_templates(&first)
+        .await
+        .unwrap();
+    let login_app = crate::app_with_state(f.process_state("1.0.0", first.clone()));
+    let (cookie, _) = login_and_capture_cookie(&login_app, "root", "change-me").await;
+    let second = f.select("2.0.0").await;
+    f.state
+        .store
+        .apply_native_plugin_settings_templates(&second)
+        .await
+        .unwrap();
+    for (version, target, expected) in [
+        ("1.0.0", first, StatusCode::CONFLICT),
+        ("2.0.0", second, StatusCode::NO_CONTENT),
+    ] {
+        // A separate API-bearing host fixture binds a real handler; the page-only package
+        // remains free of fake API declarations in the default loader tests.
+        let mut contribution = f.contribution(version);
+        let api = plugin_framework::parse_host_extension_contribution_manifest(&format!(r#"
+schema_version: 1flowbase.host-extension/v1
+extension_id: northwind.settings-page
+version: {version}
+bootstrap_phase: boot
+owned_resources: []
+extends_resources: []
+infrastructure_providers: []
+routes: []
+workers: []
+migrations: []
+native:
+  abi_version: 1flowbase.host.native/v1
+  library: builtin://northwind.settings-page
+  entry_symbol: oneflowbase_host_extension_entry_v1
+settings_features:
+  - feature_id: northwind.settings-page.settings
+    owner: {{kind: host_extension, owner_id: northwind.settings-page, version: {version}}}
+    lifecycle: active
+    console_surface:
+      route_id: northwind.settings-page.settings
+      surface_key: northwind.settings-page.settings
+      path: /settings/northwind.settings-page
+      label_key: northwind.settings-page.console.settings.label
+      description_key: northwind.settings-page.console.settings.description
+      order: 100
+    api_routes: [{{method: GET, path: /api/console/northwind.settings-page/probe}}]
+console_operations:
+  - operation_id: northwind.settings-page.probe
+    owner: {{kind: host_extension, owner_id: northwind.settings-page, version: {version}}}
+    lifecycle: active
+    policy_group: !settings_feature northwind.settings-page.settings
+    order: 100
+    routes: [{{method: GET, path: /api/console/northwind.settings-page/probe}}]
+    authorization: {{kind: simple}}
+console_locale_catalog:
+  texts:
+    - {{reference: northwind.settings-page.console.settings.label, en_us: Settings, zh_hans: 设置}}
+    - {{reference: northwind.settings-page.console.settings.description, en_us: Settings, zh_hans: 设置}}
+  policy_groups: []
+"#)).unwrap();
+        contribution.settings_features = api.settings_features;
+        contribution.console_operations = api.console_operations;
+        let source = crate::host_extensions::console::LinkedHostConsoleRouteSource {
+            extension_id: "northwind.settings-page",
+            version: if version == "1.0.0" { "1.0.0" } else { "2.0.0" },
+            route_assembly: native_probe_route_assembly,
+        };
+        let resolved =
+            crate::host_extensions::console::resolve_linked_host_extension_console_contribution(
+                contribution.clone(),
+                &[source],
+            )
+            .unwrap();
+        let interface_snapshot = f
+            .state
+            .extension_boot_snapshot
+            .as_ref()
+            .unwrap()
+            .interface_registry()
+            .unwrap()
+            .snapshot();
+        let plan = crate::app_state::compile_console_boot_plan_with_interface_operations(
+            [resolved],
+            Some(interface_snapshot.as_ref()),
+        )
+        .unwrap();
+        let state = Arc::new(crate::app_state::ApiState {
+            settings_feature_registry: plan.settings_feature_registry,
+            console_operation_registry: plan.console_operation_registry,
+            console_surface_registry: Arc::new(
+                plan.console_surface_registry
+                    .as_ref()
+                    .clone()
+                    .with_native_targets(vec![target]),
+            ),
+            ..(*f.state).clone()
+        });
+        let app = axum::Router::new().route("/api/console/northwind.settings-page/probe",axum::routing::get(native_probe))
+            .layer(axum::middleware::from_fn_with_state(state,crate::middleware::require_settings_feature_permission::require_settings_feature_permission));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/console/northwind.settings-page/probe")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+}

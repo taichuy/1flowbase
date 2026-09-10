@@ -116,6 +116,7 @@ impl PackageLoader {
             execution_mode: binding.execution_mode,
             limits: binding.runtime.limits.clone(),
             handler: binding.handler.clone(),
+            interface_protocol: binding.interface_protocol,
             contribution: managed
                 .module
                 .contributions

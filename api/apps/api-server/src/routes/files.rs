@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     body::Body,
     extract::{Multipart, Path, State},
-    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
     response::Response,
-    Json, Router,
 };
 use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -23,7 +23,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError,
         },
-        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
     },
 };
 
@@ -57,6 +57,75 @@ enum BusinessFilesInput {
 }
 
 impl InterfaceContract for BusinessFilesInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Upload")),
+                (
+                    "file_table_id",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                (
+                    "content_type",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                (
+                    "bytes",
+                    mp::object_schema(&[("byte_count", mp::count_schema())]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ReadContent")),
+                ("file_table_id", mp::text_schema()),
+                ("record_id", mp::text_schema()),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Upload {
+                file_table_id: _field_file_table_id,
+                content_type: _field_content_type,
+                bytes: _field_bytes,
+                ..
+            } => mp::object_value(&[
+                ("variant", serde_json::Value::String("Upload".to_owned())),
+                (
+                    "file_table_id",
+                    match (_field_file_table_id).as_ref() {
+                        Some(item) => serde_json::Value::String((item).to_string()),
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                (
+                    "content_type",
+                    match (_field_content_type).as_ref() {
+                        Some(item) => mp::text(item)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                (
+                    "bytes",
+                    mp::object_value(&[("byte_count", serde_json::json!((_field_bytes).len()))]),
+                ),
+            ]),
+            Self::ReadContent {
+                file_table_id: _field_file_table_id,
+                record_id: _field_record_id,
+                ..
+            } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ReadContent".to_owned()),
+                ),
+                ("file_table_id", mp::text(_field_file_table_id)?),
+                ("record_id", mp::text(_field_record_id)?),
+            ]),
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-business-files-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
@@ -72,6 +141,43 @@ enum BusinessFilesOutput {
 }
 
 impl InterfaceContract for BusinessFilesOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("Uploaded")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("file_table_id", mp::text_schema()),
+                        ("storage_id", mp::text_schema()),
+                        ("record", mp::json_summary_schema()),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("Content"))]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::Uploaded(_field_0) => mp::object_value(&[
+                ("variant", serde_json::Value::String("Uploaded".to_owned())),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("file_table_id", mp::text(&(_field_0).file_table_id)?),
+                        ("storage_id", mp::text(&(_field_0).storage_id)?),
+                        ("record", mp::json_summary(&(_field_0).record)),
+                    ]),
+                ),
+            ]),
+            Self::Content(_) => {
+                mp::object_value(&[("variant", serde_json::Value::String("Content".to_owned()))])
+            }
+        })
+    }
+
     const CONTRACT_ID: &'static str = "console-business-files-output";
     const CONTRACT_VERSION: &'static str = "1";
 }

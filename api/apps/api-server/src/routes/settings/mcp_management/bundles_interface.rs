@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::{
@@ -8,8 +10,8 @@ use control_plane::{
     },
     mcp_management::McpManagementService,
     plugin_management::{
-        installed_extension_integrity_warnings, validate_extension_integrity_override,
         ExtensionInstallationService, ExtensionRiskOverride,
+        installed_extension_integrity_warnings, validate_extension_integrity_override,
     },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -17,15 +19,15 @@ use uuid::Uuid;
 
 use super::{
     bundles::{
-        build_bundle_archive, parse_bundle_archive, BuiltinMcpTemplateImportResponse,
-        BuiltinMcpTemplatePreviewResponse, BuiltinMcpTemplateSelector, ExportMcpBundleBody,
-        ExportMcpInstanceBundleBody, InstalledMcpExtensionImportResponse,
-        InstalledMcpExtensionIntegrityChallengeResponse, InstalledMcpExtensionPreviewResponse,
-        InstalledMcpExtensionSelector, McpBundleExportDefaults, McpBundleImportSourceResponse,
-        McpBundleLibraryVersionBody, McpBundlePreviewSourceResponse, McpBundleSourceBody,
-        McpInstanceBundleExportProfile, OfficialMcpBundleSelector,
+        BuiltinMcpTemplateImportResponse, BuiltinMcpTemplatePreviewResponse,
+        BuiltinMcpTemplateSelector, ExportMcpBundleBody, ExportMcpInstanceBundleBody,
+        InstalledMcpExtensionImportResponse, InstalledMcpExtensionIntegrityChallengeResponse,
+        InstalledMcpExtensionPreviewResponse, InstalledMcpExtensionSelector,
+        McpBundleExportDefaults, McpBundleImportSourceResponse, McpBundleLibraryVersionBody,
+        McpBundlePreviewSourceResponse, McpBundleSourceBody, McpInstanceBundleExportProfile,
+        OfficialMcpBundleSelector, build_bundle_archive, parse_bundle_archive,
     },
-    interface_catalog::{mcp_interface_catalog_entries_with, McpInterfaceCatalogDependencies},
+    interface_catalog::{McpInterfaceCatalogDependencies, mcp_interface_catalog_entries_with},
 };
 use crate::{
     app_state::resolve_official_source_label_with,
@@ -97,11 +99,6 @@ pub(crate) enum McpBundlesInput {
     },
 }
 
-impl InterfaceContract for McpBundlesInput {
-    const CONTRACT_ID: &'static str = "console-mcp-bundles-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) struct BundleArchive {
     pub(crate) status: u16,
     pub(crate) content_type: &'static str,
@@ -122,11 +119,6 @@ pub(crate) enum McpBundlesOutput {
     Library(crate::official_mcp_bundles::McpBundleLibraryCatalog),
     LibraryReceipt(crate::official_mcp_bundles::LocalMcpBundleReceipt),
     Deleted,
-}
-
-impl InterfaceContract for McpBundlesOutput {
-    const CONTRACT_ID: &'static str = "console-mcp-bundles-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 pub(crate) struct McpBundlesDependencies {
@@ -826,21 +818,111 @@ fn project_official_entry(
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.official.list", binding_id: "http.console.mcp.bundles.official.list.v1", method: "GET", path: "/api/console/mcp/bundles/official", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.preview", binding_id: "http.console.mcp.bundles.preview-official.v1", method: "POST", path: "/api/console/mcp/bundles/preview-official", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.import", binding_id: "http.console.mcp.bundles.import-official.v1", method: "POST", path: "/api/console/mcp/bundles/import-official", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.export", binding_id: "http.console.mcp.bundles.export.v1", method: "POST", path: "/api/console/mcp/bundles/export", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.export", binding_id: "http.console.mcp.bundles.export-defaults.v1", method: "GET", path: "/api/console/mcp/bundles/export-defaults", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.instances.export", binding_id: "http.console.mcp.instances.bundles.export.v1", method: "POST", path: "/api/console/mcp/instances/:instance_id/bundles/export", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.preview", binding_id: "http.console.mcp.bundles.preview-upload.v1", method: "POST", path: "/api/console/mcp/bundles/preview-upload", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundles.import", binding_id: "http.console.mcp.bundles.import-upload.v1", method: "POST", path: "/api/console/mcp/bundles/import-upload", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.list", binding_id: "http.console.mcp.bundles.library.list.v1", method: "GET", path: "/api/console/mcp/bundles/library", mutating: false },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.sync", binding_id: "http.console.mcp.bundles.library.sync.v1", method: "POST", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/sync", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.preview", binding_id: "http.console.mcp.bundles.library.preview.v1", method: "POST", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/preview", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.import", binding_id: "http.console.mcp.bundles.library.import.v1", method: "POST", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/import", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.current.switch", binding_id: "http.console.mcp.bundles.library.current.switch.v1", method: "POST", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.releases.delete", binding_id: "http.console.mcp.bundles.library.releases.delete.v1", method: "DELETE", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version", mutating: true },
-    ConsoleInterfaceDeclaration { interface_id: "mcp.bundle_library.releases.repair", binding_id: "http.console.mcp.bundles.library.releases.repair.v1", method: "POST", path: "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair", mutating: true },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.official.list",
+        binding_id: "http.console.mcp.bundles.official.list.v1",
+        method: "GET",
+        path: "/api/console/mcp/bundles/official",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.preview",
+        binding_id: "http.console.mcp.bundles.preview-official.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/preview-official",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.import",
+        binding_id: "http.console.mcp.bundles.import-official.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/import-official",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.export",
+        binding_id: "http.console.mcp.bundles.export.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/export",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.export",
+        binding_id: "http.console.mcp.bundles.export-defaults.v1",
+        method: "GET",
+        path: "/api/console/mcp/bundles/export-defaults",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.instances.export",
+        binding_id: "http.console.mcp.instances.bundles.export.v1",
+        method: "POST",
+        path: "/api/console/mcp/instances/:instance_id/bundles/export",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.preview",
+        binding_id: "http.console.mcp.bundles.preview-upload.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/preview-upload",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundles.import",
+        binding_id: "http.console.mcp.bundles.import-upload.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/import-upload",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.list",
+        binding_id: "http.console.mcp.bundles.library.list.v1",
+        method: "GET",
+        path: "/api/console/mcp/bundles/library",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.sync",
+        binding_id: "http.console.mcp.bundles.library.sync.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.preview",
+        binding_id: "http.console.mcp.bundles.library.preview.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.import",
+        binding_id: "http.console.mcp.bundles.library.import.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.current.switch",
+        binding_id: "http.console.mcp.bundles.library.current.switch.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.releases.delete",
+        binding_id: "http.console.mcp.bundles.library.releases.delete.v1",
+        method: "DELETE",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.bundle_library.releases.repair",
+        binding_id: "http.console.mcp.bundles.library.releases.repair.v1",
+        method: "POST",
+        path: "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
+        mutating: true,
+    },
 ];
 pub(crate) fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput>>,

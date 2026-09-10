@@ -1,3 +1,5 @@
+mod managed_projection;
+
 use std::sync::Arc;
 
 use control_plane::plugin_management::{
@@ -38,11 +40,6 @@ pub(crate) enum ExtensionCenterInput {
     InstallUploaded(ExtensionUploadFields),
 }
 
-impl InterfaceContract for ExtensionCenterInput {
-    const CONTRACT_ID: &'static str = "console-extension-center-input";
-    const CONTRACT_VERSION: &'static str = "1";
-}
-
 pub(crate) enum ExtensionCenterOutput {
     ManagedExecution(control_plane_contracts::ports::ManagedExecutionState),
     ContributionAuthorizations(ContributionAuthorizationResponse),
@@ -53,11 +50,6 @@ pub(crate) enum ExtensionCenterOutput {
     CatalogEntry(ExtensionCatalogGatewayEntryResponse),
     Updates(ExtensionUpdateCheckResponse),
     Install(ExtensionInstallOutcome),
-}
-
-impl InterfaceContract for ExtensionCenterOutput {
-    const CONTRACT_ID: &'static str = "console-extension-center-output";
-    const CONTRACT_VERSION: &'static str = "1";
 }
 
 struct ExtensionCenterAdapter(ExtensionCenterDependencies);
@@ -164,6 +156,36 @@ impl ExtensionCenterAdapter {
                 let mut families = extension_installation_service(&self.0)
                     .list_installed_families_for_node(&self.0.api_node_id)
                     .await?;
+                let native_targets =
+                    control_plane::ports::PluginRepository::list_native_plugin_targets(
+                        &self.0.store,
+                    )
+                    .await?;
+                for family in &mut families {
+                    if family.current.identity.category != domain::ExtensionCategory::HostExtensions
+                    {
+                        continue;
+                    }
+                    let target = native_targets.iter().find(|t| {
+                        t.category == family.current.identity.category
+                            && t.organization == family.current.identity.organization
+                            && t.artifact_id == family.current.identity.artifact_id
+                    });
+                    for version in &mut family.installed_versions {
+                        version.is_current =
+                            target.is_some_and(|t| t.enabled && t.installation_id == version.id);
+                    }
+                    if let Some(selected) = target.and_then(|t| {
+                        family
+                            .installed_versions
+                            .iter()
+                            .find(|v| v.id == t.installation_id)
+                    }) {
+                        family.current = selected.clone();
+                    } else {
+                        family.current.is_current = false;
+                    }
+                }
                 if let Some(category) = category {
                     families.retain(|family| family.current.identity.category == category);
                 }
@@ -189,8 +211,13 @@ impl ExtensionCenterAdapter {
                         )
                         .await?
                     {
+                        let has_target = installation.category
+                            != domain::ExtensionCategory::HostExtensions
+                            || native_targets
+                                .iter()
+                                .any(|t| t.installation_id == installation.id);
                         response.desired_state =
-                            Some(installation.desired_state.as_str().to_string());
+                            has_target.then(|| installation.desired_state.as_str().to_string());
                         if let Some(artifact) =
                             control_plane::ports::PluginRepository::get_artifact_instance(
                                 &self.0.store,
@@ -199,8 +226,29 @@ impl ExtensionCenterAdapter {
                             )
                             .await?
                         {
+                            let availability_status = if has_target
+                                && installation.category
+                                    == domain::ExtensionCategory::HostExtensions
+                                // Native startup owns the recorded failure; it is not a missing artifact.
+                                && artifact.artifact_status
+                                    != domain::PluginArtifactInstanceStatus::LoadFailed
+                            {
+                                control_plane::plugin_lifecycle::derive_availability_status(
+                                    installation.desired_state,
+                                    if artifact.artifact_status.is_ready() {
+                                        domain::PluginArtifactStatus::Ready
+                                    } else {
+                                        domain::PluginArtifactStatus::Missing
+                                    },
+                                    artifact.runtime_status,
+                                )
+                            } else {
+                                artifact.availability_status
+                            };
                             response.availability_status =
-                                Some(artifact.availability_status.as_str().to_string());
+                                Some(availability_status.as_str().to_string());
+                            response.runtime_status =
+                                has_target.then(|| artifact.runtime_status.as_str().to_string());
                             if is_runtime_uninstall_category(installation.category)
                                 && artifact.artifact_status
                                     == domain::PluginArtifactInstanceStatus::Missing
@@ -265,6 +313,35 @@ impl ExtensionCenterAdapter {
                 )
                 .await?
                 {
+                    if target.category == domain::ExtensionCategory::HostExtensions {
+                        service(&self.0, actor, "extension_center.installed.select")
+                            .switch_version(
+                                control_plane::plugin_management::SwitchPluginVersionCommand {
+                                    actor_user_id: actor.user_id,
+                                    provider_code: target.provider_code,
+                                    target_installation_id: installation_id,
+                                },
+                            )
+                            .await?;
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store,&self.0.api_node_id,installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        let mut response = to_local_inventory_entry(selected);
+                        response.is_current = true;
+                        response.desired_state = Some("pending_restart".into());
+                        if let Some(artifact) =
+                            control_plane::ports::PluginRepository::get_artifact_instance(
+                                &self.0.store,
+                                &self.0.api_node_id,
+                                installation_id,
+                            )
+                            .await?
+                        {
+                            response.runtime_status = Some(artifact.runtime_status.as_str().into());
+                            response.availability_status =
+                                Some(artifact.availability_status.as_str().into());
+                        }
+                        return Ok(ExtensionCenterOutput::Installation(response));
+                    }
                     if target.contract_version == "1flowbase.extension-bus/v1" {
                         let assigned = control_plane::ports::PluginRepository::list_assignments(
                             &self.0.store,
@@ -537,9 +614,27 @@ impl ConsoleInterfacePort<ExtensionCenterInput, ExtensionCenterOutput> for Exten
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_execution.view",binding_id:"http.console.extension-center.managed-execution.view.v1",method:"GET",path:"/api/console/settings/extension-center/installed/:installation_id/managed-execution",mutating:false },
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.lifecycle_deliveries.resume",binding_id:"http.console.extension-center.lifecycle-deliveries.resume.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",mutating:true },
-    ConsoleInterfaceDeclaration { interface_id:"extension_center.managed_executions.retire",binding_id:"http.console.extension-center.managed-executions.retire.v1",method:"POST",path:"/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",mutating:true },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_execution.view",
+        binding_id: "http.console.extension-center.managed-execution.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-execution",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.lifecycle_deliveries.resume",
+        binding_id: "http.console.extension-center.lifecycle-deliveries.resume.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_executions.retire",
+        binding_id: "http.console.extension-center.managed-executions.retire.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",
+        mutating: true,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.contribution_authorizations.grant",
         binding_id: "http.console.extension-center.contribution-authorizations.grant.v1",
@@ -561,7 +656,6 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
         mutating: false,
     },
-
     ConsoleInterfaceDeclaration {
         interface_id: "extension_center.installed.view",
         binding_id: "http.console.extension-center.installed.v1",

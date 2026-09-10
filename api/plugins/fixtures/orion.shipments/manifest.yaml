@@ -1,0 +1,85 @@
+manifest_version: 2
+schema_version: 1flowbase.plugin.manifest/v2
+plugin_id: orion.shipments
+version: 1.0.0
+publisher_namespace: orion
+vendor: Acme
+display_name: orion.shipments
+description: Explicit managed contribution activation fixture
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: []
+binding_targets:
+- workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.extension-bus/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/worker.py
+  limits:
+    timeout_ms: 30000
+managed:
+  module:
+    bus_version: v1
+    module_id: orion.shipments
+    module_version: 1.0.0
+    module_kind: runtime
+    extension_points:
+    - point_id: orion.shipments.created
+      owner_module_id: orion.shipments
+      point_kind: event_stream
+      contract:
+        contract_id: orion.shipments.created
+        contract_version: '1'
+        payload_schema:
+          type: object
+          additionalProperties: false
+          properties:
+            shipment_id:
+              type: string
+              maxLength: 128
+            destination_code:
+              type: string
+              maxLength: 32
+            item_count:
+              type: integer
+          required:
+          - shipment_id
+          - destination_code
+          - item_count
+      scope: workspace
+      cardinality: many
+      ordering: lexicographic
+      failure: isolate_contribution
+      delivery: after_commit_durable
+      lifecycle: workspace_assignment
+      allowed_permissions:
+      - event.subscribe
+      - event.publish
+      - plugin_data.owned.write
+      override_policy: sealed
+    contributions:
+    - contribution_id: orion.shipments.publish
+      contributor_module_id: orion.shipments
+      point_id: 1flowbase.application.runtime-event.after-commit
+      contract_version: '1'
+      required_permissions:
+      - event.subscribe
+      - event.publish
+      mode: append
+  execution_bindings:
+  - contribution_id: orion.shipments.publish
+    execution_mode: process_per_call
+    runtime:
+      protocol: stdio_json
+      entry: bin/worker.py
+    handler: publish.shipment

@@ -33,6 +33,7 @@ export interface SettingsSectionDefinition extends Omit<
 }
 
 export interface SettingsSectionRegistryItem {
+  route_id: string;
   key: string;
   label_key: string;
   to: string;
@@ -111,6 +112,7 @@ export function settingsSectionItemsFromConsoleNavigation(
 
       return [
         {
+          route_id: route.route_id,
           key: settingsSectionKeyFromPath(route.path, route.surface_key),
           label_key: item.label_key,
           to:

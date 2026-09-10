@@ -143,7 +143,7 @@ impl ManagedExtensionComposition {
                 deadline_unix_ms: ((time::OffsetDateTime::now_utc() + time::Duration::seconds(10))
                     .unix_timestamp_nanos()
                     / 1_000_000) as i64,
-                delivery: decode_event_delivery(&record)?,
+                delivery: decode_event_delivery(&snapshot, &record)?,
             })
             .await?;
         drop(admitted);

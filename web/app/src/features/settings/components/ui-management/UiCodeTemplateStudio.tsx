@@ -4,7 +4,7 @@ import {
   diagnoseLegacyBlockModuleSource,
   validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
-import { App, Empty, Form, Input, Select } from 'antd';
+import { Alert, App, Empty, Form, Input, Select } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -26,6 +26,7 @@ import {
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
 import type {
+  SettingsUiManagedTemplate,
   SettingsUiOfficialTemplate,
   SettingsUiTemplateInput
 } from '../../api/ui-management';
@@ -34,6 +35,7 @@ export type UiCodeTemplateStudioMode = 'create' | 'copy' | 'edit' | 'view';
 
 export function UiCodeTemplateStudio({
   initialValue,
+  managedTemplate,
   mode,
   officialTemplates,
   open,
@@ -43,6 +45,7 @@ export function UiCodeTemplateStudio({
   onSave
 }: {
   initialValue: SettingsUiTemplateInput;
+  managedTemplate?: SettingsUiManagedTemplate;
   mode: UiCodeTemplateStudioMode;
   officialTemplates: SettingsUiOfficialTemplate[];
   open: boolean;
@@ -289,6 +292,22 @@ export function UiCodeTemplateStudio({
 
   return (
     <BlockSourceStudio
+      editorHeader={
+        managedTemplate?.owner_plugin_code &&
+        managedTemplate.overwrite_on_plugin_upgrade ? (
+          <Alert
+            data-testid="plugin-settings-overwrite-warning"
+            type="warning"
+            showIcon
+            title={t('plugin_template_overwrite_warning')}
+            description={t('plugin_template_ownership', {
+              owner_plugin_code: managedTemplate.owner_plugin_code,
+              owner_feature_id: managedTemplate.owner_feature_id,
+              applied_plugin_version: managedTemplate.applied_plugin_version
+            })}
+          />
+        ) : undefined
+      }
       contextComment={projection.contextComment}
       dirty={dirty}
       editorDiagnostics={diagnostics}
