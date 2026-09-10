@@ -351,6 +351,8 @@ async fn concurrent_pricing_rule_writes_cannot_create_an_overlapping_schedule() 
             output_token_unit_price: Decimal::ONE,
             cache_hit_token_unit_size: 1_000_000,
             cache_hit_token_unit_price: Decimal::ZERO,
+            cache_write_token_unit_size: 1_000_000,
+            cache_write_token_unit_price: Decimal::ONE,
             currency_code: "USD".into(),
             effective_from,
             effective_to: None,
@@ -360,8 +362,7 @@ async fn concurrent_pricing_rule_writes_cannot_create_an_overlapping_schedule() 
             local_time_end: None,
             priority: 0,
             enabled: true,
-            rating_policy_enabled: false,
-            rating_policy: json!({}),
+            rules: serde_json::json!([]),
             source_kind: "manual".into(),
             source_catalog_id: None,
             source_version: None,
@@ -406,6 +407,8 @@ async fn model_pricing_install_skips_existing_rule_without_overwriting_user_valu
         output_token_unit_price: Decimal::from(2),
         cache_hit_token_unit_size: 1_000_000,
         cache_hit_token_unit_price: Decimal::ZERO,
+        cache_write_token_unit_size: 1_000_000,
+        cache_write_token_unit_price: Decimal::ONE,
         currency_code: "USD".into(),
         effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
         effective_to: None,
@@ -415,8 +418,7 @@ async fn model_pricing_install_skips_existing_rule_without_overwriting_user_valu
         local_time_end: None,
         priority: 0,
         enabled: true,
-        rating_policy_enabled: false,
-        rating_policy: json!({}),
+        rules: serde_json::json!([]),
         source_kind: "official".into(),
         source_catalog_id: Some(source_catalog_id),
         source_version: Some("fixture-v1".into()),
@@ -552,4 +554,100 @@ async fn nonpositive_available_credit_blocks_only_charge_enabled_accounts() {
             );
         }
     }
+}
+
+// AC4: official id changes must not create a second standard, while manual schedules remain allowed.
+#[tokio::test]
+async fn official_pricing_import_deduplicates_model_identity_and_preserves_manual_rules() {
+    let (store, _, user_id) = seeded_store().await;
+    let base = PricingRule {
+        id: Uuid::now_v7(),
+        provider_code: "standard-identity".into(),
+        upstream_model_id: "model".into(),
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: Decimal::ONE,
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: Decimal::from(2),
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: Decimal::ZERO,
+        cache_write_token_unit_size: 1_000_000,
+        cache_write_token_unit_price: Decimal::ONE,
+        currency_code: "USD".into(),
+        effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
+        effective_to: None,
+        timezone: "UTC".into(),
+        weekday_mask: 127,
+        local_time_start: None,
+        local_time_end: None,
+        priority: 10,
+        enabled: true,
+        rules: json!([]),
+        source_kind: "manual".into(),
+        source_catalog_id: None,
+        source_version: None,
+        source_checksum: None,
+        extensions: json!({}),
+        created_by: Some(user_id),
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput { rule: base.clone() })
+        .await
+        .unwrap();
+    let mut official = base.clone();
+    official.id = Uuid::now_v7();
+    official.priority = 0;
+    official.source_kind = "official".into();
+    official.source_catalog_id = Some(official.id.to_string());
+    official.rules = json!([{"when":{"cache_write_ttl_seconds":3600},"overrides":{"cache_write_token_unit_price":"2"}}]);
+    let inserted = store
+        .insert_pricing_rule_if_absent(&UpsertPricingRuleInput {
+            rule: official.clone(),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(inserted.rules, official.rules);
+    assert_eq!(inserted.cache_write_token_unit_price, Decimal::ONE);
+    // Two concurrent pulls with different new source IDs must both skip.
+    let mut revision_a = official.clone();
+    revision_a.id = Uuid::now_v7();
+    revision_a.source_catalog_id = Some(revision_a.id.to_string());
+    let mut revision_b = revision_a.clone();
+    revision_b.id = Uuid::now_v7();
+    revision_b.source_catalog_id = Some(revision_b.id.to_string());
+    let input_a = UpsertPricingRuleInput { rule: revision_a };
+    let input_b = UpsertPricingRuleInput { rule: revision_b };
+    let (a, b) = tokio::join!(
+        store.insert_pricing_rule_if_absent(&input_a),
+        store.insert_pricing_rule_if_absent(&input_b)
+    );
+    assert!(a.unwrap().is_none());
+    assert!(b.unwrap().is_none());
+    let candidates = store
+        .match_pricing_rules("standard-identity", "model", OffsetDateTime::now_utc())
+        .await
+        .unwrap();
+    let matches = candidates
+        .iter()
+        .filter(|rule| rule.provider_code == "standard-identity")
+        .collect::<Vec<_>>();
+    assert_eq!(matches.len(), 2);
+    assert_eq!(
+        matches
+            .iter()
+            .filter(|rule| rule.source_kind == "official")
+            .count(),
+        1
+    );
+    assert_eq!(
+        store
+            .get_pricing_rule(base.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .priority,
+        10
+    );
 }

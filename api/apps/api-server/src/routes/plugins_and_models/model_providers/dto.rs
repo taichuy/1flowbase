@@ -403,15 +403,16 @@ pub struct ModelProviderPricingTargetResponse {
     pub output_token_unit_price: String,
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: String,
+    pub cache_write_token_unit_size: i64,
+    pub cache_write_token_unit_price: String,
     pub effective_from: String,
     pub effective_to: Option<String>,
     pub timezone: String,
     pub weekday_mask: i16,
     pub local_time_start: Option<String>,
     pub local_time_end: Option<String>,
-    pub rating_policy_enabled: bool,
-    #[schema(value_type = Object)]
-    pub rating_policy: serde_json::Value,
+    #[schema(value_type = Vec<Object>)]
+    pub rules: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

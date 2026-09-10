@@ -165,3 +165,84 @@ async fn pricing_cleanup_replaces_generated_model_rules_with_one_global_fallback
     .unwrap();
     assert_eq!(existing_price, "2.000000000000000000");
 }
+
+// AC3: migrate real stored v1/v2 defaults and sparse rules without changing identities/schedules.
+#[tokio::test]
+async fn pricing_format_v2_migrates_fixed_tier_and_ttl_records_in_place() {
+    let database = postgres_test_support::PostgresTestSchema::create(&base_database_url())
+        .await
+        .unwrap();
+    let pool = database.connect().await.unwrap();
+    let version = 20260910120000;
+    let before = Migrator {
+        migrations: Cow::Owned(
+            sqlx::migrate!("./migrations")
+                .iter()
+                .filter(|m| m.version < version)
+                .cloned()
+                .collect(),
+        ),
+        ..Migrator::DEFAULT
+    };
+    before.run(&pool).await.unwrap();
+    let fixed = Uuid::now_v7();
+    let tier = Uuid::now_v7();
+    let ttl = Uuid::now_v7();
+    for (id, enabled, policy) in [
+        (fixed, false, serde_json::json!({})),
+        (
+            tier,
+            true,
+            serde_json::json!({"schema_version":"1flowbase.model-rating-policy/v1","type":"input_token_tiers","tiers":[{"when":{"operator":"gte","value":200000},"rates":{"input":{"unit_size":1000,"unit_price":"2"},"output":{"unit_size":1000,"unit_price":"4"},"cache_hit":{"unit_size":1000,"unit_price":"0.2"}}}]}),
+        ),
+        (
+            ttl,
+            true,
+            serde_json::json!({"schema_version":"1flowbase.model-rating-policy/v2","type":"token_pricing","unit_size":1000000,"rates":{"input":"10","output":"50","cache_hit":"0.25","cache_write":{"by_ttl_seconds":{"300":"12.5","3600":"20"}}}}),
+        ),
+    ] {
+        sqlx::query("insert into model_pricing_rules (id,provider_code,upstream_model_id,input_token_unit_size,input_token_unit_price,output_token_unit_size,output_token_unit_price,cache_hit_token_unit_size,cache_hit_token_unit_price,currency_code,effective_from,timezone,weekday_mask,priority,enabled,source_kind,extensions,rating_policy_enabled,rating_policy) values ($1,'migration-v2',$2,1000,1,1000,3,1000,0.1,'USD','2026-01-01T00:00:00Z','UTC',127,0,true,'manual','{}',$3,$4)")
+            .bind(id).bind(id.to_string()).bind(enabled).bind(policy).execute(&pool).await.unwrap();
+    }
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    use control_plane_contracts::ports::BillingRepository;
+    let fixed_row = store.get_pricing_rule(fixed).await.unwrap().unwrap();
+    assert_eq!(
+        fixed_row.input_token_unit_price,
+        fixed_row.cache_write_token_unit_price
+    );
+    assert_eq!(fixed_row.cache_write_token_unit_size, 1000);
+    assert_eq!(fixed_row.rules, serde_json::json!([]));
+    let tier_row = store.get_pricing_rule(tier).await.unwrap().unwrap();
+    assert_eq!(tier_row.rules[0]["when"]["input_tokens"]["operator"], "gte");
+    assert_eq!(
+        tier_row.rules[0]["overrides"]["cache_write_token_unit_price"],
+        "2"
+    );
+    assert_eq!(
+        tier_row.rules[0]["overrides"]["input_token_unit_size"],
+        1000
+    );
+    let ttl_row = store.get_pricing_rule(ttl).await.unwrap().unwrap();
+    assert_eq!(ttl_row.input_token_unit_price.to_string(), "10");
+    assert_eq!(ttl_row.cache_write_token_unit_price.to_string(), "12.5");
+    assert_eq!(
+        ttl_row.rules,
+        serde_json::json!([{"when":{"cache_write_ttl_seconds":3600},"overrides":{"cache_write_token_unit_price":"20"}}])
+    );
+    for row in [&fixed_row, &tier_row, &ttl_row] {
+        row.validate().unwrap();
+        assert_eq!(row.source_kind, "manual");
+        assert_eq!(row.timezone, "UTC");
+        assert!(row.enabled);
+    }
+    sqlx::migrate!("./migrations")
+        .run(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_pricing_rule(ttl).await.unwrap().unwrap().rules,
+        ttl_row.rules
+    );
+}

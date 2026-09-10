@@ -16,9 +16,9 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::billing::{
-    CreditCommandBody, ImportCatalogBody, PageQuery, PricingCatalogPageResponse,
-    PricingCatalogQuery, PricingRuleBody, PricingRuleQuery, PricingRuleResponse,
-    PricingRulesPageResponse, body_to_rule, invalidate_pricing_rules_cache,
+    body_to_rule, invalidate_pricing_rules_cache, CreditCommandBody, ImportCatalogBody, PageQuery,
+    PricingCatalogPageResponse, PricingCatalogQuery, PricingRuleBody, PricingRuleQuery,
+    PricingRuleResponse, PricingRulesPageResponse,
 };
 use crate::{
     error_response::ApiError,
@@ -228,7 +228,7 @@ impl BillingAdapter {
                     .take(page_size)
                     .collect();
                 Ok(BillingOutput::PricingCatalog(PricingCatalogPageResponse {
-                    schema_version: "1flowbase.model-pricing-page/v1",
+                    schema_version: "1flowbase.model-pricing-page/v2",
                     catalog_version: catalog.catalog_version,
                     currency_code: "USD",
                     items,

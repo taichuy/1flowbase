@@ -1,4 +1,4 @@
-use std::{fs, path::Path, time::Duration};
+use std::{collections::HashSet, fs, path::Path, time::Duration};
 
 use anyhow::{bail, Context, Result};
 use control_plane::ports::{BillingRepository, UpsertPricingRuleInput};
@@ -11,20 +11,11 @@ use crate::{
     routes::billing::{body_to_rule, PricingRuleBody},
 };
 
-const SOURCE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-source/v1";
-const INDEX_SCHEMA_VERSION: &str = "1flowbase.model-pricing-index/v1";
-const PAGE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-page/v1";
+const SOURCE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-source/v2";
+const INDEX_SCHEMA_VERSION: &str = "1flowbase.model-pricing-index/v2";
+const PAGE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-page/v2";
 const BUILTIN_ZERO_SOURCE: &[u8] =
     include_bytes!("../resources/model-pricing/@zero/any/pricing.json");
-
-#[derive(Debug, Deserialize)]
-struct ModelPricingSource {
-    schema_version: String,
-    provider_code: String,
-    upstream_model_id: String,
-    currency_code: String,
-    rules: Vec<serde_json::Map<String, serde_json::Value>>,
-}
 
 #[derive(Debug, Deserialize)]
 struct CatalogSourceMetadata {
@@ -118,6 +109,7 @@ pub(crate) fn load_bootstrap_pricing_rules(root: &Path) -> Result<Vec<PricingRul
             )?);
         }
     }
+    validate_catalog_rules(&rules).map_err(|error| error.0)?;
     Ok(rules)
 }
 
@@ -126,37 +118,57 @@ fn decode_source(
     source_version: Option<&str>,
     expected_provider_code: Option<&str>,
 ) -> Result<Vec<PricingRuleBody>> {
-    let source: ModelPricingSource = serde_json::from_slice(bytes)?;
-    if source.schema_version != SOURCE_SCHEMA_VERSION || source.currency_code != "USD" {
+    let mut source: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(bytes)?;
+    if source
+        .remove("schema_version")
+        .as_ref()
+        .and_then(|value| value.as_str())
+        != Some(SOURCE_SCHEMA_VERSION)
+    {
         bail!("invalid model pricing source document");
     }
-    if expected_provider_code.is_some_and(|expected| source.provider_code != expected) {
+    let mut rule: PricingRuleBody = serde_json::from_value(serde_json::Value::Object(source))?;
+    if rule.currency_code.as_deref() != Some("USD") {
+        bail!("invalid model pricing source currency");
+    }
+    if expected_provider_code.is_some_and(|expected| rule.provider_code != expected) {
         bail!("model pricing source provider does not match its directory");
     }
-    source
-        .rules
-        .into_iter()
-        .map(|mut source_rule| {
-            source_rule.insert(
-                "provider_code".to_owned(),
-                serde_json::Value::String(source.provider_code.clone()),
-            );
-            source_rule.insert(
-                "upstream_model_id".to_owned(),
-                serde_json::Value::String(source.upstream_model_id.clone()),
-            );
-            let mut rule =
-                serde_json::from_value::<PricingRuleBody>(serde_json::Value::Object(source_rule))?;
-            let id = rule
-                .id
-                .context("model pricing source rule id is required")?;
-            rule.currency_code = Some("USD".to_owned());
-            rule.source_kind = Some("official".to_owned());
-            rule.source_catalog_id = Some(id.to_string());
-            rule.source_version = source_version.map(str::to_owned);
-            Ok(rule)
-        })
-        .collect()
+    let id = rule.id.context("model pricing source id is required")?;
+    rule.source_kind = Some("official".to_owned());
+    rule.source_catalog_id = Some(id.to_string());
+    rule.source_version = source_version.map(str::to_owned);
+    validate_catalog_rules(std::slice::from_ref(&rule)).map_err(|error| error.0)?;
+    Ok(vec![rule])
+}
+
+fn validate_catalog_rules(rules: &[PricingRuleBody]) -> Result<(), ApiError> {
+    let mut ids = HashSet::new();
+    let mut targets = HashSet::new();
+    for body in rules {
+        let id = body
+            .id
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "pricing_catalog_id",
+            ))?;
+        if !ids.insert(id) || !targets.insert((&body.provider_code, &body.upstream_model_id)) {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "pricing_catalog_duplicate_standard",
+            )
+            .into());
+        }
+        if body.source_kind.as_deref() != Some("official")
+            || body.source_catalog_id.as_deref() != Some(id.to_string().as_str())
+            || body.currency_code.as_deref() != Some("USD")
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "official_catalog_rule",
+            )
+            .into());
+        }
+        body_to_rule(body.clone(), Uuid::nil(), None)?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn install_pricing_rules_if_absent<R: BillingRepository>(
@@ -164,6 +176,7 @@ pub(crate) async fn install_pricing_rules_if_absent<R: BillingRepository>(
     actor_user_id: Uuid,
     rules: Vec<PricingRuleBody>,
 ) -> Result<PricingRuleInstallSummary, ApiError> {
+    validate_catalog_rules(&rules)?;
     let mut summary = PricingRuleInstallSummary::default();
     for body in rules {
         let rule = body_to_rule(body, actor_user_id, None)?;
@@ -246,6 +259,7 @@ pub(crate) async fn fetch_remote_pricing_catalog(
         )
         .into());
     }
+    validate_catalog_rules(&rules)?;
     Ok(RemotePricingCatalog {
         catalog_version: index.catalog_version,
         rules,

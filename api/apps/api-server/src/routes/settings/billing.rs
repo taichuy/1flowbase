@@ -80,6 +80,7 @@ pub struct PricingCatalogPageResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PricingRuleBody {
     pub id: Option<Uuid>,
     pub provider_code: String,
@@ -90,6 +91,8 @@ pub struct PricingRuleBody {
     pub output_token_unit_price: String,
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: String,
+    pub cache_write_token_unit_size: i64,
+    pub cache_write_token_unit_price: String,
     pub currency_code: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
@@ -101,9 +104,7 @@ pub struct PricingRuleBody {
     pub local_time_end: Option<String>,
     pub priority: i32,
     pub enabled: bool,
-    #[serde(default)]
-    pub rating_policy_enabled: bool,
-    pub rating_policy: Option<Value>,
+    pub rules: Value,
     pub source_kind: Option<String>,
     pub source_catalog_id: Option<String>,
     pub source_version: Option<String>,
@@ -122,6 +123,8 @@ pub struct PricingRuleResponse {
     pub output_token_unit_price: String,
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: String,
+    pub cache_write_token_unit_size: i64,
+    pub cache_write_token_unit_price: String,
     pub currency_code: String,
     #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
@@ -133,8 +136,7 @@ pub struct PricingRuleResponse {
     pub local_time_end: Option<String>,
     pub priority: i32,
     pub enabled: bool,
-    pub rating_policy_enabled: bool,
-    pub rating_policy: Value,
+    pub rules: Value,
     pub source_kind: String,
     pub source_catalog_id: Option<String>,
     pub source_version: Option<String>,
@@ -157,6 +159,8 @@ impl From<PricingRule> for PricingRuleResponse {
             output_token_unit_price: rule.output_token_unit_price.to_string(),
             cache_hit_token_unit_size: rule.cache_hit_token_unit_size,
             cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
+            cache_write_token_unit_size: rule.cache_write_token_unit_size,
+            cache_write_token_unit_price: rule.cache_write_token_unit_price.to_string(),
             currency_code: rule.currency_code,
             effective_from: rule.effective_from,
             effective_to: rule.effective_to,
@@ -166,8 +170,7 @@ impl From<PricingRule> for PricingRuleResponse {
             local_time_end: rule.local_time_end.map(|value| value.to_string()),
             priority: rule.priority,
             enabled: rule.enabled,
-            rating_policy_enabled: rule.rating_policy_enabled,
-            rating_policy: rule.rating_policy,
+            rules: rule.rules,
             source_kind: rule.source_kind,
             source_catalog_id: rule.source_catalog_id,
             source_version: rule.source_version,
@@ -204,6 +207,13 @@ pub(crate) fn body_to_rule(
                 control_plane::errors::ControlPlaneError::InvalidInput("cache_hit_token_unit_price")
             },
         )?,
+        cache_write_token_unit_size: body.cache_write_token_unit_size,
+        cache_write_token_unit_price: Decimal::from_str(&body.cache_write_token_unit_price)
+            .map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput(
+                    "cache_write_token_unit_price",
+                )
+            })?,
         currency_code: body.currency_code.unwrap_or_else(|| "USD".into()),
         effective_from: body.effective_from,
         effective_to: body.effective_to,
@@ -235,8 +245,7 @@ pub(crate) fn body_to_rule(
             })?,
         priority: body.priority,
         enabled: body.enabled,
-        rating_policy_enabled: body.rating_policy_enabled,
-        rating_policy: body.rating_policy.unwrap_or_else(|| serde_json::json!({})),
+        rules: body.rules,
         source_kind: body.source_kind.unwrap_or_else(|| "manual".into()),
         source_catalog_id: body.source_catalog_id,
         source_version: body.source_version,

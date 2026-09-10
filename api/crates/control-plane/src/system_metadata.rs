@@ -147,6 +147,18 @@ pub fn model_pricing_rule_metadata_template() -> SystemMetadataModelTemplate {
             ModelFieldKind::Number,
             true,
         ),
+        (
+            "cache_write_token_unit_size",
+            "Cache Write Token Unit Size",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "cache_write_token_unit_price",
+            "Cache Write Token Unit Price",
+            ModelFieldKind::Number,
+            true,
+        ),
         ("currency_code", "Currency", ModelFieldKind::String, true),
         (
             "effective_from",
@@ -176,13 +188,7 @@ pub fn model_pricing_rule_metadata_template() -> SystemMetadataModelTemplate {
         ),
         ("priority", "Priority", ModelFieldKind::Number, true),
         ("enabled", "Enabled", ModelFieldKind::Boolean, true),
-        (
-            "rating_policy_enabled",
-            "Rating Policy Enabled",
-            ModelFieldKind::Boolean,
-            true,
-        ),
-        ("rating_policy", "Rating Policy", ModelFieldKind::Json, true),
+        ("rules", "Special Pricing Rules", ModelFieldKind::Json, true),
         ("source_kind", "Source Kind", ModelFieldKind::String, true),
         (
             "source_catalog_id",

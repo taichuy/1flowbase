@@ -19,7 +19,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 
 async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>) {
     let page = json!({
-        "schema_version": "1flowbase.model-pricing-page/v1",
+        "schema_version": "1flowbase.model-pricing-page/v2",
         "catalog_version": "2026-08-18.1",
         "currency_code": "USD",
         "page": 1,
@@ -33,6 +33,8 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
             "output_token_unit_price": "0",
             "cache_hit_token_unit_size": 1000000,
             "cache_hit_token_unit_price": "0",
+            "cache_write_token_unit_size": 1000000,
+            "cache_write_token_unit_price": "0",
             "currency_code": "USD",
             "effective_from": "2026-08-17T00:00:00Z",
             "effective_to": null,
@@ -42,8 +44,7 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
             "local_time_end": null,
             "priority": 0,
             "enabled": true,
-            "rating_policy_enabled": false,
-            "rating_policy": {},
+            "rules": [],
             "source_kind": "official",
             "source_catalog_id": "10000000-0000-4000-8000-000000000001",
             "source_version": "2026-08-18.1",
@@ -59,7 +60,7 @@ async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>)
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let page_url = format!("{base_url}/model-pricing/catalog/v1/pages/1.json");
     let index = json!({
-        "schema_version": "1flowbase.model-pricing-index/v1",
+        "schema_version": "1flowbase.model-pricing-index/v2",
         "catalog_version": "2026-08-18.1",
         "currency_code": "USD",
         "total_rules": 1,
@@ -175,6 +176,8 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
                         "output_token_unit_price":"5",
                         "cache_hit_token_unit_size":1000000,
                         "cache_hit_token_unit_price":"0.25",
+                        "cache_write_token_unit_size":1000000,
+                        "cache_write_token_unit_price":"1.5",
                         "currency_code":"USD",
                         "effective_from":"2026-01-01T00:00:00Z",
                         "effective_to":null,
@@ -184,19 +187,10 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
                         "local_time_end":null,
                         "priority":0,
                         "enabled":true,
-                        "rating_policy_enabled":true,
-                        "rating_policy":{
-                            "schema_version":"1flowbase.model-rating-policy/v1",
-                            "type":"input_token_tiers",
-                            "tiers":[{
-                                "when":{"operator":"gte","value":200000},
-                                "rates":{
-                                    "input":{"unit_size":1000000,"unit_price":"2.5"},
-                                    "output":{"unit_size":1000000,"unit_price":"10"},
-                                    "cache_hit":{"unit_size":1000000,"unit_price":"0.5"}
-                                }
-                            }]
-                        },
+                        "rules":[{
+                            "when":{"input_tokens":{"operator":"gte","value":200000}},
+                            "overrides":{"input_token_unit_price":"2.5", "output_token_unit_price":"10", "cache_hit_token_unit_price":"0.5"}
+                        }],
                         "source_kind":"manual",
                         "extensions":{}
                     })
@@ -209,11 +203,19 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(create_rule.status(), StatusCode::OK);
     let rule_payload = response_json(create_rule).await;
     assert_eq!(rule_payload["data"]["currency_code"], "USD");
-    assert_eq!(rule_payload["data"]["rating_policy_enabled"], true);
     assert_eq!(
-        rule_payload["data"]["rating_policy"]["type"],
-        "input_token_tiers"
+        rule_payload["data"]["rules"][0]["when"]["input_tokens"]["value"],
+        200000
     );
+    assert_eq!(
+        rule_payload["data"]["cache_write_token_unit_price"]
+            .as_str()
+            .unwrap()
+            .parse::<Decimal>()
+            .unwrap(),
+        Decimal::from_str("1.5").unwrap()
+    );
+    assert!(rule_payload["data"].get("rating_policy").is_none());
     assert_eq!(
         Decimal::from_str(
             rule_payload["data"]["input_token_unit_price"]
@@ -356,4 +358,101 @@ fn model_pricing_bootstrap_loader_reads_directory_sources_and_catalog_version() 
     assert_eq!(rules[0].provider_code, "zero");
     assert_eq!(rules[0].upstream_model_id, "any");
     assert_eq!(rules[0].source_version.as_deref(), Some("fixture-v1"));
+}
+
+// AC1/AC4: the source is one configuration; nested old records cannot masquerade as overrides.
+#[test]
+fn model_pricing_bootstrap_rejects_duplicate_targets_and_old_sources() {
+    let root = std::env::temp_dir().join(format!("pricing-format-v2-{}", uuid::Uuid::now_v7()));
+    let a = root.join("@zero/any");
+    let b = root.join("@zero/duplicate");
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("resources/model-pricing/@zero/any/pricing.json");
+    let mut source: Value = serde_json::from_slice(&std::fs::read(source_path).unwrap()).unwrap();
+    std::fs::write(a.join("pricing.json"), source.to_string()).unwrap();
+    source["id"] = json!(uuid::Uuid::now_v7());
+    std::fs::write(b.join("pricing.json"), source.to_string()).unwrap();
+    assert!(crate::model_pricing_catalog::load_bootstrap_pricing_rules(&root).is_err());
+    std::fs::remove_file(b.join("pricing.json")).unwrap();
+    source["schema_version"] = json!("1flowbase.model-pricing-source/v1");
+    std::fs::write(a.join("pricing.json"), source.to_string()).unwrap();
+    assert!(crate::model_pricing_catalog::load_bootstrap_pricing_rules(&root).is_err());
+    source["schema_version"] = json!("1flowbase.model-pricing-source/v2");
+    source["rules"] = json!([{"id":uuid::Uuid::now_v7(),"input_token_unit_price":"1"}]);
+    std::fs::write(a.join("pricing.json"), source.to_string()).unwrap();
+    assert!(crate::model_pricing_catalog::load_bootstrap_pricing_rules(&root).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
+    for scenario in [
+        "valid",
+        "duplicate",
+        "old_schema",
+        "checksum",
+        "invalid_rules",
+    ] {
+        let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/model-pricing/@zero/any/pricing.json");
+        let mut item: Value = serde_json::from_slice(&std::fs::read(source_path).unwrap()).unwrap();
+        item.as_object_mut().unwrap().remove("schema_version");
+        item["source_kind"] = json!("official");
+        item["source_catalog_id"] = item["id"].clone();
+        if scenario == "invalid_rules" {
+            item["rules"] = json!([{"when":{"cache_write_ttl_seconds":3600},"overrides":{"output_token_unit_price":"20"}}]);
+        }
+        let mut items = vec![item.clone()];
+        if scenario == "duplicate" {
+            let id = uuid::Uuid::now_v7();
+            item["id"] = json!(id);
+            item["source_catalog_id"] = json!(id);
+            items.push(item);
+        }
+        let page = json!({"schema_version":if scenario == "old_schema" {"1flowbase.model-pricing-page/v1"} else {"1flowbase.model-pricing-page/v2"},"catalog_version":"fixture-v2","currency_code":"USD","page":1,"rules":items});
+        let checksum = if scenario == "checksum" {
+            "sha256:incorrect".to_string()
+        } else {
+            format!(
+                "sha256:{:x}",
+                Sha256::digest(serde_json::to_vec(&page).unwrap())
+            )
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let index = json!({"schema_version":"1flowbase.model-pricing-index/v2","catalog_version":"fixture-v2","currency_code":"USD","total_rules":items.len(),"pages":[{"page":1,"rule_count":items.len(),"checksum":checksum,"locator":format!("{base}pages/1.json")}]});
+        let router = Router::new()
+            .route(
+                "/index.json",
+                get(move || {
+                    let index = index.clone();
+                    async move { Json(index) }
+                }),
+            )
+            .route(
+                "/pages/1.json",
+                get(move || {
+                    let page = page.clone();
+                    async move { Json(page) }
+                }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let result = crate::model_pricing_catalog::fetch_remote_pricing_catalog(&format!(
+            "{base}index.json"
+        ))
+        .await;
+        server.abort();
+        assert_eq!(
+            result.is_ok(),
+            scenario == "valid",
+            "scenario {scenario}: {result:?}"
+        );
+        if let Ok(catalog) = result {
+            assert_eq!(catalog.rules.len(), 1);
+            assert_eq!(catalog.rules[0].rules, json!([]));
+            assert_eq!(catalog.rules[0].cache_write_token_unit_price, "0");
+        }
+    }
 }

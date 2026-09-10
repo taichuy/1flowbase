@@ -71,14 +71,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         ("priority", serde_json::json!({"type":"integer"})),
                         ("enabled", serde_json::json!({"type":"boolean"})),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::json!({"type":"boolean"}),
-                        ),
-                        (
-                            "rating_policy",
-                            serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
-                        ),
+                        ("rules", mp::json_summary_schema()),
                         (
                             "source_kind",
                             serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
@@ -138,14 +131,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         ("priority", serde_json::json!({"type":"integer"})),
                         ("enabled", serde_json::json!({"type":"boolean"})),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::json!({"type":"boolean"}),
-                        ),
-                        (
-                            "rating_policy",
-                            serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}),
-                        ),
+                        ("rules", mp::json_summary_schema()),
                         (
                             "source_kind",
                             serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
@@ -597,17 +583,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         ("priority", serde_json::json!(*(&(_field_0).priority))),
                         ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::Value::Bool(*(&(_field_0).rating_policy_enabled)),
-                        ),
-                        (
-                            "rating_policy",
-                            match (&(_field_0).rating_policy).as_ref() {
-                                Some(item) => mp::json_summary(item),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
+                        ("rules", mp::json_summary(&(_field_0).rules)),
                         (
                             "source_kind",
                             match (&(_field_0).source_kind).as_ref() {
@@ -731,17 +707,7 @@ impl InterfaceContract for BillingInput {
                             "enabled",
                             serde_json::Value::Bool(*(&(_field_body).enabled)),
                         ),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::Value::Bool(*(&(_field_body).rating_policy_enabled)),
-                        ),
-                        (
-                            "rating_policy",
-                            match (&(_field_body).rating_policy).as_ref() {
-                                Some(item) => mp::json_summary(item),
-                                None => serde_json::Value::Null,
-                            },
-                        ),
+                        ("rules", mp::json_summary(&(_field_body).rules)),
                         (
                             "source_kind",
                             match (&(_field_body).source_kind).as_ref() {

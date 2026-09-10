@@ -11,7 +11,7 @@ impl InterfaceContract for BillingOutput {
                     mp::object_schema(&[
                         (
                             "items",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("provider_code",mp::text_schema()), ("upstream_model_id",mp::text_schema()), ("currency_code",mp::text_schema()), ("effective_from",serde_json::json!({"type":"integer"})), ("effective_to",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("timezone",mp::object_schema(&[("byte_count",mp::count_schema())])), ("weekday_mask",serde_json::json!({"type":"integer"})), ("local_time_start",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("local_time_end",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("priority",serde_json::json!({"type":"integer"})), ("enabled",serde_json::json!({"type":"boolean"})), ("rating_policy_enabled",serde_json::json!({"type":"boolean"})), ("rating_policy",mp::json_summary_schema()), ("source_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source_catalog_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("extensions",mp::json_summary_schema()), ("created_by",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("created_at",serde_json::json!({"type":"integer"})), ("updated_at",serde_json::json!({"type":"integer"}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",mp::text_schema()), ("provider_code",mp::text_schema()), ("upstream_model_id",mp::text_schema()), ("currency_code",mp::text_schema()), ("effective_from",serde_json::json!({"type":"integer"})), ("effective_to",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("timezone",mp::object_schema(&[("byte_count",mp::count_schema())])), ("weekday_mask",serde_json::json!({"type":"integer"})), ("local_time_start",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("local_time_end",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("priority",serde_json::json!({"type":"integer"})), ("enabled",serde_json::json!({"type":"boolean"})),  ("rules",mp::json_summary_schema()), ("source_kind",mp::object_schema(&[("byte_count",mp::count_schema())])), ("source_catalog_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("extensions",mp::json_summary_schema()), ("created_by",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("created_at",serde_json::json!({"type":"integer"})), ("updated_at",serde_json::json!({"type":"integer"}))])}),
                         ),
                         ("total_count", serde_json::json!({"type":"integer"})),
                         ("page", serde_json::json!({"type":"integer"})),
@@ -48,11 +48,7 @@ impl InterfaceContract for BillingOutput {
                         ),
                         ("priority", serde_json::json!({"type":"integer"})),
                         ("enabled", serde_json::json!({"type":"boolean"})),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::json!({"type":"boolean"}),
-                        ),
-                        ("rating_policy", mp::json_summary_schema()),
+                        ("rules", mp::json_summary_schema()),
                         (
                             "source_kind",
                             mp::object_schema(&[("byte_count", mp::count_schema())]),
@@ -93,7 +89,7 @@ impl InterfaceContract for BillingOutput {
                         ("currency_code", mp::text_schema()),
                         (
                             "items",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("provider_code",mp::text_schema()), ("upstream_model_id",mp::text_schema()), ("currency_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("effective_from",serde_json::json!({"type":"integer"})), ("effective_to",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("timezone",mp::object_schema(&[("byte_count",mp::count_schema())])), ("weekday_mask",serde_json::json!({"type":"integer"})), ("local_time_start",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("local_time_end",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("priority",serde_json::json!({"type":"integer"})), ("enabled",serde_json::json!({"type":"boolean"})), ("rating_policy_enabled",serde_json::json!({"type":"boolean"})), ("rating_policy",serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]})), ("source_kind",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_catalog_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("extensions",serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}))])}),
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("provider_code",mp::text_schema()), ("upstream_model_id",mp::text_schema()), ("currency_code",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("effective_from",serde_json::json!({"type":"integer"})), ("effective_to",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("timezone",mp::object_schema(&[("byte_count",mp::count_schema())])), ("weekday_mask",serde_json::json!({"type":"integer"})), ("local_time_start",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("local_time_end",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("priority",serde_json::json!({"type":"integer"})), ("enabled",serde_json::json!({"type":"boolean"})),  ("rules",mp::json_summary_schema()), ("source_kind",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("source_catalog_id",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("source_checksum",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("extensions",serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]}))])}),
                         ),
                         ("total_count", serde_json::json!({"type":"integer"})),
                         ("page", serde_json::json!({"type":"integer"})),
@@ -265,16 +261,7 @@ impl InterfaceContract for BillingOutput {
                                                 "enabled",
                                                 serde_json::Value::Bool(*(&(item).enabled)),
                                             ),
-                                            (
-                                                "rating_policy_enabled",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).rating_policy_enabled),
-                                                ),
-                                            ),
-                                            (
-                                                "rating_policy",
-                                                mp::json_summary(&(item).rating_policy),
-                                            ),
+                                            ("rules", mp::json_summary(&(item).rules)),
                                             (
                                                 "source_kind",
                                                 mp::object_value(&[(
@@ -401,11 +388,7 @@ impl InterfaceContract for BillingOutput {
                         ),
                         ("priority", serde_json::json!(*(&(_field_0).priority))),
                         ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        (
-                            "rating_policy_enabled",
-                            serde_json::Value::Bool(*(&(_field_0).rating_policy_enabled)),
-                        ),
-                        ("rating_policy", mp::json_summary(&(_field_0).rating_policy)),
+                        ("rules", mp::json_summary(&(_field_0).rules)),
                         (
                             "source_kind",
                             mp::object_value(&[(
@@ -552,19 +535,7 @@ impl InterfaceContract for BillingOutput {
                                                 "enabled",
                                                 serde_json::Value::Bool(*(&(item).enabled)),
                                             ),
-                                            (
-                                                "rating_policy_enabled",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).rating_policy_enabled),
-                                                ),
-                                            ),
-                                            (
-                                                "rating_policy",
-                                                match (&(item).rating_policy).as_ref() {
-                                                    Some(item) => mp::json_summary(item),
-                                                    None => serde_json::Value::Null,
-                                                },
-                                            ),
+                                            ("rules", mp::json_summary(&(item).rules)),
                                             (
                                                 "source_kind",
                                                 match (&(item).source_kind).as_ref() {

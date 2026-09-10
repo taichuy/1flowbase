@@ -32,6 +32,10 @@ fn pricing_rule(row: sqlx::postgres::PgRow) -> Result<PricingRule> {
         cache_hit_token_unit_price: row
             .try_get::<String, _>("cache_hit_token_unit_price")?
             .parse()?,
+        cache_write_token_unit_size: row.try_get("cache_write_token_unit_size")?,
+        cache_write_token_unit_price: row
+            .try_get::<String, _>("cache_write_token_unit_price")?
+            .parse()?,
         currency_code: row.try_get("currency_code")?,
         effective_from: row.try_get("effective_from")?,
         effective_to: row.try_get("effective_to")?,
@@ -41,8 +45,7 @@ fn pricing_rule(row: sqlx::postgres::PgRow) -> Result<PricingRule> {
         local_time_end: row.try_get("local_time_end")?,
         priority: row.try_get("priority")?,
         enabled: row.try_get("enabled")?,
-        rating_policy_enabled: row.try_get("rating_policy_enabled")?,
-        rating_policy: row.try_get("rating_policy")?,
+        rules: row.try_get("rules")?,
         source_kind: row.try_get("source_kind")?,
         source_catalog_id: row.try_get("source_catalog_id")?,
         source_version: row.try_get("source_version")?,
@@ -59,9 +62,10 @@ const PRICING_SELECT: &str = r#"
            input_token_unit_size, input_token_unit_price::text as input_token_unit_price,
            output_token_unit_size, output_token_unit_price::text as output_token_unit_price,
            cache_hit_token_unit_size, cache_hit_token_unit_price::text as cache_hit_token_unit_price,
+           cache_write_token_unit_size, cache_write_token_unit_price::text as cache_write_token_unit_price,
            currency_code, effective_from, effective_to, timezone, weekday_mask,
            local_time_start, local_time_end, priority, enabled,
-           rating_policy_enabled, rating_policy, source_kind,
+           rules, source_kind,
            source_catalog_id, source_version, source_checksum, extensions,
            created_by, created_at, updated_at
     from model_pricing_rules
@@ -409,20 +413,22 @@ impl BillingRepository for PgControlPlaneStore {
                 input_token_unit_size, input_token_unit_price,
                 output_token_unit_size, output_token_unit_price,
                 cache_hit_token_unit_size, cache_hit_token_unit_price,
+                cache_write_token_unit_size, cache_write_token_unit_price,
                 currency_code, effective_from, effective_to, timezone, weekday_mask,
                 local_time_start, local_time_end, priority, enabled,
-                rating_policy_enabled, rating_policy, source_kind,
+                rules, source_kind,
                 source_catalog_id, source_version, source_checksum, extensions, created_by
-            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11::numeric,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
             on conflict (id) do update set
                 provider_code=excluded.provider_code, upstream_model_id=excluded.upstream_model_id,
                 input_token_unit_size=excluded.input_token_unit_size, input_token_unit_price=excluded.input_token_unit_price,
                 output_token_unit_size=excluded.output_token_unit_size, output_token_unit_price=excluded.output_token_unit_price,
                 cache_hit_token_unit_size=excluded.cache_hit_token_unit_size, cache_hit_token_unit_price=excluded.cache_hit_token_unit_price,
+                cache_write_token_unit_size=excluded.cache_write_token_unit_size, cache_write_token_unit_price=excluded.cache_write_token_unit_price,
                 currency_code=excluded.currency_code, effective_from=excluded.effective_from, effective_to=excluded.effective_to,
                 timezone=excluded.timezone, weekday_mask=excluded.weekday_mask, local_time_start=excluded.local_time_start,
                 local_time_end=excluded.local_time_end, priority=excluded.priority, enabled=excluded.enabled,
-                rating_policy_enabled=excluded.rating_policy_enabled, rating_policy=excluded.rating_policy,
+                rules=excluded.rules,
                 source_kind=excluded.source_kind, source_catalog_id=excluded.source_catalog_id,
                 source_version=excluded.source_version, source_checksum=excluded.source_checksum,
                 extensions=excluded.extensions, updated_at=now()
@@ -430,18 +436,20 @@ impl BillingRepository for PgControlPlaneStore {
                 input_token_unit_size, input_token_unit_price::text as input_token_unit_price,
                 output_token_unit_size, output_token_unit_price::text as output_token_unit_price,
                 cache_hit_token_unit_size, cache_hit_token_unit_price::text as cache_hit_token_unit_price,
+           cache_write_token_unit_size, cache_write_token_unit_price::text as cache_write_token_unit_price,
                 currency_code, effective_from, effective_to, timezone, weekday_mask,
                 local_time_start, local_time_end, priority, enabled,
-                rating_policy_enabled, rating_policy, source_kind,
+                rules, source_kind,
                 source_catalog_id, source_version, source_checksum, extensions, created_by, created_at, updated_at
         "#)
         .bind(rule.id).bind(&rule.provider_code).bind(&rule.upstream_model_id)
         .bind(rule.input_token_unit_size).bind(rule.input_token_unit_price.to_string())
         .bind(rule.output_token_unit_size).bind(rule.output_token_unit_price.to_string())
         .bind(rule.cache_hit_token_unit_size).bind(rule.cache_hit_token_unit_price.to_string())
+        .bind(rule.cache_write_token_unit_size).bind(rule.cache_write_token_unit_price.to_string())
         .bind(&rule.currency_code).bind(rule.effective_from).bind(rule.effective_to)
         .bind(&rule.timezone).bind(rule.weekday_mask).bind(rule.local_time_start).bind(rule.local_time_end)
-        .bind(rule.priority).bind(rule.enabled).bind(rule.rating_policy_enabled).bind(&rule.rating_policy)
+        .bind(rule.priority).bind(rule.enabled).bind(&rule.rules)
         .bind(&rule.source_kind).bind(&rule.source_catalog_id)
         .bind(&rule.source_version).bind(&rule.source_checksum).bind(&rule.extensions).bind(rule.created_by)
         .fetch_one(&mut *transaction).await?;
@@ -470,10 +478,15 @@ impl BillingRepository for PgControlPlaneStore {
                 select 1 from model_pricing_rules
                 where id = $1
                    or ($2::text is not null and source_kind = 'official' and source_catalog_id = $2)
+                   or ($3 = 'official' and source_kind = 'official'
+                       and provider_code = $4 and upstream_model_id = $5)
             )"#,
         )
         .bind(rule.id)
         .bind(&rule.source_catalog_id)
+        .bind(&rule.source_kind)
+        .bind(&rule.provider_code)
+        .bind(&rule.upstream_model_id)
         .fetch_one(&mut *transaction)
         .await?;
         if exists {
@@ -531,28 +544,31 @@ impl BillingRepository for PgControlPlaneStore {
                 input_token_unit_size, input_token_unit_price,
                 output_token_unit_size, output_token_unit_price,
                 cache_hit_token_unit_size, cache_hit_token_unit_price,
+                cache_write_token_unit_size, cache_write_token_unit_price,
                 currency_code, effective_from, effective_to, timezone, weekday_mask,
                 local_time_start, local_time_end, priority, enabled,
-                rating_policy_enabled, rating_policy, source_kind,
+                rules, source_kind,
                 source_catalog_id, source_version, source_checksum, extensions, created_by
-            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11::numeric,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
             on conflict do nothing
             returning id, provider_code, upstream_model_id,
                 input_token_unit_size, input_token_unit_price::text as input_token_unit_price,
                 output_token_unit_size, output_token_unit_price::text as output_token_unit_price,
                 cache_hit_token_unit_size, cache_hit_token_unit_price::text as cache_hit_token_unit_price,
+           cache_write_token_unit_size, cache_write_token_unit_price::text as cache_write_token_unit_price,
                 currency_code, effective_from, effective_to, timezone, weekday_mask,
                 local_time_start, local_time_end, priority, enabled,
-                rating_policy_enabled, rating_policy, source_kind,
+                rules, source_kind,
                 source_catalog_id, source_version, source_checksum, extensions, created_by, created_at, updated_at
         "#)
         .bind(rule.id).bind(&rule.provider_code).bind(&rule.upstream_model_id)
         .bind(rule.input_token_unit_size).bind(rule.input_token_unit_price.to_string())
         .bind(rule.output_token_unit_size).bind(rule.output_token_unit_price.to_string())
         .bind(rule.cache_hit_token_unit_size).bind(rule.cache_hit_token_unit_price.to_string())
+        .bind(rule.cache_write_token_unit_size).bind(rule.cache_write_token_unit_price.to_string())
         .bind(&rule.currency_code).bind(rule.effective_from).bind(rule.effective_to)
         .bind(&rule.timezone).bind(rule.weekday_mask).bind(rule.local_time_start).bind(rule.local_time_end)
-        .bind(rule.priority).bind(rule.enabled).bind(rule.rating_policy_enabled).bind(&rule.rating_policy)
+        .bind(rule.priority).bind(rule.enabled).bind(&rule.rules)
         .bind(&rule.source_kind).bind(&rule.source_catalog_id)
         .bind(&rule.source_version).bind(&rule.source_checksum).bind(&rule.extensions).bind(rule.created_by)
         .fetch_optional(&mut *transaction).await?;
