@@ -1,3 +1,4 @@
+import type { ConsolePricingConditionalRule } from './console-billing';
 import { apiFetch } from './transport';
 
 export interface ConsoleModelProviderConfigField {
@@ -88,14 +89,15 @@ export interface ConsoleModelProviderPricingTarget {
   output_token_unit_price: string;
   cache_hit_token_unit_size: number;
   cache_hit_token_unit_price: string;
+  cache_write_token_unit_size: number;
+  cache_write_token_unit_price: string;
   effective_from: string;
   effective_to: string | null;
   timezone: string;
   weekday_mask: number;
   local_time_start: string | null;
   local_time_end: string | null;
-  rating_policy_enabled: boolean;
-  rating_policy: Record<string, unknown>;
+  rules: ConsolePricingConditionalRule[];
 }
 
 export type ConsoleModelProviderDistributionRule = string;

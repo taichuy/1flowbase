@@ -98,8 +98,9 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
         weekday_mask: 127,
         local_time_start: null,
         local_time_end: null,
-        rating_policy_enabled: false,
-        rating_policy: {}
+        cache_write_token_unit_size: 1000000,
+        cache_write_token_unit_price: '0',
+        rules: []
       },
       {
         provider_code: 'openai',
@@ -116,8 +117,9 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
         weekday_mask: 127,
         local_time_start: null,
         local_time_end: null,
-        rating_policy_enabled: false,
-        rating_policy: {}
+        cache_write_token_unit_size: 1000000,
+        cache_write_token_unit_price: '12.5',
+        rules: []
       }
     ],
     providers: [

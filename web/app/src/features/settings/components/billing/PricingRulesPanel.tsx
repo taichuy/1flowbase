@@ -48,7 +48,7 @@ import { formatPricingRate } from '../../lib/pricing-format';
 
 const DEFAULT_UNIT = 1_000_000;
 const PAGE_SIZE = 20;
-type PricingKind = 'input' | 'output' | 'cache_hit';
+type PricingKind = 'input' | 'output' | 'cache_hit' | 'cache_write';
 
 type PricingRuleFilters = Omit<
   SettingsPricingRulesFilter,
@@ -65,6 +65,8 @@ function pricingUnitLabel(kind: PricingKind) {
       return i18nText('settings', 'auto.billing_output_unit');
     case 'cache_hit':
       return i18nText('settings', 'auto.billing_cache_hit_unit');
+    case 'cache_write':
+      return i18nText('settings', 'auto.billing_cache_write_unit');
   }
 }
 
@@ -76,6 +78,8 @@ function pricingPriceLabel(kind: PricingKind) {
       return i18nText('settings', 'auto.billing_output_price');
     case 'cache_hit':
       return i18nText('settings', 'auto.billing_cache_hit_price');
+    case 'cache_write':
+      return i18nText('settings', 'auto.billing_cache_write_price');
   }
 }
 
@@ -102,7 +106,6 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [form] = Form.useForm();
-  const ratingPolicyEnabled = Form.useWatch('rating_policy_enabled', form);
   const [editing, setEditing] = useState<SettingsPricingRule | null>(null);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -137,6 +140,10 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         output_token_unit_price: String(values.output_token_unit_price),
         cache_hit_token_unit_size: Number(values.cache_hit_token_unit_size),
         cache_hit_token_unit_price: String(values.cache_hit_token_unit_price),
+        cache_write_token_unit_size: Number(values.cache_write_token_unit_size),
+        cache_write_token_unit_price: String(
+          values.cache_write_token_unit_price
+        ),
         currency_code: 'USD' as const,
         effective_from: String(values.effective_from),
         effective_to: values.effective_to ? String(values.effective_to) : null,
@@ -150,10 +157,9 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
           : null,
         priority: Number(values.priority),
         enabled: Boolean(values.enabled),
-        rating_policy_enabled: Boolean(values.rating_policy_enabled),
-        rating_policy: JSON.parse(
-          String(values.rating_policy_json ?? '{}')
-        ) as Record<string, unknown>,
+        rules: JSON.parse(
+          String(values.rules ?? '[]')
+        ) as SettingsPricingRule['rules'],
         source_kind: editing?.source_kind ?? ('manual' as const),
         source_catalog_id: editing?.source_catalog_id ?? null,
         source_version: editing?.source_version ?? null,
@@ -194,22 +200,23 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         rule
           ? {
               ...rule,
-              rating_policy_json: JSON.stringify(rule.rating_policy, null, 2)
+              rules: JSON.stringify(rule.rules, null, 2)
             }
           : {
               input_token_unit_size: DEFAULT_UNIT,
               output_token_unit_size: DEFAULT_UNIT,
               cache_hit_token_unit_size: DEFAULT_UNIT,
+              cache_write_token_unit_size: DEFAULT_UNIT,
               input_token_unit_price: '0',
               output_token_unit_price: '0',
               cache_hit_token_unit_price: '0',
+              cache_write_token_unit_price: '0',
               effective_from: new Date().toISOString(),
               timezone: 'UTC',
               weekday_mask: 127,
               priority: 0,
               enabled: true,
-              rating_policy_enabled: false,
-              rating_policy_json: '{}'
+              rules: '[]'
             }
       );
       setOpen(true);
@@ -235,39 +242,40 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         title: i18nText('settings', 'auto.billing_input_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.input_token_unit_price,
-                row.input_token_unit_size
-              )
+          formatPricingRate(
+            row.input_token_unit_price,
+            row.input_token_unit_size
+          )
       },
       {
         key: 'output_price',
         title: i18nText('settings', 'auto.billing_output_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.output_token_unit_price,
-                row.output_token_unit_size
-              )
+          formatPricingRate(
+            row.output_token_unit_price,
+            row.output_token_unit_size
+          )
       },
       {
         key: 'cache_price',
         title: i18nText('settings', 'auto.billing_cache_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.cache_hit_token_unit_price,
-                row.cache_hit_token_unit_size
-              )
+          formatPricingRate(
+            row.cache_hit_token_unit_price,
+            row.cache_hit_token_unit_size
+          )
+      },
+      {
+        key: 'cache_write_token_unit_price',
+        title: i18nText('settings', 'auto.billing_cache_write_price'),
+        width: 200,
+        render: (_: unknown, row: SettingsPricingRule) =>
+          formatPricingRate(
+            row.cache_write_token_unit_price,
+            row.cache_write_token_unit_size
+          )
       },
       {
         key: 'effective_from',
@@ -331,31 +339,14 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         defaultVisibility: 'hidden'
       },
       {
-        key: 'rating_policy_enabled',
-        title: i18nText('settings', 'auto.billing_rating_policy_enabled'),
-        dataIndex: 'rating_policy_enabled',
-        width: 150,
-        defaultVisibility: 'hidden',
-        render: (value: unknown) => (
-          <Tag color={value ? 'green' : 'default'}>
-            {value
-              ? i18nText('settings', 'auto.enabled')
-              : i18nText('settings', 'auto.deactivate')}
-          </Tag>
-        )
-      },
-      {
-        key: 'rating_policy',
-        title: i18nText('settings', 'auto.billing_rating_policy'),
-        dataIndex: 'rating_policy',
+        key: 'rules',
+        title: i18nText('settings', 'auto.billing_rules'),
         width: 180,
         defaultVisibility: 'hidden',
         render: (_: unknown, row: SettingsPricingRule) =>
-          row.rating_policy_enabled
-            ? row.rating_policy.type === 'token_pricing'
-              ? i18nText('settings', 'auto.billing_token_pricing')
-              : i18nText('settings', 'auto.billing_input_token_tiers')
-            : i18nText('settings', 'auto.billing_no_rating_policy')
+          row.rules.length
+            ? row.rules.length
+            : i18nText('settings', 'auto.billing_no_rules')
       },
       {
         key: 'source_kind',
@@ -574,53 +565,41 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               <Input />
             </Form.Item>
           </Space>
-          {(['input', 'output', 'cache_hit'] as const).map((kind) => (
-            <Space align="start" key={kind}>
-              <Form.Item
-                name={`${kind}_token_unit_size`}
-                label={pricingUnitLabel(kind)}
-                rules={[{ required: true }]}
-              >
-                <InputNumber min={1} />
-              </Form.Item>
-              <Form.Item
-                name={`${kind}_token_unit_price`}
-                label={pricingPriceLabel(kind)}
-                rules={[{ required: true }]}
-              >
-                <Input prefix="$" />
-              </Form.Item>
-            </Space>
-          ))}
+          {(['input', 'output', 'cache_hit', 'cache_write'] as const).map(
+            (kind) => (
+              <Space align="start" key={kind}>
+                <Form.Item
+                  name={`${kind}_token_unit_size`}
+                  label={pricingUnitLabel(kind)}
+                  rules={[{ required: true }]}
+                >
+                  <InputNumber min={1} />
+                </Form.Item>
+                <Form.Item
+                  name={`${kind}_token_unit_price`}
+                  label={pricingPriceLabel(kind)}
+                  rules={[{ required: true }]}
+                >
+                  <Input prefix="$" />
+                </Form.Item>
+              </Space>
+            )
+          )}
           <Space align="start" wrap>
             <Form.Item
-              name="rating_policy_enabled"
-              label={i18nText('settings', 'auto.billing_rating_policy_enabled')}
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
-            <Form.Item
-              name="rating_policy_json"
-              label={i18nText('settings', 'auto.billing_rating_policy')}
+              name="rules"
+              label={i18nText('settings', 'auto.billing_rules')}
               rules={[
                 {
                   validator: async (_, value) => {
                     try {
-                      const parsed = JSON.parse(String(value ?? '{}'));
-                      if (
-                        typeof parsed !== 'object' ||
-                        parsed === null ||
-                        Array.isArray(parsed)
-                      ) {
-                        throw new Error('rating policy must be an object');
+                      const parsed = JSON.parse(String(value ?? '[]'));
+                      if (!Array.isArray(parsed)) {
+                        throw new Error('rules must be an array');
                       }
                     } catch {
                       throw new Error(
-                        i18nText(
-                          'settings',
-                          'auto.billing_rating_policy_json_invalid'
-                        )
+                        i18nText('settings', 'auto.billing_rules_json_invalid')
                       );
                     }
                   }
@@ -628,9 +607,8 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               ]}
             >
               <Input.TextArea
-                aria-label={i18nText('settings', 'auto.billing_rating_policy')}
+                aria-label={i18nText('settings', 'auto.billing_rules')}
                 autoSize={{ minRows: 4, maxRows: 12 }}
-                disabled={!ratingPolicyEnabled}
               />
             </Form.Item>
           </Space>

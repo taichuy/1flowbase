@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Empty, Flex, Input, Tag } from 'antd';
+import { Alert, Button, Empty, Flex, Input } from 'antd';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -79,56 +79,49 @@ export function PricingCatalogPanel() {
         title: i18nText('settings', 'auto.billing_input_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.input_token_unit_price,
-                row.input_token_unit_size
-              )
+          formatPricingRate(
+            row.input_token_unit_price,
+            row.input_token_unit_size
+          )
       },
       {
         key: 'output_price',
         title: i18nText('settings', 'auto.billing_output_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.output_token_unit_price,
-                row.output_token_unit_size
-              )
+          formatPricingRate(
+            row.output_token_unit_price,
+            row.output_token_unit_size
+          )
       },
       {
         key: 'cache_price',
         title: i18nText('settings', 'auto.billing_cache_price'),
         width: 200,
         render: (_: unknown, row: PricingCatalogRule) =>
-          row.rating_policy_enabled &&
-          row.rating_policy.type === 'token_pricing'
-            ? i18nText('settings', 'auto.billing_price_from_policy')
-            : formatPricingRate(
-                row.cache_hit_token_unit_price,
-                row.cache_hit_token_unit_size
-              )
+          formatPricingRate(
+            row.cache_hit_token_unit_price,
+            row.cache_hit_token_unit_size
+          )
       },
       {
-        key: 'rating_policy',
-        title: i18nText('settings', 'auto.billing_rating_policy'),
+        key: 'cache_write_token_unit_price',
+        title: i18nText('settings', 'auto.billing_cache_write_price'),
+        width: 200,
+        render: (_: unknown, row: PricingCatalogRule) =>
+          formatPricingRate(
+            row.cache_write_token_unit_price,
+            row.cache_write_token_unit_size
+          )
+      },
+      {
+        key: 'rules',
+        title: i18nText('settings', 'auto.billing_rules'),
         width: 180,
         render: (_: unknown, row: PricingCatalogRule) =>
-          row.rating_policy_enabled ? (
-            <Tag color="blue">
-              {row.rating_policy.type === 'token_pricing'
-                ? i18nText('settings', 'auto.billing_token_pricing')
-                : row.rating_policy.type === 'input_token_tiers'
-                  ? i18nText('settings', 'auto.billing_input_token_tiers')
-                  : i18nText('settings', 'auto.enabled')}
-            </Tag>
-          ) : (
-            i18nText('settings', 'auto.billing_no_rating_policy')
-          )
+          row.rules.length
+            ? row.rules.length
+            : i18nText('settings', 'auto.billing_no_rules')
       },
       {
         key: 'source_kind',

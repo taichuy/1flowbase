@@ -1,5 +1,28 @@
 import { apiFetch } from './transport';
 
+export interface ConsolePricingConditionalRule {
+  when: {
+    input_tokens?: { operator: 'gt' | 'gte'; value: number };
+    cache_write_ttl_seconds?: number;
+    effective_from?: string;
+    effective_to?: string;
+    timezone?: string;
+    weekday_mask?: number;
+    local_time_start?: string;
+    local_time_end?: string;
+  };
+  overrides: {
+    input_token_unit_size?: number;
+    input_token_unit_price?: string;
+    output_token_unit_size?: number;
+    output_token_unit_price?: string;
+    cache_hit_token_unit_size?: number;
+    cache_hit_token_unit_price?: string;
+    cache_write_token_unit_size?: number;
+    cache_write_token_unit_price?: string;
+  };
+}
+
 export interface ConsolePricingRule {
   id: string;
   provider_code: string;
@@ -10,6 +33,8 @@ export interface ConsolePricingRule {
   output_token_unit_price: string;
   cache_hit_token_unit_size: number;
   cache_hit_token_unit_price: string;
+  cache_write_token_unit_size: number;
+  cache_write_token_unit_price: string;
   currency_code: 'USD';
   effective_from: string;
   effective_to: string | null;
@@ -19,8 +44,7 @@ export interface ConsolePricingRule {
   local_time_end: string | null;
   priority: number;
   enabled: boolean;
-  rating_policy_enabled: boolean;
-  rating_policy: Record<string, unknown>;
+  rules: ConsolePricingConditionalRule[];
   source_kind: 'official' | 'manual';
   source_catalog_id: string | null;
   source_version: string | null;

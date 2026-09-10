@@ -359,7 +359,7 @@ describe('ModelProviderInstanceDrawer', () => {
       expect(enabledSwitch).toBeChecked();
       fireEvent.click(multimodalSwitch);
       fireEvent.click(enabledSwitch);
-      expect(screen.getAllByText('1M / 0$')).toHaveLength(3);
+      expect(screen.getAllByText('1M / 0$')).toHaveLength(4);
       expect(screen.queryByText('生效时间')).not.toBeInTheDocument();
       const pricingProviderSelect = screen.getByRole('combobox', {
         name: '厂家 Code'
@@ -386,6 +386,7 @@ describe('ModelProviderInstanceDrawer', () => {
       expect(screen.getByText('1M / 2.50$')).toBeInTheDocument();
       expect(screen.getByText('1M / 10.00$')).toBeInTheDocument();
       expect(screen.getByText('1M / 1.25$')).toBeInTheDocument();
+      expect(screen.getByText('1M / 12.50$')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
       await waitFor(() => {
         expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();

@@ -294,6 +294,15 @@ export function ModelProviderConfiguredModelModal({
                   target.cache_hit_token_unit_price,
                   target.cache_hit_token_unit_size
                 )
+            },
+            {
+              key: 'cache_write',
+              title: i18nText('settings', 'auto.billing_cache_write_price'),
+              render: (_, target) =>
+                formatPricingRate(
+                  target.cache_write_token_unit_price,
+                  target.cache_write_token_unit_size
+                )
             }
           ]}
         />

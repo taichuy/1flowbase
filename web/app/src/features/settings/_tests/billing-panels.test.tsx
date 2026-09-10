@@ -23,7 +23,8 @@ const billingApi = vi.hoisted(() => ({
     'credit-ledger',
     userId ?? 'all'
   ]),
-  listSettingsPricingRules: vi.fn<typeof import('../api/billing').listSettingsPricingRules>(),
+  listSettingsPricingRules:
+    vi.fn<typeof import('../api/billing').listSettingsPricingRules>(),
   createSettingsPricingRule: vi.fn(),
   updateSettingsPricingRule: vi.fn(),
   deleteSettingsPricingRule: vi.fn(),
@@ -83,6 +84,7 @@ describe('billing settings panels', () => {
   });
 
   beforeEach(() => {
+    vi.clearAllMocks();
     resetAuthStore();
     authenticate();
     billingApi.listSettingsPricingRules.mockResolvedValue({
@@ -106,8 +108,9 @@ describe('billing settings panels', () => {
           local_time_end: null,
           priority: 0,
           enabled: true,
-          rating_policy_enabled: false,
-          rating_policy: {},
+          cache_write_token_unit_size: 1_000_000,
+          cache_write_token_unit_price: '12.5',
+          rules: [],
           source_kind: 'manual',
           source_catalog_id: null,
           source_version: null,
@@ -123,7 +126,7 @@ describe('billing settings panels', () => {
       page_size: 20
     });
     billingApi.getSettingsPricingCatalog.mockResolvedValue({
-      schema_version: '1flowbase.model-pricing-page/v1',
+      schema_version: '1flowbase.model-pricing-page/v2',
       catalog_version: '2026-08-18.1',
       currency_code: 'USD',
       items: [
@@ -146,8 +149,9 @@ describe('billing settings panels', () => {
           local_time_end: null,
           priority: 0,
           enabled: true,
-          rating_policy_enabled: false,
-          rating_policy: {},
+          cache_write_token_unit_size: 1_000_000,
+          cache_write_token_unit_price: '12.5',
+          rules: [],
           source_kind: 'official',
           source_catalog_id: '10000000-0000-4000-8000-000000000001',
           source_version: '2026-08-18.1',
@@ -188,31 +192,102 @@ describe('billing settings panels', () => {
     billingApi.executeSettingsCreditCommand.mockResolvedValue({});
   });
 
-  test('AC5 v2 pricing displays policy authority instead of unused scalar prices', async () => {
+  test('AC5 displays all four default rates even with conditional overrides', async () => {
     const page = await billingApi.listSettingsPricingRules();
     billingApi.listSettingsPricingRules.mockResolvedValue({
       ...page,
       items: page.items.map((row) => ({
         ...row,
-        rating_policy_enabled: true,
-        rating_policy: {
-          schema_version: '1flowbase.model-rating-policy/v2',
-          type: 'token_pricing',
-          unit_size: 1000000,
-          rates: {
-            input: '10',
-            output: '50',
-            cache_hit: '0.25',
-            cache_write: { by_ttl_seconds: { '300': '12.50', '3600': '20' } }
+        rules: [
+          {
+            when: { input_tokens: { operator: 'gt' as const, value: 200000 } },
+            overrides: { input_token_unit_price: '10' }
           }
-        }
+        ]
       }))
     });
     renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();
-    expect(screen.getAllByText('按计价规则')).toHaveLength(3);
-    expect(screen.queryByText('1M / 5.00$')).not.toBeInTheDocument();
+    for (const rate of [
+      '1K / 0$',
+      '1M / 5.00$',
+      '1B / 0.000001$',
+      '1M / 12.50$'
+    ]) {
+      expect(screen.getByText(rate)).toBeInTheDocument();
+    }
   });
+
+  test('AC5 edits and saves cache-write defaults and sparse rules without losing fields', async () => {
+    const page = await billingApi.listSettingsPricingRules();
+    const rules = [
+      {
+        when: { cache_write_ttl_seconds: 300 },
+        overrides: { cache_write_token_unit_price: '15' }
+      }
+    ];
+    billingApi.listSettingsPricingRules.mockResolvedValue({
+      ...page,
+      items: [{ ...page.items[0]!, rules }]
+    });
+    renderWithProviders(<PricingRulesPanel canManage />);
+    await screen.findByText('gpt-test');
+    fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('条件计费规则')).toHaveValue(
+      JSON.stringify(rules, null, 2)
+    );
+    fireEvent.change(within(dialog).getByLabelText('缓存写入单价'), {
+      target: { value: '13.25' }
+    });
+    const editedRules = [
+      ...rules,
+      {
+        when: { input_tokens: { operator: 'gte', value: 200000 } },
+        overrides: { output_token_unit_price: '60' }
+      }
+    ];
+    fireEvent.change(within(dialog).getByLabelText('条件计费规则'), {
+      target: { value: JSON.stringify(editedRules) }
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /^(?:OK|确 定)$/ })
+    );
+    await waitFor(() =>
+      expect(billingApi.updateSettingsPricingRule).toHaveBeenCalledWith(
+        'rule-1',
+        expect.objectContaining({
+          cache_write_token_unit_price: '13.25',
+          cache_write_token_unit_size: 1000000,
+          rules: editedRules
+        }),
+        'csrf-123'
+      )
+    );
+    const payload = billingApi.updateSettingsPricingRule.mock.calls[0]![1];
+    expect(payload).not.toHaveProperty('rating_policy');
+    expect(payload).not.toHaveProperty('rating_policy_enabled');
+  });
+
+  test.each(['{}', 'null', '{broken'])(
+    'AC5 rejects non-array or malformed rules: %s',
+    async (value) => {
+      renderWithProviders(<PricingRulesPanel canManage />);
+      await screen.findByText('gpt-test');
+      fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('条件计费规则'), {
+        target: { value }
+      });
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: /^(?:OK|确 定)$/ })
+      );
+      expect(
+        await within(dialog).findByText('请输入有效的 JSON 数组')
+      ).toBeInTheDocument();
+      expect(billingApi.updateSettingsPricingRule).not.toHaveBeenCalled();
+    }
+  );
 
   test('shows fixed pricing columns and opens the validated rule editor', async () => {
     renderWithProviders(<PricingRulesPanel canManage />);
@@ -248,8 +323,9 @@ describe('billing settings panels', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
     expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
-    expect(screen.getByLabelText('启用特殊规则')).not.toBeChecked();
-    expect(screen.getByLabelText('特殊计费规则')).toBeDisabled();
+    expect(screen.getByLabelText('缓存写入单价')).toBeInTheDocument();
+    expect(screen.getByLabelText('条件计费规则')).toHaveValue('[]');
+    expect(screen.getByLabelText('条件计费规则')).toBeEnabled();
   });
 
   test('submits pricing filters through the shared server-paginated table', async () => {
@@ -273,6 +349,11 @@ describe('billing settings panels', () => {
   test('loads, refreshes, and installs the remote official catalog without update semantics', async () => {
     renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '缓存写入单价' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('1M / 0$')).toHaveLength(3);
+    expect(screen.getByText('1M / 12.50$')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
     await waitFor(() =>
       expect(billingApi.getSettingsPricingCatalog).toHaveBeenCalledTimes(2)
