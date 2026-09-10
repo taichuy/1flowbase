@@ -31,6 +31,9 @@ use crate::{
     UserPrincipal, WorkerGeneration,
 };
 
+#[path = "invocation/stack_budget_tests.rs"]
+mod stack_budget_tests;
+
 #[derive(Clone)]
 struct Input(u8);
 impl InterfaceContract for Input {
