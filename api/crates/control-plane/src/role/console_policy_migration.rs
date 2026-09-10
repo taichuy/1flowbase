@@ -19,7 +19,7 @@ pub fn compile_console_policy_migration_plan(
     compile_console_policy_migration_plan_with_schema(inventory.schema_version, catalog, mappings)
 }
 
-fn compiled_catalog_from_inventory(
+pub(super) fn compiled_catalog_from_inventory(
     inventory: &ConsoleOperationCompiledInventory,
 ) -> Result<CompiledConsolePolicyCatalog, ConsolePolicyMigrationError> {
     let mut resources = BTreeMap::new();

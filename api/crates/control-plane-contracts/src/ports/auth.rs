@@ -8,6 +8,16 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[async_trait]
+pub trait ConsolePermissionCatalogRepository: Send + Sync {
+    /// Atomically record the complete catalog and grant only first-seen operations.
+    /// The first catalog is a baseline; reappearing IDs must never become new again.
+    async fn sync_console_permission_catalog(
+        &self,
+        catalog: &crate::CompiledConsolePolicyCatalog,
+    ) -> anyhow::Result<()>;
+}
+
+#[async_trait]
 pub trait BootstrapRepository: Send + Sync {
     async fn replace_login_entry_public_ui_block_if_matches(
         &self,

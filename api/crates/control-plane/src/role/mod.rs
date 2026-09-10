@@ -23,6 +23,16 @@ use crate::{
 pub mod console_policy_migration;
 mod console_policy_validation;
 
+/// Publish the validated boot catalog before serving requests. Persistence owns the atomic
+/// first-seen ledger so restarts, revoked grants and multiple nodes cannot replay additions.
+pub async fn sync_console_permission_catalog(
+    repository: &impl crate::ports::ConsolePermissionCatalogRepository,
+    inventory: &ConsoleOperationCompiledInventory,
+) -> Result<()> {
+    let catalog = console_policy_migration::compiled_catalog_from_inventory(inventory)?;
+    repository.sync_console_permission_catalog(&catalog).await
+}
+
 use console_policy_validation::{
     complete_stored_console_policy, role_console_policy_groups_from_input,
     CompiledConsolePolicyOperationIndex, ConsolePolicyGroupKey,

@@ -33,6 +33,7 @@ use crate::{
 
 mod console_policy;
 mod data_policy;
+mod permission_sync;
 mod policy_migration;
 mod role_store;
 

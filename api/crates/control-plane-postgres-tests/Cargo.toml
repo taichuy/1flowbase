@@ -46,6 +46,10 @@ name = "role_console_policy_integration"
 path = "tests/role_console_policy_integration.rs"
 
 [[test]]
+name = "console_permission_auto_grant"
+path = "tests/role_console_policy/auto_grant.rs"
+
+[[test]]
 name = "dependency_boundaries"
 path = "tests/dependency_boundaries.rs"
 
@@ -58,6 +62,7 @@ name = "interface_lifecycle_acceptance"
 path = "tests/interface_lifecycle_acceptance/mod.rs"
 
 [dev-dependencies]
+access-control = { path = "../access-control" }
 anyhow.workspace = true
 async-trait.workspace = true
 control-plane = { path = "../control-plane" }

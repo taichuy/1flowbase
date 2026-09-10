@@ -1034,6 +1034,7 @@ dependencies = [
 name = "control-plane-postgres-tests"
 version = "0.4.1"
 dependencies = [
+ "access-control",
  "anyhow",
  "async-trait",
  "control-plane",

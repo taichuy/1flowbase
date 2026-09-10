@@ -779,6 +779,11 @@ async fn app_and_runtime_host_from_config(
         interface_snapshot.as_ref(),
         &compiled_console_plan.console_operation_registry,
     )?;
+    control_plane::role::sync_console_permission_catalog(
+        &store,
+        compiled_console_plan.console_operation_registry.inventory(),
+    )
+    .await?;
     compiled_console_plan.console_surface_registry = Arc::new(
         compiled_console_plan
             .console_surface_registry

@@ -5,6 +5,7 @@ extern crate self as control_plane_contracts;
 pub mod application_public_api;
 pub mod application_public_runtime;
 pub mod billing;
+pub mod console_permission_sync;
 pub mod console_policy_migration;
 pub mod error;
 pub mod i18n_catalog;

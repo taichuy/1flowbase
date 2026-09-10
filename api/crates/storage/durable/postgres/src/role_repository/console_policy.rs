@@ -30,10 +30,13 @@ impl PgControlPlaneStore {
     }
 }
 
-pub(crate) async fn role_console_policy_by_id(
-    pool: &sqlx::PgPool,
+pub(crate) async fn role_console_policy_by_id<'e, E>(
+    executor: E,
     role_id: Uuid,
-) -> Result<domain::RoleConsolePolicy> {
+) -> Result<domain::RoleConsolePolicy>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
     let rows = sqlx::query(
         r#"
         select
@@ -55,7 +58,7 @@ pub(crate) async fn role_console_policy_by_id(
         "#,
     )
     .bind(role_id)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     let mut stored_groups = BTreeMap::<
         Uuid,
