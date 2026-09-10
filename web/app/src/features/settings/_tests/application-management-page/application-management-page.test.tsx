@@ -1,7 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
+import { App } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
   FixedHeightModal: ({
@@ -64,7 +65,9 @@ const applicationsApi = vi.hoisted(() => ({
   deleteApplication: vi.fn(),
   createApplication: vi.fn(),
   createApplicationTag: vi.fn(),
-  exportApplicationArchive: vi.fn()
+  exportApplicationArchive: vi.fn(),
+  previewApplicationArchive: vi.fn(),
+  importApplicationArchive: vi.fn()
 }));
 
 const applicationArchiveDownload = vi.hoisted(() => ({
@@ -119,12 +122,24 @@ vi.mock(
   () => applicationArchiveDownload
 );
 
-import { AppProviders } from '../../../../app/AppProviders';
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
+
+import { AppProviders as BaseAppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { ApplicationManagementPanel } from '../../components/application-management/ApplicationManagementPanel';
 
+function AppProviders({ children }: { children: ReactNode }) {
+  return (
+    <BaseAppProviders>
+      <App>{children}</App>
+    </BaseAppProviders>
+  );
+}
+
 describe('ApplicationManagementPanel', () => {
+  beforeAll(() => loadApplicationI18nResources());
   beforeEach(() => {
+    vi.clearAllMocks();
     resetAuthStore();
     window.localStorage.removeItem('settings.application_management');
     window.history.replaceState(
@@ -214,6 +229,17 @@ describe('ApplicationManagementPanel', () => {
       created_at: '2026-07-12T08:00:00Z',
       updated_at: '2026-07-13T08:00:00Z',
       tags: [{ id: 'tag-report', name: '报表' }]
+    });
+    applicationsApi.previewApplicationArchive.mockResolvedValue({
+      application: {
+        name: 'Imported Report',
+        description: 'Imported description'
+      },
+      dependencies: [],
+      unresolved_nodes: []
+    });
+    applicationsApi.importApplicationArchive.mockResolvedValue({
+      application: { id: 'app-imported' }
     });
     applicationsApi.updateApplication.mockResolvedValue({ id: 'app-workflow' });
     applicationsApi.exportApplicationArchive.mockResolvedValue({
@@ -453,7 +479,13 @@ describe('ApplicationManagementPanel', () => {
     );
 
     await screen.findByText('Daily Report');
-    expect(screen.queryByRole('button', { name: '新增' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '新增' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '导入应用' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('导入')).not.toBeInTheDocument();
   });
 
   test('applies filter drafts together and resets them from the filter form', async () => {
@@ -648,6 +680,152 @@ describe('ApplicationManagementPanel', () => {
     expect(
       screen.getByRole('button', { name: /导出应用（0）/ })
     ).toBeDisabled();
+  });
+
+  test('import AC-001 AC-002 previews, renames and refreshes applications in place', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    await screen.findByText('Daily Report');
+    const route = window.location.href;
+    const importButton = screen.getByRole('button', { name: '导入应用' });
+    const toolbar = importButton.parentElement!;
+    expect(
+      within(toolbar)
+        .getAllByRole('button')
+        .slice(0, 3)
+        .map((button) => button.textContent?.replace(/\s/g, ''))
+    ).toEqual(['新增', '导入应用', '导出应用（0）']);
+    const input = screen.getByLabelText('导入');
+    const chooseFile = vi.spyOn(input, 'click');
+    fireEvent.click(importButton);
+    expect(chooseFile).toHaveBeenCalledOnce();
+    expect(input).toHaveAttribute(
+      'accept',
+      'application/zip,.zip,application/json,.json'
+    );
+    const file = new File(['{}'], 'application.json', {
+      type: 'application/json'
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+    const dialog = await screen.findByRole('dialog');
+    expect(applicationsApi.previewApplicationArchive).toHaveBeenCalledWith(
+      file,
+      expect.any(Object)
+    );
+    expect(within(dialog).getByLabelText('应用名称')).toHaveValue(
+      'Imported Report'
+    );
+    expect(
+      within(dialog).getByText('Imported description')
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('应用名称'), {
+      target: { value: '  Daily Imported Report  ' }
+    });
+    const current =
+      await applicationManagementApi.fetchSettingsApplicationManagement.mock
+        .results[0].value;
+    applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+      {
+        ...current,
+        items: [
+          ...current.items,
+          {
+            ...current.items[0],
+            id: 'app-imported',
+            name: 'Daily Imported Report'
+          }
+        ],
+        total: current.total + 1
+      }
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
+    expect(
+      await screen.findByText('Daily Imported Report')
+    ).toBeInTheDocument();
+    expect(applicationsApi.importApplicationArchive).toHaveBeenCalledWith(
+      file,
+      {
+        name: 'Daily Imported Report',
+        description: 'Imported description'
+      },
+      'csrf-123'
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(window.location.href).toBe(route);
+  });
+
+  test('import AC-003 reports preview failure and lets the same ZIP file be selected again', async () => {
+    applicationsApi.previewApplicationArchive.mockRejectedValueOnce(
+      new Error('invalid archive')
+    );
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    await screen.findByText('Daily Report');
+    const file = new File(['zip'], 'application.zip', {
+      type: 'application/zip'
+    });
+    const input = screen.getByLabelText('导入');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByText('应用压缩包预览失败')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(applicationsApi.importApplicationArchive).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [file] } });
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(applicationsApi.importApplicationArchive).not.toHaveBeenCalled();
+  });
+
+  test('import AC-003 retains the preview on import failure and prevents duplicate submissions', async () => {
+    let rejectImport!: (error: Error) => void;
+    applicationsApi.importApplicationArchive.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectImport = reject;
+        })
+    );
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+    await screen.findByText('Daily Report');
+    const file = new File(['{}'], 'application.json', {
+      type: 'application/json'
+    });
+    fireEvent.change(screen.getByLabelText('导入'), {
+      target: { files: [file] }
+    });
+    const dialog = await screen.findByRole('dialog');
+    const name = within(dialog).getByLabelText('应用名称');
+    fireEvent.change(name, { target: { value: '   ' } });
+    expect(
+      within(dialog).getByRole('button', { name: '导入应用' })
+    ).toBeDisabled();
+    fireEvent.change(name, { target: { value: 'Retry Report' } });
+    const submit = within(dialog).getByRole('button', { name: '导入应用' });
+    fireEvent.click(submit);
+    await waitFor(() => expect(submit).toHaveClass('ant-btn-loading'));
+    fireEvent.click(submit);
+    expect(applicationsApi.importApplicationArchive).toHaveBeenCalledOnce();
+    rejectImport(new Error('import failed'));
+    expect(await screen.findByText('应用压缩包导入失败')).toBeInTheDocument();
+    expect(name).toHaveValue('Retry Report');
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    expect(await screen.findByText('应用已导入')).toBeInTheDocument();
   });
 
   test('#1286 AC-002 reverts a published application via the inline switch', async () => {

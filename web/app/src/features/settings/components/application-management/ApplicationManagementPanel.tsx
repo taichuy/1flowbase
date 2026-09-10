@@ -68,6 +68,7 @@ import {
   readApplicationManagementRouteState,
   type ApplicationManagementRouteState
 } from './application-management-route-state';
+import { ApplicationManagementImportButton } from './ApplicationManagementImportButton';
 import './application-management-panel.css';
 
 const PAGE_SIZE = 20;
@@ -839,6 +840,12 @@ export function ApplicationManagementPanel() {
                 >
                   {i18nText('settings', 'auto.new')}
                 </Button>
+              ) : null}
+              {canCreate ? (
+                <ApplicationManagementImportButton
+                  csrfToken={csrfToken}
+                  onImported={invalidateApplications}
+                />
               ) : null}
               <Button
                 icon={<ExportOutlined />}
