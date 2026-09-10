@@ -492,3 +492,132 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
         }
     }
 }
+
+// AC: syncing the complete catalog is authenticated and repeatable without duplicates.
+#[tokio::test]
+async fn pricing_catalog_sync_requires_auth_and_is_idempotent() {
+    let (url, server) = remote_model_pricing_fixture().await;
+    let app = test_app_with_model_pricing_catalog_url(url).await;
+    let unauthorized = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/billing/pricing-catalog/sync")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    for attempt in 0..2 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/billing/pricing-catalog/sync")
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = response_json(response).await;
+        assert_eq!(payload["data"]["inserted"], 0);
+        if attempt == 1 {
+            assert_eq!(payload["data"]["updated"], 0);
+            assert_eq!(payload["data"]["unchanged"], 1);
+        }
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
+    let (source_url, source_server) = remote_model_pricing_fixture().await;
+    let template = crate::model_pricing_catalog::fetch_remote_pricing_catalog(&source_url)
+        .await
+        .unwrap();
+    source_server.abort();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!(
+        "http://{}/model-pricing/catalog/v1",
+        listener.local_addr().unwrap()
+    );
+    let mut remote = Router::new();
+    let mut references = Vec::new();
+    for page_number in 1..=2 {
+        let mut rule = serde_json::to_value(&template.rules[0]).unwrap();
+        let id = uuid::Uuid::now_v7().to_string();
+        rule["id"] = json!(id);
+        rule["source_catalog_id"] = json!(id);
+        rule["provider_code"] = json!("sync-fixture");
+        rule["upstream_model_id"] = json!(format!("model-{page_number}"));
+        let page = json!({"schema_version":"1flowbase.model-pricing-page/v2", "catalog_version":"sync-test", "currency_code":"USD", "page":page_number, "rules":[rule]});
+        references.push(json!({"page":page_number,"rule_count":1,"checksum":format!("sha256:{:x}", Sha256::digest(serde_json::to_vec(&page).unwrap())),"locator":format!("{base}/pages/{page_number}.json")}));
+        remote = remote.route(
+            &format!("/model-pricing/catalog/v1/pages/{page_number}.json"),
+            get(move || {
+                let page = page.clone();
+                async move { Json(page) }
+            }),
+        );
+    }
+    let index = json!({"schema_version":"1flowbase.model-pricing-index/v2","catalog_version":"sync-test","currency_code":"USD","total_rules":2,"pages":references});
+    remote = remote.route(
+        "/model-pricing/catalog/v1/index.json",
+        get(move || {
+            let index = index.clone();
+            async move { Json(index) }
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, remote).await.unwrap();
+    });
+    let app = test_app_with_model_pricing_catalog_url(format!("{base}/index.json")).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(&app, &cookie, &csrf, "sync-member", "temp-pass").await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "sync-member", "temp-pass").await;
+    for (request_cookie, request_csrf, status) in [
+        (&member_cookie, member_csrf.as_str(), StatusCode::FORBIDDEN),
+        (&cookie, "", StatusCode::FORBIDDEN),
+        (&cookie, csrf.as_str(), StatusCode::OK),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/billing/pricing-catalog/sync")
+                    .header("cookie", request_cookie)
+                    .header("x-csrf-token", request_csrf)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+        if status == StatusCode::OK {
+            assert_eq!(response_json(response).await["data"]["inserted"], 2);
+        }
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-rules?provider_code=sync-fixture")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response_json(response).await["data"]["total_count"], 2);
+    server.abort();
+}

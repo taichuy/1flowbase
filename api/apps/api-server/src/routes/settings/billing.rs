@@ -301,6 +301,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/billing/pricing-catalog/sync",
+            console_post(
+                sync_pricing_catalog,
+                ConsoleOperation("billing.pricing_catalog.sync".into()),
+            ),
+        )
+        .route(
             "/settings/billing/credit-accounts",
             console_get(
                 list_credit_accounts,
@@ -471,6 +478,24 @@ pub async fn import_pricing_catalog(
         headers,
         "http.console.settings.billing.pricing-catalog.import.v1",
         super::billing_interface::BillingInput::ImportPricingCatalog(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
+pub async fn sync_pricing_catalog(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    let super::billing_interface::BillingOutput::Imported(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-catalog.sync.v1",
+        super::billing_interface::BillingInput::SyncPricingCatalog,
         true,
     )
     .await?

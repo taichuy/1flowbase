@@ -19,6 +19,7 @@ import { useUserPreferenceDataTableConfiguration } from '../../../../shared/ui/d
 import {
   getSettingsPricingCatalog,
   importSettingsPricingCatalog,
+  syncSettingsPricingCatalog,
   settingsPricingCatalogQueryKey,
   settingsPricingRulesQueryKey,
   type SettingsPricingCatalog
@@ -59,6 +60,20 @@ export function PricingCatalogPanel() {
     },
     onSuccess: () =>
       client.invalidateQueries({ queryKey: settingsPricingRulesQueryKey })
+  });
+  const syncing = useMutation({
+    mutationFn: () => {
+      if (!csrf) throw new Error('missing csrf token');
+      return syncSettingsPricingCatalog(csrf);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: settingsPricingRulesQueryKey }),
+        client.invalidateQueries({
+          queryKey: settingsPricingCatalogQueryKey(filter).slice(0, -1)
+        })
+      ]);
+    }
   });
   const columns = useMemo<Array<DataTableColumn<PricingCatalogRule>>>(
     () => [
@@ -245,6 +260,31 @@ export function PricingCatalogPanel() {
               )}
             />
           ) : null}
+          {syncing.isError ? (
+            <Alert
+              showIcon
+              type="error"
+              message={i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_sync_failed'
+              )}
+            />
+          ) : null}
+          {syncing.data ? (
+            <Alert
+              showIcon
+              type="success"
+              message={i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_sync_complete'
+              )}
+              description={i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_sync_summary',
+                { ...syncing.data }
+              )}
+            />
+          ) : null}
           {importing.data ? (
             <Alert
               showIcon
@@ -278,6 +318,17 @@ export function PricingCatalogPanel() {
             toolbar={
               <Flex justify="flex-end" gap={8} wrap>
                 <Button
+                  type="primary"
+                  loading={syncing.isPending}
+                  disabled={importing.isPending}
+                  onClick={() => {
+                    importing.reset();
+                    syncing.mutate();
+                  }}
+                >
+                  {i18nText('settingsBilling', 'auto.billing_catalog_sync')}
+                </Button>
+                <Button
                   loading={catalog.isFetching}
                   onClick={() => {
                     importing.reset();
@@ -290,8 +341,7 @@ export function PricingCatalogPanel() {
                   )}
                 </Button>
                 <Button
-                  type="primary"
-                  disabled={rows.length === 0}
+                  disabled={rows.length === 0 || syncing.isPending}
                   loading={importing.isPending}
                   onClick={() => importing.mutate()}
                 >

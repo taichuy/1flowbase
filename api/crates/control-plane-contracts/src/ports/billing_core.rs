@@ -172,6 +172,14 @@ pub struct CreditOutboxEvent {
     pub delivery_attempts: i32,
 }
 
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PricingCatalogSyncSummary {
+    pub inserted: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+    pub retired: usize,
+}
+
 #[async_trait]
 pub trait BillingRepository: Send + Sync {
     async fn list_pricing_rules(
@@ -193,6 +201,11 @@ pub trait BillingRepository: Send + Sync {
         &self,
         input: &UpsertPricingRuleInput,
     ) -> anyhow::Result<Option<PricingRule>>;
+    /// Atomically merge official catalog records, preserving manual records and local IDs.
+    async fn sync_official_pricing_rules(
+        &self,
+        rules: &[PricingRule],
+    ) -> anyhow::Result<PricingCatalogSyncSummary>;
     async fn delete_pricing_rule(&self, id: Uuid) -> anyhow::Result<bool>;
     async fn billing_enabled_at(
         &self,

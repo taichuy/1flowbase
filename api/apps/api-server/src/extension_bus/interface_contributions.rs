@@ -927,6 +927,7 @@ pub(crate) fn production_interface_contributions(
                 "billing.pricing_rules.delete",
                 "billing.pricing_catalog.view",
                 "billing.pricing_catalog.import",
+                "billing.pricing_catalog.sync",
                 "billing.credit_accounts.list",
                 "billing.credit_accounts.view",
                 "billing.credit_ledger.list",

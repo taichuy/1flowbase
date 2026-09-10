@@ -41,6 +41,7 @@ pub(crate) enum BillingInput {
     },
     GetPricingCatalog(PricingCatalogQuery),
     ImportPricingCatalog(ImportCatalogBody),
+    SyncPricingCatalog,
     ListCreditAccounts(PageQuery),
     GetCreditAccount {
         user_id: Uuid,
@@ -237,6 +238,21 @@ impl BillingAdapter {
                     page_size,
                 }))
             }
+            BillingInput::SyncPricingCatalog => {
+                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
+                let rules = catalog
+                    .rules
+                    .into_iter()
+                    .map(|body| body_to_rule(body, actor.user_id, None))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let summary = self.0.store.sync_official_pricing_rules(&rules).await?;
+                // Also invalidate on a retry after a previous cache invalidation failure.
+                self.0
+                    .cache_store
+                    .clear_cache_domain("model-pricing")
+                    .await?;
+                Ok(BillingOutput::Imported(serde_json::to_value(summary)?))
+            }
             BillingInput::ImportPricingCatalog(body) => {
                 let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
                 let selected = catalog
@@ -368,6 +384,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.settings.billing.pricing-catalog.import.v1",
         method: "POST",
         path: "/api/console/settings/billing/pricing-catalog/import",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "billing.pricing_catalog.sync",
+        binding_id: "http.console.settings.billing.pricing-catalog.sync.v1",
+        method: "POST",
+        path: "/api/console/settings/billing/pricing-catalog/sync",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

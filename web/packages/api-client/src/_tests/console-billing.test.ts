@@ -7,6 +7,7 @@ import {
   executeConsoleCreditCommand,
   getConsolePricingCatalog,
   importConsolePricingCatalog,
+  syncConsolePricingCatalog,
   listConsoleCreditAccounts,
   listConsolePricingRules
 } from '../console-billing';
@@ -40,6 +41,15 @@ describe('console billing client', () => {
       method: 'POST',
       body: { catalog_ids: ['catalog-rule-1'] },
       csrfToken: 'csrf'
+    });
+  });
+
+  test('sync sends no page or selected IDs and returns the backend merge summary', async () => {
+    await expect(syncConsolePricingCatalog('csrf')).resolves.toEqual({
+      path: '/api/console/settings/billing/pricing-catalog/sync',
+      method: 'POST',
+      csrfToken: 'csrf',
+      baseUrl: undefined
     });
   });
 

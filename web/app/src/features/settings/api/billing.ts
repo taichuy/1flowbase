@@ -6,6 +6,7 @@ export {
   executeConsoleCreditCommand as executeSettingsCreditCommand,
   getConsolePricingCatalog as getSettingsPricingCatalog,
   importConsolePricingCatalog as importSettingsPricingCatalog,
+  syncConsolePricingCatalog as syncSettingsPricingCatalog,
   listConsoleCreditAccounts as listSettingsCreditAccounts,
   listConsoleCreditLedger as listSettingsCreditLedger,
   listConsolePricingRules as listSettingsPricingRules,

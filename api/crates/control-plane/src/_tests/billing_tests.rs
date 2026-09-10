@@ -123,6 +123,13 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not install pricing rules")
     }
 
+    async fn sync_official_pricing_rules(
+        &self,
+        _: &[PricingRule],
+    ) -> anyhow::Result<crate::ports::PricingCatalogSyncSummary> {
+        unreachable!("credit command fixture does not sync pricing")
+    }
+
     async fn delete_pricing_rule(&self, _id: Uuid) -> anyhow::Result<bool> {
         unreachable!("credit command service fixture does not delete pricing rules")
     }

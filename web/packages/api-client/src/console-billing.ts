@@ -268,3 +268,19 @@ export function executeConsoleCreditCommand(
     baseUrl
   });
 }
+
+export interface ConsolePricingCatalogSyncSummary {
+  inserted: number;
+  updated: number;
+  unchanged: number;
+  retired: number;
+}
+
+export function syncConsolePricingCatalog(csrfToken: string, baseUrl?: string) {
+  return apiFetch<ConsolePricingCatalogSyncSummary>({
+    path: '/api/console/settings/billing/pricing-catalog/sync',
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}

@@ -290,6 +290,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.model-providers",
         &[
             "billing.pricing_catalog.import",
+            "billing.pricing_catalog.sync",
             "billing.pricing_catalog.view",
             "billing.pricing_rules.create",
             "billing.pricing_rules.delete",
@@ -425,6 +426,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Sync overwrites official prices; historical import grants must not gain this action.
+    "billing.pricing_catalog.sync",
     "extension_center.catalog.detail",
     "extension_center.catalog.view",
     "extension_center.contribution_authorizations.grant",

@@ -5,6 +5,10 @@
     "billing_catalog_skipped": "已跳过",
     "billing_install_catalog_page": "安装当前页",
     "billing_refresh_remote_catalog": "刷新远程目录",
-    "billing_remote_catalog_unavailable": "远程计费目录暂时不可用"
+    "billing_remote_catalog_unavailable": "远程计费目录暂时不可用",
+    "billing_catalog_sync": "同步",
+    "billing_catalog_sync_complete": "模型价格同步完成",
+    "billing_catalog_sync_summary": "新增: {{inserted}}；更新: {{updated}}；未变化: {{unchanged}}；停用重复项: {{retired}}",
+    "billing_catalog_sync_failed": "同步失败，请检查网络或本地计价规则冲突后重试。"
   }
 }

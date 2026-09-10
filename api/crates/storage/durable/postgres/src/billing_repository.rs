@@ -1,3 +1,5 @@
+mod catalog_sync;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::billing::PricingRule;
@@ -125,6 +127,112 @@ const CREDIT_LEDGER_SELECT: &str = r#"select id, transaction_id, account_id, wor
            coalesce(reserved_after, 0)::text as reserved_after, credit_unit, reason,
            source_type, source_id, idempotency_key, status, metadata, created_at
     from runtime_credit_ledger"#;
+
+async fn validate_pricing_schedule(
+    transaction: &mut Transaction<'_, Postgres>,
+    rule: &PricingRule,
+) -> Result<()> {
+    let overlaps: bool = sqlx::query_scalar(
+        r#"select exists (
+                select 1 from model_pricing_rules existing
+                where existing.id <> $1
+                  and existing.enabled and $2
+                  and existing.provider_code = $3
+                  and existing.upstream_model_id = $4
+                  and existing.priority = $5
+                  and existing.effective_from < coalesce($7, 'infinity'::timestamptz)
+                  and $6 < coalesce(existing.effective_to, 'infinity'::timestamptz)
+                  and (existing.weekday_mask & $8) <> 0
+                  and (
+                    existing.local_time_start is null or $9::time is null or
+                    case
+                      when existing.local_time_start < existing.local_time_end
+                       and $9::time < $10::time
+                        then existing.local_time_start < $10::time
+                         and $9::time < existing.local_time_end
+                      when existing.local_time_start > existing.local_time_end
+                       and $9::time > $10::time
+                        then true
+                      when existing.local_time_start > existing.local_time_end
+                        then $9::time < existing.local_time_end
+                          or existing.local_time_start < $10::time
+                      else existing.local_time_start < $10::time
+                        or $9::time < existing.local_time_end
+                    end
+                  )
+            )"#,
+    )
+    .bind(rule.id)
+    .bind(rule.enabled)
+    .bind(&rule.provider_code)
+    .bind(&rule.upstream_model_id)
+    .bind(rule.priority)
+    .bind(rule.effective_from)
+    .bind(rule.effective_to)
+    .bind(rule.weekday_mask)
+    .bind(rule.local_time_start)
+    .bind(rule.local_time_end)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if overlaps {
+        return Err(ControlPlaneError::Conflict("pricing_rule_conflict").into());
+    }
+    Ok(())
+}
+
+async fn write_pricing_rule(
+    transaction: &mut Transaction<'_, Postgres>,
+    rule: &PricingRule,
+) -> Result<PricingRule> {
+    validate_pricing_schedule(transaction, rule).await?;
+    let row = sqlx::query(r#"
+            insert into model_pricing_rules (
+                id, provider_code, upstream_model_id,
+                input_token_unit_size, input_token_unit_price,
+                output_token_unit_size, output_token_unit_price,
+                cache_hit_token_unit_size, cache_hit_token_unit_price,
+                cache_write_token_unit_size, cache_write_token_unit_price,
+                currency_code, effective_from, effective_to, timezone, weekday_mask,
+                local_time_start, local_time_end, priority, enabled,
+                rules, source_kind,
+                source_catalog_id, source_version, source_checksum, extensions, created_by
+            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11::numeric,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+            on conflict (id) do update set
+                provider_code=excluded.provider_code, upstream_model_id=excluded.upstream_model_id,
+                input_token_unit_size=excluded.input_token_unit_size, input_token_unit_price=excluded.input_token_unit_price,
+                output_token_unit_size=excluded.output_token_unit_size, output_token_unit_price=excluded.output_token_unit_price,
+                cache_hit_token_unit_size=excluded.cache_hit_token_unit_size, cache_hit_token_unit_price=excluded.cache_hit_token_unit_price,
+                cache_write_token_unit_size=excluded.cache_write_token_unit_size, cache_write_token_unit_price=excluded.cache_write_token_unit_price,
+                currency_code=excluded.currency_code, effective_from=excluded.effective_from, effective_to=excluded.effective_to,
+                timezone=excluded.timezone, weekday_mask=excluded.weekday_mask, local_time_start=excluded.local_time_start,
+                local_time_end=excluded.local_time_end, priority=excluded.priority, enabled=excluded.enabled,
+                rules=excluded.rules,
+                source_kind=excluded.source_kind, source_catalog_id=excluded.source_catalog_id,
+                source_version=excluded.source_version, source_checksum=excluded.source_checksum,
+                extensions=excluded.extensions, updated_at=now()
+            returning id, provider_code, upstream_model_id,
+                input_token_unit_size, input_token_unit_price::text as input_token_unit_price,
+                output_token_unit_size, output_token_unit_price::text as output_token_unit_price,
+                cache_hit_token_unit_size, cache_hit_token_unit_price::text as cache_hit_token_unit_price,
+           cache_write_token_unit_size, cache_write_token_unit_price::text as cache_write_token_unit_price,
+                currency_code, effective_from, effective_to, timezone, weekday_mask,
+                local_time_start, local_time_end, priority, enabled,
+                rules, source_kind,
+                source_catalog_id, source_version, source_checksum, extensions, created_by, created_at, updated_at
+        "#)
+        .bind(rule.id).bind(&rule.provider_code).bind(&rule.upstream_model_id)
+        .bind(rule.input_token_unit_size).bind(rule.input_token_unit_price.to_string())
+        .bind(rule.output_token_unit_size).bind(rule.output_token_unit_price.to_string())
+        .bind(rule.cache_hit_token_unit_size).bind(rule.cache_hit_token_unit_price.to_string())
+        .bind(rule.cache_write_token_unit_size).bind(rule.cache_write_token_unit_price.to_string())
+        .bind(&rule.currency_code).bind(rule.effective_from).bind(rule.effective_to)
+        .bind(&rule.timezone).bind(rule.weekday_mask).bind(rule.local_time_start).bind(rule.local_time_end)
+        .bind(rule.priority).bind(rule.enabled).bind(&rule.rules)
+        .bind(&rule.source_kind).bind(&rule.source_catalog_id)
+        .bind(&rule.source_version).bind(&rule.source_checksum).bind(&rule.extensions).bind(rule.created_by)
+        .fetch_one(&mut **transaction).await?;
+    pricing_rule(row)
+}
 
 async fn ensure_account<'a>(
     tx: &mut Transaction<'a, Postgres>,
@@ -362,99 +470,9 @@ impl BillingRepository for PgControlPlaneStore {
             ))
             .execute(&mut *transaction)
             .await?;
-        let overlaps: bool = sqlx::query_scalar(
-            r#"select exists (
-                select 1 from model_pricing_rules existing
-                where existing.id <> $1
-                  and existing.enabled and $2
-                  and existing.provider_code = $3
-                  and existing.upstream_model_id = $4
-                  and existing.priority = $5
-                  and existing.effective_from < coalesce($7, 'infinity'::timestamptz)
-                  and $6 < coalesce(existing.effective_to, 'infinity'::timestamptz)
-                  and (existing.weekday_mask & $8) <> 0
-                  and (
-                    existing.local_time_start is null or $9::time is null or
-                    case
-                      when existing.local_time_start < existing.local_time_end
-                       and $9::time < $10::time
-                        then existing.local_time_start < $10::time
-                         and $9::time < existing.local_time_end
-                      when existing.local_time_start > existing.local_time_end
-                       and $9::time > $10::time
-                        then true
-                      when existing.local_time_start > existing.local_time_end
-                        then $9::time < existing.local_time_end
-                          or existing.local_time_start < $10::time
-                      else existing.local_time_start < $10::time
-                        or $9::time < existing.local_time_end
-                    end
-                  )
-            )"#,
-        )
-        .bind(rule.id)
-        .bind(rule.enabled)
-        .bind(&rule.provider_code)
-        .bind(&rule.upstream_model_id)
-        .bind(rule.priority)
-        .bind(rule.effective_from)
-        .bind(rule.effective_to)
-        .bind(rule.weekday_mask)
-        .bind(rule.local_time_start)
-        .bind(rule.local_time_end)
-        .fetch_one(&mut *transaction)
-        .await?;
-        if overlaps {
-            return Err(ControlPlaneError::Conflict("pricing_rule_conflict").into());
-        }
-        let row = sqlx::query(r#"
-            insert into model_pricing_rules (
-                id, provider_code, upstream_model_id,
-                input_token_unit_size, input_token_unit_price,
-                output_token_unit_size, output_token_unit_price,
-                cache_hit_token_unit_size, cache_hit_token_unit_price,
-                cache_write_token_unit_size, cache_write_token_unit_price,
-                currency_code, effective_from, effective_to, timezone, weekday_mask,
-                local_time_start, local_time_end, priority, enabled,
-                rules, source_kind,
-                source_catalog_id, source_version, source_checksum, extensions, created_by
-            ) values ($1,$2,$3,$4,$5::numeric,$6,$7::numeric,$8,$9::numeric,$10,$11::numeric,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
-            on conflict (id) do update set
-                provider_code=excluded.provider_code, upstream_model_id=excluded.upstream_model_id,
-                input_token_unit_size=excluded.input_token_unit_size, input_token_unit_price=excluded.input_token_unit_price,
-                output_token_unit_size=excluded.output_token_unit_size, output_token_unit_price=excluded.output_token_unit_price,
-                cache_hit_token_unit_size=excluded.cache_hit_token_unit_size, cache_hit_token_unit_price=excluded.cache_hit_token_unit_price,
-                cache_write_token_unit_size=excluded.cache_write_token_unit_size, cache_write_token_unit_price=excluded.cache_write_token_unit_price,
-                currency_code=excluded.currency_code, effective_from=excluded.effective_from, effective_to=excluded.effective_to,
-                timezone=excluded.timezone, weekday_mask=excluded.weekday_mask, local_time_start=excluded.local_time_start,
-                local_time_end=excluded.local_time_end, priority=excluded.priority, enabled=excluded.enabled,
-                rules=excluded.rules,
-                source_kind=excluded.source_kind, source_catalog_id=excluded.source_catalog_id,
-                source_version=excluded.source_version, source_checksum=excluded.source_checksum,
-                extensions=excluded.extensions, updated_at=now()
-            returning id, provider_code, upstream_model_id,
-                input_token_unit_size, input_token_unit_price::text as input_token_unit_price,
-                output_token_unit_size, output_token_unit_price::text as output_token_unit_price,
-                cache_hit_token_unit_size, cache_hit_token_unit_price::text as cache_hit_token_unit_price,
-           cache_write_token_unit_size, cache_write_token_unit_price::text as cache_write_token_unit_price,
-                currency_code, effective_from, effective_to, timezone, weekday_mask,
-                local_time_start, local_time_end, priority, enabled,
-                rules, source_kind,
-                source_catalog_id, source_version, source_checksum, extensions, created_by, created_at, updated_at
-        "#)
-        .bind(rule.id).bind(&rule.provider_code).bind(&rule.upstream_model_id)
-        .bind(rule.input_token_unit_size).bind(rule.input_token_unit_price.to_string())
-        .bind(rule.output_token_unit_size).bind(rule.output_token_unit_price.to_string())
-        .bind(rule.cache_hit_token_unit_size).bind(rule.cache_hit_token_unit_price.to_string())
-        .bind(rule.cache_write_token_unit_size).bind(rule.cache_write_token_unit_price.to_string())
-        .bind(&rule.currency_code).bind(rule.effective_from).bind(rule.effective_to)
-        .bind(&rule.timezone).bind(rule.weekday_mask).bind(rule.local_time_start).bind(rule.local_time_end)
-        .bind(rule.priority).bind(rule.enabled).bind(&rule.rules)
-        .bind(&rule.source_kind).bind(&rule.source_catalog_id)
-        .bind(&rule.source_version).bind(&rule.source_checksum).bind(&rule.extensions).bind(rule.created_by)
-        .fetch_one(&mut *transaction).await?;
+        let row = write_pricing_rule(&mut transaction, rule).await?;
         transaction.commit().await?;
-        pricing_rule(row)
+        Ok(row)
     }
 
     async fn insert_pricing_rule_if_absent(
@@ -493,51 +511,7 @@ impl BillingRepository for PgControlPlaneStore {
             transaction.commit().await?;
             return Ok(None);
         }
-        let overlaps: bool = sqlx::query_scalar(
-            r#"select exists (
-                select 1 from model_pricing_rules existing
-                where existing.id <> $1
-                  and existing.enabled and $2
-                  and existing.provider_code = $3
-                  and existing.upstream_model_id = $4
-                  and existing.priority = $5
-                  and existing.effective_from < coalesce($7, 'infinity'::timestamptz)
-                  and $6 < coalesce(existing.effective_to, 'infinity'::timestamptz)
-                  and (existing.weekday_mask & $8) <> 0
-                  and (
-                    existing.local_time_start is null or $9::time is null or
-                    case
-                      when existing.local_time_start < existing.local_time_end
-                       and $9::time < $10::time
-                        then existing.local_time_start < $10::time
-                         and $9::time < existing.local_time_end
-                      when existing.local_time_start > existing.local_time_end
-                       and $9::time > $10::time
-                        then true
-                      when existing.local_time_start > existing.local_time_end
-                        then $9::time < existing.local_time_end
-                          or existing.local_time_start < $10::time
-                      else existing.local_time_start < $10::time
-                        or $9::time < existing.local_time_end
-                    end
-                  )
-            )"#,
-        )
-        .bind(rule.id)
-        .bind(rule.enabled)
-        .bind(&rule.provider_code)
-        .bind(&rule.upstream_model_id)
-        .bind(rule.priority)
-        .bind(rule.effective_from)
-        .bind(rule.effective_to)
-        .bind(rule.weekday_mask)
-        .bind(rule.local_time_start)
-        .bind(rule.local_time_end)
-        .fetch_one(&mut *transaction)
-        .await?;
-        if overlaps {
-            return Err(ControlPlaneError::Conflict("pricing_rule_conflict").into());
-        }
+        validate_pricing_schedule(&mut transaction, rule).await?;
         let row = sqlx::query(r#"
             insert into model_pricing_rules (
                 id, provider_code, upstream_model_id,
@@ -574,6 +548,13 @@ impl BillingRepository for PgControlPlaneStore {
         .fetch_optional(&mut *transaction).await?;
         transaction.commit().await?;
         row.map(pricing_rule).transpose()
+    }
+
+    async fn sync_official_pricing_rules(
+        &self,
+        rules: &[PricingRule],
+    ) -> Result<control_plane_contracts::ports::PricingCatalogSyncSummary> {
+        catalog_sync::merge(&self.pool(), rules).await
     }
 
     async fn delete_pricing_rule(&self, id: Uuid) -> Result<bool> {

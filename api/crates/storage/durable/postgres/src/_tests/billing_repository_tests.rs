@@ -651,3 +651,165 @@ async fn official_pricing_import_deduplicates_model_identity_and_preserves_manua
         10
     );
 }
+
+// AC: atomic overwrite, manual preservation, stable IDs, deduplication and retries.
+#[tokio::test]
+async fn official_pricing_sync_merges_atomically_and_preserves_manual_rules() {
+    let (store, _, user_id) = seeded_store().await;
+    let base = PricingRule {
+        id: Uuid::now_v7(),
+        provider_code: "standard-identity".into(),
+        upstream_model_id: "model".into(),
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: Decimal::ONE,
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: Decimal::from(2),
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: Decimal::ZERO,
+        cache_write_token_unit_size: 1_000_000,
+        cache_write_token_unit_price: Decimal::ONE,
+        currency_code: "USD".into(),
+        effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
+        effective_to: None,
+        timezone: "UTC".into(),
+        weekday_mask: 127,
+        local_time_start: None,
+        local_time_end: None,
+        priority: 10,
+        enabled: true,
+        rules: json!([]),
+        source_kind: "manual".into(),
+        source_catalog_id: None,
+        source_version: None,
+        source_checksum: None,
+        extensions: json!({}),
+        created_by: Some(user_id),
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+    let manual = store
+        .upsert_pricing_rule(&UpsertPricingRuleInput { rule: base.clone() })
+        .await
+        .unwrap();
+    let mut official = base.clone();
+    official.id = Uuid::now_v7();
+    official.priority = 0;
+    official.source_kind = "official".into();
+    official.source_catalog_id = Some(official.id.to_string());
+    let first = store
+        .sync_official_pricing_rules(&[official.clone()])
+        .await
+        .unwrap();
+    assert_eq!(first.inserted, 1);
+    let original_id = official.id;
+    let mut duplicate = official.clone();
+    duplicate.id = Uuid::now_v7();
+    duplicate.source_catalog_id = Some(duplicate.id.to_string());
+    duplicate.priority = 2;
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput {
+            rule: duplicate.clone(),
+        })
+        .await
+        .unwrap();
+    official.id = Uuid::now_v7();
+    official.source_catalog_id = Some(official.id.to_string());
+    official.input_token_unit_price = Decimal::from(7);
+    official.cache_write_token_unit_price = Decimal::from(3);
+    official.rules = json!([{"when":{"cache_write_ttl_seconds":3600},"overrides":{"cache_write_token_unit_price":"8"}}]);
+    let summary = store
+        .sync_official_pricing_rules(&[official.clone()])
+        .await
+        .unwrap();
+    assert_eq!(
+        (summary.inserted, summary.updated, summary.retired),
+        (0, 1, 1)
+    );
+    let updated = store.get_pricing_rule(original_id).await.unwrap().unwrap();
+    assert_eq!(updated.input_token_unit_price, Decimal::from(7));
+    assert_eq!(updated.rules, official.rules);
+    assert!(
+        !store
+            .get_pricing_rule(duplicate.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert_eq!(
+        store.get_pricing_rule(base.id).await.unwrap().unwrap(),
+        manual
+    );
+    let repeated = store
+        .sync_official_pricing_rules(&[official.clone()])
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            repeated.inserted,
+            repeated.updated,
+            repeated.unchanged,
+            repeated.retired
+        ),
+        (0, 0, 1, 0)
+    );
+    // A local edit must be overwritten even when the catalog checksum hasn't changed.
+    let mut edited = updated.clone();
+    edited.input_token_unit_price = Decimal::from(99);
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput { rule: edited })
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .sync_official_pricing_rules(&[official.clone()])
+            .await
+            .unwrap()
+            .updated,
+        1
+    );
+    let before = store.get_pricing_rule(original_id).await.unwrap().unwrap();
+    // A later conflicting model must roll back earlier updates in this batch.
+    let mut conflict = official.clone();
+    conflict.id = Uuid::now_v7();
+    conflict.source_catalog_id = Some(conflict.id.to_string());
+    conflict.upstream_model_id = "conflicting".into();
+    let mut manual_conflict = conflict.clone();
+    manual_conflict.id = Uuid::now_v7();
+    manual_conflict.source_kind = "manual".into();
+    manual_conflict.source_catalog_id = None;
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput {
+            rule: manual_conflict.clone(),
+        })
+        .await
+        .unwrap();
+    official.input_token_unit_price = Decimal::from(55);
+    assert!(store
+        .sync_official_pricing_rules(&[official.clone(), conflict])
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("pricing_rule_conflict"));
+    assert_eq!(
+        store.get_pricing_rule(original_id).await.unwrap().unwrap(),
+        before
+    );
+    assert!(store
+        .get_pricing_rule(manual_conflict.id)
+        .await
+        .unwrap()
+        .is_some());
+    let mut collision = official.clone();
+    collision.id = base.id;
+    collision.source_catalog_id = Some(base.id.to_string());
+    collision.upstream_model_id = "id-collision".into();
+    assert!(store
+        .sync_official_pricing_rules(&[collision])
+        .await
+        .is_err());
+    assert_eq!(
+        store.get_pricing_rule(base.id).await.unwrap().unwrap(),
+        manual
+    );
+}

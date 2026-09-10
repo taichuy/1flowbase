@@ -39,6 +39,13 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         anyhow::bail!("pricing rule fixture is not implemented")
     }
 
+    async fn sync_official_pricing_rules(
+        &self,
+        _rules: &[crate::billing::PricingRule],
+    ) -> Result<crate::ports::PricingCatalogSyncSummary> {
+        anyhow::bail!("orchestration fixture does not synchronize pricing")
+    }
+
     async fn delete_pricing_rule(&self, _id: Uuid) -> Result<bool> {
         Ok(false)
     }

@@ -30,6 +30,7 @@ const billingApi = vi.hoisted(() => ({
   deleteSettingsPricingRule: vi.fn(),
   getSettingsPricingCatalog: vi.fn(),
   importSettingsPricingCatalog: vi.fn(),
+  syncSettingsPricingCatalog: vi.fn(),
   listSettingsCreditAccounts: vi.fn(),
   listSettingsCreditLedger: vi.fn(),
   executeSettingsCreditCommand: vi.fn()
@@ -402,6 +403,29 @@ describe('billing settings panels', () => {
         expect.objectContaining({ amount: '2.50' }),
         'csrf-123'
       )
+    );
+  });
+
+  test('syncs all official pricing independently of visible catalog filters and reports results', async () => {
+    authenticate();
+    billingApi.syncSettingsPricingCatalog.mockResolvedValue({
+      inserted: 2,
+      updated: 20,
+      unchanged: 1,
+      retired: 0
+    });
+    render(
+      <AppProviders>
+        <PricingCatalogPanel />
+      </AppProviders>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /^同\s*步$/ }));
+    expect(await screen.findByText('模型价格同步完成')).toBeInTheDocument();
+    expect(
+      screen.getByText('新增: 2；更新: 20；未变化: 1；停用重复项: 0')
+    ).toBeInTheDocument();
+    expect(billingApi.syncSettingsPricingCatalog).toHaveBeenCalledWith(
+      'csrf-123'
     );
   });
 });

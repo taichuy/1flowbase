@@ -5,6 +5,10 @@
     "billing_catalog_skipped": "Skipped",
     "billing_install_catalog_page": "Install current page",
     "billing_refresh_remote_catalog": "Refresh remote catalog",
-    "billing_remote_catalog_unavailable": "The remote pricing catalog is temporarily unavailable"
+    "billing_remote_catalog_unavailable": "The remote pricing catalog is temporarily unavailable",
+    "billing_catalog_sync": "Sync",
+    "billing_catalog_sync_complete": "Model pricing synchronized",
+    "billing_catalog_sync_summary": "Added: {{inserted}}; Updated: {{updated}}; Unchanged: {{unchanged}}; Retired duplicates: {{retired}}",
+    "billing_catalog_sync_failed": "Sync failed. Check the connection or local pricing conflicts and retry."
   }
 }

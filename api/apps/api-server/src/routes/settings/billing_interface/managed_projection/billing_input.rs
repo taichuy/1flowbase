@@ -4,6 +4,7 @@ impl InterfaceContract for BillingInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("SyncPricingCatalog"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("ListPricingRules")),
                 (
@@ -798,6 +799,9 @@ impl InterfaceContract for BillingInput {
                     ]),
                 ),
             ]),
+            Self::SyncPricingCatalog => {
+                mp::object_value(&[("variant", serde_json::json!("SyncPricingCatalog"))])
+            }
             Self::ImportPricingCatalog(_field_0) => mp::object_value(&[
                 (
                     "variant",

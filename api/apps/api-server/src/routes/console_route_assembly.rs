@@ -710,6 +710,7 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "billing.pricing_catalog.sync" => Some("Synchronize all official model prices"),
         "extension_center.installed.delete" => Some(
             "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
         ),
@@ -845,6 +846,7 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "billing.pricing_catalog.sync" => "Fetch the complete official catalog and atomically update official prices and conditional rules, insert new models, and retire duplicate official records while preserving manual rules and historical IDs.".to_string(),
             "extension_center.managed_execution.view" => "Read exact retained and current execution targets, frozen reference counts and durable delivery status for the installed extension in the current workspace.".to_string(),
             "extension_center.lifecycle_deliveries.resume" => "Resume one paused delivery only when its full frozen target, original executable and current contribution authorization remain valid.".to_string(),
             "extension_center.managed_executions.retire" => "Reject retirement while the target is current or retains frozen invocations, future publications, admitted work or unfinished durable deliveries; preserve every delivery record.".to_string(),
