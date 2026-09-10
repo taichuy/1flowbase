@@ -153,6 +153,23 @@ docker compose up -d web
 
 归档内只有当前 `manifest.json` 和 `assets/`。更新时应先清空 `web/external-npm/` 中旧的 manifest 与资产，再整体解压新归档；需要回退时重新部署运维侧保留的旧归档。
 
+## 本地构建代理
+
+`node scripts/node/build-local-deploy-images.js` 会把当前 shell 的大小写
+`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 传入 Docker 构建步骤。
+代理值通过 Docker 预定义 build args 传递，不写进 Dockerfile 或最终镜像环境。
+
+在 Linux 上使用本地 Unix socket Docker daemon 且代理监听 loopback 地址时，
+脚本自动使用 host 构建网络，使容器能访问宿主机代理。
+可用 `FLOWBASE_DOCKER_BUILD_NETWORK` 显式覆盖；远程 daemon、Docker Desktop
+或自定义 buildx builder 需要使用构建端可达的代理地址和适用的网络配置。
+
+缺少 buildx 时，脚本生成的临时 Dockerfile 会移除 cache mount 和仅供 CI 使用的
+`runtime-prebuilt` 阶段，保留从当前源码构建的 `runtime` 目标。
+
+前端依赖安装的单次请求超时为 300 秒、失败重试 3 次、网络并发为 8，仍使用
+官方 npm registry 和 frozen lockfile。安装校验脚本在安装层提前复制并正常执行。
+
 ## 本地构建缓存
 
 Dockerfile 已启用 BuildKit cache mount：

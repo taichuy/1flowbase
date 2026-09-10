@@ -21,7 +21,10 @@ import type {
 import { createFrontstagePageContentFixture } from '../../frontstage-page-content-fixtures';
 import { createNativePreparationSource } from '../fixtures/native-preparation-source';
 
-async function mount(Block: ComponentType, isDesignMode = true) {
+async function mount(
+  Block: Parameters<typeof preparation>[2],
+  isDesignMode = true
+) {
   const block = runtimeBlock('Keyboard');
   const select = vi.fn();
   const view = render(

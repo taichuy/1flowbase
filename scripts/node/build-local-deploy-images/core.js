@@ -19,6 +19,8 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
 Builds the current API and web source into the image tags configured in deploy/docker/.env.
 If deploy/docker/.env is missing, it is copied from deploy/docker/.env.example.
 This command builds images only. It never starts or recreates Docker Compose services.
+Proxy environment variables are forwarded to build steps. Local Linux loopback proxies
+use host networking automatically; FLOWBASE_DOCKER_BUILD_NETWORK overrides the network.
 `);
 }
 
@@ -103,6 +105,8 @@ function buildImage({
   targetArch,
   targetOs,
   useBuildx,
+  env,
+  network,
 }) {
   const args = useBuildx
     ? ['buildx', 'build', '--load', '--target', 'runtime']
@@ -115,11 +119,19 @@ function buildImage({
       '--build-arg',
       `TARGETARCH=${targetArch}`,
     ];
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) {
+    if (env[name]) args.push('--build-arg', name);
+  }
+  if (network) {
+    args.push('--network', network);
+    if (useBuildx && network === 'host') args.push('--allow', 'network.host');
+  }
   args.push('-f', dockerfile, '-t', image, '.');
 
   const result = runCommand('docker', args, {
     cwd: repoRoot,
-    env: { ...process.env, DOCKER_BUILDKIT: useBuildx ? '1' : '0' },
+    env: { ...env, DOCKER_BUILDKIT: useBuildx ? '1' : '0' },
   });
   ensureCommandSuccess(`build ${image}`, result);
 }
@@ -192,7 +204,12 @@ function createLegacyDockerfiles(repoRoot) {
   })) {
     const sourcePath = path.join(repoRoot, 'docker', filename);
     const targetPath = path.join(tempDir, filename);
-    const source = fs.readFileSync(sourcePath, 'utf8');
+    // Legacy Docker evaluates preceding stages even when runtime does not depend on them.
+    // CI prebuilt stages require BuildKit named contexts that local source builds do not supply.
+    const source = fs.readFileSync(sourcePath, 'utf8')
+      .split(/(?=^FROM )/mu)
+      .filter((stage) => !/^FROM \S+ AS runtime-prebuilt\s*$/mu.test(stage))
+      .join('');
     const cargoJobs = component === 'apiServer' ? recommendedCargoJobs() : undefined;
     fs.writeFileSync(targetPath, removeBuildKitRunMounts(source, sourcePath, { cargoJobs }));
     dockerfiles[component] = targetPath;
@@ -203,6 +220,7 @@ function createLegacyDockerfiles(repoRoot) {
 
 function runLocalDeployImageBuild({
   deployDir,
+  env = process.env,
   repoRoot = getRepoRoot(),
   runCommand = defaultRunCommand,
   writeStdout = (text) => process.stdout.write(text),
@@ -224,13 +242,37 @@ function runLocalDeployImageBuild({
   const buildxResult = runCommand('docker', ['buildx', 'version'], {
     captureOutput: true,
     cwd: repoRoot,
-    env: process.env,
+    env,
   });
   const useBuildx = !buildxResult.error && buildxResult.status === 0;
   log(
     `builder: ${useBuildx ? 'docker buildx build --load' : 'local Docker legacy builder without cache mounts'}`,
     writeStdout,
   );
+
+  let network = env.FLOWBASE_DOCKER_BUILD_NETWORK;
+  const loopbackProxy = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY',
+    'http_proxy', 'https_proxy', 'all_proxy'].some((name) => {
+    if (!env[name]) return false;
+    try {
+      return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(env[name]).hostname);
+    } catch {
+      return false;
+    }
+  });
+  if (!network && loopbackProxy && process.platform === 'linux') {
+    // A loopback proxy is reachable through host networking only on a local daemon.
+    let endpoint = env.DOCKER_CONTEXT ? undefined : env.DOCKER_HOST;
+    if (!endpoint) {
+      const context = runCommand('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], {
+        captureOutput: true, cwd: repoRoot, env,
+      });
+      ensureCommandSuccess('inspect Docker endpoint for local proxy', context);
+      endpoint = context.stdout?.trim();
+    }
+    if (endpoint?.startsWith('unix://')) network = 'host';
+  }
+  if (network) log(`build network: ${network}`, writeStdout);
 
   const legacyFiles = useBuildx ? null : createLegacyDockerfiles(repoRoot);
   const dockerfiles = legacyFiles?.dockerfiles || {
@@ -251,6 +293,8 @@ function runLocalDeployImageBuild({
       runCommand,
       ...target,
       useBuildx,
+      env,
+      network,
     });
 
     log(`building ${images.web}`, writeStdout);
@@ -261,6 +305,8 @@ function runLocalDeployImageBuild({
       runCommand,
       ...target,
       useBuildx,
+      env,
+      network,
     });
   } finally {
     if (legacyFiles) {

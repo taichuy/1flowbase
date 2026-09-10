@@ -11,7 +11,7 @@ RUN corepack enable && corepack prepare pnpm@11.5.0 --activate
 
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./web/
 COPY web/patches ./web/patches
-COPY web/scripts/verify-react-grid-layout-patch.mjs ./web/scripts/verify-react-grid-layout-patch.mjs
+COPY web/scripts/verify-react-grid-layout-patch.mjs web/scripts/verify-rc-drawer-motion-patch.mjs ./web/scripts/
 COPY web/app/package.json ./web/app/package.json
 COPY web/packages/api-client/package.json ./web/packages/api-client/package.json
 COPY web/packages/block-renderer/package.json ./web/packages/block-renderer/package.json
@@ -27,7 +27,7 @@ COPY web/packages/ui/package.json ./web/packages/ui/package.json
 RUN --mount=type=cache,id=1flowbase-pnpm-store,sharing=locked,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
     && pnpm config set package-import-method copy \
-    && pnpm --dir web install --frozen-lockfile
+    && pnpm --dir web install --frozen-lockfile --fetch-timeout=300000 --fetch-retries=3 --network-concurrency=8
 
 COPY web ./web
 COPY scripts ./scripts

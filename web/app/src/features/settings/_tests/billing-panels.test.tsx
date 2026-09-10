@@ -23,7 +23,7 @@ const billingApi = vi.hoisted(() => ({
     'credit-ledger',
     userId ?? 'all'
   ]),
-  listSettingsPricingRules: vi.fn(),
+  listSettingsPricingRules: vi.fn<typeof import('../api/billing').listSettingsPricingRules>(),
   createSettingsPricingRule: vi.fn(),
   updateSettingsPricingRule: vi.fn(),
   deleteSettingsPricingRule: vi.fn(),
