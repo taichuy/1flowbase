@@ -350,6 +350,10 @@ export function EmbeddedAgentAssistantPreview({
     if (open) {
       return;
     }
+    setSettingsOpen(false);
+    setHistoryOpen(false);
+    setActivityMessageId(null);
+    setHistoryFullView(false);
     historyExpansionSideRef.current = null;
     historyExpansionWidthRef.current = 0;
     historyLeftResizeWidthRef.current = 0;
@@ -693,7 +697,7 @@ export function EmbeddedAgentAssistantPreview({
   }, [mobile, toggleMaximized, windowEntry]);
 
   useEffect(() => {
-    if (!sidePanelOpen) {
+    if (!open || !sidePanelOpen) {
       return;
     }
     const rect = assistantWindowRectRef.current;
@@ -709,7 +713,7 @@ export function EmbeddedAgentAssistantPreview({
     historyExpansionWidthRef.current = 0;
     historyLeftResizeWidthRef.current = 0;
     setHistoryFullView(true);
-  }, [historyFullView, mobile, sidePanelOpen, windowEntry?.rect.width]);
+  }, [historyFullView, mobile, open, sidePanelOpen, windowEntry?.rect.width]);
 
   useEffect(() => () => historyResizeCleanupRef.current?.(), []);
 

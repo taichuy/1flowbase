@@ -874,6 +874,9 @@ export function AgentFlowCanvasFrame({
   function closeDebugConsole() {
     stopDebugConsoleResizeRef.current?.();
     stopConversationLogResizeRef.current?.();
+    if (debugConsoleOpen) {
+      debugSession.closeSession();
+    }
     setConversationLogMessageId(null);
     setDebugConsoleOpen(false);
   }

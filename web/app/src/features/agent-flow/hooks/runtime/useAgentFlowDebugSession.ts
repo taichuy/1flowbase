@@ -324,10 +324,14 @@ export function useAgentFlowDebugSession({
       invalidateRuntime?: boolean;
     }
   ) {
+    const generation = streamGenerationRef.current;
     const hydratedDetail = await hydrateRunDetailArtifacts(
       applicationId,
       detail
     );
+    if (!isActiveDebugStreamGeneration(generation)) {
+      return null;
+    }
     const assistantMessage = mapRunDetailToConversation(hydratedDetail);
     const inputVariableCache =
       buildInputVariableCacheFromRunDetail(hydratedDetail);
@@ -370,6 +374,9 @@ export function useAgentFlowDebugSession({
       }
 
       const assistantMessage = await applyRunDetail(detail);
+      if (!assistantMessage || activeRunIdRef.current !== runId) {
+        return;
+      }
 
       if (!shouldPollRun(detail)) {
         stopPolling();
@@ -588,13 +595,21 @@ export function useAgentFlowDebugSession({
             applicationId,
             completedRunId
           );
+          if (!isActiveDebugStreamGeneration(streamGeneration)) {
+            return null;
+          }
           await applyRunDetail(detail, {
             fallbackMessageId: runningMessage.id,
             invalidateRuntime: true
           });
         } catch {
-          setActiveRunId(completedRunId);
+          if (isActiveDebugStreamGeneration(streamGeneration)) {
+            setActiveRunId(completedRunId);
+          }
         }
+      }
+      if (!isActiveDebugStreamGeneration(streamGeneration)) {
+        return null;
       }
       stopPolling();
       await queryClient.invalidateQueries({
@@ -634,12 +649,21 @@ export function useAgentFlowDebugSession({
         runInput,
         csrfToken
       );
+      if (!isActiveDebugStreamGeneration(streamGeneration)) {
+        return null;
+      }
 
       lastSubmittedPromptRef.current = resolvedPrompt;
       const assistantMessage = await applyRunDetail(detail, {
         fallbackMessageId: runningMessage.id,
         invalidateRuntime: !shouldPollRun(detail)
       });
+      if (
+        !assistantMessage ||
+        !isActiveDebugStreamGeneration(streamGeneration)
+      ) {
+        return null;
+      }
 
       if (shouldPollRun(detail)) {
         beginPolling(detail.flow_run.id);
@@ -650,6 +674,9 @@ export function useAgentFlowDebugSession({
       setStatus(assistantMessage.status);
       return detail;
     } catch (error) {
+      if (!isActiveDebugStreamGeneration(streamGeneration)) {
+        return null;
+      }
       const errorMessage =
         error instanceof Error
           ? error.message
@@ -684,9 +711,14 @@ export function useAgentFlowDebugSession({
 
     stoppingRef.current = true;
     setStopping(true);
+    let generation = streamGenerationRef.current;
     try {
       const detail = await cancelFlowDebugRun(applicationId, runId, csrfToken);
+      if (!isActiveDebugStreamGeneration(generation)) {
+        return null;
+      }
       cancelActiveDebugStream();
+      generation = streamGenerationRef.current;
       stopPolling();
       clearScheduledAssistantMessageFlush();
       await applyRunDetail(detail, { invalidateRuntime: true });
@@ -694,8 +726,10 @@ export function useAgentFlowDebugSession({
     } catch {
       return null;
     } finally {
-      stoppingRef.current = false;
-      setStopping(false);
+      if (isActiveDebugStreamGeneration(generation)) {
+        stoppingRef.current = false;
+        setStopping(false);
+      }
     }
   }
 
@@ -710,6 +744,15 @@ export function useAgentFlowDebugSession({
     setMessages([]);
     setLastDetail(null);
     setStreamTraceItems([]);
+  }
+
+  function closeSession() {
+    clearSession();
+    lastSubmittedPromptRef.current = null;
+    setDebugSessionState(createDebugSessionState(applicationId, draftId));
+    setRunContext(buildRunContextFromDocument(document, null));
+    setMcpInstanceIds([]);
+    setNodePreviewInputCache({});
   }
 
   function setRunContextValue(nodeId: string, key: string, value: unknown) {
@@ -881,6 +924,7 @@ export function useAgentFlowDebugSession({
     rerunLast,
     stopRun,
     clearSession,
+    closeSession,
     setRunContextValue,
     getNodePreviewVariableCache,
     setVariableCacheValue,
