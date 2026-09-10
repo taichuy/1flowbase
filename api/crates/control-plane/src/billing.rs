@@ -1,5 +1,4 @@
 mod rating;
-pub use control_plane_contracts::billing::policy::CacheWriteRate;
 use std::collections::BTreeMap;
 
 use crate::ports::{
@@ -9,7 +8,7 @@ use crate::ports::{
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, Weekday};
 use uuid::Uuid;
@@ -261,47 +260,7 @@ pub async fn dispatch_credit_events<R: BillingRepository, P: CreditEventPublishe
     Ok(published)
 }
 
-const RATING_POLICY_SCHEMA_V1: &str = "1flowbase.model-rating-policy/v1";
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenTierPolicyDocument {
-    schema_version: String,
-    #[serde(rename = "type")]
-    policy_type: String,
-    tiers: Vec<InputTokenTierDocument>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenTierDocument {
-    when: InputTokenThresholdDocument,
-    rates: TokenRateSetDocument,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenThresholdDocument {
-    operator: String,
-    value: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TokenRateSetDocument {
-    input: TokenRateDocument,
-    output: TokenRateDocument,
-    cache_hit: TokenRateDocument,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TokenRateDocument {
-    unit_size: i64,
-    unit_price: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct TokenRate {
     pub unit_size: i64,
     pub unit_price: Decimal,
@@ -309,66 +268,15 @@ pub struct TokenRate {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppliedTokenRates {
-    pub cache_write: Option<CacheWriteRate>,
     pub input: TokenRate,
     pub output: TokenRate,
     pub cache_hit: TokenRate,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RatingPolicyMatch {
-    pub schema_version: &'static str,
-    pub policy_type: &'static str,
-    pub tier_index: usize,
-    pub input_tokens: i64,
-    pub operator: String,
-    pub threshold: i64,
-}
-
-fn token_rate(document: &TokenRateDocument) -> Result<TokenRate> {
-    let unit_price = document
-        .unit_price
-        .parse::<Decimal>()
-        .map_err(|_| anyhow!("rating_policy_invalid"))?;
-    if document.unit_size <= 0 || unit_price.is_sign_negative() {
-        return Err(anyhow!("rating_policy_invalid"));
-    }
-    Ok(TokenRate {
-        unit_size: document.unit_size,
-        unit_price,
-    })
-}
-
-fn validated_input_token_tier_policy(
-    value: &serde_json::Value,
-) -> Result<InputTokenTierPolicyDocument> {
-    let policy: InputTokenTierPolicyDocument =
-        serde_json::from_value(value.clone()).map_err(|_| anyhow!("rating_policy_invalid"))?;
-    if policy.schema_version != RATING_POLICY_SCHEMA_V1
-        || policy.policy_type != "input_token_tiers"
-        || policy.tiers.is_empty()
-    {
-        return Err(anyhow!("rating_policy_invalid"));
-    }
-    let mut previous_threshold = None;
-    for tier in &policy.tiers {
-        if tier.when.value < 0 || !matches!(tier.when.operator.as_str(), "gt" | "gte") {
-            return Err(anyhow!("rating_policy_invalid"));
-        }
-        if previous_threshold.is_some_and(|previous| tier.when.value <= previous) {
-            return Err(anyhow!("rating_policy_tiers_not_strictly_ascending"));
-        }
-        previous_threshold = Some(tier.when.value);
-        token_rate(&tier.rates.input)?;
-        token_rate(&tier.rates.output)?;
-        token_rate(&tier.rates.cache_hit)?;
-    }
-    Ok(policy)
+    pub cache_write: TokenRate,
+    pub cache_write_by_ttl_seconds: BTreeMap<String, TokenRate>,
 }
 
 fn base_token_rates(rule: &PricingRule) -> AppliedTokenRates {
     AppliedTokenRates {
-        cache_write: None,
         input: TokenRate {
             unit_size: rule.input_token_unit_size,
             unit_price: rule.input_token_unit_price,
@@ -381,52 +289,12 @@ fn base_token_rates(rule: &PricingRule) -> AppliedTokenRates {
             unit_size: rule.cache_hit_token_unit_size,
             unit_price: rule.cache_hit_token_unit_price,
         },
-    }
-}
-
-fn applied_token_rates(
-    rule: &PricingRule,
-    input_tokens: i64,
-) -> Result<(AppliedTokenRates, Option<RatingPolicyMatch>)> {
-    if !rule.rating_policy_enabled {
-        return Ok((base_token_rates(rule), None));
-    }
-    if rule.rating_policy["schema_version"]
-        == control_plane_contracts::billing::policy::RATING_POLICY_SCHEMA_V2
-    {
-        return rating::applied_v2_rates(rule, input_tokens);
-    }
-    let policy = validated_input_token_tier_policy(&rule.rating_policy)?;
-    let matched =
-        policy
-            .tiers
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, tier)| match tier.when.operator.as_str() {
-                "gt" => input_tokens > tier.when.value,
-                "gte" => input_tokens >= tier.when.value,
-                _ => false,
-            });
-    let Some((tier_index, tier)) = matched else {
-        return Ok((base_token_rates(rule), None));
-    };
-    Ok((
-        AppliedTokenRates {
-            cache_write: None,
-            input: token_rate(&tier.rates.input)?,
-            output: token_rate(&tier.rates.output)?,
-            cache_hit: token_rate(&tier.rates.cache_hit)?,
+        cache_write: TokenRate {
+            unit_size: rule.cache_write_token_unit_size,
+            unit_price: rule.cache_write_token_unit_price,
         },
-        Some(RatingPolicyMatch {
-            schema_version: RATING_POLICY_SCHEMA_V1,
-            policy_type: "input_token_tiers",
-            tier_index,
-            input_tokens,
-            operator: tier.when.operator.clone(),
-            threshold: tier.when.value,
-        }),
-    ))
+        cache_write_by_ttl_seconds: BTreeMap::new(),
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -451,11 +319,19 @@ pub struct RatedTokenCost {
     pub cache_hit_cost: Decimal,
     pub total_cost: Decimal,
     pub applied_rates: AppliedTokenRates,
-    pub rating_policy_match: Option<RatingPolicyMatch>,
+    pub matched_rule_indices: Vec<usize>,
 }
 
 pub fn rate_token_usage(rule: &PricingRule, usage: &TokenUsage) -> Result<RatedTokenCost> {
-    rating::rate(rule, usage)
+    rate_token_usage_at(rule, usage, OffsetDateTime::now_utc())
+}
+
+pub fn rate_token_usage_at(
+    rule: &PricingRule,
+    usage: &TokenUsage,
+    at: OffsetDateTime,
+) -> Result<RatedTokenCost> {
+    rating::rate(rule, usage, at)
 }
 
 pub fn weekday_bit(weekday: Weekday) -> i16 {

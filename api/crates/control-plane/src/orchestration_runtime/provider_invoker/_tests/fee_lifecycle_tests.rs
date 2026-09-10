@@ -30,9 +30,15 @@ async fn pricing(repository: &Repository) -> PricingRule {
         .await
         .unwrap()
         .remove(0);
-    rule.rating_policy_enabled = true;
-    rule.rating_policy = json!({"schema_version":"1flowbase.model-rating-policy/v2","type":"token_pricing","unit_size":1000000,
-        "rates":{"input":"10","output":"50","cache_hit":"0.25","cache_write":{"by_ttl_seconds":{"300":"12.5","3600":"20"}}}});
+    rule.input_token_unit_price = "10".parse().unwrap();
+    rule.output_token_unit_price = "50".parse().unwrap();
+    rule.cache_hit_token_unit_price = "0.25".parse().unwrap();
+    rule.cache_write_token_unit_size = 1000000;
+    rule.cache_write_token_unit_price = "12.5".parse().unwrap();
+    rule.rules = json!([
+        {"when":{"cache_write_ttl_seconds":300},"overrides":{"cache_write_token_unit_price":"12.5"}},
+        {"when":{"cache_write_ttl_seconds":3600},"overrides":{"cache_write_token_unit_price":"20"}}
+    ]);
     rule
 }
 fn reservation(repository: Repository, rule: PricingRule) -> FeeReservation<Repository> {
@@ -90,11 +96,11 @@ async fn v2_normalizes_ordinary_read_and_write_without_double_counting() {
         ..usage.clone()
     };
     assert!(normalized_token_usage(&rule, &overflowing).is_err());
-    let mut legacy = rule;
-    legacy.rating_policy_enabled = false;
-    let legacy = normalized_token_usage(&legacy, &usage).unwrap();
-    assert_eq!(legacy.input_tokens, 100);
-    assert_eq!(legacy.input_cache_hit_tokens, 0);
+    let mut defaults = rule;
+    defaults.rules = json!([]);
+    let defaults = normalized_token_usage(&defaults, &usage).unwrap();
+    assert_eq!(defaults.input_tokens, 5300);
+    assert_eq!(defaults.input_cache_hit_tokens, 200);
 }
 
 #[test]

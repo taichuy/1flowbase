@@ -113,7 +113,7 @@ where
                     .or_else(|| input.model_parameters.get("max_tokens"))
                     .and_then(Value::as_u64)
                     .unwrap_or(0);
-                let estimate = crate::billing::rate_token_usage(
+                let estimate = crate::billing::rate_token_usage_at(
                     &rule,
                     &crate::billing::TokenUsage {
                         input_tokens: i64::try_from(input_tokens).unwrap_or(i64::MAX),
@@ -124,6 +124,7 @@ where
                         output_tokens: i64::try_from(maximum_output_tokens).unwrap_or(i64::MAX),
                         ..Default::default()
                     },
+                    billing_started_at,
                 )?;
                 let flow_run_id = self
                     .invoker
@@ -254,40 +255,27 @@ impl<R: OrchestrationRuntimeRepository + Clone + Send + Sync + 'static> Drop for
     }
 }
 
-fn normalized_token_usage(rule: &PricingRule, usage: &ProviderUsage) -> Result<TokenUsage> {
-    let v2 = rule.rating_policy_enabled
-        && rule.rating_policy["schema_version"]
-            == control_plane_contracts::billing::policy::RATING_POLICY_SCHEMA_V2;
-    let convert = |value: u64| {
-        if v2 {
-            i64::try_from(value).map_err(|_| anyhow!("provider_usage_invalid"))
-        } else {
-            Ok(i64::try_from(value).unwrap_or(i64::MAX))
-        }
-    };
-    let hits = if v2 {
-        usage.input_cache_hit_tokens.or(usage.cache_read_tokens)
-    } else {
-        usage.input_cache_hit_tokens
-    };
-    let cache_hit = convert(hits.unwrap_or(0))?;
+fn normalized_token_usage(_rule: &PricingRule, usage: &ProviderUsage) -> Result<TokenUsage> {
+    let convert = |value: u64| i64::try_from(value).map_err(|_| anyhow!("provider_usage_invalid"));
+    let cache_hit = convert(
+        usage
+            .input_cache_hit_tokens
+            .or(usage.cache_read_tokens)
+            .unwrap_or(0),
+    )?;
     let writes = convert(usage.cache_write_tokens.unwrap_or(0))?;
     let miss = usage.input_cache_miss_tokens.map(convert).transpose()?;
-    let input_tokens = if v2 {
-        match miss {
-            Some(ordinary) => ordinary
-                .checked_add(cache_hit)
-                .and_then(|value| value.checked_add(writes))
+    let input_tokens = match miss {
+        Some(ordinary) => ordinary
+            .checked_add(cache_hit)
+            .and_then(|v| v.checked_add(writes))
+            .ok_or_else(|| anyhow!("provider_usage_invalid"))?,
+        None => match usage.input_tokens {
+            Some(full) => convert(full)?,
+            None => cache_hit
+                .checked_add(writes)
                 .ok_or_else(|| anyhow!("provider_usage_invalid"))?,
-            None => match usage.input_tokens {
-                Some(full) => convert(full)?,
-                None => cache_hit
-                    .checked_add(writes)
-                    .ok_or_else(|| anyhow!("provider_usage_invalid"))?,
-            },
-        }
-    } else {
-        convert(usage.input_tokens.unwrap_or(0))?
+        },
     };
     Ok(TokenUsage {
         input_tokens,
@@ -421,8 +409,9 @@ where
             }
             return Ok(());
         }
-        let rated = normalized_token_usage(&billing.rule, &usage)
-            .and_then(|normalized| crate::billing::rate_token_usage(&billing.rule, &normalized));
+        let rated = normalized_token_usage(&billing.rule, &usage).and_then(|normalized| {
+            crate::billing::rate_token_usage_at(&billing.rule, &normalized, billing.started_at)
+        });
         let rated = match rated {
             Ok(rated) => rated,
             Err(error) => {
@@ -446,15 +435,6 @@ where
         let invocation_id = billing.invocation_id;
         let flow_run_id = billing.flow_run_id;
         let billing_started_at = billing.started_at;
-        let cache_write_rates = match &rated.applied_rates.cache_write {
-            Some(crate::billing::CacheWriteRate::UnitPrice(price)) => {
-                json!({"unit_price":price.to_string()})
-            }
-            Some(crate::billing::CacheWriteRate::ByTtlSeconds(prices)) => {
-                json!({"by_ttl_seconds":prices.iter().map(|(ttl, price)| (ttl.clone(), price.to_string())).collect::<std::collections::BTreeMap<_,_>>()})
-            }
-            None => Value::Null,
-        };
         let price_snapshot = json!({
             "pricing_rule_id":rule.id, "pricing_provider_code":rule.provider_code, "pricing_model_id":rule.upstream_model_id,
             "provider_code":actual_provider_code, "upstream_model_id":upstream_model_id, "currency_code":rule.currency_code,
@@ -462,8 +442,10 @@ where
             "input_token_unit_size":rated.applied_rates.input.unit_size, "input_token_unit_price":rated.applied_rates.input.unit_price.to_string(),
             "output_token_unit_size":rated.applied_rates.output.unit_size, "output_token_unit_price":rated.applied_rates.output.unit_price.to_string(),
             "cache_hit_token_unit_size":rated.applied_rates.cache_hit.unit_size, "cache_hit_token_unit_price":rated.applied_rates.cache_hit.unit_price.to_string(),
-            "cache_write":cache_write_rates, "rating_policy_enabled":rule.rating_policy_enabled, "rating_policy":rule.rating_policy,
-            "rating_policy_match":rated.rating_policy_match,
+            "cache_write_token_unit_size":rated.applied_rates.cache_write.unit_size,
+            "cache_write_token_unit_price":rated.applied_rates.cache_write.unit_price.to_string(),
+            "cache_write_by_ttl_seconds":rated.applied_rates.cache_write_by_ttl_seconds,
+            "rules":rule.rules, "matched_rule_indices":rated.matched_rule_indices,
         });
         let usage_snapshot = json!({"usage_source":"provider_reported", "ordinary_input_tokens":rated.ordinary_input_tokens,
             "input_cache_hit_tokens":rated.cache_hit_tokens, "cache_write_tokens":rated.cache_write_tokens,

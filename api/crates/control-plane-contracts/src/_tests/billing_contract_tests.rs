@@ -24,8 +24,9 @@ fn pricing_rule() -> PricingRule {
         local_time_end: None,
         priority: 0,
         enabled: true,
-        rating_policy_enabled: false,
-        rating_policy: serde_json::json!({}),
+        rules: serde_json::json!([]),
+        cache_write_token_unit_size: 1000000,
+        cache_write_token_unit_price: Decimal::ZERO,
         source_kind: "manual".to_string(),
         source_catalog_id: None,
         source_version: None,
@@ -56,11 +57,10 @@ fn pricing_rule_keeps_value_invariants_and_serde_identity() {
     );
 
     let mut invalid_policy = pricing_rule();
-    invalid_policy.rating_policy_enabled = true;
-    invalid_policy.rating_policy = serde_json::json!({ "schema_version": "unknown" });
+    invalid_policy.rules = serde_json::json!({ "schema_version": "unknown" });
     assert_eq!(
         invalid_policy.validate().unwrap_err().to_string(),
-        "rating_policy_invalid"
+        "pricing_rules_invalid"
     );
 }
 

@@ -1,185 +1,239 @@
 use anyhow::{anyhow, Result};
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime, Time};
+use time_tz::{timezones, OffsetDateTimeExt};
 
-pub const RATING_POLICY_SCHEMA_V2: &str = "1flowbase.model-rating-policy/v2";
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CacheWriteRate {
-    UnitPrice(Decimal),
-    ByTtlSeconds(BTreeMap<String, Decimal>),
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PricingOverride {
+    pub when: PricingCondition,
+    pub overrides: TokenRateOverrides,
 }
 
-#[derive(Debug, Clone)]
-pub struct TokenPricingRates {
-    pub input: Decimal,
-    pub output: Decimal,
-    pub cache_hit: Decimal,
-    pub cache_write: CacheWriteRate,
-}
-
-#[derive(Debug)]
-pub struct TokenPricingTier {
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputThreshold {
     pub operator: String,
     pub value: i64,
-    pub rates: TokenPricingRates,
 }
 
-#[derive(Debug)]
-pub struct TokenPricingPolicy {
-    pub unit_size: i64,
-    pub rates: TokenPricingRates,
-    pub input_token_tiers: Vec<TokenPricingTier>,
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PricingCondition {
+    pub input_tokens: Option<InputThreshold>,
+    pub cache_write_ttl_seconds: Option<i64>,
+    pub effective_from: Option<String>,
+    pub effective_to: Option<String>,
+    pub timezone: Option<String>,
+    pub weekday_mask: Option<i16>,
+    pub local_time_start: Option<String>,
+    pub local_time_end: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Document {
-    schema_version: String,
-    #[serde(rename = "type")]
-    policy_type: String,
-    unit_size: i64,
-    rates: RatesDocument,
-    #[serde(default)]
-    input_token_tiers: Option<Vec<TierDocument>>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RatesDocument {
-    input: String,
-    output: String,
-    cache_hit: String,
-    cache_write: WriteDocument,
-}
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WriteDocument {
-    Unit(UnitDocument),
-    Ttl(TtlDocument),
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct UnitDocument {
-    unit_price: String,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TtlDocument {
-    by_ttl_seconds: BTreeMap<String, String>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TierDocument {
-    when: ThresholdDocument,
-    rates: RatesDocument,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ThresholdDocument {
-    operator: String,
-    value: i64,
+pub struct TokenRateOverrides {
+    pub input_token_unit_size: Option<i64>,
+    pub input_token_unit_price: Option<String>,
+    pub output_token_unit_size: Option<i64>,
+    pub output_token_unit_price: Option<String>,
+    pub cache_hit_token_unit_size: Option<i64>,
+    pub cache_hit_token_unit_price: Option<String>,
+    pub cache_write_token_unit_size: Option<i64>,
+    pub cache_write_token_unit_price: Option<String>,
 }
 
 pub fn valid_ttl_seconds(key: &str) -> bool {
     !key.starts_with('0')
-        && key.bytes().all(|byte| byte.is_ascii_digit())
-        && key
-            .parse::<u64>()
-            .is_ok_and(|value| value > 0 && value <= 9_007_199_254_740_991)
+        && key.bytes().all(|b| b.is_ascii_digit())
+        && key.parse::<i64>().is_ok_and(|n| n > 0)
 }
 
-fn decimal(value: &str) -> Result<Decimal> {
+pub fn decimal(value: &str) -> Result<Decimal> {
     let mut parts = value.split('.');
     let whole = parts.next().unwrap_or_default();
     let fraction = parts.next();
     if whole.is_empty()
-        || !whole.bytes().all(|byte| byte.is_ascii_digit())
-        || fraction.is_some_and(|part| {
-            part.is_empty() || part.len() > 18 || !part.bytes().all(|byte| byte.is_ascii_digit())
-        })
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || fraction
+            .is_some_and(|p| p.is_empty() || p.len() > 18 || !p.bytes().all(|b| b.is_ascii_digit()))
         || parts.next().is_some()
     {
-        return Err(anyhow!("rating_policy_invalid"));
+        return Err(anyhow!("pricing_rules_invalid"));
     }
-    Decimal::from_str_exact(value).map_err(|_| anyhow!("rating_policy_invalid"))
+    Decimal::from_str_exact(value).map_err(|_| anyhow!("pricing_rules_invalid"))
 }
 
-impl RatesDocument {
-    fn parse(self) -> Result<TokenPricingRates> {
-        let cache_write = match self.cache_write {
-            WriteDocument::Unit(document) => {
-                CacheWriteRate::UnitPrice(decimal(&document.unit_price)?)
+fn local_time(value: &str) -> Result<Time> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 8
+        || bytes[2] != b':'
+        || bytes[5] != b':'
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| i == 2 || i == 5 || b.is_ascii_digit())
+    {
+        return Err(anyhow!("pricing_rules_invalid"));
+    }
+    Time::from_hms(
+        (bytes[0] - b'0') * 10 + bytes[1] - b'0',
+        (bytes[3] - b'0') * 10 + bytes[4] - b'0',
+        (bytes[6] - b'0') * 10 + bytes[7] - b'0',
+    )
+    .map_err(|_| anyhow!("pricing_rules_invalid"))
+}
+fn date(value: &str) -> Result<OffsetDateTime> {
+    OffsetDateTime::parse(value, &Rfc3339).map_err(|_| anyhow!("pricing_rules_invalid"))
+}
+
+pub fn parse_rules(value: &serde_json::Value) -> Result<Vec<PricingOverride>> {
+    let array = value
+        .as_array()
+        .ok_or_else(|| anyhow!("pricing_rules_invalid"))?;
+    for item in array {
+        for name in ["when", "overrides"] {
+            let object = item
+                .get(name)
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow!("pricing_rules_invalid"))?;
+            if object.is_empty() || object.values().any(|v| v.is_null()) {
+                return Err(anyhow!("pricing_rules_invalid"));
             }
-            WriteDocument::Ttl(document) => {
-                if document.by_ttl_seconds.is_empty() {
-                    return Err(anyhow!("rating_policy_invalid"));
+        }
+    }
+    let rules: Vec<PricingOverride> =
+        serde_json::from_value(value.clone()).map_err(|_| anyhow!("pricing_rules_invalid"))?;
+    for rule in &rules {
+        let c = &rule.when;
+        if c.input_tokens
+            .as_ref()
+            .is_some_and(|t| t.value < 0 || !matches!(t.operator.as_str(), "gt" | "gte"))
+            || c.cache_write_ttl_seconds.is_some_and(|v| v <= 0)
+            || c.weekday_mask.is_some_and(|v| !(1..=127).contains(&v))
+        {
+            return Err(anyhow!("pricing_rules_invalid"));
+        }
+        let from = c.effective_from.as_deref().map(date).transpose()?;
+        let to = c.effective_to.as_deref().map(date).transpose()?;
+        if from.zip(to).is_some_and(|(a, b)| a >= b) {
+            return Err(anyhow!("pricing_rules_invalid"));
+        }
+        if let Some(tz) = &c.timezone {
+            if tz.contains(' ') || timezones::get_by_name(tz).is_none() {
+                return Err(anyhow!("pricing_rules_invalid"));
+            }
+        }
+        if c.weekday_mask.is_some() && c.timezone.is_none() {
+            return Err(anyhow!("pricing_rules_invalid"));
+        }
+        match (&c.local_time_start, &c.local_time_end) {
+            (None, None) => {}
+            (Some(a), Some(b)) if c.timezone.is_some() => {
+                if local_time(a)? == local_time(b)? {
+                    return Err(anyhow!("pricing_rules_invalid"));
                 }
-                let prices = document
-                    .by_ttl_seconds
-                    .into_iter()
-                    .map(|(key, value)| {
-                        if !valid_ttl_seconds(&key) {
-                            return Err(anyhow!("rating_policy_invalid"));
-                        }
-                        Ok((key, decimal(&value)?))
-                    })
-                    .collect::<Result<_>>()?;
-                CacheWriteRate::ByTtlSeconds(prices)
             }
-        };
-        Ok(TokenPricingRates {
-            input: decimal(&self.input)?,
-            output: decimal(&self.output)?,
-            cache_hit: decimal(&self.cache_hit)?,
-            cache_write,
-        })
+            _ => return Err(anyhow!("pricing_rules_invalid")),
+        }
+        // A timezone alone does not constitute a pricing condition.
+        if c.input_tokens.is_none()
+            && c.cache_write_ttl_seconds.is_none()
+            && from.is_none()
+            && to.is_none()
+            && c.weekday_mask.is_none()
+            && c.local_time_start.is_none()
+        {
+            return Err(anyhow!("pricing_rules_invalid"));
+        }
+        let o = &rule.overrides;
+        for size in [
+            o.input_token_unit_size,
+            o.output_token_unit_size,
+            o.cache_hit_token_unit_size,
+            o.cache_write_token_unit_size,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if size <= 0 {
+                return Err(anyhow!("pricing_rules_invalid"));
+            }
+        }
+        for price in [
+            &o.input_token_unit_price,
+            &o.output_token_unit_price,
+            &o.cache_hit_token_unit_price,
+            &o.cache_write_token_unit_price,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            decimal(price)?;
+        }
+        if c.cache_write_ttl_seconds.is_some()
+            && (o.input_token_unit_size.is_some()
+                || o.input_token_unit_price.is_some()
+                || o.output_token_unit_size.is_some()
+                || o.output_token_unit_price.is_some()
+                || o.cache_hit_token_unit_size.is_some()
+                || o.cache_hit_token_unit_price.is_some())
+        {
+            return Err(anyhow!("pricing_rules_invalid"));
+        }
     }
+    Ok(rules)
 }
 
-impl TokenPricingPolicy {
-    pub fn parse(value: &serde_json::Value) -> Result<Self> {
-        let document: Document =
-            serde_json::from_value(value.clone()).map_err(|_| anyhow!("rating_policy_invalid"))?;
-        if document.schema_version != RATING_POLICY_SCHEMA_V2
-            || document.policy_type != "token_pricing"
-            || document.unit_size <= 0
-            || document.unit_size > 9_007_199_254_740_991
-        {
-            return Err(anyhow!("rating_policy_invalid"));
-        }
-        if value.get("input_token_tiers").is_some()
-            && document
-                .input_token_tiers
-                .as_ref()
-                .is_none_or(|tiers| tiers.is_empty())
-        {
-            return Err(anyhow!("rating_policy_invalid"));
-        }
-        let mut previous = None;
-        let mut tiers = Vec::new();
-        for tier in document.input_token_tiers.unwrap_or_default() {
-            if tier.when.value < 0
-                || tier.when.value > 9_007_199_254_740_991
-                || !matches!(tier.when.operator.as_str(), "gt" | "gte")
-            {
-                return Err(anyhow!("rating_policy_invalid"));
+impl PricingCondition {
+    pub fn matches(&self, input_tokens: i64, ttl: Option<i64>, at: OffsetDateTime) -> Result<bool> {
+        if self.input_tokens.as_ref().is_some_and(|t| {
+            if t.operator == "gt" {
+                input_tokens <= t.value
+            } else {
+                input_tokens < t.value
             }
-            if previous.is_some_and(|value| tier.when.value <= value) {
-                return Err(anyhow!("rating_policy_tiers_not_strictly_ascending"));
-            }
-            previous = Some(tier.when.value);
-            tiers.push(TokenPricingTier {
-                operator: tier.when.operator,
-                value: tier.when.value,
-                rates: tier.rates.parse()?,
+        }) || self.cache_write_ttl_seconds.is_some_and(|n| Some(n) != ttl)
+        {
+            return Ok(false);
+        }
+        if self
+            .effective_from
+            .as_deref()
+            .map(date)
+            .transpose()?
+            .is_some_and(|v| at < v)
+            || self
+                .effective_to
+                .as_deref()
+                .map(date)
+                .transpose()?
+                .is_some_and(|v| at >= v)
+        {
+            return Ok(false);
+        }
+        let local = match &self.timezone {
+            Some(tz) => at.to_timezone(
+                timezones::get_by_name(tz).ok_or_else(|| anyhow!("pricing_rules_invalid"))?,
+            ),
+            None => at,
+        };
+        if self
+            .weekday_mask
+            .is_some_and(|mask| mask & (1 << local.weekday().number_days_from_monday()) == 0)
+        {
+            return Ok(false);
+        }
+        if let (Some(a), Some(b)) = (&self.local_time_start, &self.local_time_end) {
+            let (a, b) = (local_time(a)?, local_time(b)?);
+            return Ok(if a < b {
+                local.time() >= a && local.time() < b
+            } else {
+                local.time() >= a || local.time() < b
             });
         }
-        Ok(Self {
-            unit_size: document.unit_size,
-            rates: document.rates.parse()?,
-            input_token_tiers: tiers,
-        })
+        Ok(true)
     }
 }
 

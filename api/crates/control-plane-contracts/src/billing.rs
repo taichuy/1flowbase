@@ -21,6 +21,8 @@ pub struct PricingRule {
     pub output_token_unit_price: Decimal,
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: Decimal,
+    pub cache_write_token_unit_size: i64,
+    pub cache_write_token_unit_price: Decimal,
     pub currency_code: String,
     pub effective_from: OffsetDateTime,
     pub effective_to: Option<OffsetDateTime>,
@@ -30,8 +32,7 @@ pub struct PricingRule {
     pub local_time_end: Option<Time>,
     pub priority: i32,
     pub enabled: bool,
-    pub rating_policy_enabled: bool,
-    pub rating_policy: serde_json::Value,
+    pub rules: serde_json::Value,
     pub source_kind: String,
     pub source_catalog_id: Option<String>,
     pub source_version: Option<String>,
@@ -51,6 +52,7 @@ impl PricingRule {
             self.input_token_unit_size,
             self.output_token_unit_size,
             self.cache_hit_token_unit_size,
+            self.cache_write_token_unit_size,
         ]
         .into_iter()
         .any(|value| value <= 0)
@@ -61,6 +63,7 @@ impl PricingRule {
             self.input_token_unit_price,
             self.output_token_unit_price,
             self.cache_hit_token_unit_price,
+            self.cache_write_token_unit_price,
         ]
         .into_iter()
         .any(|value| value.is_sign_negative())
@@ -85,89 +88,7 @@ impl PricingRule {
         if self.priority < 0 {
             return Err(anyhow!("pricing_priority_invalid"));
         }
-        if self.rating_policy_enabled {
-            if self.rating_policy["schema_version"] == policy::RATING_POLICY_SCHEMA_V2 {
-                policy::TokenPricingPolicy::parse(&self.rating_policy)?;
-            } else {
-                validate_input_token_tier_policy(&self.rating_policy)?;
-            }
-        }
+        policy::parse_rules(&self.rules)?;
         Ok(())
     }
-}
-
-const RATING_POLICY_SCHEMA_V1: &str = "1flowbase.model-rating-policy/v1";
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenTierPolicyDocument {
-    schema_version: String,
-    #[serde(rename = "type")]
-    policy_type: String,
-    tiers: Vec<InputTokenTierDocument>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenTierDocument {
-    when: InputTokenThresholdDocument,
-    rates: TokenRateSetDocument,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InputTokenThresholdDocument {
-    operator: String,
-    value: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TokenRateSetDocument {
-    input: TokenRateDocument,
-    output: TokenRateDocument,
-    cache_hit: TokenRateDocument,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TokenRateDocument {
-    unit_size: i64,
-    unit_price: String,
-}
-
-fn validate_token_rate(document: &TokenRateDocument) -> Result<()> {
-    let unit_price = document
-        .unit_price
-        .parse::<Decimal>()
-        .map_err(|_| anyhow!("rating_policy_invalid"))?;
-    if document.unit_size <= 0 || unit_price.is_sign_negative() {
-        return Err(anyhow!("rating_policy_invalid"));
-    }
-    Ok(())
-}
-
-fn validate_input_token_tier_policy(value: &serde_json::Value) -> Result<()> {
-    let policy: InputTokenTierPolicyDocument =
-        serde_json::from_value(value.clone()).map_err(|_| anyhow!("rating_policy_invalid"))?;
-    if policy.schema_version != RATING_POLICY_SCHEMA_V1
-        || policy.policy_type != "input_token_tiers"
-        || policy.tiers.is_empty()
-    {
-        return Err(anyhow!("rating_policy_invalid"));
-    }
-    let mut previous_threshold = None;
-    for tier in &policy.tiers {
-        if tier.when.value < 0 || !matches!(tier.when.operator.as_str(), "gt" | "gte") {
-            return Err(anyhow!("rating_policy_invalid"));
-        }
-        if previous_threshold.is_some_and(|previous| tier.when.value <= previous) {
-            return Err(anyhow!("rating_policy_tiers_not_strictly_ascending"));
-        }
-        previous_threshold = Some(tier.when.value);
-        validate_token_rate(&tier.rates.input)?;
-        validate_token_rate(&tier.rates.output)?;
-        validate_token_rate(&tier.rates.cache_hit)?;
-    }
-    Ok(())
 }
