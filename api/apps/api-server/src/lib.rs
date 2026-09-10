@@ -9,7 +9,6 @@ pub(crate) mod console_operation_compilation;
 pub mod console_policy_migration;
 pub mod console_surface_registry;
 pub mod error_response;
-pub mod extension_bootstrap;
 pub mod extension_bus;
 pub(crate) mod external_endpoint_catalog;
 pub(crate) mod external_route_assembly;
@@ -736,28 +735,6 @@ async fn app_and_runtime_host_from_config(
     )
     .with_node_id(config.api_node_id.clone())
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
-    match extension_bootstrap::load_locked_extension_bootstrap(&api_workspace_root()?) {
-        Ok(entries) => {
-            for result in plugin_management
-                .bootstrap_locked_extensions(bootstrap_result.root_user_id, &entries)
-                .await
-            {
-                if let Some(warning) = result.warning {
-                    tracing::warn!(
-                        extension_id = %warning.extension_id,
-                        version = %warning.version,
-                        stage = warning.stage,
-                        error = %warning.message,
-                        "default extension bootstrap warning; core startup continues"
-                    );
-                }
-            }
-        }
-        Err(error) => tracing::warn!(
-            error = %error,
-            "default extension bootstrap manifest unavailable; core startup continues"
-        ),
-    }
     plugin_management
         .ensure_builtin_plugin(
             control_plane::plugin_management::EnsureBuiltinPluginCommand {

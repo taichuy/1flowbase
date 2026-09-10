@@ -23,17 +23,6 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
     && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server \
     && cp /workspace/api/target-cache/release/system_recovery /workspace/api/system_recovery
 
-FROM alpine:3.22 AS default-extension
-
-ARG TARGETARCH
-
-RUN apk add --no-cache ca-certificates curl jq
-
-COPY api/plugins/default-extensions.lock.json /tmp/default-extensions.lock.json
-COPY scripts/shell/package-default-extension.sh /usr/local/bin/package-default-extension
-
-RUN package-default-extension /tmp/default-extensions.lock.json "${TARGETARCH}" /default-extensions
-
 FROM alpine:3.22 AS model-pricing-bootstrap
 
 ARG MODEL_PRICING_REPOSITORY=taichuy/1flowbase-official-plugins
@@ -78,7 +67,6 @@ ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing
 
 COPY api/plugins /app/api/plugins
-COPY --from=default-extension /default-extensions /app/api/plugins/bootstrap
 COPY --from=model-pricing-bootstrap /model-pricing /app/api/resources/model-pricing
 RUN mkdir -p \
     /app/api/storage \

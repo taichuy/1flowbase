@@ -18,8 +18,6 @@ on:
       - "web/packages/page-runtime/**"
       - "web/packages/tailwindcss-catalog/**"
       - "api/apps/api-server/Cargo.toml"
-      - "api/plugins/default-extensions.lock.json"
-      - "scripts/shell/package-default-extension.sh"
   workflow_dispatch:
     inputs:
       component:

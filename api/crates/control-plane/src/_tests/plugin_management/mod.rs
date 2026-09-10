@@ -1,4 +1,3 @@
-mod bootstrap;
 mod catalog;
 mod extension_installation;
 mod family;

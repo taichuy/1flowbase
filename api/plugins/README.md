@@ -24,6 +24,12 @@ api/plugins/
 - `capability-plugins/*` packages contribute workspace-selected app/workflow capabilities.
 - `sets/minimal.yaml` and `sets/default.yaml` select package sources for deployment assembly. They do not make plugin source code part of `api-server`; selected plugins still move through package/install/load lifecycle.
 
+## Model Provider Installation
+
+- Model provider packages are downloaded and installed only through user-initiated installation.
+- API image builds do not download or bundle a default model provider, and server startup does not install one.
+- Existing user installations remain managed through the normal plugin lifecycle.
+
 ## Host Assembly Boundary
 
 - `api-server` owns loader, policy, inventory, infra bootstrap, route mount, and boot assembly.
