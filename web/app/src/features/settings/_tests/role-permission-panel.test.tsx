@@ -8,6 +8,8 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { useState } from 'react';
+import { App, ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rolesApi = vi.hoisted(() => ({
@@ -71,11 +73,9 @@ vi.mock('../api/data-models', () => dataModelsApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
-import { appI18n } from '../../../shared/i18n/app-i18n';
-import {
-  RolePermissionPanel,
-  type RolePermissionTab
-} from '../components/RolePermissionPanel';
+import { appI18n, loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
+import type { RolePermissionTab } from '../components/RolePermissionPanel';
+let RolePermissionPanel: typeof import('../components/RolePermissionPanel').RolePermissionPanel;
 import {
   findReorderIndices,
   reorderItems
@@ -127,7 +127,9 @@ function renderPanel(canManageRoles = true) {
 
   return render(
     <AppProviders>
-      <RolePermissionPanelHarness />
+      <ConfigProvider locale={zhCN}>
+        <App><RolePermissionPanelHarness /></App>
+      </ConfigProvider>
     </AppProviders>
   );
 }
@@ -283,6 +285,9 @@ function defaultDataModels() {
 
 describe('RolePermissionPanel', () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
+    await loadApplicationI18nResources();
+    ({ RolePermissionPanel } = await import('../components/RolePermissionPanel'));
     await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
     authenticate();
@@ -1090,13 +1095,23 @@ describe('RolePermissionPanel', () => {
     expect(container.innerHTML).not.toContain('limited_scope_resource');
   });
 
-  test('dynamic route group selects descendants without persisting the group id', async () => {
+  test('AC-004 dynamic route save reloads persisted selection without persisting the group id', async () => {
     renderPanel();
 
     fireEvent.click(await screen.findByRole('tab', { name: '动态路由' }));
 
     expect(await screen.findByText('工作台')).toBeInTheDocument();
     expect(screen.queryByText(/pgr3083h/)).not.toBeInTheDocument();
+
+    const savedRoutes = await rolesApi.fetchSettingsRoleFrontstageRoutes();
+    rolesApi.replaceSettingsRoleFrontstageRoutes.mockImplementation(async () => {
+      rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
+        ...savedRoutes,
+        checked_page_ids: ['child-page'],
+        checked_tab_ids: ['child-tab']
+      });
+    });
+    rolesApi.fetchSettingsRoleFrontstageRoutes.mockClear();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
 
@@ -1110,6 +1125,31 @@ describe('RolePermissionPanel', () => {
         'csrf-123'
       );
     });
+    await waitFor(() => expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled());
+    expect(screen.getByRole('checkbox', { name: /工作台/ })).toBeChecked();
+  });
+
+  test('AC-003 permission catalog failure is explicit and can be retried', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockRejectedValue(new Error('forbidden'));
+    renderPanel(false);
+    expect(await screen.findByRole('alert')).toHaveTextContent('权限数据加载失败');
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(consolePolicyCatalog([]));
+    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByRole('tab', { name: '动态路由' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
+    expect(rolesApi.replaceSettingsRoleFrontstageRoutes).not.toHaveBeenCalled();
+  });
+
+  test('AC-004 failed route save reloads and restores the persisted selection', async () => {
+    rolesApi.replaceSettingsRoleFrontstageRoutes.mockRejectedValue(new Error('forbidden'));
+    renderPanel();
+    fireEvent.click(await screen.findByRole('tab', { name: '动态路由' }));
+    rolesApi.fetchSettingsRoleFrontstageRoutes.mockClear();
+    fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
+    await screen.findByText('权限配置更新失败');
+    await waitFor(() => expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /工作台/ })).not.toBeChecked());
   });
 
   test('submits auto_grant_new_permissions and is_default_member_role from the create and edit dialogs', async () => {

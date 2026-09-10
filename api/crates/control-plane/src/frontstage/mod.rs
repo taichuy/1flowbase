@@ -919,6 +919,7 @@ fn build_visible_frontstage_page_tree(
 
 struct FrontstagePageVisibilityContext {
     parent_by_id: HashMap<Uuid, Option<Uuid>>,
+    group_ids: HashSet<Uuid>,
     role_ids: HashSet<Uuid>,
     visibility_by_page_and_role:
         HashMap<(Option<Uuid>, Uuid), domain::frontstage::FrontstagePageVisibility>,
@@ -962,6 +963,11 @@ impl FrontstagePageVisibilityContext {
 
         Self {
             parent_by_id,
+            group_ids: records
+                .iter()
+                .filter(|record| record.kind == domain::FrontstagePageKind::Group)
+                .map(|record| record.id)
+                .collect(),
             role_ids,
             visibility_by_page_and_role,
             visibility_by_tab_and_role,
@@ -986,8 +992,8 @@ impl FrontstagePageVisibilityContext {
         })
     }
 
-    fn has_visible_ancestor_chain(&self, page_id: Uuid, role_id: Uuid) -> bool {
-        let mut current_id = Some(page_id);
+    fn has_visible_ancestor_chain(&self, target_id: Uuid, role_id: Uuid) -> bool {
+        let mut current_id = Some(target_id);
         let mut visited = HashSet::new();
 
         while let Some(page_id) = current_id {
@@ -995,10 +1001,15 @@ impl FrontstagePageVisibilityContext {
                 return false;
             }
 
-            if self
+            let visibility = self
                 .visibility_by_page_and_role
-                .get(&(Some(page_id), role_id))
-                != Some(&domain::frontstage::FrontstagePageVisibility::Visible)
+                .get(&(Some(page_id), role_id));
+            // Directory reachability follows authorized descendants. An explicit denial still
+            // blocks traversal, while pages always require their own grant.
+            if visibility != Some(&domain::frontstage::FrontstagePageVisibility::Visible)
+                && !(page_id != target_id
+                    && visibility.is_none()
+                    && self.group_ids.contains(&page_id))
             {
                 return false;
             }
@@ -1352,6 +1363,47 @@ mod tests {
 
         assert!(tree.is_empty());
         assert!(!format!("{tree:?}").contains(&page_id.to_string()));
+    }
+
+    #[test]
+    fn ac_001_authorized_page_makes_unconfigured_parent_groups_reachable() {
+        let role_id = test_uuid(0x200);
+        let pages = vec![
+            page_record(0x10, FrontstagePageKind::Group, None, "a"),
+            page_record(0x20, FrontstagePageKind::Group, Some(test_uuid(0x10)), "a"),
+            page_record(0x30, FrontstagePageKind::Page, Some(test_uuid(0x20)), "a"),
+            page_record(0x40, FrontstagePageKind::Page, Some(test_uuid(0x20)), "b"),
+            page_record(0x70, FrontstagePageKind::Group, None, "b"),
+        ];
+        let mut tab_rule = visibility_rule(
+            None,
+            role_id,
+            domain::frontstage::FrontstagePageVisibility::Visible,
+        );
+        tab_rule.tab_id = Some(test_uuid(0x50));
+        let rules = vec![
+            visibility_rule(
+                Some(test_uuid(0x30)),
+                role_id,
+                domain::frontstage::FrontstagePageVisibility::Visible,
+            ),
+            tab_rule,
+        ];
+        let actor = domain::ActorContext::scoped(
+            test_uuid(0x01),
+            test_uuid(0x100),
+            "admin",
+            Vec::<String>::new(),
+        );
+        let context = FrontstagePageVisibilityContext::new(&pages, &rules);
+        assert!(context.is_visible(test_uuid(0x30)));
+        assert!(context.is_tab_visible(test_uuid(0x30), test_uuid(0x50)));
+        assert!(!context.is_visible(test_uuid(0x40)));
+        assert!(!context.is_tab_visible(test_uuid(0x30), test_uuid(0x60)));
+        let tree = build_visible_frontstage_page_tree(pages, &rules, &actor);
+        assert_eq!(tree.len(), 1);
+        assert!(format!("{tree:?}").contains(&test_uuid(0x30).to_string()));
+        assert!(!format!("{tree:?}").contains(&test_uuid(0x40).to_string()));
     }
 
     #[test]

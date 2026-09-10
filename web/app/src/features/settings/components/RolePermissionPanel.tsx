@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
+  Alert,
   Button,
   Checkbox,
   Drawer,
@@ -215,6 +216,7 @@ export function RolePermissionPanel({
     FALLBACK_APP_LOCALE;
   const backendSettingsTabLabel = i18nText('settings', 'auto.backend_setting');
   const csrfToken = useAuthStore((state) => state.csrfToken);
+  const workspaceId = useAuthStore((state) => state.actor?.current_workspace_id);
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
 
@@ -296,7 +298,7 @@ export function RolePermissionPanel({
       ...(roleFrontstageRoutesQuery.data?.checked_page_ids ?? []),
       ...(roleFrontstageRoutesQuery.data?.checked_tab_ids ?? [])
     ]);
-  }, [roleFrontstageRoutesQuery.data]);
+  }, [roleFrontstageRoutesQuery.data, roleFrontstageRoutesQuery.dataUpdatedAt]);
 
   useEffect(() => {
     setConsolePolicyGroups(roleConsolePolicyQuery.data?.groups ?? []);
@@ -371,34 +373,32 @@ export function RolePermissionPanel({
     scope: {
       id: `settings-role-frontstage-routes:${selectedRoleCode ?? 'none'}`
     },
-    mutationFn: async (routeIds: string[]) => {
-      if (!csrfToken || !selectedRoleCode || !roleFrontstageRoutesQuery.data)
-        throw new Error('missing selection');
-      const tabIds = new Set<string>();
-      const collectTabs = (
-        nodes: typeof roleFrontstageRoutesQuery.data.tree
-      ) => {
-        for (const node of nodes) {
-          if (node.kind === 'tab') tabIds.add(node.id);
-          collectTabs(node.children);
-        }
-      };
-      collectTabs(roleFrontstageRoutesQuery.data.tree);
+    mutationFn: async (input: {
+      roleCode: string;
+      page_ids: string[];
+      tab_ids: string[];
+    }) => {
+      if (!csrfToken) throw new Error('missing selection');
       return replaceSettingsRoleFrontstageRoutes(
-        selectedRoleCode,
-        {
-          page_ids: routeIds.filter((id) => routeKindById.get(id) === 'page'),
-          tab_ids: routeIds.filter((id) => tabIds.has(id))
-        },
+        input.roleCode,
+        { page_ids: input.page_ids, tab_ids: input.tab_ids },
         csrfToken
       );
     },
-    onSuccess: () => messageApi.success('动态路由权限已更新'),
-    onError: () =>
-      setLocalCheckedRouteIds([
-        ...(roleFrontstageRoutesQuery.data?.checked_page_ids ?? []),
-        ...(roleFrontstageRoutesQuery.data?.checked_tab_ids ?? [])
-      ])
+    onSuccess: () => {
+      messageApi.success(i18nText('settings', 'auto.dynamic_route_permissions_updated'));
+    },
+    onError: () => {
+      messageApi.error(i18nText('settings', 'auto.permission_policy_update_failed'));
+    },
+    onSettled: async (_, __, input) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: settingsRoleFrontstageRoutesQueryKey(input.roleCode)
+        }),
+        queryClient.invalidateQueries({ queryKey: ['frontstage', workspaceId] })
+      ]);
+    }
   });
 
   const createMutation = useMutation({
@@ -772,7 +772,10 @@ export function RolePermissionPanel({
         <Tree
           checkable
           checkStrictly
-          disabled={!canManageRoles || !selectedRole?.is_editable}
+          disabled={
+            !canManageRoles || !selectedRole?.is_editable ||
+            replaceFrontstageRoutesMutation.isPending
+          }
           checkedKeys={displayedCheckedRouteIds}
           treeData={(roleFrontstageRoutesQuery.data?.tree ?? []).map(
             function toNode(node): TreeDataNode {
@@ -802,7 +805,13 @@ export function RolePermissionPanel({
             });
             const keys = Array.from(nextKeys);
             setLocalCheckedRouteIds(keys);
-            replaceFrontstageRoutesMutation.mutate(keys);
+            if (selectedRole) {
+              replaceFrontstageRoutesMutation.mutate({
+                roleCode: selectedRole.code,
+                page_ids: keys.filter((id) => routeKindById.get(id) === 'page'),
+                tab_ids: keys.filter((id) => routeKindById.get(id) === 'tab')
+              });
+            }
           }}
         />
       )
@@ -1117,6 +1126,20 @@ export function RolePermissionPanel({
                     <div style={{ padding: 32, textAlign: 'center' }}>
                       {i18nText('settings', 'auto.loading_permission_data')}
                     </div>
+                  ) : consolePolicyCatalogQuery.isError ||
+                    roleConsolePolicyQuery.isError || roleFrontstageRoutesQuery.isError ? (
+                    <Alert
+                      type="error"
+                      showIcon
+                      title={i18nText('settings', 'auto.permission_data_load_failed')}
+                      action={
+                        <Button onClick={() => {
+                          void consolePolicyCatalogQuery.refetch();
+                          void roleConsolePolicyQuery.refetch();
+                          void roleFrontstageRoutesQuery.refetch();
+                        }}>{i18nText('settings', 'auto.retry_permission_data')}</Button>
+                      }
+                    />
                   ) : (
                     <Tabs
                       activeKey={activePermissionTab}
