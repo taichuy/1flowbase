@@ -232,7 +232,7 @@ describe('billing settings panels', () => {
     });
     renderWithProviders(<PricingRulesPanel canManage />);
     await screen.findByText('gpt-test');
-    fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByLabelText('条件计费规则')).toHaveValue(
       JSON.stringify(rules, null, 2)
@@ -274,7 +274,7 @@ describe('billing settings panels', () => {
     async (value) => {
       renderWithProviders(<PricingRulesPanel canManage />);
       await screen.findByText('gpt-test');
-      fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
+      fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
       const dialog = await screen.findByRole('dialog');
       fireEvent.change(within(dialog).getByLabelText('条件计费规则'), {
         target: { value }
