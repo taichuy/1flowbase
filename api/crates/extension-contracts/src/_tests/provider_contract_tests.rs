@@ -1641,3 +1641,30 @@ fn provider_runtime_line_rejects_unknown_provider_output_item_type() {
         .to_string()
         .contains("provider output item type is not supported by the typed Responses projection"));
 }
+
+// #2028 AC-007: real worker NDJSON must admit canonical native tools unchanged.
+#[test]
+fn issue_2028_provider_runtime_line_preserves_native_client_tool_items() {
+    for item in [
+        json!({"id":"ct_1","type":"custom_tool_call","call_id":"call_original","name":"exec","input":"text(await tools.exec_command({cmd: 'cat fixture'}));"}),
+        json!({"id":"fc_1","type":"function_call","call_id":"call_original","name":"read","arguments":"{\"path\":\"fixture\"}"}),
+    ] {
+        for phase in ["added", "done"] {
+            let line: ProviderRuntimeLine = serde_json::from_value(
+                json!({"type":"output_item","phase":phase,"output_index":1,"item":item}),
+            )
+            .expect("native tool item must cross the host contract");
+            match line.into_stream_event().unwrap() {
+                ProviderStreamEvent::OutputItem {
+                    item: actual,
+                    output_index,
+                    ..
+                } => {
+                    assert_eq!(actual, item);
+                    assert_eq!(output_index, 1);
+                }
+                other => panic!("unexpected event: {other:?}"),
+            }
+        }
+    }
+}

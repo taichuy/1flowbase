@@ -20,6 +20,7 @@ use crate::routes::application_public_api::{
     tool_callback_ids::encode_openai_callback_tool_call_id,
 };
 
+mod prewarm;
 mod projector;
 mod turn_finalization;
 
@@ -200,7 +201,7 @@ fn prewarm_action_has_structural_completion_metadata_without_starting_a_turn() {
     let ConnectionAction::Prewarmed { response_id } = prewarm else {
         panic!("generate=false must return prewarm metadata");
     };
-    assert_eq!(response_id, "resp_prewarm_1");
+    assert!(response_id.starts_with("resp_prewarm_"));
     assert_eq!(actor.state(), ConnectionState::Prewarming);
 
     let [created, completed] = prewarm_completion_frames(&response_id).map(|frame| {
@@ -210,7 +211,7 @@ fn prewarm_action_has_structural_completion_metadata_without_starting_a_turn() {
         created,
         json!({
             "type": "response.created",
-            "response": { "id": "resp_prewarm_1" }
+            "response": { "id": response_id }
         })
     );
     assert_eq!(
@@ -218,7 +219,7 @@ fn prewarm_action_has_structural_completion_metadata_without_starting_a_turn() {
         json!({
             "type": "response.completed",
             "response": {
-                "id": "resp_prewarm_1",
+                "id": response_id,
                 "usage": {
                     "input_tokens": 0,
                     "input_tokens_details": null,
@@ -287,7 +288,7 @@ fn closing_a_prewarmed_connection_discards_its_structural_cursor() {
     actor
         .accept_response(json!({"generate": false}))
         .expect("prewarm must be accepted");
-    assert_eq!(actor.prewarmed_response_id(), Some("resp_prewarm_1"));
+    assert!(actor.prewarmed_response_id().is_some());
 
     assert_eq!(actor.begin_close(), ConnectionAction::Close);
     assert_eq!(actor.state(), ConnectionState::Closed);

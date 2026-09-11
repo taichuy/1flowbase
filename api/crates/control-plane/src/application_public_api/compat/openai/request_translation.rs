@@ -239,7 +239,14 @@ pub fn translate_response_request_with_context_and_previous(
         object,
         OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
     );
-    let transport_requirement = responses_transport_requirement(object);
+    let transport_requirement = if previous_response
+        .as_ref()
+        .is_some_and(|previous| previous.provider_continuation.is_some())
+    {
+        crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+    } else {
+        responses_transport_requirement(object)
+    };
     let omitted_optional_tools = responses_omitted_optional_tools(object);
     if transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible

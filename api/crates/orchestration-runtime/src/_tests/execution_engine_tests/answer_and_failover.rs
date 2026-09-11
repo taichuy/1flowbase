@@ -1916,3 +1916,41 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
         other => panic!("expected failed stop reason, got {other:?}"),
     }
 }
+
+// #2028 AC-007: a provider-owned native tool turn must not open a second host callback.
+#[tokio::test]
+async fn issue_2028_native_tool_turn_completes_with_provider_continuation() {
+    let plan = llm_answer_plan();
+    let mut response = tool_call_response(vec![ProviderToolCall {
+        id: "call_native".into(),
+        name: "exec".into(),
+        arguments: json!({"input":"text(1)"}),
+        provider_metadata: json!({"type":"custom_tool_call"}),
+    }]);
+    response.response_id = Some("resp_native".into());
+    let (invoker, _) = sequential_tool_invoker(vec![response]);
+    let input = json!({"node-start":{"query":"read fixture"}});
+    let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
+        .unwrap()
+        .with_provider_invocation_capability(
+            ProviderInvocationCapability::ResponsesNativePassthrough,
+        );
+    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome.stop_reason, ExecutionStopReason::Completed),
+        "native continuation must own the next turn: {:?}",
+        outcome.stop_reason
+    );
+    let llm = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .unwrap();
+    assert_eq!(
+        llm.output_payload["provider_continuation"]["storage"],
+        "ephemeral"
+    );
+    assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
+}

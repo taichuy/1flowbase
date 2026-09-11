@@ -502,3 +502,40 @@ fn sequential_turns_reset_sequence_and_keep_distinct_durable_response_ids() {
         second_events[0]["response"]["id"]
     );
 }
+
+// #2028 AC-007: public projection consumes canonical tool items, never diagnostic events.
+#[test]
+fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
+    for item in [
+        json!({"type":"custom_tool_call","id":"ct_1","call_id":"call_1","name":"exec","input":"text(await tools.exec_command({cmd: 'cat fixture'}));","status":"completed"}),
+        json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"read","arguments":"{\"path\":\"fixture\"}","status":"completed"}),
+    ] {
+        let run = native_run(2028);
+        let mut projector = ResponsesWebSocketProjector::new("model".into(), None);
+        let node = Uuid::new_v4();
+        let facts = [
+            debug_stream_events::provider_output_item_added("llm", node, 0, item.clone()),
+            debug_stream_events::provider_native_event(
+                "llm",
+                node,
+                "openai_responses".into(),
+                json!({"type":"response.output_item.done","item":item}),
+            ),
+            debug_stream_events::provider_output_item_done("llm", node, 0, item.clone()),
+            debug_stream_events::flow_finished(run.id, json!({})),
+        ];
+        let mut frames = Vec::new();
+        for (index, fact) in facts.into_iter().enumerate() {
+            frames.extend(decoded(
+                projector
+                    .project(&run, RuntimeEventEnvelope::new(run.id, index as i64, fact))
+                    .unwrap(),
+            ));
+        }
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0]["item"], item);
+        assert_eq!(frames[1]["item"], item);
+        assert_eq!(frames[2]["response"]["output"], json!([item]));
+        assert_eq!(frames[2]["type"], "response.completed");
+    }
+}

@@ -894,12 +894,16 @@ where
                 context: Some(&invocation.debug_context),
             },
         )?;
-        execution.pending_callback = build_llm_tool_callback_wait(
-            node,
-            variable_pool,
-            &execution.output_payload,
-            &tool_prompt_transcript,
-        )?;
+        // Native Responses tools belong to the client's provider continuation. Opening
+        // a host callback here creates a second owner and re-encodes custom tools.
+        if !native_responses_passthrough {
+            execution.pending_callback = build_llm_tool_callback_wait(
+                node,
+                variable_pool,
+                &execution.output_payload,
+                &tool_prompt_transcript,
+            )?;
+        }
         return Ok(execution);
     }
 

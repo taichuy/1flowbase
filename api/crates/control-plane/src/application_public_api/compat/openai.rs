@@ -73,6 +73,7 @@ pub struct OpenAiCompatError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiPreviousResponseContext {
+    pub provider_continuation: Option<crate::ports::ProviderContinuation>,
     pub response_id: String,
     pub external_user: Option<String>,
     pub external_conversation_id: Option<String>,

@@ -48,6 +48,10 @@ pub(crate) enum ConnectionTransitionError {
     InvalidGenerate,
     #[error("response must be an object")]
     InvalidResponse,
+    #[error("response.input must be text or an array when present")]
+    InvalidInput,
+    #[error("prewarm response reference is not available on this connection")]
+    UnknownPrewarmResponse,
     #[error("only one response may be active on a connection")]
     ActiveTurnExists,
     #[error("the Responses WebSocket connection is closing")]
@@ -63,6 +67,8 @@ impl ConnectionTransitionError {
         match self {
             Self::InvalidGenerate => "response.generate must be boolean",
             Self::InvalidResponse => "response must be an object",
+            Self::InvalidInput => "response.input must be text or an array",
+            Self::UnknownPrewarmResponse => "prewarm response reference is unavailable",
             Self::ActiveTurnExists => "a response is already active",
             Self::ConnectionClosing => "connection is closing",
         }
@@ -76,7 +82,6 @@ pub(crate) struct ResponsesConnectionActor {
     prewarmed_response: Option<PrewarmedResponse>,
     active_turn: Option<TurnId>,
     next_turn: u64,
-    next_prewarm: u64,
 }
 
 struct PrewarmedResponse {
@@ -91,7 +96,6 @@ impl ResponsesConnectionActor {
             prewarmed_response: None,
             active_turn: None,
             next_turn: 1,
-            next_prewarm: 1,
         }
     }
 
@@ -131,9 +135,15 @@ impl ResponsesConnectionActor {
             Some(_) => return Err(ConnectionTransitionError::InvalidGenerate),
         };
 
+        if response
+            .get("input")
+            .is_some_and(|input| !input.is_string() && !input.is_array())
+        {
+            return Err(ConnectionTransitionError::InvalidInput);
+        }
+
         if !generate {
-            let response_id = format!("resp_prewarm_{}", self.next_prewarm);
-            self.next_prewarm = self.next_prewarm.saturating_add(1);
+            let response_id = format!("resp_prewarm_{}", uuid::Uuid::now_v7());
             self.prewarmed_response = Some(PrewarmedResponse {
                 id: response_id.clone(),
                 fields: response,
@@ -142,18 +152,41 @@ impl ResponsesConnectionActor {
             return Ok(ConnectionAction::Prewarmed { response_id });
         }
 
-        let response = match self.prewarmed_response.take() {
-            Some(mut prewarmed) => {
-                if response.get("previous_response_id").and_then(Value::as_str)
-                    == Some(prewarmed.id.as_str())
-                {
-                    response.remove("previous_response_id");
+        let prewarm_reference = response
+            .get("previous_response_id")
+            .and_then(Value::as_str)
+            .filter(|id| id.starts_with("resp_prewarm_"));
+        if let Some(reference) = prewarm_reference {
+            let prewarmed = self
+                .prewarmed_response
+                .as_ref()
+                .filter(|prewarmed| prewarmed.id == reference)
+                .ok_or(ConnectionTransitionError::UnknownPrewarmResponse)?;
+            let mut fields = prewarmed.fields.clone();
+            response.remove("previous_response_id");
+            // Codex sends only the new input after a prewarm response. In Responses Lite,
+            // replacing this array would discard additional_tools and base instructions.
+            if let (Some(prefix), Some(delta)) = (fields.get("input"), response.get("input")) {
+                let mut input = Vec::new();
+                for part in [prefix, delta] {
+                    match part {
+                        Value::Array(items) => input.extend(items.iter().cloned()),
+                        Value::String(text) => input.push(serde_json::json!({
+                            "role": "user",
+                            "content": text,
+                        })),
+                        _ => return Err(ConnectionTransitionError::InvalidInput),
+                    }
                 }
-                prewarmed.fields.extend(response);
-                Value::Object(prewarmed.fields)
+                response.insert("input".to_string(), Value::Array(input));
             }
-            None => Value::Object(response),
-        };
+            fields.extend(response);
+            response = fields;
+        }
+        // A full request or ordinary upstream continuation owns its own context.
+        // Only an explicit reference above is allowed to consume prewarm fields.
+        self.prewarmed_response = None;
+        let response = Value::Object(response);
         let turn = TurnId(self.next_turn);
         self.next_turn = self.next_turn.saturating_add(1);
         self.active_turn = Some(turn);

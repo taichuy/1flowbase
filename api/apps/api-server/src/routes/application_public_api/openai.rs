@@ -1212,6 +1212,18 @@ async fn load_previous_response_context_for_actor(
     Ok(Some(LoadedOpenAiPreviousResponseContext {
         flow_run_id: run.id,
         translation: OpenAiPreviousResponseContext {
+            provider_continuation: state
+                .infrastructure
+                .provider_transport_store()
+                .get_continuation(ProviderContinuationSlotId::for_flow_run(run.id))
+                .await
+                .map_err(|_| {
+                    OpenAiRouteError::Native(native::NativeApiError::new(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "provider_continuation_lookup_failed",
+                        "Provider continuation storage is temporarily unavailable",
+                    ))
+                })?,
             response_id: response_id.to_string(),
             external_user: string_value(&run.metadata, "external_user"),
             external_conversation_id: string_value(&run.metadata, "external_conversation_id"),

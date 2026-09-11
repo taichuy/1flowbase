@@ -367,7 +367,9 @@ pub fn validate_provider_output_item(
     if !matches!(
         object.get("type").and_then(Value::as_str),
         Some(
-            "tool_search_call"
+            "function_call"
+                | "custom_tool_call"
+                | "tool_search_call"
                 | "tool_search_output"
                 | "additional_tools"
                 | "file_search_call"

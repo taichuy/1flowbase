@@ -782,6 +782,7 @@ fn d6_ac_001_mcp_approval_response_remains_opaque_with_provider_continuation() {
         }),
         OpenAiResponsesRequestContext::responses(),
         Some(OpenAiPreviousResponseContext {
+            provider_continuation: None,
             response_id: "resp_provider_owned".to_string(),
             external_user: None,
             external_conversation_id: None,
@@ -906,4 +907,41 @@ fn ac_002_previous_response_id_is_accepted_for_route_context_resolution() {
     }))
     .expect("previous_response_id should be accepted");
     assert_eq!(translated.request.query, "Continue");
+}
+
+// #2028 AC-007/008: a native function result remains a sealed delta even
+// when this turn has no custom tool declaration to trigger native admission.
+#[test]
+fn issue_2028_native_function_result_inherits_provider_continuation() {
+    let body = json!({"model":"fixture","previous_response_id":"resp_public","input":[{"type":"function_call_output","call_id":"call_original","output":"random-result"}]});
+    let previous = OpenAiPreviousResponseContext {
+        provider_continuation: Some(
+            crate::ports::ProviderContinuation::new(
+                "resp_upstream",
+                crate::ports::ProviderTransportAffinity::new(
+                    "provider",
+                    "openai",
+                    "openai_responses",
+                    "fixture",
+                ),
+            )
+            .unwrap(),
+        ),
+        response_id: "resp_public".into(),
+        external_user: None,
+        external_conversation_id: None,
+        answer: None,
+    };
+    let mut translated = translate_response_request_with_context_and_previous(
+        body.clone(),
+        OpenAiResponsesRequestContext::responses(),
+        Some(previous),
+    )
+    .expect("native function result is valid without replayed call");
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("continuation delta must stay native");
+    assert_eq!(payload.wire_body(), &body);
 }
