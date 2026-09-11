@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
+
+import { loadApplicationI18nResources } from '../../../../shared/i18n/app-i18n';
 
 import { StartModelListField } from '../../components/detail/fields/StartModelListField';
+
+beforeAll(loadApplicationI18nResources);
 
 describe('StartModelListField', () => {
   test('shows only model id and context in the list', () => {
@@ -46,60 +50,81 @@ describe('StartModelListField', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('adds the default flowbase model with real defaults after confirmation', () => {
-    const onChange = vi.fn();
+  test.each(['medium', 'max'])(
+    'adds the default flowbase model with %s reasoning after confirmation',
+    (defaultEffort) => {
+      const onChange = vi.fn();
 
-    render(
-      <StartModelListField title="模型列表" value={[]} onChange={onChange} />
-    );
+      render(
+        <StartModelListField title="模型列表" value={[]} onChange={onChange} />
+      );
 
-    const header = screen.getByTestId('agent-flow-collection-field-header');
+      const header = screen.getByTestId('agent-flow-collection-field-header');
 
-    expect(
-      within(header).getByRole('heading', { name: '模型列表' })
-    ).toBeInTheDocument();
-    expect(
-      within(header).getByRole('button', { name: '新增模型' })
-    ).toBeInTheDocument();
+      expect(
+        within(header).getByRole('heading', { name: '模型列表' })
+      ).toBeInTheDocument();
+      expect(
+        within(header).getByRole('button', { name: '新增模型' })
+      ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('新增模型'));
-    expect(screen.getByLabelText('模型 ID 输入')).toHaveValue('flowbase');
-    expect(screen.getByLabelText('模型显示名输入')).toHaveValue('flowbase');
-    expect(screen.getByLabelText('模型上下文窗口')).toHaveValue('128');
-    expect(screen.getByLabelText('最大上下文窗口输入')).toHaveValue('128');
-    expect(screen.getByLabelText('最大输出 Token 输入')).toHaveValue('8');
-    expect(screen.getByLabelText('自动压缩阈值百分比输入')).toHaveValue('85');
-    expect(
-      screen.queryByLabelText('External reasoning override switch')
-    ).not.toBeInTheDocument();
-    expect(screen.getByLabelText('支持的推理强度 1')).toHaveValue('minimal');
-    expect(screen.getByLabelText('支持的推理强度 2')).toHaveValue('low');
-    expect(screen.getByLabelText('支持的推理强度 3')).toHaveValue('medium');
-    expect(screen.getByLabelText('支持的推理强度 4')).toHaveValue('high');
-    expect(screen.getByLabelText('支持的推理强度 5')).toHaveValue('xhigh');
-    fireEvent.click(screen.getByLabelText('保存模型'));
-
-    expect(onChange).toHaveBeenLastCalledWith([
-      {
-        id: 'flowbase',
-        name: 'flowbase',
-        context_window: 128000,
-        max_context_window: 128000,
-        max_output_tokens: 8000,
-        auto_compact_token_limit: 108800,
-        capabilities: {
-          reasoning: true,
-          tool_call: true,
-          multimodal: true,
-          structured_output: true
-        },
-        reasoning: {
-          default_effort: 'medium',
-          supported_efforts: ['minimal', 'low', 'medium', 'high', 'xhigh']
-        }
+      fireEvent.click(screen.getByLabelText('新增模型'));
+      expect(screen.getByLabelText('模型 ID 输入')).toHaveValue('flowbase');
+      expect(screen.getByLabelText('模型显示名输入')).toHaveValue('flowbase');
+      expect(screen.getByLabelText('模型上下文窗口')).toHaveValue('128');
+      expect(screen.getByLabelText('最大上下文窗口输入')).toHaveValue('128');
+      expect(screen.getByLabelText('最大输出 Token 输入')).toHaveValue('8');
+      expect(screen.getByLabelText('自动压缩阈值百分比输入')).toHaveValue('85');
+      expect(
+        screen.queryByLabelText('External reasoning override switch')
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText('支持的推理强度 1')).toHaveValue('minimal');
+      expect(screen.getByLabelText('支持的推理强度 2')).toHaveValue('low');
+      expect(screen.getByLabelText('支持的推理强度 3')).toHaveValue('medium');
+      expect(screen.getByLabelText('支持的推理强度 4')).toHaveValue('high');
+      expect(screen.getByLabelText('支持的推理强度 5')).toHaveValue('xhigh');
+      expect(screen.getByLabelText('支持的推理强度 6')).toHaveValue('max');
+      if (defaultEffort === 'max') {
+        fireEvent.mouseDown(
+          screen.getByRole('combobox', { name: '默认推理强度输入' })
+        );
+        fireEvent.click(
+          screen.getByText('max', {
+            selector: '.ant-select-item-option-content'
+          })
+        );
       }
-    ]);
-  });
+      fireEvent.click(screen.getByLabelText('保存模型'));
+
+      expect(onChange).toHaveBeenLastCalledWith([
+        {
+          id: 'flowbase',
+          name: 'flowbase',
+          context_window: 128000,
+          max_context_window: 128000,
+          max_output_tokens: 8000,
+          auto_compact_token_limit: 108800,
+          capabilities: {
+            reasoning: true,
+            tool_call: true,
+            multimodal: true,
+            structured_output: true
+          },
+          reasoning: {
+            default_effort: defaultEffort,
+            supported_efforts: [
+              'minimal',
+              'low',
+              'medium',
+              'high',
+              'xhigh',
+              'max'
+            ]
+          }
+        }
+      ]);
+    }
+  );
 
   test('links derived token defaults, preserves custom values, and rejects an oversized context', () => {
     render(
@@ -210,6 +235,7 @@ describe('StartModelListField', () => {
     });
     fireEvent.click(screen.getByLabelText('删除支持的推理强度 1'));
     fireEvent.click(screen.getByLabelText('删除支持的推理强度 4'));
+    fireEvent.click(screen.getByLabelText('删除支持的推理强度 4'));
     expect(screen.getByLabelText('支持的推理强度 1')).toHaveValue('low');
     expect(screen.getByLabelText('支持的推理强度 2')).toHaveValue('medium');
     expect(screen.getByLabelText('支持的推理强度 3')).toHaveValue('high');
@@ -257,7 +283,7 @@ describe('StartModelListField', () => {
     fireEvent.click(screen.getByLabelText('新增模型'));
     fireEvent.click(screen.getByLabelText('新增支持的推理强度'));
 
-    const effortInput = screen.getByLabelText('支持的推理强度 6');
+    const effortInput = screen.getByLabelText('支持的推理强度 7');
     act(() => {
       effortInput.focus();
     });
@@ -266,7 +292,7 @@ describe('StartModelListField', () => {
       target: { value: 'u' }
     });
 
-    expect(screen.getByLabelText('支持的推理强度 6')).toHaveFocus();
+    expect(screen.getByLabelText('支持的推理强度 7')).toHaveFocus();
   });
 
   test('does not wrap floating model form controls in native label rows', () => {

@@ -17,7 +17,7 @@ import { i18nText } from '../../../../../shared/i18n/text';
 import { StartModelSettingsPanel } from './StartModelSettingsPanel';
 
 const DEFAULT_REASONING_EFFORT = 'medium';
-const DEFAULT_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+const DEFAULT_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const DEFAULT_START_MODEL_ID = 'flowbase';
 const DEFAULT_START_MODEL_MAX_CONTEXT_WINDOW = 128_000;
 const DEFAULT_START_MODEL_AUTO_COMPACT_PERCENT = 85;
