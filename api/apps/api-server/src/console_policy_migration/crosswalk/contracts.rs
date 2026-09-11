@@ -352,6 +352,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "network_egress_providers.sync",
             "network_egress_proxy_types.list",
             "network_egress_proxies.create",
+            "network_egress_proxies.get",
+            "network_egress_proxies.update",
             "network_egress_routes.create",
             "network_egress_routes.delete",
             "network_egress_routes.list",
@@ -426,6 +428,9 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Editing proxy configuration is new; historical member-state grants do not authorize it.
+    "network_egress_proxies.get",
+    "network_egress_proxies.update",
     // Sync overwrites official prices; historical import grants must not gain this action.
     "billing.pricing_catalog.sync",
     "extension_center.catalog.detail",

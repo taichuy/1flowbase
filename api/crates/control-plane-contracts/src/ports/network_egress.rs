@@ -28,6 +28,19 @@ pub struct CreateStaticHttpProxyPoolMemberInput {
     pub actor_user_id: Uuid,
 }
 
+/// Atomically replace configuration and projection while preserving provider/member identity.
+pub struct UpdateNetworkEgressProxyInput {
+    pub provider_id: Uuid,
+    pub expected_updated_at: time::OffsetDateTime,
+    pub display_name: String,
+    pub description: String,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
+    pub egresses: Vec<domain::NetworkEgressProjectionRecord>,
+    pub actor_user_id: Uuid,
+    pub audit_event: domain::AuditLogRecord,
+}
+
 #[derive(Debug, Clone)]
 pub struct UpdateNetworkEgressProviderLifecycleInput {
     pub provider_id: Uuid,
@@ -153,6 +166,10 @@ pub trait NetworkEgressRepository: Send + Sync {
         &self,
         input: &CreateStaticHttpProxyPoolMemberInput,
     ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
+    async fn update_network_egress_proxy(
+        &self,
+        input: &UpdateNetworkEgressProxyInput,
+    ) -> anyhow::Result<()>;
     async fn update_network_egress_provider_lifecycle(
         &self,
         input: &UpdateNetworkEgressProviderLifecycleInput,

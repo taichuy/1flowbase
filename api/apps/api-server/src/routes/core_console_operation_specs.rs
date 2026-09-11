@@ -542,6 +542,8 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "system.network-center",
     ),
     settings("network_egress_proxies.create", "system.network-center"),
+    settings("network_egress_proxies.get", "system.network-center"),
+    settings("network_egress_proxies.update", "system.network-center"),
     settings("network_egress_pools.create", "system.network-center"),
     settings("network_egress_pools.delete", "system.network-center"),
     settings("network_egress_pools.list", "system.network-center"),

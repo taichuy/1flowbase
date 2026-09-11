@@ -7,8 +7,8 @@ use control_plane_contracts::ports::{
     NetworkEgressRouteRepository, RecordNetworkEgressPoolMemberProbeInput,
     RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
     UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
-    UpdateNetworkEgressProviderLifecycleInput, UpdateNetworkEgressRouteInput,
-    UpsertNetworkEgressProviderSecretInput,
+    UpdateNetworkEgressProviderLifecycleInput, UpdateNetworkEgressProxyInput,
+    UpdateNetworkEgressRouteInput, UpsertNetworkEgressProviderSecretInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -327,6 +327,60 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .await?;
         transaction.commit().await?;
         pool_member(row)
+    }
+
+    async fn update_network_egress_proxy(
+        &self,
+        input: &UpdateNetworkEgressProxyInput,
+    ) -> Result<()> {
+        use control_plane_contracts::ControlPlaneContractError as Error;
+        let encrypted = encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
+        let mut tx = self.pool().begin().await?;
+        let current =
+            sqlx::query("select updated_at from network_egress_providers where id = $1 for update")
+                .bind(input.provider_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(Error::NotFound("network_egress_provider"))?;
+        if current.get::<time::OffsetDateTime, _>("updated_at") != input.expected_updated_at {
+            return Err(Error::Conflict("network_egress_proxy_changed").into());
+        }
+        let keys: Vec<_> = input
+            .egresses
+            .iter()
+            .map(|egress| egress.provider_egress_key.clone())
+            .collect();
+        let missing: bool = sqlx::query_scalar("select exists(select 1 from network_egress_pool_members where provider_id = $1 and not (provider_egress_key = any($2)))")
+            .bind(input.provider_id).bind(&keys).fetch_one(&mut *tx).await?;
+        if missing {
+            return Err(Error::Conflict("network_egress_proxy_members_changed").into());
+        }
+        sqlx::query("update network_egress_providers set display_name=$2, description=$3, health_status='healthy', last_sync_error=null, last_synced_at=now(), updated_by=$4, updated_at=now() where id=$1")
+            .bind(input.provider_id).bind(&input.display_name).bind(&input.description).bind(input.actor_user_id).execute(&mut *tx).await?;
+        let secret = sqlx::query("update network_egress_provider_secrets set encrypted_secret_json=$2, secret_version=secret_version+1, updated_at=now() where provider_id=$1")
+            .bind(input.provider_id).bind(encrypted).execute(&mut *tx).await?;
+        if secret.rows_affected() != 1 {
+            return Err(Error::NotFound("network_egress_provider_secret").into());
+        }
+        sqlx::query("delete from network_egress_projections where provider_id=$1")
+            .bind(input.provider_id)
+            .execute(&mut *tx)
+            .await?;
+        for egress in &input.egresses {
+            sqlx::query("insert into network_egress_projections (provider_id, provider_egress_key, display_name, region, tags, availability, synced_at) values ($1,$2,$3,$4,$5,$6,$7)")
+                .bind(input.provider_id).bind(&egress.provider_egress_key).bind(&egress.display_name)
+                .bind(&egress.region).bind(&egress.tags).bind(&egress.availability).bind(egress.synced_at)
+                .execute(&mut *tx).await?;
+        }
+        sqlx::query("update network_egress_pool_members set probe_status='not_tested', probe_http_status='not_tested', probe_https_status='not_tested', probe_latency_ms=0, probe_exit_ip=null, probe_exit_region=null, probe_error_code=null, last_probed_at=null, updated_by=$2, updated_at=now() where provider_id=$1")
+            .bind(input.provider_id).bind(input.actor_user_id).execute(&mut *tx).await?;
+        let event = &input.audit_event;
+        sqlx::query("insert into audit_logs (id,workspace_id,scope_id,actor_user_id,target_type,target_id,event_code,payload,created_by,updated_by,created_at,updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$4,$4,$9,$9)")
+            .bind(event.id).bind(event.workspace_id).bind(event.workspace_id.unwrap_or(domain::SYSTEM_SCOPE_ID))
+            .bind(event.actor_user_id).bind(&event.target_type).bind(event.target_id).bind(&event.event_code)
+            .bind(&event.payload).bind(event.created_at).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn update_network_egress_provider_lifecycle(

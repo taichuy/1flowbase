@@ -1185,6 +1185,8 @@ pub(crate) fn production_interface_contributions(
             &[
                 "network_egress_pools.list",
                 "network_egress_proxies.create",
+                "network_egress_proxies.get",
+                "network_egress_proxies.update",
                 "network_egress_pool_members.test_connection",
                 "network_egress_pools.create",
                 "network_egress_pools.update",

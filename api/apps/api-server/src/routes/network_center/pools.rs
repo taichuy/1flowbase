@@ -80,6 +80,31 @@ pub enum DeleteNetworkEgressPoolMembersBody {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct NetworkEgressProxyResponse {
+    pub provider_id: String,
+    pub provider_code: String,
+    pub display_name: String,
+    pub description: String,
+    pub config: serde_json::Value,
+    pub configured_secret_fields: Vec<String>,
+    pub form_schema: serde_json::Value,
+}
+
+pub(super) fn proxy_response(
+    view: control_plane::network_egress::NetworkEgressProxyView,
+) -> Result<NetworkEgressProxyResponse, ApiError> {
+    Ok(NetworkEgressProxyResponse {
+        provider_id: view.provider_id.to_string(),
+        provider_code: view.provider_code,
+        display_name: view.display_name,
+        description: view.description,
+        config: view.config,
+        configured_secret_fields: view.configured_secret_fields,
+        form_schema: serde_json::to_value(view.form_schema).map_err(anyhow::Error::from)?,
+    })
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NetworkEgressPoolMemberResponse {
     pub id: String,
     pub provider_id: String,
@@ -131,6 +156,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(
                 create_network_egress_proxy,
                 ConsoleOperation("network_egress_proxies.create".to_string()),
+            ),
+        )
+        .route(
+            "/network-center/pools/proxies/:provider_id",
+            console_get(
+                get_network_egress_proxy,
+                ConsoleOperation("network_egress_proxies.get".to_string()),
+            )
+            .patch(
+                update_network_egress_proxy,
+                ConsoleOperation("network_egress_proxies.update".to_string()),
             ),
         )
         .route(
@@ -572,4 +608,58 @@ pub async fn delete_network_egress_pool_members(
         unreachable!("network pool member batch delete binding returned a different output")
     };
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get, path = "/api/console/network-center/pools/proxies/{provider_id}",
+    operation_id = "network_egress_proxies_get",
+    summary = "Read proxy configuration for editing",
+    description = "Returns public configuration and configured secret field names without revealing stored credentials.",
+    params(("provider_id" = String, Path, description = "Proxy provider id")),
+    responses((status = 200, body = NetworkEgressProxyResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn get_network_egress_proxy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(provider_id): Path<String>,
+) -> Result<Json<ApiSuccess<NetworkEgressProxyResponse>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-proxies.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::pools_interface::NetworkPoolsInput::GetProxy { provider_id },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Proxy(proxy) = output else {
+        unreachable!("proxy get binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(proxy)))
+}
+
+#[utoipa::path(
+    patch, path = "/api/console/network-center/pools/proxies/{provider_id}",
+    operation_id = "network_egress_proxies_update",
+    summary = "Update proxy configuration",
+    description = "Updates the existing proxy, preserves blank or omitted secret fields and keeps pool member and route identities. The provider type cannot change.",
+    params(("provider_id" = String, Path, description = "Proxy provider id")),
+    request_body = CreateNetworkEgressProxyBody,
+    responses((status = 200, body = NetworkEgressProxyResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn update_network_egress_proxy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(provider_id): Path<String>,
+    Json(body): Json<CreateNetworkEgressProxyBody>,
+) -> Result<Json<ApiSuccess<NetworkEgressProxyResponse>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-proxies.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::UpdateProxy { provider_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Proxy(proxy) = output else {
+        unreachable!("proxy update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(proxy)))
 }

@@ -160,6 +160,8 @@ use utoipa::OpenApi;
         crate::routes::network_center::plugins::install_uploaded_plugin,
         crate::routes::network_center::pools::list_network_egress_pools,
         crate::routes::network_center::pools::create_network_egress_proxy,
+        crate::routes::network_center::pools::get_network_egress_proxy,
+        crate::routes::network_center::pools::update_network_egress_proxy,
         crate::routes::network_center::pools::test_network_egress_pool_member_connection,
         crate::routes::network_center::pools::create_network_egress_pool,
         crate::routes::network_center::pools::update_network_egress_pool,

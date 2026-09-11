@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 361,
+  "projected_interface_count": 371,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -92,6 +92,12 @@
       "DELETE",
       "/api/console/network-center/pools/:pool_id",
       "Delete network egress pools"
+    ],
+    [
+      "network_egress_pool_members.batch_delete",
+      "DELETE",
+      "/api/console/network-center/pools/:pool_id/members/batch",
+      "Delete network egress pool members batch"
     ],
     [
       "network_egress_pool_members.delete",
@@ -604,6 +610,12 @@
       "List network egress pools"
     ],
     [
+      "network_egress_proxies.get",
+      "GET",
+      "/api/console/network-center/pools/proxies/:provider_id",
+      "Read proxy configuration for editing"
+    ],
+    [
       "network_egress_routes.list",
       "GET",
       "/api/console/network-center/routes",
@@ -752,6 +764,18 @@
       "GET",
       "/api/console/settings/extension-center/installed",
       "View extension center installed"
+    ],
+    [
+      "extension_center.contribution_authorizations.view",
+      "GET",
+      "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+      "View exact installed contribution permissions in the current workspace"
+    ],
+    [
+      "extension_center.managed_execution.view",
+      "GET",
+      "/api/console/settings/extension-center/installed/:installation_id/managed-execution",
+      "View managed executions and durable lifecycle deliveries in the current workspace"
     ],
     [
       "file_storages.list",
@@ -1106,6 +1130,12 @@
       "PATCH",
       "/api/console/applications/:id/orchestration/versions/:version_id",
       "Update version"
+    ],
+    [
+      "network_egress_proxies.update",
+      "PATCH",
+      "/api/console/network-center/pools/proxies/:provider_id",
+      "Update proxy configuration"
     ],
     [
       "network_egress_pools.update",
@@ -1612,6 +1642,12 @@
       "Import billing pricing catalog"
     ],
     [
+      "billing.pricing_catalog.sync",
+      "POST",
+      "/api/console/settings/billing/pricing-catalog/sync",
+      "Synchronize all official model prices"
+    ],
+    [
       "billing.pricing_rules.create",
       "POST",
       "/api/console/settings/billing/pricing-rules",
@@ -1684,6 +1720,18 @@
       "Upload extension center install"
     ],
     [
+      "extension_center.contribution_authorizations.grant",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+      "Grant exact installed contribution permissions in the current workspace"
+    ],
+    [
+      "extension_center.contribution_authorizations.revoke",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+      "Revoke exact installed contribution permissions in the current workspace"
+    ],
+    [
       "extension_center.installed.disable",
       "POST",
       "/api/console/settings/extension-center/installed/:installation_id/disable",
@@ -1694,6 +1742,18 @@
       "POST",
       "/api/console/settings/extension-center/installed/:installation_id/enable",
       "Enable an installed executable extension"
+    ],
+    [
+      "extension_center.lifecycle_deliveries.resume",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",
+      "Resume an exact paused lifecycle delivery after current authority and original executable validation"
+    ],
+    [
+      "extension_center.managed_executions.retire",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",
+      "Retire a frozen managed execution only after publication, invocation and durable delivery references are gone"
     ],
     [
       "extension_center.installed.select",

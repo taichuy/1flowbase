@@ -710,6 +710,8 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "network_egress_proxies.get" => Some("Read proxy configuration for editing"),
+        "network_egress_proxies.update" => Some("Update proxy configuration"),
         "billing.pricing_catalog.sync" => Some("Synchronize all official model prices"),
         "extension_center.installed.delete" => Some(
             "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
@@ -846,6 +848,8 @@ fn compile_console_interface_metadata(
         };
         let summary = static_english_interface_summary(&interface_id);
         let description = match interface_id.as_str() {
+            "network_egress_proxies.get" => "Return public proxy configuration and configured secret field names without revealing stored credentials.".to_string(),
+            "network_egress_proxies.update" => "Update the existing proxy configuration, preserve omitted secrets and keep member and route identities. The provider type cannot change.".to_string(),
             "billing.pricing_catalog.sync" => "Fetch the complete official catalog and atomically update official prices and conditional rules, insert new models, and retire duplicate official records while preserving manual rules and historical IDs.".to_string(),
             "extension_center.managed_execution.view" => "Read exact retained and current execution targets, frozen reference counts and durable delivery status for the installed extension in the current workspace.".to_string(),
             "extension_center.lifecycle_deliveries.resume" => "Resume one paused delivery only when its full frozen target, original executable and current contribution authorization remain valid.".to_string(),

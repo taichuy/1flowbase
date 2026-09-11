@@ -129,6 +129,20 @@ export interface CreateConsoleNetworkEgressProxyInput {
   config: Record<string, string>;
 }
 
+export interface ConsoleNetworkEgressProxy extends CreateConsoleNetworkEgressProxyInput {
+  provider_id: string;
+  configured_secret_fields: string[];
+  form_schema: ConsoleNetworkEgressProviderType['form_schema'];
+}
+
+export function getConsoleNetworkEgressProxy(providerId: string, baseUrl?: string) {
+  return apiFetch<ConsoleNetworkEgressProxy>({ path: `/api/console/network-center/pools/proxies/${encodeURIComponent(providerId)}`, baseUrl });
+}
+
+export function updateConsoleNetworkEgressProxy(providerId: string, input: CreateConsoleNetworkEgressProxyInput, csrfToken: string, baseUrl?: string) {
+  return apiFetch<ConsoleNetworkEgressProxy>({ path: `/api/console/network-center/pools/proxies/${encodeURIComponent(providerId)}`, method: 'PATCH', body: input, csrfToken, baseUrl });
+}
+
 export interface UpdateConsoleNetworkEgressProviderLifecycleInput {
   lifecycle: string;
 }

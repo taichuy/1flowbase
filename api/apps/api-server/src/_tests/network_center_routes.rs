@@ -458,3 +458,119 @@ async fn network_center_route_registry_rejects_session_without_feature_scope() {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+/// AC-004: editing uses separately authorized, authenticated, CSRF-protected operations.
+#[tokio::test]
+async fn network_center_proxy_edit_contract_and_access_boundaries() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create = app.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/console/network-center/pools/proxies")
+        .header("cookie", &cookie).header("x-csrf-token", &csrf).header("content-type", "application/json")
+        .body(Body::from(r#"{"provider_code":"builtin_static_http","display_name":"Original proxy","description":"Original","config":{"host":"127.0.0.1","port":"3128","password":"never-return-me"}}"#)).unwrap()).await.unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let body = axum::body::to_bytes(create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let id = created["data"]["id"].as_str().unwrap();
+    let uri = format!("/api/console/network-center/pools/proxies/{id}");
+    let read = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&uri)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read.status(), StatusCode::OK);
+    let read = axum::body::to_bytes(read.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&read).contains("never-return-me"));
+    let read: serde_json::Value = serde_json::from_slice(&read).unwrap();
+    assert_eq!(
+        read["data"]["config"],
+        serde_json::json!({"host":"127.0.0.1","port":"3128","username":""})
+    );
+    assert_eq!(
+        read["data"]["configured_secret_fields"],
+        serde_json::json!(["password"])
+    );
+    let update = r#"{"provider_code":"builtin_static_http","display_name":"Edited proxy","description":"Edited","config":{"host":"203.0.113.40","port":"8080"}}"#;
+    let unauthorized = app
+        .clone()
+        .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+    let missing_csrf = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(&uri)
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(update))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
+    let updated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(&uri)
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(update))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let updated: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(updated.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(updated["data"]["provider_id"], id);
+    assert_eq!(updated["data"]["display_name"], "Edited proxy");
+    assert_eq!(updated["data"]["config"]["host"], "203.0.113.40");
+    assert_eq!(
+        updated["data"]["configured_secret_fields"],
+        serde_json::json!(["password"])
+    );
+    create_member(&app, &cookie, &csrf, "proxy-edit-no-scope", "temp-pass").await;
+    let (member_cookie, member_csrf) =
+        login_and_capture_cookie(&app, "proxy-edit-no-scope", "temp-pass").await;
+    for method in ["GET", "PATCH"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(&uri)
+                    .header("cookie", &member_cookie)
+                    .header("x-csrf-token", &member_csrf)
+                    .header("content-type", "application/json")
+                    .body(if method == "PATCH" {
+                        Body::from(update)
+                    } else {
+                        Body::empty()
+                    })
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+}

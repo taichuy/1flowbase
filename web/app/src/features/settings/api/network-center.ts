@@ -1,6 +1,9 @@
 import {
   createConsoleNetworkEgressProvider,
   createConsoleNetworkEgressProxy,
+  getConsoleNetworkEgressProxy,
+  updateConsoleNetworkEgressProxy,
+  type ConsoleNetworkEgressProxy,
   createConsoleNetworkEgressPool,
   createConsoleNetworkEgressPoolMember,
   createConsoleNetworkEgressPoolStaticHttpMember,
@@ -307,4 +310,14 @@ export function deleteSettingsNetworkEgressPoolMembers(
   csrfToken: string
 ) {
   return deleteConsoleNetworkEgressPoolMembers(poolId, input, csrfToken);
+}
+
+export type SettingsNetworkEgressProxy = ConsoleNetworkEgressProxy;
+
+export function fetchSettingsNetworkEgressProxy(providerId: string) {
+  return getConsoleNetworkEgressProxy(providerId);
+}
+
+export function updateSettingsNetworkEgressProxy(providerId: string, input: CreateSettingsNetworkEgressProxyInput, csrfToken: string) {
+  return updateConsoleNetworkEgressProxy(providerId, input, csrfToken);
 }

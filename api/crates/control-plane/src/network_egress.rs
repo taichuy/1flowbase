@@ -1,3 +1,6 @@
+mod proxy_edit;
+pub use proxy_edit::{NetworkEgressProxyView, UpdateNetworkEgressProxyCommand};
+
 use anyhow::Result;
 use plugin_framework::{
     EgressAvailability, NetworkEgressProviderPackage, PluginFormFieldSchema, PluginFormSchema,

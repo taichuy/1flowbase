@@ -865,3 +865,6 @@ async fn nc_09_route_storage_keeps_closed_selector_identity_and_workspace_instan
         "an exact model provider selector must belong to the route workspace"
     );
 }
+
+#[path = "network_egress/_tests/proxy_edit.rs"]
+mod proxy_edit;

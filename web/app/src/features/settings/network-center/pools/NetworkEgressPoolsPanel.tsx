@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
-import { App, Alert, Button, Empty, Flex, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd';
+import { App, Alert, Button, Empty, Flex, Input, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiClientError } from '@1flowbase/api-client';
 
-import { createSettingsNetworkEgressProxy, deleteSettingsNetworkEgressPoolMember, deleteSettingsNetworkEgressPoolMembers, fetchSettingsNetworkEgressPools, fetchSettingsNetworkEgressProviderTypes, settingsNetworkEgressPoolsQueryKey, testSettingsNetworkEgressPoolMember, updateSettingsNetworkEgressPoolMember, type CreateSettingsNetworkEgressProxyInput, type DeleteSettingsNetworkEgressPoolMembersInput, type SettingsNetworkEgressPoolMember, type SettingsNetworkEgressProviderType } from '../../api/network-center';
+import { createSettingsNetworkEgressProxy, fetchSettingsNetworkEgressProxy, updateSettingsNetworkEgressProxy, deleteSettingsNetworkEgressPoolMember, deleteSettingsNetworkEgressPoolMembers, fetchSettingsNetworkEgressPools, fetchSettingsNetworkEgressProviderTypes, settingsNetworkEgressPoolsQueryKey, testSettingsNetworkEgressPoolMember, updateSettingsNetworkEgressPoolMember, type CreateSettingsNetworkEgressProxyInput, type DeleteSettingsNetworkEgressPoolMembersInput, type SettingsNetworkEgressPoolMember } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
-import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
+import { ProxyModal } from './ProxyModal';
 import { DataTable, DataTableColumnSettings, type DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
 import { DataTableFilterField, DataTableFilterForm, DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
@@ -53,61 +53,6 @@ function memberDeleteErrorText(error: Error) {
   return error instanceof ApiClientError && error.code === 'network_egress_pool_member_in_use'
     ? i18nText('settings', 'auto.network_center_members_delete_in_use')
     : i18nText('settings', 'auto.network_center_member_delete_failed');
-}
-
-function ProxyModal({ open, types, loading, submitting, onClose, onSubmit }: { open: boolean; types: SettingsNetworkEgressProviderType[]; loading: boolean; submitting: boolean; onClose: () => void; onSubmit: (values: ProxyFormValues) => void }) {
-  const [form] = Form.useForm<ProxyFormValues>();
-  const providerCode = Form.useWatch('provider_code', form);
-  const proxyType = types.find((item) => item.provider_code === providerCode);
-  return (
-    <FixedHeightModal open={open} title={i18nText('settings', 'auto.network_center_member_create')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={submitting} okText={i18nText('settings', 'auto.save')} destroyOnHidden width={640}>
-      <Form form={form} layout="vertical" initialValues={{ description: '', config: {} }} onFinish={onSubmit}>
-        <Form.Item name="provider_code" label={i18nText('settings', 'auto.network_center_providers')} rules={[{ required: true }]}>
-          <Select
-            loading={loading}
-            options={types.map((item) => ({
-              value: item.provider_code,
-              label: item.display_name
-            }))}
-          />
-        </Form.Item>
-        <Form.Item name="display_name" label={i18nText('settings', 'auto.name')} rules={[{ required: true }]}>
-          <Input />
-        </Form.Item>
-        <Form.Item name="description" label={i18nText('settings', 'auto.description')}>
-          <Input.TextArea rows={2} />
-        </Form.Item>
-        {proxyType?.form_schema.fields.map((field) => (
-          <Form.Item key={field.key} name={['config', field.key]} label={field.label} extra={field.description} rules={[{ required: field.required }]}>
-            {field.key.toLowerCase().includes('password') ? <Input.Password /> : <Input />}
-          </Form.Item>
-        ))}
-      </Form>
-    </FixedHeightModal>
-  );
-}
-
-function ProxyMemberEditModal({ member, submitting, onClose, onSubmit }: { member: SettingsNetworkEgressPoolMember | null; submitting: boolean; onClose: () => void; onSubmit: (values: ProxyMemberEditValues) => void }) {
-  const [form] = Form.useForm<ProxyMemberEditValues>();
-  useEffect(() => {
-    if (member)
-      form.setFieldsValue({
-        enabled: member.enabled,
-        sequence: member.sequence
-      });
-  }, [form, member]);
-  return (
-    <FixedHeightModal open={member !== null} title={i18nText('settings', 'auto.network_center_member_edit')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={submitting} destroyOnHidden width={520}>
-      <Form form={form} layout="vertical" initialValues={{ enabled: member?.enabled, sequence: member?.sequence }} onFinish={onSubmit}>
-        <Form.Item name="sequence" label={i18nText('settings', 'auto.network_center_member_sequence')} rules={[{ required: true }]}>
-          <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="enabled" label={i18nText('settings', 'auto.network_center_member_enabled')} valuePropName="checked">
-          <Switch />
-        </Form.Item>
-      </Form>
-    </FixedHeightModal>
-  );
 }
 
 export function NetworkEgressPoolsPanel() {
@@ -157,8 +102,24 @@ export function NetworkEgressPoolsPanel() {
     },
     onSuccess: async () => {
       await invalidate();
-      setEditingMember(null);
     }
+  });
+  const proxy = useQuery({
+    queryKey: ['settings', 'network-center', 'proxy', editingMember?.provider_id],
+    queryFn: () => fetchSettingsNetworkEgressProxy(editingMember!.provider_id),
+    enabled: editingMember !== null,
+    gcTime: 0,
+  });
+  const updateProxy = useMutation({
+    mutationFn: ({ providerId, input }: { providerId: string; input: ProxyFormValues }) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return updateSettingsNetworkEgressProxy(providerId, input, csrfToken);
+    },
+    onSuccess: async () => {
+      await Promise.all([invalidate(), queryClient.invalidateQueries({ queryKey: ['settings', 'network-center', 'providers'] })]);
+      setEditingMember(null);
+    },
+    onError: () => { message.error(i18nText('settings', 'auto.network_center_proxy_update_failed')); },
   });
   const removeMember = useMutation({
     mutationFn: (memberId: string) => {
@@ -292,15 +253,20 @@ export function NetworkEgressPoolsPanel() {
           {pools.isError ? <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} /> : <DataTable<SettingsNetworkEgressPoolMember> columns={columns} configuration={tableConfiguration} dataSource={pagedMembers} emptyText={<Empty description={i18nText('settings', 'auto.network_center_no_pools')} />} loading={pools.isLoading || pools.isFetching} page={page} pageSize={PAGE_SIZE} rowKey="id" rowSelection={{ preserveSelectedRowKeys: true, selectedRowKeys: selectedMemberIds, onChange: (keys) => setSelectedMemberIds(keys.map(String)) }} total={members.length} onPageChange={setPage} toolbar={<Flex justify="flex-end" gap={8} wrap><Button disabled={pagedMembers.length === 0 || testCurrentPage.isPending} loading={testCurrentPage.isPending} onClick={() => testCurrentPage.mutate(pagedMembers.map((member) => member.id))}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="primary" onClick={() => setCreateOpen(true)}>{i18nText('settings', 'auto.network_center_member_create')}</Button><Button onClick={() => pools.refetch()}>{i18nText('settings', 'auto.refresh')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_selected_confirm', { value1: selectedMemberIds.length })} onConfirm={() => removeMembers.mutateAsync({ selection: 'selected', member_ids: selectedMemberIds })}><Button danger disabled={selectedMemberIds.length === 0} loading={removeMembers.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm><Popconfirm title={i18nText('settings', 'auto.network_center_members_delete_all_confirm', { value1: pool?.members.length ?? 0 })} onConfirm={() => removeMembers.mutateAsync({ selection: 'all' })}><Button danger disabled={!pool?.members.length} loading={removeMembers.isPending}>{i18nText('settings', 'auto.network_center_members_delete_all')}</Button></Popconfirm><DataTableColumnSettings columns={columns} configuration={tableConfiguration} /></Flex>} />}
         </DataTableLayout>
       </div>
-      <ProxyModal open={createOpen} types={types.data ?? []} loading={types.isLoading} submitting={create.isPending} onClose={() => setCreateOpen(false)} onSubmit={(values) => create.mutate(values)} />
-      <ProxyMemberEditModal
-        member={editingMember}
-        submitting={updateMember.isPending}
-        onClose={() => setEditingMember(null)}
+      {(createOpen || editingMember) && <ProxyModal
+        mode={editingMember ? 'edit' : 'create'}
+        proxy={proxy.data}
+        types={types.data ?? []}
+        loading={editingMember ? proxy.isPending : types.isPending}
+        error={editingMember ? proxy.isError : types.isError}
+        onRetry={() => { if (editingMember) void proxy.refetch(); else void types.refetch(); }}
+        submitting={editingMember ? updateProxy.isPending : create.isPending}
+        onClose={() => { setCreateOpen(false); setEditingMember(null); }}
         onSubmit={(input) => {
-          if (editingMember) updateMember.mutate({ memberId: editingMember.id, input });
+          if (editingMember) updateProxy.mutate({ providerId: editingMember.provider_id, input });
+          else create.mutate(input);
         }}
-      />
+      />}
     </SettingsSectionSurface>
   );
 }
