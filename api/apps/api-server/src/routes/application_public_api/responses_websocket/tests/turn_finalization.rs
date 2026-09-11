@@ -472,8 +472,9 @@ async fn issue_2028_sse_terminal_closes_delivery_without_waiting_for_producer_dr
             run.id, 1, debug_stream_events::flow_finished(run.id, json!({})),
         ))).await.unwrap();
         publisher.finish(InterfaceStreamTerminal::Completed(CompatibilityBlockingOutput(run))).await.unwrap();
+        let (events, completion) = invocation.into_parts();
         tokio::time::timeout(Duration::from_secs(2), project_compatibility_stream(
-            invocation, openai_responses_interface_projection("model".into(), None), frames,
+            events, completion, openai_responses_interface_projection("model".into(), None), frames,
         )).await.expect("a producer retaining its sender must not hold SSE delivery open after terminal");
         if !writer_closed { assert!(received.recv().await.is_some()); }
         assert!(received.recv().await.is_none(), "SSE sender must close after the independent receipt");

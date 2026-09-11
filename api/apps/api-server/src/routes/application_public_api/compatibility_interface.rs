@@ -906,7 +906,8 @@ fn project_stream_invocation(
     );
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
-        project_compatibility_stream(invocation, projection, sender).await;
+        let (events, completion) = invocation.into_parts();
+        project_compatibility_stream(events, completion, projection, sender).await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
@@ -918,11 +919,11 @@ fn project_stream_invocation(
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
 pub(super) async fn project_compatibility_stream(
-    invocation: CompatibilityTypedStreamInvocation,
+    mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: interface_runtime::InterfaceStreamCompletion<CompatibilityBlockingOutput, CompatibilityBlockingTargetError>,
     mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
 ) {
-    let (mut events, completion) = invocation.into_parts();
     let completion = tokio::spawn(completion.complete());
     let mut projection_open = true;
     while let Some(event) = events.recv().await {
