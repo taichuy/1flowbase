@@ -235,12 +235,25 @@ pub(crate) async fn run_connection(
     state: Arc<ApiState>,
     authorization: Arc<ResponsesWebSocketAuthorization>,
 ) {
-    let (mut sender, mut receiver) = socket.split();
     let _connection_activity = state.runtime_activity.start(
         authorization.principal.application_id(),
         ApplicationActivityKind::WebSocketConnection,
     );
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
+    run_connection_loop(socket, move |response, frames| {
+        let bridge = bridge.clone();
+        async move { bridge.execute(response, frames).await }
+    }).await;
+}
+
+pub(super) async fn run_connection_loop<F, Fut>(socket: WebSocket, execute: F)
+where
+    F: Fn(Value, mpsc::Sender<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>> + Send + 'static,
+{
+    let (mut sender, mut receiver) = socket.split();
+    let mut terminal_delivered = false;
+    let mut queued_response: Option<Message> = None;
     let mut actor = ResponsesConnectionActor::new();
     type ActiveTurn = (
         TurnId,
@@ -254,10 +267,14 @@ pub(crate) async fn run_connection(
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
+                    let terminal = serde_json::from_str::<Value>(&frame).ok().is_some_and(|event| {
+                        matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
+                    });
                     if sender.send(Message::Text(frame)).await.is_err() {
                         task.abort();
                         break;
                     }
+                    terminal_delivered |= terminal;
                     active = Some((turn, task, frames));
                 }
                 result = &mut task => {
@@ -311,8 +328,15 @@ pub(crate) async fn run_connection(
                             break;
                         }
                         message => {
-                            match decode_client_message(message) {
+                            match decode_client_message(message.clone()) {
                                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
+                                    // A delivered protocol terminal permits one next request,
+                                    // but its dispatch must wait for the independent Kernel receipt.
+                                    if terminal_delivered && queued_response.is_none() {
+                                        queued_response = Some(message);
+                                        active = Some((turn, task, frames));
+                                        continue;
+                                    }
                                     match actor.accept_response(response) {
                                         Ok(_) => active = Some((turn, task, frames)),
                                         Err(error) => {
@@ -347,13 +371,14 @@ pub(crate) async fn run_connection(
             continue;
         }
 
-        let Some(message) = receiver.next().await else {
-            actor.begin_close();
-            break;
-        };
-        let Ok(message) = message else {
-            actor.begin_close();
-            break;
+        let message = if let Some(message) = queued_response.take() {
+            message
+        } else {
+            let Some(Ok(message)) = receiver.next().await else {
+                actor.begin_close();
+                break;
+            };
+            message
         };
         match message {
             Message::Ping(payload) => {
@@ -379,13 +404,11 @@ pub(crate) async fn run_connection(
                             }
                         }
                         Ok(ConnectionAction::StartTurn { turn, response }) => {
-                            let bridge = bridge.clone();
                             let (frame_sender, frame_receiver) = mpsc::channel(1);
+                            terminal_delivered = false;
                             active = Some((
                                 turn,
-                                tokio::spawn(async move {
-                                    bridge.execute(response, frame_sender).await
-                                }),
+                                tokio::spawn(execute(response, frame_sender)),
                                 frame_receiver,
                             ));
                         }

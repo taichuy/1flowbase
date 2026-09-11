@@ -897,9 +897,8 @@ fn project_stream_invocation(
     state: Arc<ApiState>,
     application_id: uuid::Uuid,
     invocation: CompatibilityTypedStreamInvocation,
-    mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
 ) -> Result<Response, NativeApiError> {
-    let (mut events, completion) = invocation.into_parts();
     let (sender, receiver) = tokio::sync::mpsc::channel(32);
     let sse_activity = state.runtime_activity.start(
         application_id,
@@ -907,24 +906,38 @@ fn project_stream_invocation(
     );
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
-        let mut projection_open = true;
-        while let Some(event) = events.recv().await {
-            let (run, envelope) = event.into_parts();
-            for event in projection.runtime_event_to_sse(&run, envelope) {
-                if projection_open && sender.send(event).await.is_err() {
-                    projection_open = false;
-                }
-            }
-        }
-        if let Ok(terminal) = completion.complete().await {
-            let _receipt = terminal.receipt().clone().projected();
-        }
+        project_compatibility_stream(invocation, projection, sender).await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
             .keep_alive(KeepAlive::default())
             .into_response(),
     )
+}
+
+/// The protocol terminal ends delivery; the independent Kernel owner still
+/// settles the invocation even when the client has stopped reading.
+pub(super) async fn project_compatibility_stream(
+    invocation: CompatibilityTypedStreamInvocation,
+    mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+) {
+    let (mut events, completion) = invocation.into_parts();
+    let completion = tokio::spawn(completion.complete());
+    let mut projection_open = true;
+    while let Some(event) = events.recv().await {
+        let (run, envelope) = event.into_parts();
+        let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
+        for event in projection.runtime_event_to_sse(&run, envelope) {
+            if projection_open && sender.send(event).await.is_err() {
+                projection_open = false;
+            }
+        }
+        if terminal { break; }
+    }
+    if let Ok(Ok(terminal)) = completion.await {
+        let _receipt = terminal.receipt().clone().projected();
+    }
 }
 
 pub(crate) async fn invoke_blocking(
