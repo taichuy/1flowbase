@@ -7,10 +7,11 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const cp = require('node:child_process');
-const { createRequire } = require('node:module');
 const repo = process.env.ONEFLOW_REPO || '/home/taichuy/git/1flowbase';
-const webRequire = createRequire(path.join(repo, 'web/package.json'));
-const { WebSocket, WebSocketServer } = webRequire('ws');
+const pnpmRoot=path.join(repo,'web/node_modules/.pnpm');
+const wsPackage=fs.readdirSync(pnpmRoot).filter(name=>/^ws@8\./.test(name)).sort().at(-1);
+if(!wsPackage) throw Error('Installed ws@8 package is required');
+const { WebSocket, WebSocketServer } = require(path.join(pnpmRoot,wsPackage,'node_modules/ws'));
 const targetPort = Number(process.argv[2] || 7801);
 const count = Number(process.argv[3] || 1);
 const label = process.argv[4] || 'candidate';
@@ -129,7 +130,9 @@ async function run(id) {
   row.allToolResultsReturned=tools.every(t=>row.requests.some(r=>r.resultCallIds.includes(t.call_id)));
   const completedCommands=row.client.filter(e=>e.type==='item.completed'&&e.itemType==='command_execution').map(e=>e.command);
   row.noRepeatedCompletedTools=new Set(completedCommands).size===completedCommands.length;
-  row.passed=(mode==='normal'||row.recoveryInjected)&&row.noRepeatedCompletedTools&&code===0&&row.finalAnswerMatches&&row.toolRounds>=3&&row.uniqueToolIds>=3&&row.allToolResultsReturned&&row.errors.length===0;
+  row.passed=(mode==='normal'||row.recoveryInjected)&&row.noRepeatedCompletedTools&&code===0&&row.finalAnswerMatches&&row.toolRounds>=3&&row.uniqueToolIds>=3&&row.allToolResultsReturned&&(mode==='worker-restart'
+    ? row.errors.length>0&&row.errors.every(e=>['error','response.failed'].includes(e.type))
+    : row.errors.length===0);
   row.stderr=stderr.replaceAll(key,'[REDACTED]').replaceAll(privateRoot,'<private>');
   return row;
 }
