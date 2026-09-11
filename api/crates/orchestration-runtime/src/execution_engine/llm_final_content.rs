@@ -625,6 +625,7 @@ pub(super) fn durable_provider_events(
         .filter_map(|event| match event {
             ProviderStreamEvent::NativeEvent { .. }
             | ProviderStreamEvent::ReasoningSignatureDelta { .. }
+            | ProviderStreamEvent::ResponsesOutputDelta { .. }
             | ProviderStreamEvent::OutputItem { .. } => None,
             ProviderStreamEvent::Error { error } => Some(ProviderStreamEvent::Error {
                 error: ProviderRuntimeError::new(error.kind, error.message.clone()),

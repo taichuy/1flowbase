@@ -302,3 +302,27 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
     assert_eq!(decoded.output_item_events[1]["item"], approval);
     assert_eq!(decoded.completed_output, vec![approval]);
 }
+
+// Root #2028 AC-012: the SSE entry uses the same formal source as WebSocket.
+#[tokio::test]
+async fn native_sse_keeps_phase_and_opaque_items_without_answer_mirrors() {
+    let run=native_run();let node=Uuid::new_v4();
+    let mut mapper=OpenAiResponseStreamMapper::new("fixture".into(),None);
+    let items=[json!({"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"opaque"}),json!({"id":"msg_1","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"nonce"}]})];
+    let mut facts=vec![];
+    for (index,item) in items.iter().enumerate() {
+        facts.push(debug_stream_events::provider_output_item_added("llm",node,index,item.clone()));
+        facts.push(debug_stream_events::provider_output_item_done("llm",node,index,item.clone()));
+    }
+    facts.push(debug_stream_events::answer_text_delta("answer","nonce".into(),0,Some("llm"),Some(node),Some("text")));
+    facts.push(debug_stream_events::flow_finished(run.id,json!({})));
+    let mut events=vec![];
+    for (index,fact) in facts.into_iter().enumerate() {events.extend(mapper.runtime_event_to_sse(&run,RuntimeEventEnvelope::new(run.id,index as i64,fact)));}
+    let response=test_projected_events_response(events);
+    let bytes=axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap();
+    let decoded=decode_responses_sse(std::str::from_utf8(&bytes).unwrap());
+    assert_eq!(decoded.completed_output,items);
+    assert_eq!(decoded.output_item_events.len(),4);
+    assert_eq!(decoded.completed_count,1);
+    assert!(decoded.text_deltas.is_empty());
+}

@@ -1681,3 +1681,13 @@ fn native_output_v1_is_required_even_when_host_input_only_has_legacy_marker() {
     let (wire,_)=input.to_current_provider_generate_wire_value(&["responses.native_passthrough".into(),"responses.native_output.v1".into()]).unwrap();
     assert!(wire["required_capabilities"].as_array().unwrap().contains(&json!("responses.native_output.v1")));
 }
+
+#[test]
+fn native_output_delta_wire_rejects_diagnostic_and_missing_identity() {
+    let delta=json!({"type":"response.output_text.delta","output_index":0,"item_id":"msg_1","content_index":0,"delta":"hello"});
+    let line:ProviderRuntimeLine=serde_json::from_value(json!({"type":"responses_output_delta","event":delta})).unwrap();
+    assert_eq!(serde_json::to_value(line.into_stream_event().unwrap()).unwrap(),json!({"type":"responses_output_delta","event":delta}));
+    for event in [json!({"type":"response.completed"}),json!({"type":"response.output_text.delta","delta":"unowned"})] {
+        assert!(serde_json::from_value::<ProviderRuntimeLine>(json!({"type":"responses_output_delta","event":event})).is_err());
+    }
+}

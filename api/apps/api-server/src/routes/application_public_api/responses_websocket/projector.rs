@@ -40,6 +40,7 @@ pub(crate) struct ResponsesWebSocketProjector {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OutputItemKind>,
+    native_output: bool,
     active_output_item_text: String,
     completed_output_items: Vec<Value>,
     output_item_index: usize,
@@ -53,6 +54,7 @@ impl ResponsesWebSocketProjector {
             model,
             previous_response_id,
             active_output_item: None,
+            native_output: false,
             active_output_item_text: String::new(),
             completed_output_items: Vec::new(),
             output_item_index: 0,
@@ -87,7 +89,7 @@ impl ResponsesWebSocketProjector {
                 }));
             }
             "flow_started" => {}
-            "reasoning_delta" if is_answer_presentation_delta(&envelope) => {
+            "reasoning_delta" if !self.native_output && is_answer_presentation_delta(&envelope) => {
                 self.begin_streaming();
                 self.open_output_item(run, OutputItemKind::Reasoning, &mut events);
                 let delta = envelope.text.unwrap_or_default();
@@ -101,7 +103,7 @@ impl ResponsesWebSocketProjector {
                     "delta": delta
                 }));
             }
-            "text_delta" if is_answer_presentation_delta(&envelope) => {
+            "text_delta" if !self.native_output && is_answer_presentation_delta(&envelope) => {
                 self.begin_streaming();
                 self.open_output_item(run, OutputItemKind::Message, &mut events);
                 let delta = envelope.text.unwrap_or_default();
@@ -116,6 +118,14 @@ impl ResponsesWebSocketProjector {
                 }));
             }
             "text_delta" | "reasoning_delta" => {}
+            "provider_responses_output_delta" => {
+                self.native_output = true;
+                self.begin_streaming();
+                if let Some(mut event) = envelope.payload.get("event").cloned() {
+                    event["response_id"] = json!(response_id_from_run_id(run.id));
+                    events.push(event);
+                }
+            }
             "provider_output_item_added" | "provider_output_item_done" => {
                 self.begin_streaming();
                 self.project_provider_output_item(run, &envelope, &mut events);
@@ -199,6 +209,9 @@ impl ResponsesWebSocketProjector {
             return;
         };
 
+        if matches!(item.get("type").and_then(Value::as_str), Some("message" | "reasoning" | "function_call" | "custom_tool_call")) {
+            self.native_output = true;
+        }
         self.close_output_item(run, events);
         let event_type = match envelope.event_type.as_str() {
             "provider_output_item_added" => "response.output_item.added",

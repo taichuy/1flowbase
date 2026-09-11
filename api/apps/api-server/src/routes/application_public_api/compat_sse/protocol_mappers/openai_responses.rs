@@ -17,6 +17,7 @@ pub(crate) struct OpenAiResponseStreamMapper {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
+    native_output: bool,
     active_output_item_text: String,
     completed_output_items: Vec<Value>,
     output_item_index: usize,
@@ -32,6 +33,7 @@ impl OpenAiResponseStreamMapper {
             model,
             previous_response_id,
             active_output_item: None,
+            native_output: false,
             active_output_item_text: String::new(),
             completed_output_items: Vec::new(),
             output_item_index: 0,
@@ -106,6 +108,9 @@ impl OpenAiResponseStreamMapper {
             return true;
         };
 
+        if matches!(item.get("type").and_then(Value::as_str),Some("message" | "reasoning" | "function_call" | "custom_tool_call")) {
+            self.native_output = true;
+        }
         self.close_output_item(initial_run, events);
         events.push(event_json_sse(
             event_name,
@@ -147,6 +152,17 @@ impl OpenAiResponseStreamMapper {
         }
         let is_terminal = event.terminal().is_some();
         let mut events = Vec::new();
+        if envelope.event_type == "provider_responses_output_delta" {
+            self.native_output = true;
+            if let Some(mut payload) = envelope.payload.get("event").cloned() {
+                payload["response_id"] = json!(response_id_from_run_id(initial_run.id));
+                payload["sequence_number"] = json!(envelope.sequence);
+                let kind=payload["type"].as_str().unwrap_or_default().to_string();
+                events.push(event_json_sse(&kind,payload));
+            }
+            return events;
+        }
+        if self.native_output && event.answer_delta().is_some() { return events; }
         if self.project_provider_output_item(initial_run, envelope, &mut events) {
             return events;
         }

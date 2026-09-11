@@ -458,3 +458,17 @@ fn cache_write_ttl_delta_overflow_is_atomic_and_snapshots_merge_present_buckets(
     assert_eq!(buckets.get("300"), Some(&u64::MAX));
     assert_eq!(buckets.get("3600"), Some(&2));
 }
+
+#[test]
+fn native_delta_requires_active_matching_item_and_rejects_post_terminal() {
+    let mut state=CanonicalStreamState::default();
+    let delta=serde_json::json!({"type":"response.custom_tool_call_input.delta","item_id":"ct_1","output_index":0,"delta":"text(1)"});
+    assert!(state.apply(CanonicalStreamEvent::ResponsesOutputDelta{event:delta.clone()}).is_err());
+    let item=serde_json::json!({"type":"custom_tool_call","id":"ct_1","call_id":"call_1","name":"exec","input":""});
+    state.apply(CanonicalStreamEvent::OutputItem{phase:ProviderOutputItemPhase::Added,output_index:0,item:item.clone()}).unwrap();
+    state.apply(CanonicalStreamEvent::ResponsesOutputDelta{event:delta.clone()}).unwrap();
+    state.apply(CanonicalStreamEvent::OutputItem{phase:ProviderOutputItemPhase::Done,output_index:0,item}).unwrap();
+    assert!(state.apply(CanonicalStreamEvent::ResponsesOutputDelta{event:delta.clone()}).is_err());
+    state.apply(CanonicalStreamEvent::Finish{reason:ProviderFinishReason::ToolCall}).unwrap();
+    assert!(state.apply(CanonicalStreamEvent::ResponsesOutputDelta{event:delta}).is_err());
+}

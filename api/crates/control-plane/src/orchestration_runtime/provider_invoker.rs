@@ -556,6 +556,7 @@ where
                                     signature.clone(),
                                 )]
                             }
+                            ProviderStreamEvent::ResponsesOutputDelta { event } => vec![debug_stream_events::provider_responses_output_delta(&node_id,node_run_id,event.clone())],
                             ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
@@ -820,6 +821,7 @@ fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::ToolCallCommit { .. } => "tool_call_commit",
         ProviderStreamEvent::McpCallDelta { .. } => "mcp_call_delta",
         ProviderStreamEvent::McpCallCommit { .. } => "mcp_call_commit",
+        ProviderStreamEvent::ResponsesOutputDelta { .. } => "responses_output_delta",
         ProviderStreamEvent::OutputItem { .. } => "output_item",
         ProviderStreamEvent::UsageDelta { .. } => "usage_delta",
         ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
@@ -894,6 +896,10 @@ impl RuntimeCanonicalStreamWriter {
                 self.state.apply(CanonicalStreamEvent::UsageSnapshot {
                     usage: usage.clone(),
                 })?;
+                Ok(Vec::new())
+            }
+            ProviderStreamEvent::ResponsesOutputDelta { event } => {
+                self.state.apply(CanonicalStreamEvent::ResponsesOutputDelta { event:event.clone() })?;
                 Ok(Vec::new())
             }
             ProviderStreamEvent::OutputItem {

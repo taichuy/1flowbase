@@ -539,3 +539,39 @@ fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
         assert_eq!(frames[2]["type"], "response.completed");
     }
 }
+
+// AC-012: formal NDJSON survives projection; semantic answer mirrors cannot
+// create another message, nor can diagnostic frames satisfy the oracle.
+#[test]
+fn native_formal_output_preserves_phase_reasoning_and_order_without_text_duplicates() {
+    let run=native_run(2030);
+    let node=Uuid::new_v4();
+    let mut projector=ResponsesWebSocketProjector::new("fixture".into(),None);
+    let items=[
+        json!({"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"opaque"}),
+        json!({"id":"msg_1","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"reading"}]}),
+        json!({"id":"ct_1","type":"custom_tool_call","name":"exec","call_id":"call_1","input":"text(1)"}),
+    ];
+    let mut facts=vec![];
+    for (index,item) in items.iter().enumerate() {
+        for phase in ["added","done"] {
+            let line: extension_contracts::provider_contract::ProviderRuntimeLine=serde_json::from_value(json!({"type":"output_item","phase":phase,"output_index":index,"item":item})).unwrap();
+            match line.into_stream_event().unwrap() {
+                extension_contracts::provider_contract::ProviderStreamEvent::OutputItem {phase,output_index,item} => {
+                    facts.push(match phase {
+                        extension_contracts::provider_contract::ProviderOutputItemPhase::Added=>debug_stream_events::provider_output_item_added("llm",node,output_index,item),
+                        extension_contracts::provider_contract::ProviderOutputItemPhase::Done=>debug_stream_events::provider_output_item_done("llm",node,output_index,item),
+                    });
+                }, _=>unreachable!(),
+            }
+        }
+    }
+    facts.push(debug_stream_events::answer_text_delta("answer","reading".into(),0,Some("llm"),Some(node),Some("text")));
+    facts.push(debug_stream_events::flow_finished(run.id,json!({})));
+    let mut frames=vec![];
+    for (index,fact) in facts.into_iter().enumerate() {frames.extend(decoded(projector.project(&run,RuntimeEventEnvelope::new(run.id,index as i64,fact)).unwrap()));}
+    let done:Vec<_>=frames.iter().filter(|v|v["type"]=="response.output_item.done").map(|v|v["item"].clone()).collect();
+    assert_eq!(done,items);
+    assert_eq!(frames.last().unwrap()["response"]["output"],json!(items));
+    assert_eq!(frames.len(),7);
+}
