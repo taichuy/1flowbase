@@ -267,7 +267,6 @@ function toolDetail(entry: ActivityEntry) {
     <div className="embedded-agent-assistant-activity__tool-detail">
       <JsonPreviewBlock
         defaultCollapsed
-        displayTitle=""
         height="160px"
         title={inputTitle}
         value={entry.input ?? {}}
@@ -275,7 +274,6 @@ function toolDetail(entry: ActivityEntry) {
       {entry.output !== null && entry.output !== undefined ? (
         <JsonPreviewBlock
           defaultCollapsed
-          displayTitle=""
           height="160px"
           title={outputTitle}
           value={entry.output}

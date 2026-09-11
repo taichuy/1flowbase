@@ -1697,6 +1697,16 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       screen.getByText('1flowbase_mcp_call (frontstage_block_tree_get_code)')
     ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByText('1flowbase_mcp_list (/frontstage/user_pages)')
+    );
+    expect(
+      await screen.findByText(i18nText('agentFlow', 'auto.input'))
+    ).toBeVisible();
+    expect(
+      screen.getByText(i18nText('appShell', 'auto.assistant_activity_output'))
+    ).toBeVisible();
   });
 
   test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
@@ -1943,11 +1953,11 @@ describe('EmbeddedAgentAssistant', () => {
     );
     expect(toolDetail).not.toBeNull();
     expect(
-      within(toolDetail as HTMLElement).queryByText(inputTitle)
-    ).not.toBeInTheDocument();
+      within(toolDetail as HTMLElement).getByText(inputTitle)
+    ).toBeInTheDocument();
     expect(
-      within(toolDetail as HTMLElement).queryByText(outputTitle)
-    ).not.toBeInTheDocument();
+      within(toolDetail as HTMLElement).getByText(outputTitle)
+    ).toBeInTheDocument();
     expect(inputJson).toHaveTextContent('"path": "/后台设置"');
     expect(screen.getByLabelText(`${outputTitle} JSON`)).toHaveTextContent(
       '"count": 2'

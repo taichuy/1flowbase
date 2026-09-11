@@ -4,7 +4,7 @@ date: 2026-09-08 17
 decision_policy: verify_before_decision
 ---
 用户批准并由 Codex 通过 MCP 配置：ai_gateway 记录应用；node_config 记录应用独立 LLM 配置；node_template 记录可复用 Agent 模板。模板复制后独立，目的为降低 GUI 操作心智。固定开始、IF 分发、LLM、变量聚合、回复结构，无任意工作流编辑需求。保存按钮直接保存并发布，发布成功才提示成功。无截止日期。
-页面 01a073f3-c5e9-7623-9db4-1287b28366ea，Block 01a0746e-53d6-7c01-9ddd-fcf0dffb5c5e。MCP 分组 /frontstage/ai-gateway；生成接口 POST /api/ex/ai-gateway/build，输入 payload JSON 字符串。生成 Workflow 应用 01a0801e-fd6d-76c1-af0a-9b7fd524df04。
+页面 01a073f3-c5e9-7623-9db4-1287b28366ea，Block 01a0746e-53d6-7c01-9ddd-fcf0dffb5c5e。MCP 分组 /frontstage/ai-gateway。2026-09-11 11 用户确认前端构造标准编排参数并复用原生草稿保存 / 发布接口，以当前配置覆盖历史编排；Codex 已按此更新在线 Block，去掉 build 调用与历史时间戳冲突判断，保留 application_id。目的为去掉额外生成服务依赖、使固定模板保存语义明确，无截止日期。旧 POST /api/ex/ai-gateway/build 与生成 Workflow 应用 01a0801e-fd6d-76c1-af0a-9b7fd524df04 是历史实现，不再作为该 Block 的依赖。定向测试及只读页面检查见 tmp/test-governance/gateway-direct-save/qa-report.md；本次未实际发布应用。
 用户授权低代码和 Workflow 源码配置；产品仓库源码若必须修改，应暂停说明问题。此次没有修改产品源码。真实浏览器首次和再次保存发布通过；五项定向测试通过，未执行真实 LLM 推理。验收记录与应用已清理。后续先核对实际 MCP 配置。
 
 2026-09-08 17 修正已验证的提示词契约问题：编辑器仅展示 templated_text，且仅保留一个 SYSTEM，后续 SYSTEM 会作为 USER。生成器改为单个 SYSTEM（配置提示词 + 请求 system）和一个 USER（请求 query）；已重新发布生成器及用户指定 test02 应用 01a0804f-0cc7-7ba2-86d2-67f3b2faa759。真实编辑器 normalization 回归测试及浏览器显示核对通过。
