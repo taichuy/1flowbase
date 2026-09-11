@@ -693,3 +693,27 @@ pub(super) fn normalize_runtime_contract_error(
 #[cfg(test)]
 #[path = "_tests/cache_write_usage.rs"]
 mod cache_write_usage_tests;
+
+/// Client tool ownership is valid only when the provider fulfilled the formal
+/// native output contract. Text narration and diagnostic frames are insufficient.
+pub(super) fn native_output_contract_error(
+    result: &ProviderInvocationResult,
+    events: &[ProviderStreamEvent],
+) -> Option<ProviderRuntimeError> {
+    use extension_contracts::provider_contract::ProviderOutputItemPhase;
+    let done: Vec<_> = events.iter().filter_map(|event| match event {
+        ProviderStreamEvent::OutputItem { phase: ProviderOutputItemPhase::Done, item, .. } => Some(item),
+        _ => None,
+    }).collect();
+    let missing_tool = result.tool_calls.iter().any(|call| {
+        done.iter().filter(|item| item.get("call_id").and_then(Value::as_str) == Some(call.id.as_str())
+            && matches!(item.get("type").and_then(Value::as_str), Some("function_call" | "custom_tool_call")))
+            .count() != 1
+    });
+    let missing_message = result.final_content.as_ref().is_some_and(|text| !text.is_empty())
+        && !done.iter().any(|item| item.get("type").and_then(Value::as_str) == Some("message"));
+    (missing_tool || missing_message).then(|| ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderInvalidResponse,
+        "responses.native_output.v1 contract violated: missing or duplicate formal output item",
+    ))
+}

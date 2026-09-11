@@ -591,6 +591,8 @@ pub enum ProviderInvocationCapability {
     CompactResponsesCompactionV2,
     #[serde(rename = "responses.native_passthrough")]
     ResponsesNativePassthrough,
+    #[serde(rename = "responses.native_output.v1")]
+    ResponsesNativeOutputV1,
     ReasoningOutputSupported,
     ReasoningHistoryInputSupported,
     NativeContinuationSupported,
@@ -616,6 +618,7 @@ impl ProviderInvocationCapability {
                 PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY
             }
             Self::ResponsesNativePassthrough => PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
+            Self::ResponsesNativeOutputV1 => "responses.native_output.v1",
             Self::ReasoningOutputSupported => PROVIDER_REASONING_OUTPUT_SUPPORTED_CAPABILITY,
             Self::ReasoningHistoryInputSupported => {
                 PROVIDER_REASONING_HISTORY_INPUT_SUPPORTED_CAPABILITY
@@ -1322,6 +1325,9 @@ impl ProviderInvocationInput {
     }
 
     pub fn synchronize_required_capabilities(&mut self) -> Result<(), String> {
+        if self.native_transport.is_some() || self.required_capabilities.contains(&ProviderInvocationCapability::ResponsesNativePassthrough) {
+            self.required_capabilities.insert(ProviderInvocationCapability::ResponsesNativeOutputV1);
+        }
         self.required_capabilities
             .extend(self.derived_required_capabilities()?);
         Ok(())

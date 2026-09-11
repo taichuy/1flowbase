@@ -1668,3 +1668,16 @@ fn issue_2028_provider_runtime_line_preserves_native_client_tool_items() {
         }
     }
 }
+
+// Root #2028 AC-010: the actual provider wire projection rejects old manifests.
+#[test]
+fn native_output_v1_is_required_even_when_host_input_only_has_legacy_marker() {
+    let input=ProviderInvocationInput {
+        required_capabilities:[ProviderInvocationCapability::ResponsesNativePassthrough].into(),
+        ..Default::default()
+    };
+    let error=input.to_current_provider_generate_wire_value(&["responses.native_passthrough".into()]).unwrap_err();
+    assert!(error.to_string().contains("responses.native_output.v1"));
+    let (wire,_)=input.to_current_provider_generate_wire_value(&["responses.native_passthrough".into(),"responses.native_output.v1".into()]).unwrap();
+    assert!(wire["required_capabilities"].as_array().unwrap().contains(&json!("responses.native_output.v1")));
+}

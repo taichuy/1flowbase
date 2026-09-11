@@ -1919,7 +1919,8 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
 
 // #2028 AC-007: a provider-owned native tool turn must not open a second host callback.
 #[tokio::test]
-async fn issue_2028_native_tool_turn_completes_with_provider_continuation() {
+async fn issue_2028_native_tool_turn_requires_formal_output_before_completion() {
+    for formal in [false, true] {
     let plan = llm_answer_plan();
     let mut response = tool_call_response(vec![ProviderToolCall {
         id: "call_native".into(),
@@ -1928,7 +1929,15 @@ async fn issue_2028_native_tool_turn_completes_with_provider_continuation() {
         provider_metadata: json!({"type":"custom_tool_call"}),
     }]);
     response.response_id = Some("resp_native".into());
-    let (invoker, _) = sequential_tool_invoker(vec![response]);
+    let item=json!({"id":"item_native","type":"custom_tool_call","call_id":"call_native","name":"exec","input":"text(1)"});
+    let mut events=vec![];
+    if formal {
+        for phase in [extension_contracts::provider_contract::ProviderOutputItemPhase::Added,extension_contracts::provider_contract::ProviderOutputItemPhase::Done] {
+            events.push(ProviderStreamEvent::OutputItem { phase, output_index:0, item:json!({"id":"msg_native","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"need tools"}]}) });
+            events.push(ProviderStreamEvent::OutputItem { phase, output_index:1, item:item.clone() });
+        }
+    }
+    let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput { events, result:response, first_token_at:None,time_to_first_token_ms:None }]);
     let input = json!({"node-start":{"query":"read fixture"}});
     let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
         .unwrap()
@@ -1938,6 +1947,11 @@ async fn issue_2028_native_tool_turn_completes_with_provider_continuation() {
     let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
         .await
         .unwrap();
+    if !formal {
+        assert!(matches!(outcome.stop_reason,ExecutionStopReason::Failed(_)), "missing formal tool must fail: {:?}",outcome.stop_reason);
+        assert!(!outcome.variable_pool.contains_key("node-answer"));
+        continue;
+    }
     assert!(
         matches!(outcome.stop_reason, ExecutionStopReason::Completed),
         "native continuation must own the next turn: {:?}",
@@ -1953,4 +1967,5 @@ async fn issue_2028_native_tool_turn_completes_with_provider_continuation() {
         "ephemeral"
     );
     assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
+}
 }

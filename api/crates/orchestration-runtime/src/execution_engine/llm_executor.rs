@@ -689,7 +689,9 @@ where
             output.result.final_content.clone(),
             collect_dify_style_deltas(&output.events),
         );
-        let stream_provider_error = first_provider_error(&output.events).cloned();
+        let stream_provider_error = first_provider_error(&output.events).cloned().or_else(|| {
+            native_responses_passthrough.then(|| native_output_contract_error(&output.result, &output.events)).flatten()
+        });
         let output_protocol_failure =
             first_provider_output_protocol_failure(&output.events).cloned();
         let invalid_tool_call_error =
