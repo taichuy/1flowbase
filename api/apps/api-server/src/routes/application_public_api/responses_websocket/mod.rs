@@ -29,6 +29,7 @@ mod turn_bridge;
 /// Authentication context handed to the connection owner after HTTP upgrade.
 pub(crate) struct ResponsesWebSocketAuthorization {
     pub(crate) principal: interface_runtime::ApplicationPrincipal,
+    pub(crate) handshake_headers: HeaderMap,
 }
 
 /// Upgrades an authenticated OpenAI Responses request to WebSocket transport.
@@ -49,7 +50,7 @@ pub(crate) async fn upgrade(
     )
     .await?
     .into_principal();
-    let authorization = ResponsesWebSocketAuthorization { principal };
+    let authorization = ResponsesWebSocketAuthorization { principal, handshake_headers: auth::responses_handshake_headers(&headers) };
 
     Ok(websocket.on_upgrade(move |socket| async move {
         actor::run_connection(socket, state, Arc::new(authorization)).await;

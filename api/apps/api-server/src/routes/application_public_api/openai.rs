@@ -52,6 +52,7 @@ use crate::{
 };
 
 mod compact;
+mod session_context;
 mod model_list;
 #[cfg(test)]
 mod tests;
@@ -727,6 +728,9 @@ async fn dispatch_response_for_endpoint(
         &headers,
         request.client_protocol_envelope,
     );
+    if endpoint == OpenAiResponsesEndpoint::Responses {
+        session_context::bind_responses_session_context(&mut request.client_protocol_envelope, principal.principal(), &headers)?;
+    }
     let operation = *request.execution.execution_operation();
     if matches!(operation, AiNativeOperation::Compact(_)) {
         let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)

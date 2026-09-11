@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{body::Bytes, http::HeaderMap};
+use axum::{body::Bytes, response::IntoResponse};
 use interface_runtime::InterfaceStreamCompletion;
 use serde_json::Value;
 use thiserror::Error;
@@ -60,14 +60,27 @@ impl ResponsesTurnBridge {
         let body = serde_json::to_vec(&response)
             .map(Bytes::from)
             .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
-        let prepared = openai::prepare_typed_response_turn(
+        let prepared = match openai::prepare_typed_response_turn(
             self.state.clone(),
             self.authorization.principal.clone(),
-            HeaderMap::new(),
+            self.authorization.handshake_headers.clone(),
             body,
         )
-        .await
-        .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
+        .await {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let response=error.into_response();
+                let status=response.status().as_u16();
+                let bytes=axum::body::to_bytes(response.into_body(),usize::MAX).await
+                    .map_err(|_|ResponsesTurnBridgeError::IngressRejected)?;
+                let mut event:Value=serde_json::from_slice(&bytes)
+                    .map_err(|_|ResponsesTurnBridgeError::IngressRejected)?;
+                event["type"]=Value::String("error".into());
+                event["status"]=Value::from(status);
+                frames.send(event.to_string()).await.map_err(|_|ResponsesTurnBridgeError::SocketWriterClosed)?;
+                return Err(ResponsesTurnBridgeError::IngressRejected);
+            }
+        };
         let (model, previous_response_id, runtime) = prepared.into_parts();
         let (events, completion) = runtime.into_parts();
         project_turn(
