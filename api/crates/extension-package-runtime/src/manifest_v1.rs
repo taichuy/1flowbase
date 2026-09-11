@@ -1575,6 +1575,8 @@ fn validate_provider_runtime_capabilities(
                     PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
                     PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
                     PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
+                    extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativeOutputV1
+                        .manifest_capability_name(),
                     PROVIDER_REASONING_OUTPUT_SUPPORTED_CAPABILITY,
                     PROVIDER_REASONING_HISTORY_INPUT_SUPPORTED_CAPABILITY,
                     PROVIDER_NATIVE_CONTINUATION_SUPPORTED_CAPABILITY,

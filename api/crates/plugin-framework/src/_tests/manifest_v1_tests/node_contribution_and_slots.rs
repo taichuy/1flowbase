@@ -632,6 +632,7 @@ runtime:
     - compact.responses_compact
     - compact.responses_compaction_v2
     - responses.native_passthrough
+    - responses.native_output.v1
     - protocol_context.restore.anthropic_messages.v1
     - protocol_context.consume.openai_chat.v1
     - protocol_context.consume.openai_responses.v1
@@ -646,11 +647,16 @@ runtime:
             "compact.responses_compact",
             "compact.responses_compaction_v2",
             "responses.native_passthrough",
+            "responses.native_output.v1",
             "protocol_context.restore.anthropic_messages.v1",
             "protocol_context.consume.openai_chat.v1",
             "protocol_context.consume.openai_responses.v1"
         ]
     );
+
+    // Root #2028 AC-010: the package intake accepts exactly the negotiated version.
+    let unknown_native_output = raw.replace("responses.native_output.v1", "responses.native_output.v2");
+    assert!(parse_plugin_manifest(&unknown_native_output).is_err());
 
     let anthropic_source_request_v2 = raw.replace(
         "protocol_context.restore.anthropic_messages.v1",
