@@ -60,6 +60,12 @@ use uuid::Uuid;
 use crate::repositories::PgControlPlaneStore;
 
 mod detail_queries;
+#[path = "application_run_logs/gateway_projection.rs"]
+mod gateway_projection;
+#[path = "application_run_logs/gateway_queries.rs"]
+mod gateway_queries;
+#[path = "application_run_logs/gateway_binding.rs"]
+mod gateway_binding;
 mod record_mappers;
 mod sequencing;
 

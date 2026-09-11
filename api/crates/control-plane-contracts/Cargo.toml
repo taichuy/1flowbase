@@ -18,3 +18,4 @@ time.workspace = true
 time-tz.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+utoipa.workspace = true

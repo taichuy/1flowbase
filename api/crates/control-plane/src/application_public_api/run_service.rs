@@ -184,6 +184,7 @@ where
         let created = self
             .repository
             .create_published_flow_run(&CreateFlowRunInput {
+                gateway_log_context: None,
                 actor_user_id: command.actor_user_id,
                 application_id: command.application_id,
                 flow_id: publication.flow_id,
@@ -253,6 +254,11 @@ where
             .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
             .transpose()?;
         let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
+        let mut gateway_log_context = client_request.metadata.gateway_log_context().cloned();
+        if let (Some(context),Some(envelope)) = (&mut gateway_log_context,&client_request.client_protocol_envelope) {
+            super::compat::openai::log_context::reconcile_gateway_log_headers(context,&envelope.headers);
+        }
+
         let request = self
             .bind_conversation(actor.application_id, actor.api_key_id, client_request)
             .await?;
@@ -306,7 +312,8 @@ where
         let created = self
             .repository
             .create_published_flow_run(&CreateFlowRunInput {
-                actor_user_id: actor.creator_user_id,
+                gateway_log_context,
+            actor_user_id: actor.creator_user_id,
                 application_id: actor.application_id,
                 flow_id: publication.flow_id,
                 flow_draft_id: compiled_plan.draft_id,

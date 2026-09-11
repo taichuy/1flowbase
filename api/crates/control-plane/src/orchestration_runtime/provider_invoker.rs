@@ -514,9 +514,11 @@ where
             let (diagnostic_sender, mut diagnostic_receiver) =
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let diagnostic_node_id = node_id.clone();
+            let repository_for_events = self.repository.clone();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut ingress_sequence = 0_u64;
+                let mut persistence_error = None;
                 while let Some(mut event) = required_receiver.recv().await {
                     ingress_sequence += 1;
                     let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
@@ -533,6 +535,39 @@ where
                         provider_invoke_started,
                     );
                     let canonical_deltas = canonical_writer.write(&event)?;
+                    // The in-memory stream does not commit durable facts. Persist
+                    // canonical completed items before exposing them to clients.
+                    if let (
+                        Some(run_id),
+                        ProviderStreamEvent::OutputItem {
+                            phase: ProviderOutputItemPhase::Done,
+                            output_index,
+                            item,
+                        },
+                    ) = (flow_run_id, &event)
+                    {
+                        let fact = debug_stream_events::provider_output_item_done(
+                            &node_id,
+                            node_run_id,
+                            *output_index,
+                            item.clone(),
+                        );
+                        if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
+                            &repository_for_events,
+                            run_id,
+                            &fact,
+                        )
+                        .await
+                        {
+                            persistence_error.get_or_insert(error);
+                        }
+                    }
+
+                    // Drain canonical usage after a durable write failure, but do not
+                    // expose an output whose required fact failed to commit.
+                    if persistence_error.is_some() {
+                        continue;
+                    }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),
                         flow_run_id,
@@ -556,7 +591,13 @@ where
                                     signature.clone(),
                                 )]
                             }
-                            ProviderStreamEvent::ResponsesOutputDelta { event } => vec![debug_stream_events::provider_responses_output_delta(&node_id,node_run_id,event.clone())],
+                            ProviderStreamEvent::ResponsesOutputDelta { event } => {
+                                vec![debug_stream_events::provider_responses_output_delta(
+                                    &node_id,
+                                    node_run_id,
+                                    event.clone(),
+                                )]
+                            }
                             ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
@@ -597,9 +638,17 @@ where
                             ) {
                                 stream_event.persist_required = false;
                             }
+                            let durable_log_fact =
+                                stream_event.event_type == "provider_output_item_done";
+                            if durable_log_fact {
+                                stream_event.persist_required = false;
+                            }
                             match stream.append(flow_run_id, stream_event).await {
                                 Ok(_) => {}
                                 Err(error) => {
+                                    if durable_log_fact {
+                                        return Err(error);
+                                    }
                                     if is_expected_runtime_event_stream_closed_error(&error) {
                                         tracing::debug!(
                                             flow_run_id = %flow_run_id,
@@ -642,16 +691,18 @@ where
                     }
                 }
                 let completion_deltas = canonical_writer.complete()?;
-                project_canonical_provider_deltas(
-                    runtime_event_stream.as_ref(),
-                    flow_run_id,
-                    answer_presentation.as_ref(),
-                    &node_id,
-                    node_run_id,
-                    &completion_deltas,
-                )
-                .await;
-                Ok::<_, anyhow::Error>(canonical_writer.into_state())
+                if persistence_error.is_none() {
+                    project_canonical_provider_deltas(
+                        runtime_event_stream.as_ref(),
+                        flow_run_id,
+                        answer_presentation.as_ref(),
+                        &node_id,
+                        node_run_id,
+                        &completion_deltas,
+                    )
+                    .await;
+                }
+                Ok::<_, anyhow::Error>((canonical_writer.into_state(), persistence_error))
             }));
             let diagnostic_stream = self.runtime_event_stream.clone();
             let diagnostic_flow_run_id = self.flow_run_id;
@@ -730,13 +781,21 @@ where
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
-        let canonical_stream_state = if let Some(handle) = required_forward_handle {
-            Some(handle.await.map_err(|error| {
-                anyhow!("provider live event forwarding task panicked: {error}")
-            })??)
-        } else {
-            None
-        };
+        let (canonical_stream_state, forwarding_error) =
+            if let Some(handle) = required_forward_handle {
+                match handle.await {
+                    Ok(Ok((state, error))) => (Some(state), error),
+                    Ok(Err(error)) => (None, Some(error)),
+                    Err(error) => (
+                        None,
+                        Some(anyhow!(
+                            "provider live event forwarding task panicked: {error}"
+                        )),
+                    ),
+                }
+            } else {
+                (None, None)
+            };
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {
                 tracing::warn!(error = %error, "provider diagnostic event forwarding task panicked");
@@ -746,13 +805,20 @@ where
             Ok(output) => (Some(output), None),
             Err(error) => (None, Some(error)),
         };
+        if let Some(error) = forwarding_error {
+            invocation_error = Some(error);
+        }
         // A native Responses turn may already have emitted a provider-owned continuation
         // before billing can classify the final usage. Preserve that one-shot state even when
         // fail-closed billing must reject the turn; the client still needs the continuation to
         // submit the provider's next approval/input turn.
         if let Some(output) = invocation_output.as_ref() {
-            self.stage_provider_continuation(runtime, output.result.response_id.as_deref())
-                .await?;
+            if let Err(error) = self
+                .stage_provider_continuation(runtime, output.result.response_id.as_deref())
+                .await
+            {
+                invocation_error.get_or_insert(error);
+            }
         }
         fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
@@ -899,7 +965,10 @@ impl RuntimeCanonicalStreamWriter {
                 Ok(Vec::new())
             }
             ProviderStreamEvent::ResponsesOutputDelta { event } => {
-                self.state.apply(CanonicalStreamEvent::ResponsesOutputDelta { event:event.clone() })?;
+                self.state
+                    .apply(CanonicalStreamEvent::ResponsesOutputDelta {
+                        event: event.clone(),
+                    })?;
                 Ok(Vec::new())
             }
             ProviderStreamEvent::OutputItem {

@@ -121,6 +121,7 @@ where
         let created = self
             .repository
             .create_published_flow_run(&CreateFlowRunInput {
+                gateway_log_context: None,
                 actor_user_id: command.actor_user_id,
                 application_id: publication.application_id,
                 flow_id: publication.flow_id,

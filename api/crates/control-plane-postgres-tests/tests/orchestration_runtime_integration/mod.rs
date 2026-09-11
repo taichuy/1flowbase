@@ -212,6 +212,7 @@ async fn seed_flow_run_with_mode(
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,

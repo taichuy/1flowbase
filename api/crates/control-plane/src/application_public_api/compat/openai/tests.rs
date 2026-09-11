@@ -945,3 +945,39 @@ fn issue_2028_native_function_result_inherits_provider_continuation() {
         .expect("continuation delta must stay native");
     assert_eq!(payload.wire_body(), &body);
 }
+
+// #2032 AC-001/002/008/010: real Responses translation must retain only a
+// separate log identity; input history and native transport remain unchanged.
+#[test]
+fn issue_2032_responses_identity_is_separate_from_model_history() {
+    let body=json!({"model":"1flowbase","client_metadata":{"thread_id":"thread-A","turn_id":"turn-B","x-codex-turn-metadata":"{\"thread_id\":\"thread-A\",\"turn_id\":\"turn-B\",\"request_kind\":\"turn\"}"},"input":[{"role":"user","content":"same question"}]});
+    let translated=translate_response_request(body.clone()).unwrap();
+    let context=translated.request.metadata.gateway_log_context().expect("durable log identity must survive translation");
+    assert_eq!(context.thread_id.as_deref(),Some("thread-A"));
+    assert_eq!(context.turn_id.as_deref(),Some("turn-B"));
+    let mut without_identity=body;without_identity.as_object_mut().unwrap().remove("client_metadata");
+    let baseline=translate_response_request(without_identity).unwrap();
+    assert_eq!(translated.request.history,baseline.request.history);
+    assert_eq!(translated.request.conversation,baseline.request.conversation);
+    assert_eq!(translated.request.query,baseline.request.query);
+    assert_eq!(translated.request.metadata.as_value(),baseline.request.metadata.as_value());
+}
+
+#[test]
+fn issue_2032_log_identity_rejects_conflicts_and_preserves_fork_provenance() {
+    use super::log_context::{capture_gateway_log_context, reconcile_gateway_log_headers};
+    let body=serde_json::json!({"client_metadata":{
+        "thread_id":"child", "turn_id":"turn-child",
+        "x-codex-turn-metadata":serde_json::json!({"thread_id":"child","turn_id":"turn-child","forked_from_thread_id":"parent","request_kind":"turn"}).to_string()
+    },"input":[{"role":"user","content":"same question"}]});
+    let mut context=capture_gateway_log_context(&body);
+    let snapshot=serde_json::to_value(&context).unwrap();
+    assert_eq!(snapshot["forked_from_thread_id"],"parent");
+    assert!(snapshot["identity_sources"].as_array().unwrap().iter().any(|v|v=="client_metadata"));
+    let headers=std::collections::BTreeMap::from([("thread-id".into(),vec!["different".into()])]);
+    reconcile_gateway_log_headers(&mut context,&headers);
+    assert_eq!(context.identity_status,"conflicting_identity");
+    assert!(context.thread_id.is_none());
+    let invalid=capture_gateway_log_context(&serde_json::json!({"client_metadata":{"x-codex-turn-metadata":"[]"}}));
+    assert_eq!(invalid.identity_status,"invalid_identity");
+}

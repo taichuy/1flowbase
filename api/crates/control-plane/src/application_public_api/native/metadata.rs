@@ -15,6 +15,7 @@ const METADATA_PATH: &str = "$.metadata";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    gateway_log_context: Option<control_plane_contracts::gateway_logs::GatewayLogContext>,
     responses_transport_requirement: ResponsesTransportRequirement,
     provider_transport_payload: Option<ProviderTransportPayload>,
     provider_transport_summary: Option<ProviderTransportSummary>,
@@ -61,6 +62,7 @@ impl NativeRequestMetadata {
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
+            gateway_log_context: None,
         })
     }
 
@@ -70,7 +72,16 @@ impl NativeRequestMetadata {
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
+            gateway_log_context: None,
         }
+    }
+
+    pub fn gateway_log_context(&self) -> Option<&control_plane_contracts::gateway_logs::GatewayLogContext> {
+        self.gateway_log_context.as_ref()
+    }
+
+    pub(crate) fn set_gateway_log_context(&mut self, context: control_plane_contracts::gateway_logs::GatewayLogContext) {
+        self.gateway_log_context = Some(context);
     }
 
     pub fn trace_id(&self) -> Option<&str> {

@@ -35,6 +35,7 @@ async fn assistant_conversation_native_history_replays_failed_user_without_assis
     let failed_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -123,6 +124,7 @@ async fn assistant_conversation_native_history_closes_failed_tool_call_without_r
     let failed_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -247,6 +249,7 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
     let legacy_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -464,6 +467,7 @@ async fn assistant_conversation_projects_cancelled_partial_answer_status() {
         let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
             &store,
             &CreateFlowRunInput {
+                gateway_log_context: None,
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 flow_id: seeded.flow_id,
@@ -617,6 +621,7 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
     let legacy_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -644,6 +649,7 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
     .await
     .unwrap();
     let active_run_input = CreateFlowRunInput {
+        gateway_log_context: None,
         actor_user_id: seeded.actor_user_id,
         application_id: seeded.application_id,
         flow_id: seeded.flow_id,
@@ -684,6 +690,7 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,

@@ -136,7 +136,7 @@ vi.mock('../../api/runtime', () => runtimeApi);
 import { AppProviders } from '../../../../app/AppProviders';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 function applicationRunsPage(
   items: Array<Record<string, unknown>>,

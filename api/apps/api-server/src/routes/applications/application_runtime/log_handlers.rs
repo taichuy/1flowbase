@@ -585,3 +585,33 @@ pub async fn get_node_last_run(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+
+/// List gateway conversations, user turns, invocations, or attempts.
+/// Returns authorized, paginated persistent log associations and leaf-based metrics.
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}/logs/gateway",
+    params(
+        ("id" = String, Path, description = "Application id"),
+        ("conversation_id" = Option<Uuid>, Query, description = "List conversation turns"),
+        ("turn_id" = Option<Uuid>, Query, description = "List turn invocations"),
+        ("flow_run_id" = Option<Uuid>, Query, description = "List invocation attempts"),
+        ("page" = Option<i64>, Query, description = "1-based page"),
+        ("page_size" = Option<i64>, Query, description = "Page size, capped at 50")
+    ),
+    responses((status = 200, body = control_plane_contracts::gateway_logs::GatewayLogPage))
+)]
+pub async fn list_application_gateway_logs(
+    State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<Uuid>,
+    Query(query): Query<control_plane_contracts::gateway_logs::GatewayLogQuery>,
+) -> Result<Json<ApiSuccess<control_plane_contracts::gateway_logs::GatewayLogPage>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state), "http.console.applications.runtime.gateway-logs.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ListGatewayLogs { application_id: id, query },
+    ).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::GatewayLogs(response) = output else {
+        unreachable!("gateway logs binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}

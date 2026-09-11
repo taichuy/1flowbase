@@ -17,6 +17,7 @@ use control_plane::{
         OrchestrationRuntimeRepository,
     },
 };
+use control_plane_contracts::gateway_logs::{GatewayLogQuery, GatewayLogPage, GatewayLogScope, GatewayLogRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 use time::OffsetDateTime;
@@ -33,6 +34,7 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    ListGatewayLogs { application_id: Uuid, query: GatewayLogQuery },
     ListRuns {
         application_id: Uuid,
         query: ApplicationRunsQuery,
@@ -96,6 +98,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    GatewayLogs(GatewayLogPage),
     Runs(FlowRunSummaryPageResponse),
     ConversationMessages(ApplicationConversationMessagesPageResponse),
     RunOverview(ApplicationRunOverviewResponse),
@@ -738,6 +741,17 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::ListGatewayLogs { application_id, query } => {
+                self.visible_application(actor, application_id).await?;
+                if [query.conversation_id, query.turn_id, query.flow_run_id].iter().flatten().count() > 1 {
+                    return Err(ControlPlaneError::InvalidInput("gateway_log_parent").into());
+                }
+                let page = self.store.list_gateway_log_page(&GatewayLogScope {
+                    scope_id: actor.current_workspace_id, application_id, api_key_id: None,
+                }, &query).await?;
+                Ok(ApplicationRuntimeReadsOutput::GatewayLogs(page))
+            }
+
             ApplicationRuntimeReadsInput::ListRuns {
                 application_id,
                 query,
@@ -849,6 +863,13 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.gateway-logs.list",
+        binding_id: "http.console.applications.runtime.gateway-logs.list.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/logs/gateway",
+        mutating: false,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "applications.runtime.logs.list",
         binding_id: "http.console.applications.runtime.logs.list.v1",

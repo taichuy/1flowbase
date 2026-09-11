@@ -1,7 +1,7 @@
 use super::*;
 use sqlx::Row;
 
-fn request_log(
+pub(super) fn request_log(
     scope_id: Uuid,
     attempt_id: Uuid,
     started_at: OffsetDateTime,

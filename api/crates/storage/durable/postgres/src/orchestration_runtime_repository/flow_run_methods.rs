@@ -261,6 +261,7 @@ impl PgControlPlaneStore {
                 updated_at
             "#,
         );
+        let mut tx = self.pool().begin().await?;
         let inserted = sqlx::query(&query)
             .bind(Uuid::now_v7())
             .bind(input.application_id)
@@ -286,12 +287,20 @@ impl PgControlPlaneStore {
             .bind(input.actor_user_id)
             .bind(input.started_at)
             .bind(input.started_at)
-            .fetch_optional(self.pool())
+            .fetch_optional(&mut *tx)
             .await?;
 
         let (flow_run, created) = if let Some(row) = inserted {
-            (map_flow_run_record(row)?, true)
+            {
+                let run=map_flow_run_record(row)?;
+                if let Some(context)=&input.gateway_log_context {
+                    Self::bind_gateway_log_invocation(&mut tx,&run,context).await?;
+                }
+                tx.commit().await?;
+                (run,true)
+            }
         } else {
+            tx.commit().await?;
             let conflict_api_key = match input.run_mode {
                 domain::FlowRunMode::WorkflowScheduleRun => None,
                 _ => input.api_key_id,

@@ -89,3 +89,5 @@ mod preview_and_trace;
 mod statistics;
 mod stitched_history;
 mod visible_internal_trace;
+
+mod gateway;

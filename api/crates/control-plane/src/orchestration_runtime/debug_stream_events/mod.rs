@@ -435,8 +435,8 @@ pub fn provider_output_item_done(
     RuntimeEventPayload {
         event_type: "provider_output_item_done".to_string(),
         source: RuntimeEventSource::Provider,
-        durability: RuntimeEventDurability::Ephemeral,
-        persist_required: false,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
         trace_visible: true,
         payload: json!({
             "type": "provider_output_item_done",
@@ -602,3 +602,7 @@ pub fn provider_responses_output_delta(node_id:&str,node_run_id:Uuid,event:Value
         payload:json!({"type":"provider_responses_output_delta","node_id":node_id,"node_run_id":node_run_id,"event":event}),
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/gateway_logs.rs"]
+mod gateway_log_tests;

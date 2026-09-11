@@ -161,7 +161,7 @@ import type { ConsoleApplicationRunDetail as ApplicationRunDetail } from '@1flow
 import { AppProviders } from '../../../../app/AppProviders';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 import {
   applicationRunsPage,
   conversationMessagesPage,

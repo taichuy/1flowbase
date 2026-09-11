@@ -335,5 +335,46 @@
     "inspect_application": "查看应用",
     "invalid_count": "归档必须包含 1 至 100 个应用。",
     "invalid_archive": "无法读取应用归档，请检查文件格式。"
+  },
+  "gateway": {
+    "conversations": "会话日志",
+    "refresh": "刷新会话日志",
+    "load_failed": "无法加载会话日志",
+    "subject": "会话 / 用户任务 / 调用",
+    "task_status": "用户任务完成状态",
+    "calls_attempts": "调用 / Attempt",
+    "tokens": "Token 用量",
+    "cost": "计费金额",
+    "details": "查看日志详情",
+    "unknown": "未知（缺少确证）",
+    "identity": "身份关联状态",
+    "relation": "父任务关系",
+    "cause": "续接来源调用",
+    "run_status": "底层运行状态",
+    "elapsed": "调用时间跨度",
+    "model_time": "模型调用耗时合计",
+    "tool_wait": "工具调用至结果到达（区间并集）",
+    "error": "调用错误",
+    "result_received": "已收到工具结果（不代表已核验执行）",
+    "result_unknown": "尚无可信工具结果",
+    "more_messages": "消息超过当前展示上限，请查看原始运行详情。",
+    "original_run": "打开原始运行详情",
+    "original_runs": "原始运行日志",
+    "identity_sources": "身份声明来源",
+    "parent_task": "关联的内部父任务",
+    "kinds": {
+      "conversation": "会话记录",
+      "turn": "用户任务记录",
+      "invocation": "模型调用记录",
+      "attempt": "供应商 Attempt"
+    },
+    "observations": {
+      "invocation_failed": "观察到调用失败",
+      "invocation_active": "存在未结束调用",
+      "retry_observed": "观察到重试",
+      "final_answer_observed": "观察到最终回答",
+      "waiting_for_tool_result": "等待可信工具结果",
+      "attempts_pending_or_unavailable": "Attempt 明细尚不可用"
+    }
   }
 }

@@ -680,6 +680,7 @@ pub(crate) fn production_interface_contributions(
             "api-server.console-application-runtime-reads",
             &[
                 "applications.runtime.logs.list",
+                "applications.runtime.gateway-logs.list",
                 "applications.runtime.conversations.messages.list",
                 "applications.runtime.run-conversation.messages.list",
                 "applications.runtime.run.overview.get",

@@ -8,6 +8,7 @@ pub mod billing;
 pub mod console_permission_sync;
 pub mod console_policy_migration;
 pub mod error;
+pub mod gateway_logs;
 pub mod i18n_catalog;
 pub mod persistence_projection;
 pub mod ports;

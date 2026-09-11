@@ -335,5 +335,46 @@
     "inspect_application": "View application",
     "invalid_count": "The archive must contain 1 to 100 applications.",
     "invalid_archive": "Unable to read the application archive. Check the file format."
+  },
+  "gateway": {
+    "conversations": "Conversation logs",
+    "refresh": "Refresh conversation logs",
+    "load_failed": "Unable to load conversation logs",
+    "subject": "Conversation / user task / invocation",
+    "task_status": "User task completion",
+    "calls_attempts": "Invocations / Attempts",
+    "tokens": "Token usage",
+    "cost": "Billed amount",
+    "details": "View log details",
+    "unknown": "Unknown (no confirmation)",
+    "identity": "Identity association",
+    "relation": "Parent task relation",
+    "cause": "Continuation source invocation",
+    "run_status": "Underlying run status",
+    "elapsed": "Invocation time span",
+    "model_time": "Total model duration",
+    "tool_wait": "Tool call to result arrival (interval union)",
+    "error": "Invocation error",
+    "result_received": "Tool result received (execution not independently verified)",
+    "result_unknown": "No confirmed tool result",
+    "more_messages": "More messages are available in the original run details.",
+    "original_run": "Open original run details",
+    "original_runs": "Original run logs",
+    "identity_sources": "Identity declaration sources",
+    "parent_task": "Associated internal parent task",
+    "kinds": {
+      "conversation": "Conversation record",
+      "turn": "User task record",
+      "invocation": "Model invocation record",
+      "attempt": "Provider attempt"
+    },
+    "observations": {
+      "invocation_failed": "Invocation failure observed",
+      "invocation_active": "An invocation remains active",
+      "retry_observed": "Retry observed",
+      "final_answer_observed": "Final answer observed",
+      "waiting_for_tool_result": "Awaiting a confirmed tool result",
+      "attempts_pending_or_unavailable": "Attempt details are not yet available"
+    }
   }
 }

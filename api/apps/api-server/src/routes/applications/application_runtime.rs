@@ -89,6 +89,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
     ConsoleRouteAssembly::new()
         .route(
+            "/applications/:id/logs/gateway",
+            console_get(list_application_gateway_logs, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())),
+        )
+        .route(
             "/applications/:id/orchestration/debug-runs",
             console_post(
                 start_flow_debug_run,

@@ -1,3 +1,5 @@
+import { Tabs } from 'antd';
+import { GatewayLogs } from '../components/logs/gateway/GatewayLogs';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -370,7 +372,7 @@ function resolveCollision(
   }
 }
 
-export function ApplicationLogsPage({
+export function ApplicationRawLogsPage({
   applicationId
 }: {
   applicationId: string;
@@ -1269,4 +1271,12 @@ export function ApplicationLogsPage({
       ) : null}
     </div>
   );
+}
+
+export function ApplicationLogsPage({ applicationId }: { applicationId: string }) {
+  const { t } = useTranslation('applications');
+  return <Tabs defaultActiveKey={new URLSearchParams(window.location.search).has('run_id') ? 'runs' : 'gateway'} items={[
+    { key: 'gateway', label: t('gateway.conversations'), children: <GatewayLogs key={applicationId} applicationId={applicationId} /> },
+    { key: 'runs', label: t('gateway.original_runs'), children: <ApplicationRawLogsPage applicationId={applicationId} /> }
+  ]} />;
 }

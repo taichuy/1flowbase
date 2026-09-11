@@ -7,6 +7,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
     let flow_run = OrchestrationRuntimeRepository::create_flow_run(
         &repository,
         &crate::ports::CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: Uuid::nil(),
             application_id: Uuid::nil(),
             flow_id: Uuid::now_v7(),

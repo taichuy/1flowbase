@@ -1,3 +1,4 @@
+pub(crate) mod log_context;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 

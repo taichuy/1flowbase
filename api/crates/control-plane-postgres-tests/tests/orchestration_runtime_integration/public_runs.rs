@@ -17,6 +17,7 @@ async fn orchestration_runtime_repository_round_trips_canonical_published_public
     let created = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
+            gateway_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -116,6 +117,7 @@ async fn workflow_schedule_run_create_or_get_is_atomic_across_concurrent_callers
     let idempotency_key = "workflow-schedule:test:34200".to_string();
 
     let input = CreateFlowRunInput {
+        gateway_log_context: None,
         actor_user_id: seeded.actor_user_id,
         application_id: seeded.application_id,
         flow_id: seeded.flow_id,

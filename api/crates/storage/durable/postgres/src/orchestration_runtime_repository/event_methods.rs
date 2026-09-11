@@ -42,9 +42,9 @@ impl PgControlPlaneStore {
         .bind(resume_timeline_description)
         .fetch_one(&mut *tx)
         .await?;
+        let event=map_run_event_record(row);
         tx.commit().await?;
-
-        Ok(map_run_event_record(row))
+        Ok(event)
     }
 
     async fn append_run_events(
@@ -108,12 +108,8 @@ impl PgControlPlaneStore {
             "#,
         );
         let rows = builder.build().fetch_all(&mut *tx).await?;
+        let mut records = rows.into_iter().map(map_run_event_record).collect::<Vec<_>>();
         tx.commit().await?;
-
-        let mut records = rows
-            .into_iter()
-            .map(map_run_event_record)
-            .collect::<Vec<_>>();
         records.sort_by_key(|record| record.sequence);
         Ok(records)
     }
@@ -240,9 +236,10 @@ impl PgControlPlaneStore {
         .bind(input.durability.as_str())
         .fetch_one(&mut *tx)
         .await?;
+        let event=map_runtime_event_record(row)?;
+        Self::project_gateway_output(&mut tx,&event).await?;
         tx.commit().await?;
-
-        map_runtime_event_record(row)
+        Ok(event)
     }
 
     async fn append_runtime_events(
@@ -326,12 +323,12 @@ impl PgControlPlaneStore {
             "#,
         );
         let rows = builder.build().fetch_all(&mut *tx).await?;
-        tx.commit().await?;
-
         let mut records = rows
             .into_iter()
             .map(map_runtime_event_record)
             .collect::<Result<Vec<_>>>()?;
+        for event in &records {Self::project_gateway_output(&mut tx,event).await?;}
+        tx.commit().await?;
         records.sort_by_key(|record| record.sequence);
         Ok(records)
     }

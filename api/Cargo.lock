@@ -1028,6 +1028,7 @@ dependencies = [
  "time",
  "time-tz",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 
