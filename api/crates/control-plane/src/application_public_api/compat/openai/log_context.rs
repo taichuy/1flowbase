@@ -1,11 +1,11 @@
-use control_plane_contracts::gateway_logs::{GatewayLogContext, resolve_gateway_identity};
+use control_plane_contracts::ports::{resolve_client_log_identity, ApplicationRunLogContext};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Logging captures an independent, bounded identity projection. It never
 /// fills the Native conversation or history that participates in inference.
-pub(crate) fn capture_gateway_log_context(body: &Value) -> GatewayLogContext {
-    let mut context = GatewayLogContext::default();
+pub(crate) fn capture_application_run_log_context(body: &Value) -> ApplicationRunLogContext {
+    let mut context = ApplicationRunLogContext::default();
     let metadata = body.get("client_metadata");
     let nested = metadata.and_then(|v| v.get("x-codex-turn-metadata"));
     let nested = match nested {
@@ -35,7 +35,7 @@ pub(crate) fn capture_gateway_log_context(body: &Value) -> GatewayLogContext {
         if [flat, nested].iter().flatten().any(|v| !v.is_string()) {
             return Err("invalid_identity");
         }
-        resolve_gateway_identity(&[flat.and_then(Value::as_str), nested.and_then(Value::as_str)])
+        resolve_client_log_identity(&[flat.and_then(Value::as_str), nested.and_then(Value::as_str)])
     };
     let parsed = (|| -> Result<(), &'static str> {
         if metadata.is_some_and(|m| !m.is_object()) {
@@ -49,12 +49,13 @@ pub(crate) fn capture_gateway_log_context(body: &Value) -> GatewayLogContext {
         context.forked_from_thread_id = field("forked_from_thread_id", "forked_from_thread_id")?;
         context.root_turn_id = field("root_turn_id", "root_turn_id")?;
         context.request_kind = field("request_kind", "request_kind")?;
-        context.previous_response_id =
-            resolve_gateway_identity(&[body.get("previous_response_id").and_then(Value::as_str)])?;
+        context.previous_response_id = resolve_client_log_identity(&[body
+            .get("previous_response_id")
+            .and_then(Value::as_str)])?;
         Ok(())
     })();
     if let Err(reason) = parsed {
-        return GatewayLogContext {
+        return ApplicationRunLogContext {
             identity_status: reason.into(),
             ..Default::default()
         };
@@ -100,8 +101,8 @@ pub(crate) fn capture_gateway_log_context(body: &Value) -> GatewayLogContext {
     context
 }
 
-pub(crate) fn reconcile_gateway_log_headers(
-    context: &mut GatewayLogContext,
+pub(crate) fn reconcile_client_log_headers(
+    context: &mut ApplicationRunLogContext,
     headers: &BTreeMap<String, Vec<String>>,
 ) {
     if matches!(
@@ -115,7 +116,7 @@ pub(crate) fn reconcile_gateway_log_headers(
         declarations.extend(values.iter().map(|v| Some(v.as_str())));
         context.identity_sources.push("header.thread-id".into());
     }
-    match resolve_gateway_identity(&declarations) {
+    match resolve_client_log_identity(&declarations) {
         Ok(thread) => {
             context.thread_id = thread;
             context.identity_status = match (&context.thread_id, &context.turn_id) {

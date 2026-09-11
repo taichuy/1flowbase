@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 
@@ -125,9 +126,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 function applicationRunsPage<T>(
   items: T[],
@@ -138,7 +142,26 @@ function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -148,7 +171,9 @@ function applicationRunsPage<T>(
 describe('ApplicationLogsPage - query states', () => {
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     runtimeApi.fetchApplicationRuns.mockReset();
     runtimeApi.fetchApplicationConversationMessages.mockReset();
@@ -164,7 +189,9 @@ describe('ApplicationLogsPage - query states', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -179,7 +206,9 @@ describe('ApplicationLogsPage - query states', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -208,7 +237,7 @@ describe('ApplicationLogsPage - query states', () => {
           title: '运行中的公开 API 请求',
           expand_id: null,
           external_user: null,
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           total_tokens: null,
           input_tokens: null,
@@ -227,15 +256,17 @@ describe('ApplicationLogsPage - query states', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
     await screen.findByText('运行中的公开 API 请求');
     expect(runtimeApi.fetchApplicationRuns).toHaveBeenCalledTimes(1);
-    expect(
-      setIntervalSpy.mock.calls.some(([, delay]) => delay === 2_000)
-    ).toBe(false);
+    expect(setIntervalSpy.mock.calls.some(([, delay]) => delay === 2_000)).toBe(
+      false
+    );
 
     setIntervalSpy.mockRestore();
   });

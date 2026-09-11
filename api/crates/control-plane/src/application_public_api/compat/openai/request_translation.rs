@@ -352,7 +352,9 @@ pub fn translate_response_request_with_context_and_previous(
     }
     let mut metadata = openai_metadata(object, &mut report)?;
     metadata.set_responses_transport_requirement(transport_requirement);
-    metadata.set_gateway_log_context(super::log_context::capture_gateway_log_context(&request));
+    metadata.set_application_run_log_context(
+        super::log_context::capture_application_run_log_context(&request),
+    );
     if uses_native_transport {
         let payload = ProviderTransportPayload::openai_responses(request.clone())
             .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;

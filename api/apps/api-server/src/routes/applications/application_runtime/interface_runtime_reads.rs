@@ -6,8 +6,8 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
-        projection_status_needs_lazy_rebuild,
+        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{
         ApplicationRunTraceProjectionStatistics, CacheStore,
@@ -17,7 +17,6 @@ use control_plane::{
         OrchestrationRuntimeRepository,
     },
 };
-use control_plane_contracts::gateway_logs::{GatewayLogQuery, GatewayLogPage, GatewayLogScope, GatewayLogRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 use time::OffsetDateTime;
@@ -34,7 +33,6 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
-    ListGatewayLogs { application_id: Uuid, query: GatewayLogQuery },
     ListRuns {
         application_id: Uuid,
         query: ApplicationRunsQuery,
@@ -98,7 +96,6 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
-    GatewayLogs(GatewayLogPage),
     Runs(FlowRunSummaryPageResponse),
     ConversationMessages(ApplicationConversationMessagesPageResponse),
     RunOverview(ApplicationRunOverviewResponse),
@@ -258,6 +255,7 @@ impl ApplicationRuntimeReadsAdapter {
             .into_iter()
             .map(|log_summary| {
                 let statistics = application_logs::ApplicationRunStatisticsResponse {
+                    invocation_count: log_summary.invocation_count,
                     count_tokens_input_tokens: log_summary.count_tokens_input_tokens,
                     total_tokens: log_summary.total_tokens,
                     input_tokens: log_summary.input_tokens,
@@ -270,7 +268,14 @@ impl ApplicationRuntimeReadsAdapter {
                     unique_node_count: log_summary.unique_node_count,
                     tool_callback_count: log_summary.tool_callback_count,
                 };
-                to_flow_run_summary_response(&application, log_summary.run, statistics)
+                let mut response =
+                    to_flow_run_summary_response(&application, log_summary.run, statistics);
+                response.parent_run_id = log_summary.parent_run_id.map(|id| id.to_string());
+                response.caused_by_run_id = log_summary.caused_by_run_id.map(|id| id.to_string());
+                response.log_conversation_id =
+                    log_summary.log_conversation_id.map(|id| id.to_string());
+                response.log_task_run_id = log_summary.log_task_run_id.map(|id| id.to_string());
+                response
             })
             .collect();
         let response = FlowRunSummaryPageResponse {
@@ -741,17 +746,6 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
-            ApplicationRuntimeReadsInput::ListGatewayLogs { application_id, query } => {
-                self.visible_application(actor, application_id).await?;
-                if [query.conversation_id, query.turn_id, query.flow_run_id].iter().flatten().count() > 1 {
-                    return Err(ControlPlaneError::InvalidInput("gateway_log_parent").into());
-                }
-                let page = self.store.list_gateway_log_page(&GatewayLogScope {
-                    scope_id: actor.current_workspace_id, application_id, api_key_id: None,
-                }, &query).await?;
-                Ok(ApplicationRuntimeReadsOutput::GatewayLogs(page))
-            }
-
             ApplicationRuntimeReadsInput::ListRuns {
                 application_id,
                 query,
@@ -863,13 +857,6 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.runtime.gateway-logs.list",
-        binding_id: "http.console.applications.runtime.gateway-logs.list.v1",
-        method: "GET",
-        path: "/api/console/applications/:id/logs/gateway",
-        mutating: false,
-    },
     ConsoleInterfaceDeclaration {
         interface_id: "applications.runtime.logs.list",
         binding_id: "http.console.applications.runtime.logs.list.v1",
@@ -1016,11 +1003,9 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

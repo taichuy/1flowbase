@@ -665,6 +665,7 @@ fn collect_llm_tool_callbacks_from_callback_tasks(
 pub(super) fn count_llm_tool_callback_trace_items(
     debug_payloads: &[Value],
     callback_tasks: &[domain::CallbackTaskRecord],
+    native_messages: &[Value],
 ) -> usize {
     let runtime_facts = collect_llm_tool_callback_runtime_facts(callback_tasks);
     let mut callbacks = Vec::<LlmToolCallbackArtifact>::new();
@@ -704,6 +705,19 @@ pub(super) fn count_llm_tool_callback_trace_items(
                     .unwrap_or_else(|| format!("artifact_tool_callback_{index}"))
             }),
     );
+
+    callback_ids.extend(native_messages.iter().filter_map(|message| {
+        let item = message.get("_source_item")?;
+        if !matches!(
+            item.get("type").and_then(Value::as_str),
+            Some("custom_tool_call" | "function_call")
+        ) {
+            return None;
+        }
+        item.get("call_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    }));
 
     callback_ids.len()
 }

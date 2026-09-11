@@ -68,6 +68,8 @@ pub struct ApplicationRunLogResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct ApplicationRunStatisticsResponse {
+    #[serde(default = "single_run_invocation_count")]
+    pub invocation_count: i64,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_tokens: Option<i64>,
@@ -76,6 +78,10 @@ pub struct ApplicationRunStatisticsResponse {
     pub input_cache_hit_rate: Option<f64>,
     pub unique_node_count: i64,
     pub tool_callback_count: i64,
+}
+
+fn single_run_invocation_count() -> i64 {
+    1
 }
 
 pub fn input_cache_hit_rate_for_response(

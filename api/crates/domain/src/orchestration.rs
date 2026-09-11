@@ -468,6 +468,11 @@ pub struct ApplicationRunSummary {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationRunLogSummary {
+    pub parent_run_id: Option<Uuid>,
+    pub caused_by_run_id: Option<Uuid>,
+    pub invocation_count: i64,
+    pub log_conversation_id: Option<Uuid>,
+    pub log_task_run_id: Option<Uuid>,
     pub run: ApplicationRunSummary,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
@@ -615,6 +620,9 @@ pub struct ApplicationRunTraceNodeContentRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplicationRunDetail {
+    /// Read-only original message projection facts used by the trace owner.
+    #[serde(default)]
+    pub native_messages: Vec<serde_json::Value>,
     pub flow_run: FlowRunRecord,
     pub node_runs: Vec<NodeRunRecord>,
     pub checkpoints: Vec<CheckpointRecord>,

@@ -19,6 +19,7 @@ where
     }
 
     ApplicationConversationMessageResponse {
+        message_id: run_id.clone(),
         run_id: run_id.clone(),
         detail_run_id: Some(run_id),
         can_open_detail: true,
@@ -41,6 +42,7 @@ fn to_application_conversation_message_summary_response(
     let run_id = run.id.to_string();
 
     ApplicationConversationMessageResponse {
+        message_id: run_id.clone(),
         run_id: run_id.clone(),
         detail_run_id: Some(run_id),
         can_open_detail: true,
@@ -200,7 +202,9 @@ fn conversation_messages_from_current_item(
     item: domain::ApplicationRunConversationMessageItem,
 ) -> ApplicationConversationMessagesPageResponse {
     ApplicationConversationMessagesPageResponse {
-        items: vec![application_run_conversation_message_item_response(run_id, item)],
+        items: vec![application_run_conversation_message_item_response(
+            run_id, item,
+        )],
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: false,
             has_after: false,
@@ -224,6 +228,7 @@ fn application_run_conversation_message_item_response(
     };
 
     ApplicationConversationMessageResponse {
+        message_id: item.id.to_string(),
         run_id: item_run_id,
         detail_run_id: item.detail_run_id.map(|value| value.to_string()),
         can_open_detail: item.can_open_detail,
@@ -359,7 +364,7 @@ where
         match resolve_runtime_debug_artifact_value(history_value, &load_debug_artifact).await {
             Some(value) => value,
             None => history_value.clone(),
-    };
+        };
     let Some(history) = history_source.as_array() else {
         return items;
     };
@@ -563,6 +568,7 @@ fn imported_context_item(
     content: String,
 ) -> ApplicationConversationMessageResponse {
     ApplicationConversationMessageResponse {
+        message_id: imported_context_cursor(run.id, index),
         run_id: imported_context_cursor(run.id, index),
         detail_run_id: None,
         can_open_detail: false,

@@ -37,6 +37,10 @@ fn to_flow_run_summary_response(
     };
 
     FlowRunSummaryResponse {
+        parent_run_id: None,
+        caused_by_run_id: None,
+        log_conversation_id: None,
+        log_task_run_id: None,
         id: summary.id.to_string(),
         application_id: application.id.to_string(),
         application_type,
@@ -126,23 +130,21 @@ fn callback_task_tool_callback_count(task: &domain::CallbackTaskRecord) -> i64 {
 }
 
 fn application_run_tool_callback_count(detail: &domain::ApplicationRunDetail) -> i64 {
-    application_run_tool_callback_count_for_records(&detail.node_runs, &detail.callback_tasks)
-}
-
-fn application_run_tool_callback_count_for_records(
-    node_runs: &[domain::NodeRunRecord],
-    callback_tasks: &[domain::CallbackTaskRecord],
-) -> i64 {
-    let debug_payloads = node_runs
+    let debug_payloads = detail
+        .node_runs
         .iter()
-        .map(|node_run| node_run.debug_payload.clone())
+        .map(|node| node.debug_payload.clone())
         .collect::<Vec<_>>();
-    let indexed_count = count_llm_tool_callback_trace_items(&debug_payloads, callback_tasks) as i64;
-    let task_count = callback_tasks
+    let indexed_count = count_llm_tool_callback_trace_items(
+        &debug_payloads,
+        &detail.callback_tasks,
+        &detail.native_messages,
+    ) as i64;
+    let task_count = detail
+        .callback_tasks
         .iter()
         .map(callback_task_tool_callback_count)
         .sum();
-
     indexed_count.max(task_count)
 }
 
@@ -187,6 +189,7 @@ fn application_run_statistics_for_records(
     }
 
     application_logs::ApplicationRunStatisticsResponse {
+        invocation_count: 1,
         count_tokens_input_tokens: None,
         total_tokens,
         input_tokens,

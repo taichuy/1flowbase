@@ -525,6 +525,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 actor,
                 application_id,
                 domain::ApplicationRunDetail {
+                    native_messages: Vec::new(),
                     flow_run: outcome.flow_run,
                     node_runs: vec![outcome.node_run],
                     checkpoints: Vec::new(),

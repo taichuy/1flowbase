@@ -787,6 +787,20 @@ impl PgControlPlaneStore {
                       )
                   )
                 group by runs.id, runs.status, runs.started_at, runs.finished_at
+                union all
+                select runs.id,runs.status,
+                    case when s.log_task_run_id=runs.id or s.log_task_run_id is null
+                        then (select m.content from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='user' order by m.display_sequence limit 1) end as query,
+                    null::text as model,(select string_agg(m.content,E'\n' order by m.display_sequence) from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='assistant') as answer,
+                    runs.started_at,runs.finished_at,
+                    (extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_summaries s
+                join flow_runs runs on runs.id=s.flow_run_id
+                join application_conversations c on c.id=s.log_conversation_id
+                where s.application_id=$1 and c.application_id=$1
+                    and c.id::text=$2 and c.client_thread_id is not null
+                    and runs.api_key_id=c.api_key_id
+                    and coalesce(runs.external_user,'')=coalesce(c.external_user,'')
             ),
             ordered as (
                 select
@@ -867,6 +881,15 @@ impl PgControlPlaneStore {
                       )
                   )
                 group by runs.id
+                union all
+                select runs.id,(extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_summaries s
+                join flow_runs runs on runs.id=s.flow_run_id
+                join application_conversations c on c.id=s.log_conversation_id
+                where s.application_id=$1 and c.application_id=$1
+                    and c.id::text=$2 and c.client_thread_id is not null
+                    and runs.api_key_id=c.api_key_id
+                    and coalesce(runs.external_user,'')=coalesce(c.external_user,'')
             ),
             ordered as (
                 select
@@ -920,6 +943,9 @@ impl PgControlPlaneStore {
 
         let callback_tasks = list_callback_tasks_for_flow_run(self, flow_run.id).await?;
         Ok(Some(domain::ApplicationRunDetail {
+            native_messages: self
+                .application_run_native_trace_messages(flow_run.application_id, flow_run.id)
+                .await?,
             node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
             checkpoints: list_checkpoints_for_flow_run(self, flow_run.id).await?,
             events: list_events_for_flow_run(self, flow_run.id).await?,
@@ -1020,6 +1046,9 @@ impl PgControlPlaneStore {
 
         let callback_tasks = list_callback_tasks_for_flow_run(self, flow_run.id).await?;
         Ok(Some(domain::ApplicationRunDetail {
+            native_messages: self
+                .application_run_native_trace_messages(flow_run.application_id, flow_run.id)
+                .await?,
             node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
             checkpoints: list_checkpoints_for_flow_run(self, flow_run.id).await?,
             events: list_events_for_flow_run(self, flow_run.id).await?,

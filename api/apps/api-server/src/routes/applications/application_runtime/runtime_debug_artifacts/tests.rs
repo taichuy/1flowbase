@@ -337,5 +337,8 @@ fn artifact_indexed_llm_rounds_count_host_internal_tool_callbacks() {
         }
     })];
 
-    assert_eq!(count_llm_tool_callback_trace_items(&debug_payloads, &[]), 2);
+    assert_eq!(
+        count_llm_tool_callback_trace_items(&debug_payloads, &[], &[]),
+        2
+    );
 }

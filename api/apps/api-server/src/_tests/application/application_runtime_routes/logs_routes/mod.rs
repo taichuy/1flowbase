@@ -24,6 +24,19 @@ async fn get_console_json(app: &axum::Router, cookie: &str, uri: String) -> Valu
     serde_json::from_slice(&body).unwrap()
 }
 
+// Fund only this isolated fixture through the existing billing API.
+async fn fund_log_fixture(app: &axum::Router, cookie: &str, csrf: &str) {
+    let session = get_console_json(app, cookie, "/api/console/session".to_owned()).await;
+    let user_id = session["data"]["actor"]["id"].as_str().unwrap();
+    let response = app.clone().oneshot(Request::builder().method("POST")
+        .uri(format!("/api/console/settings/billing/credits/{user_id}/grant"))
+        .header("cookie", cookie).header("x-csrf-token", csrf)
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"amount":"100", "reason":"original log fixture", "source_type":"test", "source_id":"original-log", "idempotency_key":"original-log-credit"}).to_string()))
+        .unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
 async fn start_full_debug_run(
     app: &axum::Router,
     cookie: &str,
@@ -90,4 +103,4 @@ mod statistics;
 mod stitched_history;
 mod visible_internal_trace;
 
-mod gateway;
+mod rework;

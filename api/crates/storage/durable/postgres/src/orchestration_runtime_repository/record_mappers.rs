@@ -521,6 +521,11 @@ pub(super) fn map_application_run_log_summary(
 ) -> Result<domain::ApplicationRunLogSummary> {
     PgOrchestrationRuntimeMapper::to_application_run_log_summary(
         StoredApplicationRunLogSummaryRow {
+            parent_run_id: row.get("parent_run_id"),
+            caused_by_run_id: row.get("caused_by_run_id"),
+            invocation_count: row.get("invocation_count"),
+            log_conversation_id: row.get("log_conversation_id"),
+            log_task_run_id: row.get("log_task_run_id"),
             run: StoredApplicationRunSummaryRow {
                 id: row.get("id"),
                 run_mode: row.get("run_mode"),

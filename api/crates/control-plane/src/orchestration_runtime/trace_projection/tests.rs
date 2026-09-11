@@ -77,6 +77,7 @@ fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
         }
     };
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![
             node_run(
@@ -159,6 +160,7 @@ fn builder_projects_node_run_tool_group_and_tool_callbacks() {
     let callback_task_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: node_run_id,
@@ -297,6 +299,7 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
     let subagent_callback_task_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: parent_node_run_id,
@@ -508,6 +511,7 @@ fn builder_projects_linked_agent_without_llm_node_run_as_fallback_llm_node() {
     let subagent_run_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: parent_node_run_id,
@@ -655,6 +659,7 @@ fn builder_projects_node_run_content_as_lightweight_refs() {
     let event_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: node_run_id,
@@ -742,6 +747,7 @@ fn builder_projects_tool_route_fusion_and_branch_nodes() {
     let callback_task_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: node_run_id,
@@ -857,6 +863,7 @@ fn builder_projects_intercepted_route_tool_callback_status() {
     let callback_task_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: node_run_id,
@@ -1003,6 +1010,7 @@ fn builder_merges_callback_task_tools_with_internal_route_tools() {
         }
     ]);
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![
             domain::NodeRunRecord {
@@ -1146,6 +1154,7 @@ fn builder_projects_stitched_trace_as_collapsed_context_group() {
     let prior_node_run_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let mut detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: Vec::new(),
         checkpoints: Vec::new(),
@@ -1241,6 +1250,7 @@ fn builder_nests_stitched_trace_under_current_llm_root_as_tool_sibling() {
     let prior_run_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let mut detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: domain::FlowRunRecord {
             target_node_id: Some("node-llm".to_string()),
             ..flow_run(flow_run_id, now)

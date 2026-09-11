@@ -321,7 +321,7 @@ pub(super) mod tests {
         let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(Vec::new());
         let flow_run = repository
             .create_flow_run(&CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: Uuid::nil(),
                 application_id: Uuid::now_v7(),
                 flow_id: Uuid::now_v7(),
@@ -381,7 +381,7 @@ pub(super) mod tests {
         let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(Vec::new());
         let flow_run = repository
             .create_flow_run(&CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: Uuid::nil(),
                 application_id: Uuid::now_v7(),
                 flow_id: Uuid::now_v7(),

@@ -5,6 +5,7 @@ async fn application_runtime_routes_log_trace_tree_loads_summary_children_and_co
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    fund_log_fixture(&app, &cookie, &csrf).await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
         seed_agent_flow_application(&app, &cookie, &csrf, &provider_instance_id).await;
@@ -155,7 +156,9 @@ async fn application_runtime_routes_log_trace_tree_loads_summary_children_and_co
     .expect("root trace node should advertise a node_run detail ref");
     assert_eq!(
         node_run_detail_payload["data"]["payload"]["node_run"]["output_payload"]["text"],
-        json!("reply:总结退款政策")
+        json!("reply:总结退款政策"),
+        "node output contract: {}",
+        node_run_detail_payload["data"]["payload"]["node_run"]["output_payload"]
     );
     let events_detail_payload = load_trace_node_detail_payload_for_kind(
         &app,

@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   act,
   fireEvent,
@@ -128,6 +129,17 @@ const runtimeApi = vi.hoisted(() => ({
       runId,
       'conversation-messages'
     ] as const,
+  applicationLogConversationMessagesQueryKey: (
+    applicationId: string,
+    conversationId: string
+  ) =>
+    [
+      'applications',
+      applicationId,
+      'log-conversation',
+      conversationId
+    ] as const,
+  fetchApplicationLogConversationMessages: vi.fn(),
   fetchApplicationRuns: vi.fn(),
   fetchApplicationRunOverview: vi.fn(),
   fetchApplicationRunTraceTree: vi.fn(),
@@ -154,6 +166,7 @@ const runtimeApi = vi.hoisted(() => ({
       return {
         items: rawPage.items.map((item: ConversationMessagePageItem) => ({
           ...item,
+          message_id: item.id,
           run_id: item.flow_run_id ?? `message:${item.id}`,
           detail_run_id: item.flow_run_id,
           can_open_detail: item.flow_run_id === 'run-0',
@@ -179,9 +192,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 import {
   applicationRunsPage,
@@ -202,7 +218,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
   beforeEach(async () => {
     window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -235,7 +253,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           total_tokens: 50,
           input_tokens: 40,
@@ -320,7 +338,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
   test('opens run detail and conversation log as floating windows', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -440,9 +460,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     const conversation = await screen.findByTestId(
       'debug-conversation-messages'
     );
-    expect(within(conversation).getByText('System')).toBeInTheDocument();
     expect(within(conversation).getByText('你是项目助手')).toBeInTheDocument();
-    expect(within(conversation).getAllByText('User')).toHaveLength(1);
     expect(
       within(conversation).queryByText('上一轮问题')
     ).not.toBeInTheDocument();
@@ -571,7 +589,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
           target_node_id: 'node-llm',
           title: '公开 API 工具调用',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-chat-completions-v1',
           started_at: '2026-04-17T09:00:00Z',
           finished_at: null,
@@ -632,7 +650,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -660,7 +680,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -787,7 +809,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -829,7 +853,9 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -845,5 +871,102 @@ describe('ApplicationLogsPage - floating windows shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '关闭运行详情' }));
     expect(window.location.search).toBe('');
+  });
+  test('collects four backend-associated calls in the original detail and opens each original trace', async () => {
+    runtimeApi.fetchApplicationRuns.mockResolvedValue(
+      applicationRunsPage([
+        {
+          id: 'run-1',
+          run_mode: 'published_api_run',
+          status: 'succeeded',
+          title: '任务一',
+          target_node_id: null,
+          started_at: '2026-04-17T09:00:00Z',
+          finished_at: '2026-04-17T09:00:01Z',
+          created_at: '2026-04-17T09:00:00Z',
+          updated_at: '2026-04-17T09:00:01Z',
+          log_conversation_id: 'conversation-1',
+          log_task_run_id: 'run-1',
+          invocation_count: 4
+        },
+        {
+          id: 'run-5',
+          run_mode: 'published_api_run',
+          status: 'succeeded',
+          title: '任务二',
+          target_node_id: null,
+          started_at: '2026-04-17T09:01:00Z',
+          finished_at: '2026-04-17T09:01:01Z',
+          created_at: '2026-04-17T09:01:00Z',
+          updated_at: '2026-04-17T09:01:01Z',
+          log_conversation_id: 'conversation-1',
+          log_task_run_id: 'run-5',
+          invocation_count: 1
+        }
+      ])
+    );
+    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+      conversationMessagesPage(
+        [1, 2, 3, 4].map((n) => ({
+          id: `message-${n}`,
+          flow_run_id: `run-${n}`,
+          role: 'assistant' as const,
+          content: `调用 ${n}`,
+          sequence: n
+        }))
+      )
+    );
+    render(
+      <AppProviders>
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
+      </AppProviders>
+    );
+    expect(await screen.findByText('4 次调用')).toBeInTheDocument();
+    expect(screen.getByText('任务二')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: '会话日志' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: '原始运行日志' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByText('任务一').closest('tr')!).getByRole('button', {
+        name: '查看运行详情'
+      })
+    );
+    const links = await screen.findAllByRole('button', {
+      name: '查看对话日志'
+    });
+    expect(links).toHaveLength(4);
+    fireEvent.click(links[3]);
+    await waitFor(() =>
+      expect(runtimeApi.fetchApplicationRunOverview).toHaveBeenCalledWith(
+        'app-1',
+        'run-4'
+      )
+    );
+    runtimeApi.fetchApplicationLogConversationMessages.mockResolvedValue(
+      conversationMessagesPage([
+        {
+          id: 'session-task-2',
+          flow_run_id: 'run-5',
+          role: 'assistant',
+          content: '会话中的第二任务',
+          sequence: 5
+        }
+      ])
+    );
+    fireEvent.click(screen.getByRole('button', { name: '查看此会话' }));
+    expect(await screen.findByText('会话中的第二任务')).toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'conversation-1', {
+      aroundRunId: 'run-1',
+      limit: 5
+    });
+    fireEvent.click(screen.getByRole('button', { name: '返回当前任务' }));
+    expect(await screen.findByText('调用 4')).toBeInTheDocument();
   });
 });

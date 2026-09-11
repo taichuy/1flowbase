@@ -10,7 +10,26 @@ export function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -31,6 +50,7 @@ export function conversationMessagesPage(
 ) {
   return {
     items: items.map((item) => ({
+      message_id: item.id,
       run_id: item.flow_run_id ?? `message:${item.id}`,
       detail_run_id: item.flow_run_id,
       can_open_detail: Boolean(item.flow_run_id),
@@ -198,6 +218,7 @@ export function runOverviewFromDetail(detail: ApplicationRunDetail) {
   return {
     run: detail.run,
     statistics: detail.statistics ?? {
+      invocation_count: 1,
       total_tokens: null,
       input_tokens: null,
       output_tokens: null,
@@ -245,7 +266,9 @@ export function traceNodeGroupId(nodeRuns: ApplicationRunDetail['node_runs']) {
     : `node_run:${firstNodeRun.id}`;
 }
 
-export function mergeDebugPayloads(nodeRuns: ApplicationRunDetail['node_runs']) {
+export function mergeDebugPayloads(
+  nodeRuns: ApplicationRunDetail['node_runs']
+) {
   const merged: Record<string, unknown> = {};
   const llmRounds: unknown[] = [];
   const routeTraces: unknown[] = [];

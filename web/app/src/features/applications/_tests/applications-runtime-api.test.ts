@@ -571,6 +571,9 @@ describe('applications runtime api', () => {
       items: [
         {
           id: 'run-1',
+          invocation_count: 4,
+          log_conversation_id: 'log-conversation-1',
+          log_task_run_id: 'run-1',
           application_id: 'app-1',
           scope_id: 'workspace-1',
           run_mode: 'published_api_run',
@@ -609,6 +612,9 @@ describe('applications runtime api', () => {
       items: [
         {
           id: 'run-1',
+          invocation_count: 4,
+          log_conversation_id: 'log-conversation-1',
+          log_task_run_id: 'run-1',
           application_id: 'app-1',
           scope_id: 'workspace-1',
           title: '退款总结',

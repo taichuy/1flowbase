@@ -9,7 +9,7 @@ async fn fail_queued_flow_run_shell_does_not_fail_attached_run() {
     let now = OffsetDateTime::now_utc();
     let flow_run = repository
         .create_flow_run(&CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: Uuid::now_v7(),
             application_id: Uuid::now_v7(),
             flow_id: Uuid::now_v7(),
@@ -66,7 +66,7 @@ async fn update_flow_run_if_status_does_not_overwrite_cancelled_run() {
     let now = OffsetDateTime::now_utc();
     let flow_run = repository
         .create_flow_run(&CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: Uuid::now_v7(),
             application_id: Uuid::now_v7(),
             flow_id: Uuid::now_v7(),

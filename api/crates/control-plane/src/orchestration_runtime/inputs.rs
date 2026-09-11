@@ -65,8 +65,8 @@ pub(super) fn build_flow_run_input(
     started_at: OffsetDateTime,
 ) -> CreateFlowRunInput {
     CreateFlowRunInput {
-        gateway_log_context: None,
-            actor_user_id,
+        application_run_log_context: None,
+        actor_user_id,
         application_id,
         flow_id: editor_state.flow.id,
         flow_draft_id: editor_state.draft.id,

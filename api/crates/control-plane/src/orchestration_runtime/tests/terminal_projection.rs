@@ -9,7 +9,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
     let running = OrchestrationRuntimeRepository::create_flow_run(
         &repository,
         &crate::ports::CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: Uuid::nil(),
             application_id: Uuid::nil(),
             flow_id: Uuid::now_v7(),

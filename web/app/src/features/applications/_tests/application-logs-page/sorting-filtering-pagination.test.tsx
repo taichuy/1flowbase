@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   fireEvent,
   render,
@@ -129,9 +130,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 function applicationRunsPage<T>(
   items: T[],
@@ -142,7 +146,26 @@ function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -157,7 +180,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -176,7 +201,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           started_at: '2026-04-17T09:00:00Z',
           finished_at: '2026-04-17T09:00:01Z',
@@ -188,6 +213,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue({
       items: [
         {
+          message_id: 'fixture-message-2',
           run_id: 'run-1:context:0',
           detail_run_id: null,
           can_open_detail: false,
@@ -202,6 +228,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
           is_current: false
         },
         {
+          message_id: 'fixture-message-1',
           run_id: 'run-1',
           detail_run_id: 'run-1',
           can_open_detail: true,
@@ -238,7 +265,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   test('refreshes runs from durable source', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -253,9 +282,10 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
           target_node_id: 'node-llm',
           title: '刷新后的日志',
           expand_id: 'customer-43',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           statistics: {
+            invocation_count: 1,
             total_tokens: 60,
             unique_node_count: 3,
             tool_callback_count: 20
@@ -289,7 +319,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   test('sizes log filter selects from their longest option label', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -343,7 +375,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   test('combines run sort field and direction into one sort control', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -371,7 +405,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   test('toggles run sort direction from the merged sort control', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -401,7 +437,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
   test('refetches runs when selecting a different sort field', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -530,7 +568,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -540,11 +580,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
     expect(
       screen.getByRole('combobox', { name: '时间间隔' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('过去 7 天', {
-        selector: '.ant-select-selection-item'
-      })
-    ).toBeInTheDocument();
+    expect(screen.getByText('过去 7 天')).toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', {
         name: '更新时间'
@@ -616,7 +652,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
             target_node_id: null,
             title: `title-${index + 1}`,
             expand_id: null,
-            authorized_account: 'root',
+            authorized_display_name: 'root',
             started_at: `2026-04-17T09:${String(index).padStart(2, '0')}:00Z`,
             finished_at: `2026-04-17T09:${String(index).padStart(2, '0')}:30Z`,
             created_at: `2026-04-17T09:${String(index).padStart(2, '0')}:00Z`,
@@ -634,7 +670,7 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
             target_node_id: null,
             title: `title-${index + 21}`,
             expand_id: null,
-            authorized_account: 'root',
+            authorized_display_name: 'root',
             started_at: `2026-04-16T09:${String(index).padStart(2, '0')}:00Z`,
             finished_at: `2026-04-16T09:${String(index).padStart(2, '0')}:30Z`,
             created_at: `2026-04-16T09:${String(index).padStart(2, '0')}:00Z`,
@@ -646,7 +682,9 @@ describe('ApplicationLogsPage - sorting filtering pagination', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 

@@ -29,12 +29,11 @@ impl PgControlPlaneStore {
         };
 
         let flow_run_updated_at: OffsetDateTime = flow_run.get("updated_at");
-        let node_run_count = sqlx::query_scalar::<_, i64>(
-            "select count(*) from node_runs where flow_run_id = $1",
-        )
-        .bind(flow_run_id)
-        .fetch_one(self.pool())
-        .await?;
+        let node_run_count =
+            sqlx::query_scalar::<_, i64>("select count(*) from node_runs where flow_run_id = $1")
+                .bind(flow_run_id)
+                .fetch_one(self.pool())
+                .await?;
         let callback_task_count = sqlx::query_scalar::<_, i64>(
             "select count(*) from flow_run_callback_tasks where flow_run_id = $1",
         )
@@ -224,20 +223,22 @@ impl PgControlPlaneStore {
             0
         };
 
-        Ok(Some(
-            control_plane_contracts::trace_projection_source_watermark_from_counts(
-                flow_run_updated_at,
-                usize::try_from(node_run_count)
-                    .map_err(|_| anyhow!("node_run_count must fit usize"))?,
-                usize::try_from(callback_task_count)
-                    .map_err(|_| anyhow!("callback_task_count must fit usize"))?,
-                usize::try_from(event_count).map_err(|_| anyhow!("event_count must fit usize"))?,
-                usize::try_from(stitched_trace_count)
-                    .map_err(|_| anyhow!("stitched_trace_count must fit usize"))?,
-                usize::try_from(subagent_trace_count)
-                    .map_err(|_| anyhow!("subagent_trace_count must fit usize"))?,
-            ),
-        ))
+        let base = control_plane_contracts::trace_projection_source_watermark_from_counts(
+            flow_run_updated_at,
+            usize::try_from(node_run_count)
+                .map_err(|_| anyhow!("node_run_count must fit usize"))?,
+            usize::try_from(callback_task_count)
+                .map_err(|_| anyhow!("callback_task_count must fit usize"))?,
+            usize::try_from(event_count).map_err(|_| anyhow!("event_count must fit usize"))?,
+            usize::try_from(stitched_trace_count)
+                .map_err(|_| anyhow!("stitched_trace_count must fit usize"))?,
+            usize::try_from(subagent_trace_count)
+                .map_err(|_| anyhow!("subagent_trace_count must fit usize"))?,
+        );
+        let messages = self
+            .application_run_native_trace_messages(application_id, flow_run_id)
+            .await?;
+        Ok(Some(control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(base,&messages)))
     }
 
     async fn replace_application_run_trace_projection(
@@ -245,8 +246,8 @@ impl PgControlPlaneStore {
         input: &ReplaceApplicationRunTraceProjectionInput,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let scope_id = trace_projection_flow_run_scope_id_for_update(&mut tx, input.flow_run_id)
-            .await?;
+        let scope_id =
+            trace_projection_flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
 
         sqlx::query(
             r#"
@@ -262,12 +263,10 @@ impl PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "delete from application_run_trace_nodes where flow_run_id = $1",
-        )
-        .bind(input.flow_run_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("delete from application_run_trace_nodes where flow_run_id = $1")
+            .bind(input.flow_run_id)
+            .execute(&mut *tx)
+            .await?;
 
         for node in &input.nodes {
             sqlx::query(
@@ -394,8 +393,8 @@ impl PgControlPlaneStore {
         input: &UpsertApplicationRunTraceProjectionStatusInput,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let scope_id = trace_projection_flow_run_scope_id_for_update(&mut tx, input.flow_run_id)
-            .await?;
+        let scope_id =
+            trace_projection_flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
         upsert_application_run_trace_projection_status_in_tx(&mut tx, input, scope_id).await?;
         tx.commit().await?;
         Ok(())
@@ -447,9 +446,9 @@ impl PgControlPlaneStore {
             "where flow_run_id = $1 and parent_trace_node_id is null order by order_key asc, trace_node_id asc",
         );
         let rows = sqlx::query(&sql)
-        .bind(flow_run_id)
-        .fetch_all(self.pool())
-        .await?;
+            .bind(flow_run_id)
+            .fetch_all(self.pool())
+            .await?;
 
         rows.into_iter()
             .map(map_application_run_trace_node_record)
@@ -520,10 +519,7 @@ impl PgControlPlaneStore {
             where flow_run_id = $1
             "#,
         );
-        let row = row
-            .bind(flow_run_id)
-            .fetch_one(self.pool())
-            .await?;
+        let row = row.bind(flow_run_id).fetch_one(self.pool()).await?;
 
         Ok(ApplicationRunTraceProjectionStatistics {
             total_tokens: row.get("total_tokens"),
@@ -552,7 +548,10 @@ impl PgControlPlaneStore {
             limit $5
             "#,
         );
-        let cursor_order_key = input.cursor.as_ref().map(|cursor| cursor.order_key.as_str());
+        let cursor_order_key = input
+            .cursor
+            .as_ref()
+            .map(|cursor| cursor.order_key.as_str());
         let cursor_trace_node_id = input.cursor.as_ref().map(|cursor| cursor.trace_node_id);
         let rows = sqlx::query(&sql)
             .bind(input.flow_run_id)
@@ -572,12 +571,10 @@ impl PgControlPlaneStore {
             items.truncate(input.page_size as usize);
         }
         let next_cursor = if has_more {
-            items
-                .last()
-                .map(|node| ApplicationRunTraceChildrenCursor {
-                    order_key: node.order_key.clone(),
-                    trace_node_id: node.trace_node_id,
-                })
+            items.last().map(|node| ApplicationRunTraceChildrenCursor {
+                order_key: node.order_key.clone(),
+                trace_node_id: node.trace_node_id,
+            })
         } else {
             None
         };
@@ -612,10 +609,10 @@ impl PgControlPlaneStore {
     ) -> Result<Option<domain::ApplicationRunTraceNodeRecord>> {
         let sql = trace_node_select_sql("where flow_run_id = $1 and stable_locator = $2");
         let row = sqlx::query(&sql)
-        .bind(flow_run_id)
-        .bind(stable_locator)
-        .fetch_optional(self.pool())
-        .await?;
+            .bind(flow_run_id)
+            .bind(stable_locator)
+            .fetch_optional(self.pool())
+            .await?;
 
         row.map(map_application_run_trace_node_record).transpose()
     }
@@ -745,8 +742,16 @@ async fn upsert_application_run_trace_projection_status_in_tx(
     .bind(input.attempt_count)
     .bind(input.last_attempt_at)
     .bind(input.last_success_at)
-    .bind(diagnostic.as_ref().and_then(|value| value.last_error_code.as_deref()))
-    .bind(diagnostic.as_ref().and_then(|value| value.last_error_stage.as_deref()))
+    .bind(
+        diagnostic
+            .as_ref()
+            .and_then(|value| value.last_error_code.as_deref()),
+    )
+    .bind(
+        diagnostic
+            .as_ref()
+            .and_then(|value| value.last_error_stage.as_deref()),
+    )
     .bind(
         diagnostic
             .as_ref()
@@ -762,7 +767,11 @@ async fn upsert_application_run_trace_projection_status_in_tx(
             .as_ref()
             .and_then(|value| value.last_error_message.as_deref()),
     )
-    .bind(diagnostic.as_ref().and_then(|value| value.last_error_ref.as_deref()))
+    .bind(
+        diagnostic
+            .as_ref()
+            .and_then(|value| value.last_error_ref.as_deref()),
+    )
     .bind(diagnostic.as_ref().is_some_and(|value| value.retriable))
     .execute(&mut **tx)
     .await?;

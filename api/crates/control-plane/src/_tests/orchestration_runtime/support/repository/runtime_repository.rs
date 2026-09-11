@@ -1958,6 +1958,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         });
 
         Ok(Some(domain::ApplicationRunDetail {
+            native_messages: Vec::new(),
             flow_run,
             node_runs,
             checkpoints: {

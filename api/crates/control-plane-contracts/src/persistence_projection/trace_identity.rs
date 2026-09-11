@@ -34,3 +34,17 @@ pub fn trace_projection_source_watermark_from_counts(
         subagent_trace_count
     )
 }
+
+/// Extend the original trace source identity with retained native messages and
+/// client result receipts. The store and builder must use the same function.
+pub fn trace_projection_native_message_watermark(
+    base: String,
+    messages: &[serde_json::Value],
+) -> String {
+    if messages.is_empty() {
+        return base;
+    }
+    let mut hash = Sha256::new();
+    hash.update(serde_json::to_vec(messages).expect("JSON values serialize"));
+    format!("{base}:{:x}", hash.finalize())
+}

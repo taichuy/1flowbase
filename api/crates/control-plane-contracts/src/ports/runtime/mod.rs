@@ -25,3 +25,6 @@ pub use query_models::*;
 pub use repository::*;
 pub use run_lifecycle::*;
 pub use trace_projection::*;
+
+mod application_run_log_context;
+pub use application_run_log_context::*;

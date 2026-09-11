@@ -48,6 +48,7 @@ fn run_detail_response_does_not_expose_publication_creator_as_scheduler_principa
     flow_run.run_mode = domain::FlowRunMode::WorkflowScheduleRun;
     flow_run.authorized_account = Some("publication creator".to_string());
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run,
         node_runs: Vec::new(),
         checkpoints: Vec::new(),
@@ -73,6 +74,7 @@ fn run_detail_response_moves_waiting_prefix_answer_into_answer_snapshot() {
     let waiting_node_run_id = Uuid::now_v7();
     let virtual_answer_node_run_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,
@@ -182,6 +184,7 @@ fn ac_004_answer_node_truth_waiting_snapshot_uses_flow_run_output_without_synthe
     let flow_run_id = Uuid::now_v7();
     let waiting_node_run_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,
@@ -250,6 +253,7 @@ fn run_detail_response_exposes_stitched_trace_sources() {
     let source_answer_node_run_id = Uuid::now_v7();
     let callback_task_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             current_flow_run_id,
@@ -368,6 +372,7 @@ fn visible_internal_llm_route_trace_uses_precise_node_run_id_before_reused_node_
     let routed_node_run_id = Uuid::now_v7();
     let later_node_run_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,
@@ -484,6 +489,7 @@ fn visible_internal_llm_fusion_branch_trace_uses_branch_node_run_payloads() {
     let main_node_run_id = Uuid::now_v7();
     let branch_node_run_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,
@@ -628,6 +634,7 @@ fn run_detail_response_hides_historical_waiting_prefix_after_run_finishes() {
     let virtual_answer_node_run_id = Uuid::now_v7();
     let final_answer_node_run_id = Uuid::now_v7();
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,

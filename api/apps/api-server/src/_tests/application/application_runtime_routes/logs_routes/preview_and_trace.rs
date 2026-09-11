@@ -5,6 +5,7 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    fund_log_fixture(&app, &cookie, &csrf).await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
         seed_agent_flow_application(&app, &cookie, &csrf, &provider_instance_id).await;
@@ -57,7 +58,12 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
     );
     assert_eq!(
         preview_payload["data"]["node_run"]["output_payload"]["text"],
-        json!("reply:总结退款政策")
+        json!("reply:总结退款政策"),
+        "node output contract: {}, type={}, status={}, error={}",
+        preview_payload["data"]["node_run"]["output_payload"],
+        preview_payload["data"]["node_run"]["node_type"],
+        preview_payload["data"]["node_run"]["status"],
+        preview_payload["data"]["node_run"]["error_payload"]
     );
     for hidden_key in [
         "resolved_inputs",

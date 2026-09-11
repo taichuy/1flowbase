@@ -291,6 +291,7 @@ fn trace_export_fixture(run_id: &str) -> ApplicationRunTraceExportResponse {
         created_at: started_at.to_string(),
     };
     let statistics = application_logs::ApplicationRunStatisticsResponse {
+        invocation_count: 1,
         count_tokens_input_tokens: None,
         total_tokens: Some(22),
         input_tokens: Some(13),

@@ -27,8 +27,19 @@ pub async fn list_application_runs(
     Path(id): Path<Uuid>,
     Query(query): Query<ApplicationRunsQuery>,
 ) -> Result<Json<ApiSuccess<FlowRunSummaryPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.logs.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListRuns { application_id: id, query }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Runs(response) = output else { unreachable!("application runtime logs binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.logs.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ListRuns {
+            application_id: id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Runs(response) = output else {
+        unreachable!("application runtime logs binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -56,8 +67,22 @@ pub async fn list_application_conversation_messages(
     Path((id, conversation_id)): Path<(Uuid, String)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.conversations.messages.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListConversationMessages { application_id: id, conversation_id, query }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) = output else { unreachable!("application conversation messages binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.conversations.messages.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ListConversationMessages {
+            application_id: id,
+            conversation_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) =
+        output
+    else {
+        unreachable!("application conversation messages binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -84,8 +109,22 @@ pub async fn list_application_run_conversation_messages(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run-conversation.messages.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListRunConversationMessages { application_id: id, run_id, query }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) = output else { unreachable!("application run conversation messages binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.run-conversation.messages.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ListRunConversationMessages {
+            application_id: id,
+            run_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) =
+        output
+    else {
+        unreachable!("application run conversation messages binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -133,12 +172,8 @@ async fn ensure_application_run_trace_projection_status(
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
-        store,
-        flow_run_id,
-        0,
-    )
-    .await?;
+    let runtime_events =
+        <_ as OrchestrationRuntimeRepository>::list_runtime_events(store, flow_run_id, 0).await?;
     let source =
         enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
     let projection = build_application_run_trace_projection(&source)?;
@@ -290,8 +325,20 @@ pub async fn get_application_run_overview(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunOverviewResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run.overview.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunOverview { application_id: id, run_id }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response) = output else { unreachable!("application run overview binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.run.overview.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunOverview {
+            application_id: id,
+            run_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response) = output
+    else {
+        unreachable!("application run overview binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -314,8 +361,19 @@ pub async fn get_application_run_trace_tree(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceTreeResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tree.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceTree { application_id: id, run_id }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceTree(response) = output else { unreachable!("application trace tree binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.trace-tree.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceTree {
+            application_id: id,
+            run_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceTree(response) = output else {
+        unreachable!("application trace tree binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -342,8 +400,21 @@ pub async fn get_application_run_trace_node_children(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationRunTraceNodeChildrenQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeChildrenResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tree.children.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceChildren { application_id: id, run_id, query }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceChildren(response) = output else { unreachable!("application trace children binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.trace-tree.children.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceChildren {
+            application_id: id,
+            run_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceChildren(response) = output
+    else {
+        unreachable!("application trace children binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -370,8 +441,23 @@ pub async fn get_application_run_trace_node_content(
     Path((id, run_id, trace_node_id)): Path<(Uuid, Uuid, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeContent { application_id: id, run_id, trace_node_id, raw_query }).await?;
-    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeContent(response) = output else { unreachable!("application trace node content binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.trace-node.content.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeContent {
+            application_id: id,
+            run_id,
+            trace_node_id,
+            raw_query,
+        },
+    )
+    .await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeContent(response) =
+        output
+    else {
+        unreachable!("application trace node content binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -399,8 +485,24 @@ pub async fn get_application_run_trace_node_detail(
     Path((id, run_id, trace_node_id, detail_ref_id)): Path<(Uuid, Uuid, String, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.detail.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeDetail { application_id: id, run_id, trace_node_id, detail_ref_id, raw_query }).await?;
-    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeDetail(response) = output else { unreachable!("application trace node detail binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.trace-node.detail.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeDetail {
+            application_id: id,
+            run_id,
+            trace_node_id,
+            detail_ref_id,
+            raw_query,
+        },
+    )
+    .await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeDetail(response) =
+        output
+    else {
+        unreachable!("application trace node detail binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -425,8 +527,24 @@ pub async fn get_application_run_trace_tool_callback_content(
     headers: HeaderMap,
     Path((id, run_id, trace_node_id, tool_call_id)): Path<(Uuid, Uuid, String, String)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceToolCallbackContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tool-callback.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::ToolCallbackContent { application_id: id, run_id, trace_node_id, tool_call_id }).await?;
-    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::ToolCallbackContent(response) = output else { unreachable!("application trace tool callback content binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.trace-tool-callback.content.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::ToolCallbackContent {
+            application_id: id,
+            run_id,
+            trace_node_id,
+            tool_call_id,
+        },
+    )
+    .await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::ToolCallbackContent(
+        response,
+    ) = output
+    else {
+        unreachable!("application trace tool callback content binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -449,8 +567,20 @@ pub async fn get_application_run_resume_timeline(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.resume-timeline.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimeline { application_id: id, run_id }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimeline(response) = output else { unreachable!("application resume timeline binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.resume-timeline.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimeline {
+            application_id: id,
+            run_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimeline(response) = output
+    else {
+        unreachable!("application resume timeline binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -473,8 +603,21 @@ pub async fn get_application_run_resume_timeline_summary(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineSummaryResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.resume-timeline-summary.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimelineSummary { application_id: id, run_id }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimelineSummary(response) = output else { unreachable!("application resume timeline summary binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.resume-timeline-summary.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimelineSummary {
+            application_id: id,
+            run_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimelineSummary(response) =
+        output
+    else {
+        unreachable!("application resume timeline summary binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -498,8 +641,21 @@ pub async fn get_application_run_node_last_run(
     headers: HeaderMap,
     Path((id, run_id, node_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run-node-last-run.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunNodeLastRun { application_id: id, run_id, node_id }).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunNodeLastRun(response) = output else { unreachable!("application run node last-run binding returned a different output") };
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.run-node-last-run.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunNodeLastRun {
+            application_id: id,
+            run_id,
+            node_id,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunNodeLastRun(response) = output
+    else {
+        unreachable!("application run node last-run binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -582,36 +738,6 @@ pub async fn get_node_last_run(
     let interface_runtime_reads::ApplicationRuntimeReadsOutput::NodeLastRun(response) = output
     else {
         unreachable!("application runtime node last-run binding returned a different output")
-    };
-    Ok(Json(ApiSuccess::new(response)))
-}
-
-/// List gateway conversations, user turns, invocations, or attempts.
-/// Returns authorized, paginated persistent log associations and leaf-based metrics.
-#[utoipa::path(
-    get,
-    path = "/api/console/applications/{id}/logs/gateway",
-    params(
-        ("id" = String, Path, description = "Application id"),
-        ("conversation_id" = Option<Uuid>, Query, description = "List conversation turns"),
-        ("turn_id" = Option<Uuid>, Query, description = "List turn invocations"),
-        ("flow_run_id" = Option<Uuid>, Query, description = "List invocation attempts"),
-        ("page" = Option<i64>, Query, description = "1-based page"),
-        ("page_size" = Option<i64>, Query, description = "Page size, capped at 50")
-    ),
-    responses((status = 200, body = control_plane_contracts::gateway_logs::GatewayLogPage))
-)]
-pub async fn list_application_gateway_logs(
-    State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(id): Path<Uuid>,
-    Query(query): Query<control_plane_contracts::gateway_logs::GatewayLogQuery>,
-) -> Result<Json<ApiSuccess<control_plane_contracts::gateway_logs::GatewayLogPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
-        Arc::clone(&state), "http.console.applications.runtime.gateway-logs.list.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_runtime_reads::ApplicationRuntimeReadsInput::ListGatewayLogs { application_id: id, query },
-    ).await?;
-    let interface_runtime_reads::ApplicationRuntimeReadsOutput::GatewayLogs(response) = output else {
-        unreachable!("gateway logs binding returned a different output")
     };
     Ok(Json(ApiSuccess::new(response)))
 }

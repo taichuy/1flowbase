@@ -77,8 +77,13 @@ use llm_tool_callbacks::{
 pub(super) fn count_llm_tool_callback_trace_items(
     debug_payloads: &[Value],
     callback_tasks: &[domain::CallbackTaskRecord],
+    native_messages: &[Value],
 ) -> usize {
-    llm_tool_callbacks::count_llm_tool_callback_trace_items(debug_payloads, callback_tasks)
+    llm_tool_callbacks::count_llm_tool_callback_trace_items(
+        debug_payloads,
+        callback_tasks,
+        native_messages,
+    )
 }
 
 impl RuntimeDebugArtifactWriter {

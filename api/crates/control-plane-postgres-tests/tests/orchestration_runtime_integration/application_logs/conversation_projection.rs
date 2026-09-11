@@ -13,7 +13,7 @@ async fn terminal_published_run_projects_application_conversation_messages_once(
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -198,7 +198,7 @@ async fn terminal_claude_code_control_run_does_not_project_conversation_messages
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -316,7 +316,7 @@ async fn terminal_claude_code_away_summary_keeps_run_summary_without_conversatio
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -394,7 +394,7 @@ async fn terminal_claude_code_compact_resume_keeps_run_summary_without_conversat
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,

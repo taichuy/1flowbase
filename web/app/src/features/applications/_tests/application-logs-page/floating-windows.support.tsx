@@ -9,7 +9,26 @@ export function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -30,6 +49,7 @@ export function conversationMessagesPage(
 ) {
   return {
     items: items.map((item) => ({
+      message_id: item.id,
       run_id: item.flow_run_id ?? `message:${item.id}`,
       detail_run_id: item.flow_run_id,
       can_open_detail: Boolean(item.flow_run_id),
@@ -93,6 +113,7 @@ export function sampleRunDetail(): ApplicationRunDetail {
       updated_at: '2026-04-17T09:00:01Z'
     },
     statistics: {
+      invocation_count: 1,
       count_tokens_input_tokens: null,
       total_tokens: 50,
       input_tokens: 40,
@@ -225,6 +246,7 @@ export function sampleTraceTree() {
       updated_at: '2026-04-17T09:00:01Z'
     },
     statistics: {
+      invocation_count: 1,
       total_tokens: 50,
       input_tokens: 40,
       output_tokens: 10,

@@ -18,7 +18,7 @@ pub struct UpsertCompiledPlanInput {
 
 #[derive(Debug, Clone)]
 pub struct CreateFlowRunInput {
-    pub gateway_log_context: Option<crate::gateway_logs::GatewayLogContext>,
+    pub application_run_log_context: Option<crate::ports::ApplicationRunLogContext>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub flow_id: Uuid,

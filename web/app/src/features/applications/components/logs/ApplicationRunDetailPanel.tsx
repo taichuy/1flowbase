@@ -14,6 +14,8 @@ import type { AgentFlowDebugSessionStatus } from '../../../agent-flow/hooks/runt
 import { useClipboardCopy } from '../../../../shared/ui/clipboard/use-clipboard-copy';
 import {
   applicationRunConversationMessagesQueryKey,
+  applicationLogConversationMessagesQueryKey,
+  fetchApplicationLogConversationMessages,
   fetchApplicationRunConversationMessages,
   type ApplicationRunConversationMessage,
   type ApplicationRunConversationMessagesPage
@@ -152,6 +154,8 @@ function conversationMessageRole(
   item: ApplicationRunConversationMessage
 ): AgentFlowDebugMessage['role'] | null {
   switch (item.role) {
+    case 'tool':
+      return 'assistant';
     case 'system':
     case 'user':
     case 'assistant':
@@ -173,7 +177,7 @@ function mapConversationItemToMessages(
   if (messageRole && messageContent) {
     return [
       {
-        id: `conversation-${messageRole}-${item.run_id}`,
+        id: `conversation-${messageRole}-${item.message_id}`,
         role: messageRole,
         content:
           messageRole === 'system' || messageRole === 'assistant'
@@ -196,7 +200,7 @@ function mapConversationItemToMessages(
 
   if (queryContent) {
     messages.push({
-      id: `conversation-user-${item.run_id}`,
+      id: `conversation-user-${item.message_id}`,
       role: 'user',
       content: queryContent,
       status: mapRunStatusToMessageStatus(item.status),
@@ -210,7 +214,7 @@ function mapConversationItemToMessages(
 
   if (answerContent) {
     messages.push({
-      id: `conversation-assistant-${item.run_id}`,
+      id: `conversation-assistant-${item.message_id}`,
       role: 'assistant',
       content: markdownDisplayText(answerContent),
       status: mapRunStatusToMessageStatus(item.status),
@@ -239,6 +243,7 @@ function conversationSessionStatus(
   page: ApplicationRunConversationMessagesPage | null
 ): AgentFlowDebugSessionStatus {
   const currentItem =
+    page?.items.find((item) => isActiveRunStatus(item.status)) ??
     [...(page?.items ?? [])].reverse().find((item) => item.is_current) ??
     page?.items.at(-1) ??
     null;
@@ -253,14 +258,7 @@ function hasActiveConversationItem(
 }
 
 function conversationItemKey(item: ApplicationRunConversationMessage) {
-  return [
-    item.run_id,
-    item.detail_run_id ?? '',
-    item.role ?? '',
-    item.content ?? '',
-    item.query ?? '',
-    item.answer ?? ''
-  ].join('::');
+  return item.message_id;
 }
 
 function mergeConversationPages({
@@ -304,29 +302,46 @@ function mergeConversationPages({
 
 function RunConversation({
   applicationId,
+  logConversationId,
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
   runId
 }: {
   applicationId: string;
+  logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
 }) {
+  const [conversationScope, setConversationScope] = useState(false);
   const [previousConversationPages, setPreviousConversationPages] = useState<
     ApplicationRunConversationMessagesPage[]
   >([]);
   const loadingPreviousConversationRef = useRef(false);
+  const conversationScopeGeneration = useRef(0);
   const initialConversationQuery = useQuery({
-    queryKey: applicationRunConversationMessagesQueryKey(applicationId, runId, {
-      limit: RUN_CONVERSATION_PAGE_LIMIT
-    }),
+    queryKey:
+      conversationScope && logConversationId
+        ? applicationLogConversationMessagesQueryKey(
+            applicationId,
+            logConversationId,
+            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
+          )
+        : applicationRunConversationMessagesQueryKey(applicationId, runId, {
+            limit: RUN_CONVERSATION_PAGE_LIMIT
+          }),
     queryFn: () =>
-      fetchApplicationRunConversationMessages(applicationId, runId, {
-        limit: RUN_CONVERSATION_PAGE_LIMIT
-      }),
+      conversationScope && logConversationId
+        ? fetchApplicationLogConversationMessages(
+            applicationId,
+            logConversationId,
+            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
+          )
+        : fetchApplicationRunConversationMessages(applicationId, runId, {
+            limit: RUN_CONVERSATION_PAGE_LIMIT
+          }),
     refetchOnWindowFocus: false
   });
   const refetchInitialConversation = initialConversationQuery.refetch;
@@ -363,7 +378,7 @@ function RunConversation({
     const detailRunId =
       nonEmptyString(message.detailRunId) ?? nonEmptyString(message.runId);
 
-    if (detailRunId !== runId) {
+    if (!detailRunId) {
       return;
     }
 
@@ -387,16 +402,23 @@ function RunConversation({
     }
 
     loadingPreviousConversationRef.current = true;
+    const generation = conversationScopeGeneration.current;
     try {
-      const page = await fetchApplicationRunConversationMessages(
-        applicationId,
-        runId,
-        {
-          before,
-          limit: RUN_CONVERSATION_PAGE_LIMIT
-        }
-      );
-      setPreviousConversationPages((current) => [page, ...current]);
+      const page =
+        conversationScope && logConversationId
+          ? await fetchApplicationLogConversationMessages(
+              applicationId,
+              logConversationId,
+              { before, limit: RUN_CONVERSATION_PAGE_LIMIT }
+            )
+          : await fetchApplicationRunConversationMessages(
+              applicationId,
+              runId,
+              { before, limit: RUN_CONVERSATION_PAGE_LIMIT }
+            );
+      if (generation === conversationScopeGeneration.current) {
+        setPreviousConversationPages((current) => [page, ...current]);
+      }
     } finally {
       loadingPreviousConversationRef.current = false;
     }
@@ -408,14 +430,35 @@ function RunConversation({
         ariaLabel={i18nText('applications', 'auto.run_details_preview')}
         closeLabel={i18nText('applications', 'auto.close_run_details')}
         composerUiOnly
-        logActionRunId={runId}
         messages={messages}
         runContext={runConversationContext}
         showClearAction={false}
         showComposer
         status={conversationSessionStatus(conversationPage)}
         stopping={false}
-        subtitle={<RunIdSubtitle runId={runId} />}
+        subtitle={
+          <>
+            <RunIdSubtitle runId={runId} />
+            {logConversationId && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  conversationScopeGeneration.current += 1;
+                  setPreviousConversationPages([]);
+                  setConversationScope((current) => !current);
+                }}
+              >
+                {i18nText(
+                  'applications',
+                  conversationScope
+                    ? 'auto.show_current_task'
+                    : 'auto.show_log_conversation'
+                )}
+              </Button>
+            )}
+          </>
+        }
         title={i18nText('applications', 'auto.run_details')}
         onChangeRunContextValue={() => {}}
         onClearSession={() => {}}
@@ -436,12 +479,14 @@ function RunConversation({
 
 export function ApplicationRunDetailPanel({
   applicationId,
+  logConversationId,
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
   runId
 }: {
   applicationId: string;
+  logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
@@ -461,6 +506,7 @@ export function ApplicationRunDetailPanel({
           <RunConversation
             key={runId}
             applicationId={applicationId}
+            logConversationId={logConversationId}
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
             onOpenResumeTimeline={onOpenResumeTimeline}

@@ -172,6 +172,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "enabled" => crate::ModelFieldKind::Boolean,
         "size"
         | "total_tokens"
+        | "invocation_count"
         | "unique_node_count"
         | "tool_callback_count"
         | "input_tokens"
@@ -247,7 +248,11 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         ),
         "application_run_log_summaries" => !matches!(
             field_code,
-            "target_node_id"
+            "log_conversation_id"
+                | "log_task_run_id"
+                | "parent_run_id"
+                | "caused_by_run_id"
+                | "target_node_id"
                 | "external_user"
                 | "authorized_account"
                 | "api_key_id"
@@ -386,6 +391,11 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
 ];
 
 const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
+    "log_conversation_id",
+    "log_task_run_id",
+    "parent_run_id",
+    "caused_by_run_id",
+    "invocation_count",
     "id",
     "flow_run_id",
     "scope_id",

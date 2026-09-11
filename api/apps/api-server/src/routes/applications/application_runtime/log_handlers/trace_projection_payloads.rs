@@ -118,6 +118,7 @@ pub(super) fn to_trace_projection_statistics_response(
     statistics: ApplicationRunTraceProjectionStatistics,
 ) -> application_logs::ApplicationRunStatisticsResponse {
     application_logs::ApplicationRunStatisticsResponse {
+        invocation_count: 1,
         count_tokens_input_tokens: None,
         total_tokens: statistics.total_tokens,
         input_tokens: statistics.input_tokens,
@@ -156,7 +157,9 @@ pub(super) fn trace_projection_node_content_response(
     })
 }
 
-pub(super) fn trace_node_content_raw_payload_response(mut payload: serde_json::Value) -> serde_json::Value {
+pub(super) fn trace_node_content_raw_payload_response(
+    mut payload: serde_json::Value,
+) -> serde_json::Value {
     let Some(payload_object) = payload.as_object_mut() else {
         return payload;
     };
@@ -174,7 +177,9 @@ pub(super) fn trace_node_content_raw_payload_response(mut payload: serde_json::V
     }
 }
 
-pub(super) fn trace_node_content_detail_refs(payload: &serde_json::Value) -> Vec<serde_json::Value> {
+pub(super) fn trace_node_content_detail_refs(
+    payload: &serde_json::Value,
+) -> Vec<serde_json::Value> {
     payload
         .get("detail_refs")
         .and_then(serde_json::Value::as_array)
@@ -196,7 +201,9 @@ pub(super) fn trace_node_content_detail_ref(
         })
 }
 
-pub(super) fn trace_node_content_node_run_ids(payload: &serde_json::Value) -> Result<Vec<Uuid>, ApiError> {
+pub(super) fn trace_node_content_node_run_ids(
+    payload: &serde_json::Value,
+) -> Result<Vec<Uuid>, ApiError> {
     let values = payload
         .get("payload_index")
         .and_then(|payload_index| payload_index.get("node_run_ids"))
@@ -230,12 +237,14 @@ pub(super) fn trace_node_content_source_flow_run_id(
         return Err(ControlPlaneError::Conflict("trace_node_detail_ref").into());
     };
 
-    Ok(Some(
-        Uuid::parse_str(id).map_err(|_| ControlPlaneError::Conflict("trace_node_detail_ref"))?,
-    ))
+    Ok(Some(Uuid::parse_str(id).map_err(|_| {
+        ControlPlaneError::Conflict("trace_node_detail_ref")
+    })?))
 }
 
-pub(super) fn strip_projected_tool_debug_payloads(mut node_run: domain::NodeRunRecord) -> domain::NodeRunRecord {
+pub(super) fn strip_projected_tool_debug_payloads(
+    mut node_run: domain::NodeRunRecord,
+) -> domain::NodeRunRecord {
     if let Some(debug_payload) = node_run.debug_payload.as_object_mut() {
         for key in [
             "llm_rounds",

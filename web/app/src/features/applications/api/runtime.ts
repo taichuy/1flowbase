@@ -54,6 +54,11 @@ import {
 import { getApplicationsApiBaseUrl } from './applications';
 
 export type ApplicationRunSummary = {
+  log_conversation_id: string | null;
+  log_task_run_id: string | null;
+  parent_run_id: string | null;
+  caused_by_run_id: string | null;
+  invocation_count: number;
   id: string;
   application_id: string;
   scope_id: string;
@@ -1061,6 +1066,11 @@ function toApplicationRunSummary(
     id,
     application_id: stringField(record, 'application_id'),
     scope_id: stringField(record, 'scope_id'),
+    log_conversation_id: optionalStringField(record, 'log_conversation_id'),
+    log_task_run_id: optionalStringField(record, 'log_task_run_id'),
+    parent_run_id: optionalStringField(record, 'parent_run_id'),
+    caused_by_run_id: optionalStringField(record, 'caused_by_run_id'),
+    invocation_count: numberField(record, 'invocation_count'),
     run_mode: stringField(
       record,
       'run_mode'

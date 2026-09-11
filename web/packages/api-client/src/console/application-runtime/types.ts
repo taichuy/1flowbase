@@ -58,6 +58,10 @@ export interface ConsoleApplicationRunLog {
 }
 
 export interface ConsoleApplicationRunSummary {
+  parent_run_id: string | null;
+  caused_by_run_id: string | null;
+  log_conversation_id: string | null;
+  log_task_run_id: string | null;
   id: string;
   application_id?: string;
   application_type?: string;
@@ -83,6 +87,7 @@ export interface ConsoleApplicationRunSummary {
 }
 
 export interface ConsoleApplicationRunStatistics {
+  invocation_count: number;
   count_tokens_input_tokens: number | null;
   total_tokens: number | null;
   input_tokens: number | null;
@@ -884,10 +889,11 @@ export interface ConsoleApplicationRunResumeEventSummary {
 }
 
 export interface ConsoleApplicationConversationMessage {
+  message_id: string;
   run_id: string;
   detail_run_id?: string | null;
   can_open_detail?: boolean;
-  role?: 'system' | 'user' | 'assistant' | null;
+  role?: 'system' | 'user' | 'assistant' | 'tool' | null;
   content?: string | null;
   started_at: string;
   finished_at: string | null;

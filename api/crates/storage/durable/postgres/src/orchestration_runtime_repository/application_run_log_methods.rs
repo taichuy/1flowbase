@@ -1,3 +1,19 @@
+// UUID predicates constrain the fact scan before aggregation. The caller still
+// applies its full authorization, filter, projection and pagination contract.
+pub(crate) fn application_run_task_summaries_sql(
+    application_id: Option<Uuid>,
+    scope_id: Option<Uuid>,
+) -> String {
+    let mut predicate = "true".to_owned();
+    if let Some(id) = application_id {
+        predicate.push_str(&format!(" and application_id='{id}'::uuid"));
+    }
+    if let Some(id) = scope_id {
+        predicate.push_str(&format!(" and scope_id='{id}'::uuid"));
+    }
+    include_str!("application_run_logs/task_summary.sql").replace("/* log_scope */", &predicate)
+}
+
 impl PgControlPlaneStore {
     async fn list_application_run_count_tokens_results(
         &self,
@@ -42,14 +58,16 @@ impl PgControlPlaneStore {
         let is_terminal = is_terminal_application_run_log_status(flow_run.status);
         let mut tx = self.pool().begin().await?;
 
-        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, flow_run)
-            .await?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, flow_run).await?;
         if is_terminal {
             Self::ensure_application_run_conversation_message_items_projection(&mut tx, flow_run)
                 .await?;
         } else {
-            Self::delete_application_run_conversation_message_items_projection(&mut tx, flow_run.id)
-                .await?;
+            Self::delete_application_run_conversation_message_items_projection(
+                &mut tx,
+                flow_run.id,
+            )
+            .await?;
         }
         tx.commit().await?;
 
@@ -257,6 +275,26 @@ impl PgControlPlaneStore {
                         where node_runs.flow_run_id = $1
                     ),
                     0
+                ) + (
+                    select count(distinct e.payload #>> '{item,call_id}')::bigint
+                    from runtime_events e
+                    where e.flow_run_id=$1 and e.event_type='provider_output_item_done'
+                      and e.payload #>> '{item,type}' in ('custom_tool_call','function_call')
+                      and not exists (
+                        select 1 from flow_run_callback_tasks c
+                        cross join lateral jsonb_array_elements(case when jsonb_typeof(c.request_payload->'tool_calls')='array'
+                            then c.request_payload->'tool_calls' else '[]'::jsonb end) t(item)
+                        where c.flow_run_id=$1 and coalesce(t.item->>'call_id',t.item->>'id')=e.payload#>>'{item,call_id}'
+                      )
+                      and not exists (
+                        select 1 from flow_runs current_run join flow_runs prior
+                          on prior.application_id=current_run.application_id and prior.api_key_id=current_run.api_key_id
+                          and prior.log_context->>'log_conversation_id'=current_run.log_context->>'log_conversation_id'
+                          and prior.id<current_run.id
+                        join runtime_events earlier on earlier.flow_run_id=prior.id
+                        where current_run.id=$1 and earlier.event_type='provider_output_item_done'
+                          and earlier.payload#>>'{item,call_id}'=e.payload#>>'{item,call_id}'
+                      )
                 ),
                 $16, $17, $18, $19
             )
@@ -314,6 +352,13 @@ impl PgControlPlaneStore {
         .bind(flow_run.created_at)
         .bind(flow_run.updated_at)
         .bind(flow_run.created_by)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            "update application_run_log_summaries s set              log_conversation_id=(f.log_context->>'log_conversation_id')::uuid,              log_task_run_id=(f.log_context->>'log_task_run_id')::uuid, parent_run_id=(f.log_context->>'parent_run_id')::uuid, caused_by_run_id=(f.log_context->>'caused_by_run_id')::uuid              from flow_runs f where f.id=$1 and s.flow_run_id=f.id",
+        )
+        .bind(flow_run.id)
         .execute(&mut **tx)
         .await?;
 
@@ -528,64 +573,19 @@ impl PgControlPlaneStore {
             input.sort_by.as_deref(),
             input.sort_order.as_deref(),
         );
-        let total = sqlx::query_scalar::<_, i64>(
-            r#"
-            select count(*)::bigint
-            from application_run_log_summaries
-            where application_id = $1
-              and ($2::timestamptz is null or created_at >= $2)
-            "#,
-        )
-        .bind(application_id)
-        .bind(created_after)
-        .fetch_one(self.pool())
-        .await?;
-
+        let source = application_run_task_summaries_sql(Some(application_id), None);
+        let total = sqlx::query_scalar::<_, i64>(&format!(
+            "select count(*)::bigint from ({source}) logs where application_id=$1 and ($2::timestamptz is null or created_at>=$2)"
+        )).bind(application_id).bind(created_after).fetch_one(self.pool()).await?;
         let rows = sqlx::query(&format!(
-            r#"
-            select
-                flow_run_id as id,
-                run_mode,
-                status,
-                target_node_id,
-                title,
-                '{{}}'::jsonb as input_payload,
-                external_user,
-                created_by,
-                authorized_account,
-                api_key_id,
-                publication_version_id,
-                external_conversation_id,
-                external_trace_id,
-                compatibility_mode,
-                idempotency_key,
-                total_tokens,
-                input_tokens, output_tokens, input_cache_hit_tokens, input_cache_hit_rate,
-                unique_node_count,
-                tool_callback_count,
-                started_at,
-                finished_at,
-                created_at,
-                updated_at
-            from application_run_log_summaries
-            where application_id = $1
-              and ($2::timestamptz is null or created_at >= $2)
-            order by {order_by}
-            limit $3 offset $4
-            "#,
-            order_by = order_by
-        ))
-        .bind(application_id)
-        .bind(created_after)
-        .bind(page_size)
-        .bind(offset)
-        .fetch_all(self.pool())
-        .await?;
+            "select * from ({source}) logs where application_id=$1 and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4"
+        )).bind(application_id).bind(created_after).bind(page_size).bind(offset)
+            .fetch_all(self.pool()).await?;
 
         let mut items = rows
-                .into_iter()
-                .map(map_application_run_log_summary)
-                .collect::<Result<Vec<_>>>()?;
+            .into_iter()
+            .map(map_application_run_log_summary)
+            .collect::<Result<Vec<_>>>()?;
         let flow_run_ids = items.iter().map(|item| item.run.id).collect::<Vec<_>>();
         let count_tokens_results = self
             .list_application_run_count_tokens_results(&flow_run_ids)
@@ -597,14 +597,15 @@ impl PgControlPlaneStore {
             item.count_tokens_input_tokens = count_tokens_results.get(&item.run.id).copied();
         }
 
-        Ok(control_plane_contracts::ports::ApplicationRunLogSummaryPage {
-            items,
-            total,
-            page,
-            page_size,
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunLogSummaryPage {
+                items,
+                total,
+                page,
+                page_size,
+            },
+        )
     }
-
 }
 
 #[derive(Debug)]
@@ -614,8 +615,14 @@ struct ApplicationConversationMessageProjection {
     sequence: i64,
 }
 
-const APPLICATION_CONVERSATION_INPUT_KEYS: &[&str] =
-    &["query", "question", "prompt", "message", "input", "input_text"];
+const APPLICATION_CONVERSATION_INPUT_KEYS: &[&str] = &[
+    "query",
+    "question",
+    "prompt",
+    "message",
+    "input",
+    "input_text",
+];
 
 fn application_conversation_key(flow_run: &domain::FlowRunRecord) -> String {
     flow_run
@@ -678,7 +685,8 @@ fn is_anthropic_claude_code_internal_run(flow_run: &domain::FlowRunRecord) -> bo
         return false;
     }
 
-    is_anthropic_claude_code_control_run(flow_run) || is_anthropic_claude_code_subagent_run(flow_run)
+    is_anthropic_claude_code_control_run(flow_run)
+        || is_anthropic_claude_code_subagent_run(flow_run)
 }
 
 fn is_anthropic_claude_code_control_run(flow_run: &domain::FlowRunRecord) -> bool {
@@ -693,9 +701,7 @@ fn is_anthropic_claude_code_control_run(flow_run: &domain::FlowRunRecord) -> boo
         .is_some()
         || application_conversation_user_text(&flow_run.input_payload)
             .as_deref()
-            .and_then(
-                control_plane_contracts::application_public_runtime::claude_code_control_kind,
-            )
+            .and_then(control_plane_contracts::application_public_runtime::claude_code_control_kind)
             .is_some()
 }
 
@@ -803,7 +809,9 @@ fn application_conversation_system_text(payload: &serde_json::Value) -> Option<S
 
 fn application_conversation_user_text(payload: &serde_json::Value) -> Option<String> {
     if let Some(message) =
-        control_plane_contracts::application_public_runtime::embedded_assistant_user_message(payload)
+        control_plane_contracts::application_public_runtime::embedded_assistant_user_message(
+            payload,
+        )
     {
         return trimmed_text(message.content());
     }
@@ -887,9 +895,7 @@ fn decode_artifact_preview_text(preview: &str) -> Option<String> {
 }
 
 fn trimmed_string(value: &serde_json::Value) -> Option<String> {
-    value
-        .as_str()
-        .and_then(trimmed_text)
+    value.as_str().and_then(trimmed_text)
 }
 
 fn trimmed_text(value: &str) -> Option<String> {

@@ -368,6 +368,7 @@ async fn run_conversation_reads_llm_system_when_run_input_system_is_split_from_p
         updated_at: OffsetDateTime::UNIX_EPOCH,
     };
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run,
         node_runs: vec![domain::NodeRunRecord {
             id: Uuid::now_v7(),

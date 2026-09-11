@@ -34,7 +34,7 @@ async fn claude_code_builtin_agent_run_is_included_in_run_logs_and_monitoring() 
     let agent_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -161,7 +161,7 @@ async fn complete_summary_backfill_restores_a_missing_internal_run_projection() 
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -248,7 +248,7 @@ async fn claude_code_agent_tool_links_unique_subagent_trace_to_parent_detail() {
     let parent_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -332,7 +332,7 @@ async fn claude_code_agent_tool_links_unique_subagent_trace_to_parent_detail() {
     let subagent_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -428,7 +428,7 @@ external_user: Some("claude-code-user".to_string()),
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
             &store,
             &CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 flow_id: seeded.flow_id,
@@ -492,7 +492,7 @@ async fn claude_code_agent_watermark_counts_batched_agent_tool_calls() {
     let parent_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -585,7 +585,7 @@ async fn claude_code_agent_watermark_counts_batched_agent_tool_calls() {
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
             &store,
             &CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 flow_id: seeded.flow_id,

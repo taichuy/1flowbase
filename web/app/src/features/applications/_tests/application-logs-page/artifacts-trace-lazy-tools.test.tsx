@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   fireEvent,
   render,
@@ -159,9 +160,12 @@ vi.mock('../../api/runtime', () => runtimeApi);
 
 import type { ConsoleApplicationRunDetail as ApplicationRunDetail } from '@1flowbase/api-client';
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 import {
   applicationRunsPage,
   conversationMessagesPage,
@@ -182,7 +186,9 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -209,7 +215,7 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           started_at: '2026-04-17T09:00:00Z',
           finished_at: '2026-04-17T09:00:01Z',
@@ -438,7 +444,9 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -564,7 +572,9 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -738,7 +748,9 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -780,8 +792,8 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
 
     const routeNode = within(logPanel).getByTestId('debug-llm-route-node');
     expect(routeNode).not.toHaveTextContent('进行中');
-    expect(
-      within(routeNode).getByLabelText('智能路由 JSON')
-    ).toHaveTextContent('image-route-v1');
+    expect(within(routeNode).getByLabelText('智能路由 JSON')).toHaveTextContent(
+      'image-route-v1'
+    );
   }, 20_000);
 });

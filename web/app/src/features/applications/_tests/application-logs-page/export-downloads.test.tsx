@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
@@ -134,9 +135,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 function applicationRunsPage(
   items: Array<Record<string, unknown>>,
@@ -147,7 +151,26 @@ function applicationRunsPage(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -215,7 +238,9 @@ function authenticate() {
 function renderLogsPage() {
   return render(
     <AppProviders>
-      <ApplicationLogsPage applicationId="app-1" />
+      <AntdApp>
+        <ApplicationLogsPage applicationId="app-1" />
+      </AntdApp>
     </AppProviders>
   );
 }
@@ -232,7 +257,9 @@ describe('ApplicationLogsPage - run export downloads', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     authenticate();
     dateNowSpy = vi
@@ -304,6 +331,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
         finished_at: '2026-04-17T09:00:01Z'
       },
       statistics: {
+        invocation_count: 1,
         total_tokens: 10,
         unique_node_count: 2,
         tool_callback_count: 0
@@ -313,6 +341,7 @@ describe('ApplicationLogsPage - run export downloads', () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue({
       items: [
         {
+          message_id: 'fixture-message-1',
           run_id: 'run-1',
           detail_run_id: 'run-1',
           can_open_detail: true,
@@ -446,7 +475,9 @@ describe('ApplicationLogsPage - run export downloads', () => {
         name: '导出已选运行归档'
       })
     ).not.toBeInTheDocument();
-    expect(runtimeApi.exportSelectedApplicationRunsTraceDumpZip).not.toHaveBeenCalled();
+    expect(
+      runtimeApi.exportSelectedApplicationRunsTraceDumpZip
+    ).not.toHaveBeenCalled();
     expect(runtimeApi.fetchApplicationRunTraceTree).not.toHaveBeenCalled();
   });
 
@@ -508,55 +539,51 @@ describe('ApplicationLogsPage - run export downloads', () => {
     });
   });
 
-  test(
-    'clears selected runs after pagination, search, filters and durable refresh',
-    async () => {
-      runtimeApi.fetchApplicationRuns.mockResolvedValue(
-        applicationRunsPage(
-          [runSummary('run-1', '退款总结'), runSummary('run-2', '天气查询')],
-          { total: 42 }
-        )
-      );
+  test('clears selected runs after pagination, search, filters and durable refresh', async () => {
+    runtimeApi.fetchApplicationRuns.mockResolvedValue(
+      applicationRunsPage(
+        [runSummary('run-1', '退款总结'), runSummary('run-2', '天气查询')],
+        { total: 42 }
+      )
+    );
 
-      renderLogsPage();
+    renderLogsPage();
 
-      expect(await screen.findByText('退款总结')).toBeInTheDocument();
-      const exportButton = screen.getByRole('button', {
-        name: '导出已选日志'
-      });
+    expect(await screen.findByText('退款总结')).toBeInTheDocument();
+    const exportButton = screen.getByRole('button', {
+      name: '导出已选日志'
+    });
 
-      fireEvent.click(getRunSelectionCheckbox('退款总结'));
-      await waitFor(() => expect(exportButton).toBeEnabled());
-      fireEvent.click(screen.getByTitle('2'));
-      await waitFor(() => expect(exportButton).toBeDisabled());
+    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    fireEvent.click(screen.getByTitle('2'));
+    await waitFor(() => expect(exportButton).toBeDisabled());
 
-      expect(await screen.findByText('退款总结')).toBeInTheDocument();
-      fireEvent.click(getRunSelectionCheckbox('退款总结'));
-      await waitFor(() => expect(exportButton).toBeEnabled());
-      fireEvent.change(screen.getByPlaceholderText('搜索标题'), {
-        target: { value: '天气' }
-      });
-      await waitFor(() => expect(exportButton).toBeDisabled());
+    expect(await screen.findByText('退款总结')).toBeInTheDocument();
+    fireEvent.click(getRunSelectionCheckbox('退款总结'));
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    fireEvent.change(screen.getByPlaceholderText('搜索标题'), {
+      target: { value: '天气' }
+    });
+    await waitFor(() => expect(exportButton).toBeDisabled());
 
-      expect(await screen.findByText('天气查询')).toBeInTheDocument();
-      fireEvent.click(getRunSelectionCheckbox('天气查询'));
-      await waitFor(() => expect(exportButton).toBeEnabled());
-      fireEvent.mouseDown(screen.getByRole('combobox', { name: '时间间隔' }));
-      fireEvent.click(
-        await screen.findByText('所有时间', {
-          selector: '.ant-select-item-option-content'
-        })
-      );
-      await waitFor(() => expect(exportButton).toBeDisabled());
+    expect(await screen.findByText('天气查询')).toBeInTheDocument();
+    fireEvent.click(getRunSelectionCheckbox('天气查询'));
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '时间间隔' }));
+    fireEvent.click(
+      await screen.findByText('所有时间', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    await waitFor(() => expect(exportButton).toBeDisabled());
 
-      expect(await screen.findByText('天气查询')).toBeInTheDocument();
-      fireEvent.click(getRunSelectionCheckbox('天气查询'));
-      await waitFor(() => expect(exportButton).toBeEnabled());
-      fireEvent.click(screen.getByRole('button', { name: '刷新日志' }));
-      await waitFor(() => expect(exportButton).toBeDisabled());
-    },
-    10_000
-  );
+    expect(await screen.findByText('天气查询')).toBeInTheDocument();
+    fireEvent.click(getRunSelectionCheckbox('天气查询'));
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '刷新日志' }));
+    await waitFor(() => expect(exportButton).toBeDisabled());
+  }, 10_000);
 
   test('reports export failures without saving an empty file', async () => {
     runtimeApi.exportSelectedApplicationRunsTraceDumpZip.mockRejectedValueOnce(
@@ -708,10 +735,9 @@ describe('ApplicationLogsPage - run export downloads', () => {
     renderLogsPage();
 
     await waitFor(() => {
-      expect(runtimeApi.fetchApplicationRunArchiveImportJob).toHaveBeenCalledWith(
-        'app-1',
-        'job-1'
-      );
+      expect(
+        runtimeApi.fetchApplicationRunArchiveImportJob
+      ).toHaveBeenCalledWith('app-1', 'job-1');
     });
     expect(await screen.findByText('已导入 1 条运行')).toBeInTheDocument();
     expect(
@@ -724,38 +750,34 @@ describe('ApplicationLogsPage - run export downloads', () => {
     ).toBeInTheDocument();
   });
 
-  test(
-    'exports a single run from the conversation log floating window without composing trace content',
-    async () => {
-      renderLogsPage();
+  test('exports a single run from the conversation log floating window without composing trace content', async () => {
+    renderLogsPage();
 
-      expect(await screen.findByText('退款总结')).toBeInTheDocument();
-      fireEvent.click(screen.getAllByRole('button', { name: '查看运行详情' })[0]);
-      expect(
-        await screen.findByRole('complementary', { name: '运行详情' })
-      ).toBeInTheDocument();
-      fireEvent.click(
-        (await screen.findAllByRole('button', { name: '查看对话日志' }))[0]
-      );
-      expect(
-        await screen.findByRole('complementary', { name: '对话日志' })
-      ).toBeInTheDocument();
-      fireEvent.click(
-        await screen.findByRole('button', { name: '导出当前运行 JSON' })
-      );
+    expect(await screen.findByText('退款总结')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: '查看运行详情' })[0]);
+    expect(
+      await screen.findByRole('complementary', { name: '运行详情' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: '查看对话日志' }))[0]
+    );
+    expect(
+      await screen.findByRole('complementary', { name: '对话日志' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '导出当前运行 JSON' })
+    );
 
-      await waitFor(() => {
-        expect(runtimeApi.exportApplicationRunTraceDump).toHaveBeenCalledWith(
-          'app-1',
-          'run-1'
-        );
-      });
-      expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
-      expect(runtimeApi.fetchApplicationRunTraceTree).not.toHaveBeenCalled();
-      expect(
-        runtimeApi.fetchApplicationRunTraceNodeContent
-      ).not.toHaveBeenCalled();
-    },
-    10_000
-  );
+    await waitFor(() => {
+      expect(runtimeApi.exportApplicationRunTraceDump).toHaveBeenCalledWith(
+        'app-1',
+        'run-1'
+      );
+    });
+    expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
+    expect(runtimeApi.fetchApplicationRunTraceTree).not.toHaveBeenCalled();
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalled();
+  }, 10_000);
 });

@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   fireEvent,
   render,
@@ -159,9 +160,12 @@ vi.mock('../../api/runtime', () => runtimeApi);
 
 import type { ConsoleApplicationRunDetail as ApplicationRunDetail } from '@1flowbase/api-client';
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 import {
   applicationRunsPage,
   conversationMessagesPage,
@@ -182,7 +186,9 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -209,7 +215,7 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           started_at: '2026-04-17T09:00:00Z',
           finished_at: '2026-04-17T09:00:01Z',
@@ -512,7 +518,9 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -731,7 +739,9 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -895,7 +905,9 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -905,8 +917,9 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
     const conversation = await screen.findByTestId(
       'debug-conversation-messages'
     );
-    expect(await within(conversation).findByText('System')).toBeInTheDocument();
-    expect(within(conversation).getByText('你是项目助手')).toBeInTheDocument();
+    expect(
+      await within(conversation).findByText('你是项目助手')
+    ).toBeInTheDocument();
     expect(
       await within(conversation).findByText('外部传入的问题')
     ).toBeInTheDocument();

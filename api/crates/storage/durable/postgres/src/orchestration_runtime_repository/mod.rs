@@ -60,12 +60,6 @@ use uuid::Uuid;
 use crate::repositories::PgControlPlaneStore;
 
 mod detail_queries;
-#[path = "application_run_logs/gateway_projection.rs"]
-mod gateway_projection;
-#[path = "application_run_logs/gateway_queries.rs"]
-mod gateway_queries;
-#[path = "application_run_logs/gateway_binding.rs"]
-mod gateway_binding;
 mod record_mappers;
 mod sequencing;
 
@@ -76,6 +70,7 @@ use sequencing::*;
 include!("event_methods.rs");
 include!("artifact_methods.rs");
 include!("application_run_log_methods.rs");
+include!("application_run_logs/client_log_associations.rs");
 include!("application_run_logs/assistant_conversation_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 include!("application_run_trace_projection_methods.rs");
@@ -780,6 +775,15 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: control_plane_contracts::ports::ListApplicationRunsPageInput,
     ) -> Result<control_plane_contracts::ports::ApplicationRunSummaryPage> {
         PgControlPlaneStore::list_application_runs_page(self, application_id, input).await
+    }
+
+    async fn expand_application_run_log_tasks(
+        &self,
+        application_id: Uuid,
+        flow_run_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>> {
+        PgControlPlaneStore::expand_application_run_log_tasks(self, application_id, flow_run_ids)
+            .await
     }
 
     async fn list_application_run_logs_page(

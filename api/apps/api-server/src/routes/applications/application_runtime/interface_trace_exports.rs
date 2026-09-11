@@ -9,8 +9,8 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
-        projection_status_needs_lazy_rebuild,
+        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{
         ApplicationRunTraceProjectionStatistics, FileManagementRepository,
@@ -20,7 +20,7 @@ use control_plane::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
 use super::*;
@@ -221,9 +221,9 @@ pub(crate) fn trace_exports_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-            ApplicationRuntimeTraceExportsInput,
-            ApplicationRuntimeTraceExportsOutput,
-        >,
+        ApplicationRuntimeTraceExportsInput,
+        ApplicationRuntimeTraceExportsOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeTraceExportsAdapter {
         artifacts: TraceExportArtifactReader {
@@ -346,6 +346,12 @@ impl ApplicationRuntimeTraceExportsAdapter {
             return Err(ControlPlaneError::InvalidInput("run_ids").into());
         }
         let application = self.visible_application(actor, application_id).await?;
+        let run_ids = <_ as OrchestrationRuntimeRepository>::expand_application_run_log_tasks(
+            &self.store,
+            application_id,
+            &run_ids,
+        )
+        .await?;
         let exported_at = OffsetDateTime::now_utc();
         let exported_at_text = application_logs::format_time(exported_at);
         let mut documents = Vec::with_capacity(run_ids.len());

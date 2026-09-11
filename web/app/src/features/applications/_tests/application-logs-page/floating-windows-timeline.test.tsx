@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   fireEvent,
   render,
@@ -153,6 +154,7 @@ const runtimeApi = vi.hoisted(() => ({
       return {
         items: rawPage.items.map((item: ConversationMessagePageItem) => ({
           ...item,
+          message_id: item.id,
           run_id: item.flow_run_id ?? `message:${item.id}`,
           detail_run_id: item.flow_run_id,
           can_open_detail: item.flow_run_id === 'run-0',
@@ -178,9 +180,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 import {
   applicationRunsPage,
@@ -200,7 +205,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -224,7 +231,7 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           total_tokens: 50,
           input_tokens: 40,
@@ -306,7 +313,7 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
     dateNowSpy = undefined;
   });
 
-  test('lets a floating window move past the viewport bottom while keeping its header reachable', async () => {
+  test('keeps a dragged floating window inside the current workspace viewport', async () => {
     innerWidthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280);
     innerHeightSpy = vi
       .spyOn(window, 'innerHeight', 'get')
@@ -314,7 +321,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -342,8 +351,8 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     expect(detailWindow).toHaveStyle({
       left: '888px',
-      top: '852px',
-      height: '720px'
+      top: '572px',
+      height: '320px'
     });
   }, 20_000);
 
@@ -355,7 +364,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -440,7 +451,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -534,7 +547,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -624,7 +639,9 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
 
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 

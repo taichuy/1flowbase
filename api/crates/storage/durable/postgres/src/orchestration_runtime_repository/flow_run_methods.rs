@@ -292,12 +292,12 @@ impl PgControlPlaneStore {
 
         let (flow_run, created) = if let Some(row) = inserted {
             {
-                let run=map_flow_run_record(row)?;
-                if let Some(context)=&input.gateway_log_context {
-                    Self::bind_gateway_log_invocation(&mut tx,&run,context).await?;
+                let run = map_flow_run_record(row)?;
+                if let Some(context) = &input.application_run_log_context {
+                    Self::bind_application_run_log_context(&mut tx, &run, context).await?;
                 }
                 tx.commit().await?;
-                (run,true)
+                (run, true)
             }
         } else {
             tx.commit().await?;

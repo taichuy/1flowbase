@@ -88,7 +88,7 @@ async fn conversation_message_history_ignores_legacy_claude_code_control_runs() 
     let visible_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -136,7 +136,7 @@ async fn conversation_message_history_ignores_legacy_claude_code_control_runs() 
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
             &store,
             &CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 flow_id: seeded.flow_id,
@@ -261,7 +261,7 @@ async fn terminal_published_run_without_external_conversation_projects_run_messa
     let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,
@@ -725,7 +725,7 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     let public_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
-            gateway_log_context: None,
+            application_run_log_context: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             flow_id: seeded.flow_id,

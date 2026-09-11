@@ -349,6 +349,11 @@ pub struct StoredApplicationRunSummaryRow {
 
 #[derive(Debug, Clone)]
 pub struct StoredApplicationRunLogSummaryRow {
+    pub parent_run_id: Option<Uuid>,
+    pub caused_by_run_id: Option<Uuid>,
+    pub invocation_count: i64,
+    pub log_conversation_id: Option<Uuid>,
+    pub log_task_run_id: Option<Uuid>,
     pub run: StoredApplicationRunSummaryRow,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
@@ -750,6 +755,11 @@ impl PgOrchestrationRuntimeMapper {
         row: StoredApplicationRunLogSummaryRow,
     ) -> Result<domain::ApplicationRunLogSummary> {
         Ok(domain::ApplicationRunLogSummary {
+            parent_run_id: row.parent_run_id,
+            caused_by_run_id: row.caused_by_run_id,
+            invocation_count: row.invocation_count,
+            log_conversation_id: row.log_conversation_id,
+            log_task_run_id: row.log_task_run_id,
             run: Self::to_application_run_summary(row.run)?,
             count_tokens_input_tokens: row.count_tokens_input_tokens,
             total_tokens: row.total_tokens,

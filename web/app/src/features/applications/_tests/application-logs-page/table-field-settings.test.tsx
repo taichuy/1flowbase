@@ -1,3 +1,4 @@
+import { App as AntdApp } from 'antd';
 import {
   fireEvent,
   render,
@@ -127,9 +128,12 @@ const runtimeApi = vi.hoisted(() => ({
 vi.mock('../../api/runtime', () => runtimeApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
-import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
-import { ApplicationRawLogsPage as ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
+import { ApplicationLogsPage } from '../../pages/ApplicationLogsPage';
 
 function applicationRunsPage<T>(
   items: T[],
@@ -140,7 +144,26 @@ function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -155,7 +178,9 @@ describe('ApplicationLogsPage - table field settings', () => {
 
   beforeEach(async () => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
+    await loadApplicationI18nResources();
     await appI18n.changeLanguage('zh_Hans');
     dateNowSpy = vi
       .spyOn(Date, 'now')
@@ -199,6 +224,7 @@ describe('ApplicationLogsPage - table field settings', () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue({
       items: [
         {
+          message_id: 'fixture-message-2',
           run_id: 'run-1:context:0',
           detail_run_id: null,
           can_open_detail: false,
@@ -213,6 +239,7 @@ describe('ApplicationLogsPage - table field settings', () => {
           is_current: false
         },
         {
+          message_id: 'fixture-message-1',
           run_id: 'run-1',
           detail_run_id: 'run-1',
           can_open_detail: true,
@@ -249,7 +276,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   test('shows token breakdown columns from run summaries', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -353,7 +382,9 @@ describe('ApplicationLogsPage - table field settings', () => {
       });
     const { unmount } = render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -402,7 +433,9 @@ describe('ApplicationLogsPage - table field settings', () => {
     unmount();
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -419,7 +452,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   test('places table field configuration with the filters', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -434,7 +469,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   test('renders table field configuration with Ant Design multiple select', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 
@@ -466,7 +503,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   test('opens table field configuration as a dropdown menu', async () => {
     render(
       <AppProviders>
-        <ApplicationLogsPage applicationId="app-1" />
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
       </AppProviders>
     );
 

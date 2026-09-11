@@ -158,7 +158,8 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
         created_at: OffsetDateTime::UNIX_EPOCH,
         completed_at: Some(OffsetDateTime::UNIX_EPOCH),
     };
-    let detail = domain::ApplicationRunDetail {
+    let mut detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: test_flow_run_record(
             application.id,
             flow_run_id,
@@ -202,6 +203,16 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
     let statistics = application_run_statistics(&detail);
 
     assert_eq!(statistics.tool_callback_count, 2);
+    // AC-009: canonical native and host tools share the original metric, by call ID.
+    detail.native_messages = vec![
+        serde_json::json!({"_source_item":{"type":"function_call","call_id":"call-1"}}),
+        serde_json::json!({"_source_item":{"type":"custom_tool_call","call_id":"call-3","input":"raw()"}}),
+    ];
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
+    detail
+        .native_messages
+        .push(detail.native_messages[1].clone());
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
 }
 
 #[test]

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GatewayLogContext {
+pub struct ApplicationRunLogContext {
     pub identity_status: String,
     #[serde(default)]
     pub identity_sources: Vec<String>,
@@ -22,7 +22,7 @@ pub struct GatewayLogContext {
 
 /// Multiple declarations of the same identity must agree. Missing values do
 /// not invent identities from a connection, text, cursor or timestamp.
-pub fn resolve_gateway_identity(
+pub fn resolve_client_log_identity(
     declarations: &[Option<&str>],
 ) -> Result<Option<String>, &'static str> {
     let mut identity: Option<&str> = None;
@@ -44,8 +44,5 @@ pub fn resolve_gateway_identity(
 }
 
 #[cfg(test)]
-#[path = "_tests/identity.rs"]
-mod identity_tests;
-
-mod read_model;
-pub use read_model::*;
+#[path = "_tests/client_log_identity.rs"]
+mod tests;

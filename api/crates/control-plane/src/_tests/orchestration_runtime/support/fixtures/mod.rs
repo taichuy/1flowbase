@@ -548,7 +548,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         let flow_run = OrchestrationRuntimeRepository::create_flow_run(
             &self.repository,
             &CreateFlowRunInput {
-                gateway_log_context: None,
+                application_run_log_context: None,
                 actor_user_id: seeded.actor_user_id,
                 application_id: seeded.application_id,
                 flow_id: seeded.flow_id,

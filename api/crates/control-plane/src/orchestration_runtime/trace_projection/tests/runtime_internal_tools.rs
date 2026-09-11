@@ -8,6 +8,7 @@ fn builder_projects_artifact_indexed_host_internal_tool_lifecycle() {
     let started_at = now + time::Duration::seconds(1);
     let finished_at = started_at + time::Duration::milliseconds(37);
     let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
         node_runs: vec![domain::NodeRunRecord {
             id: node_run_id,

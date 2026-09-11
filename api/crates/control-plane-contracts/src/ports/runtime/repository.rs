@@ -505,6 +505,16 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         input: ListApplicationRunsPageInput,
     ) -> anyhow::Result<ApplicationRunSummaryPage>;
+    /// Expand original log selections to their explicitly associated calls.
+    /// Single-run detail exports keep using their original exact-run path.
+    async fn expand_application_run_log_tasks(
+        &self,
+        application_id: Uuid,
+        flow_run_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<Uuid>> {
+        let _ = (application_id, flow_run_ids);
+        anyhow::bail!("expand_application_run_log_tasks not implemented")
+    }
     async fn list_application_run_logs_page(
         &self,
         application_id: Uuid,

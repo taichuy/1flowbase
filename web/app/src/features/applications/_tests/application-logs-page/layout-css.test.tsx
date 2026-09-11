@@ -130,7 +130,26 @@ function applicationRunsPage<T>(
   }>
 ) {
   return {
-    items,
+    items: items.map((item) => ({
+      log_conversation_id: null,
+      log_task_run_id: null,
+      execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'published',
+      invocation_source: (item as { run_mode?: string }).run_mode?.startsWith(
+        'debug_'
+      )
+        ? 'debug'
+        : 'agent_flow_api',
+      principal: {
+        kind: 'application_api_key',
+        id: 'key-1',
+        display_name: null
+      },
+      ...item
+    })),
     total: overrides?.total ?? items.length,
     page: overrides?.page ?? 1,
     page_size: overrides?.page_size ?? 20
@@ -145,6 +164,7 @@ describe('ApplicationLogsPage - layout CSS', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/applications/app-1/logs');
     dateNowSpy = vi
       .spyOn(Date, 'now')
       .mockReturnValue(new Date('2026-04-18T00:00:00Z').getTime());
@@ -162,7 +182,7 @@ describe('ApplicationLogsPage - layout CSS', () => {
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
           expand_id: 'customer-42',
-          authorized_account: 'root',
+          authorized_display_name: 'root',
           compatibility_mode: 'openai-responses-v1',
           started_at: '2026-04-17T09:00:00Z',
           finished_at: '2026-04-17T09:00:01Z',
@@ -174,6 +194,7 @@ describe('ApplicationLogsPage - layout CSS', () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue({
       items: [
         {
+          message_id: 'fixture-message-2',
           run_id: 'run-1:context:0',
           detail_run_id: null,
           can_open_detail: false,
@@ -188,6 +209,7 @@ describe('ApplicationLogsPage - layout CSS', () => {
           is_current: false
         },
         {
+          message_id: 'fixture-message-1',
           run_id: 'run-1',
           detail_run_id: 'run-1',
           can_open_detail: true,

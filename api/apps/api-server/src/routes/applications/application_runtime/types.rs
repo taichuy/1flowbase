@@ -211,6 +211,10 @@ pub struct ResolveRuntimeDebugArtifactsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct FlowRunSummaryResponse {
+    pub parent_run_id: Option<String>,
+    pub caused_by_run_id: Option<String>,
+    pub log_conversation_id: Option<String>,
+    pub log_task_run_id: Option<String>,
     pub id: String,
     pub application_id: String,
     pub application_type: String,
@@ -279,6 +283,7 @@ pub struct ApplicationConversationMessagesQuery {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationConversationMessageResponse {
+    pub message_id: String,
     pub run_id: String,
     pub detail_run_id: Option<String>,
     pub can_open_detail: bool,

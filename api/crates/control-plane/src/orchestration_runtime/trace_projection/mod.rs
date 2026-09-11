@@ -14,7 +14,7 @@ pub use control_plane_contracts::persistence_projection::{
     trace_node_id_for_locator, trace_projection_source_watermark_from_counts,
 };
 
-pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 12;
+pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 13;
 
 pub fn legacy_locator_component(
     source_path: &str,
@@ -56,6 +56,7 @@ pub fn build_application_run_trace_projection(
         builder.push_stitched_context_group(current_node_groups.len(), &detail.stitched_trace)?;
     }
 
+    builder.apply_native_messages(detail);
     Ok(builder.finish())
 }
 
@@ -84,13 +85,17 @@ pub fn projection_status_needs_lazy_rebuild(
 }
 
 pub fn trace_projection_source_watermark(detail: &domain::ApplicationRunDetail) -> String {
-    trace_projection_source_watermark_from_counts(
+    let base = trace_projection_source_watermark_from_counts(
         detail.flow_run.updated_at,
         detail.node_runs.len(),
         detail.callback_tasks.len(),
         detail.events.len(),
         detail.stitched_trace.len(),
         detail.subagent_traces.len(),
+    );
+    control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(
+        base,
+        &detail.native_messages,
     )
 }
 
@@ -1467,3 +1472,5 @@ fn child_order_key(parent_order_key: &str, index: usize) -> String {
 
 #[cfg(test)]
 mod tests;
+
+mod native_messages;
