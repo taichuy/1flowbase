@@ -287,7 +287,10 @@ impl RuntimeInternalToolInvokerFactory {
                 instance.instance_id == *instance_id
                     && instance.status == McpInstanceStatus::Enabled
             }) {
-                return Err(control_plane::errors::ControlPlaneError::InvalidInput("mcp_instance_ids").into());
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "mcp_instance_ids",
+                )
+                .into());
             }
         }
         headers.remove(COOKIE);
@@ -1164,21 +1167,51 @@ async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiErro
 
 async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
     let status = response.status();
-    let target_code = if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+    let payload = if matches!(
+        status,
+        StatusCode::BAD_REQUEST
+            | StatusCode::CONFLICT
+            | StatusCode::UNAUTHORIZED
+            | StatusCode::FORBIDDEN
+    ) {
         to_bytes(response.into_body(), TARGET_INTERFACE_ERROR_BODY_LIMIT)
             .await
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|payload| {
-                payload
-                    .get("code")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
     } else {
         None
     };
-    target_failure(status, target_code)
+    let target_code = payload
+        .as_ref()
+        .and_then(|payload| payload.get("code"))
+        .and_then(Value::as_str)
+        .filter(|code| {
+            !code.is_empty()
+                && code.len() <= 128
+                && code
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        })
+        .map(str::to_owned);
+    let mut outcome = target_failure(status, target_code.clone());
+    // `details` is an explicit public diagnostic contract owned by the target API.
+    // Never forward message, arbitrary response fields, auth details or internal/server errors.
+    if target_code.is_some() && matches!(status, StatusCode::BAD_REQUEST | StatusCode::CONFLICT) {
+        if let Some(details) = payload
+            .as_ref()
+            .and_then(|payload| payload.get("details"))
+            .filter(|details| details.is_object() && details.to_string().len() <= 4096)
+        {
+            if let VirtualToolOutcome::Error {
+                data: Some(Value::Object(data)),
+                ..
+            } = &mut outcome
+            {
+                data.insert("target_details".to_owned(), details.clone());
+            }
+        }
+    }
+    outcome
 }
 
 fn target_failure(status: StatusCode, target_code: Option<String>) -> VirtualToolOutcome {
@@ -1511,3 +1544,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/target_error_diagnostics.rs"]
+mod target_error_diagnostics;

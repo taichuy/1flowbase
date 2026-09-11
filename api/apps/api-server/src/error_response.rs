@@ -47,6 +47,13 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::frontstage::FrontstageSourceEditError>()
+        {
+            return crate::routes::frontstage::block_tree::source_edit_error_response(error);
+        }
+
         if let Some(SystemBackupRuntimeError::SourceInventoryInvalid(error)) =
             self.0.downcast_ref::<SystemBackupRuntimeError>()
         {

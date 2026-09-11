@@ -174,3 +174,21 @@ export interface ConsoleFrontstageBlockDescendantsQuery {
   max_depth?: number;
   limit?: number;
 }
+
+export interface ConsoleFrontstageCodeEditReceipt {
+  block_id: string;
+  page_id: string;
+  source_revision: string;
+  applied_edits: number;
+  changes: Array<{
+    edit_index: number;
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    old_text: string;
+    new_text: string;
+    truncated: boolean;
+  }>;
+  diff_truncated: boolean;
+}

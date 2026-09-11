@@ -108,6 +108,8 @@ use utoipa::OpenApi;
         crate::routes::frontstage::block_tree::open_frontstage_block,
         crate::routes::frontstage::block_tree::get_frontstage_block_node_code,
         crate::routes::frontstage::block_tree::get_frontstage_block_code_fragment,
+        crate::routes::frontstage::block_tree::search_frontstage_block_code,
+        crate::routes::frontstage::block_tree::replace_frontstage_block_code,
         crate::routes::frontstage::block_tree::save_frontstage_block_node_code,
         crate::routes::frontstage::block_tree::patch_frontstage_block_node_code,
         crate::routes::frontstage::block_tree::get_frontstage_block_runtime_assembly,

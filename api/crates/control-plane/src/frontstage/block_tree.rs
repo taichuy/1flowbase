@@ -1,3 +1,6 @@
+mod source_editing;
+pub use source_editing::*;
+
 use std::collections::{BTreeMap, HashSet};
 
 use anyhow::Result;
@@ -763,55 +766,6 @@ where
             .map_err(map_block_repository_error)
     }
 
-    pub async fn patch_block_node_code(
-        &self,
-        command: PatchFrontstageBlockNodeCodeCommand,
-    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
-        let expected_source_revision =
-            validate_source_revision(Some(command.expected_source_revision))?
-                .ok_or(ControlPlaneError::InvalidInput("expected_source_revision"))?;
-        let actor = self
-            .ensure_block_designer(
-                command.scope.actor_user_id,
-                command.scope.workspace_id,
-                command.scope.page_id,
-                None,
-            )
-            .await?;
-        let node = self.load_block_node(&command.scope).await?;
-        let current = self
-            .repository
-            .get_frontstage_block_code(
-                command.scope.workspace_id,
-                command.scope.page_id,
-                &node.code_ref,
-            )
-            .await?
-            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
-        if current.source_sha256.as_deref() != Some(expected_source_revision.as_str()) {
-            return Err(ControlPlaneError::Conflict("frontstage_block_source_revision").into());
-        }
-        let source_code = apply_source_edits(&current.source_code, command.edits)?;
-        let audit_log = block_audit(
-            &actor,
-            command.scope.page_id,
-            &command.scope.block_id,
-            "frontstage.block_node_code_patched",
-        );
-        self.repository
-            .save_frontstage_block_node_code(&SaveFrontstageBlockNodeCodeInput {
-                workspace_id: command.scope.workspace_id,
-                actor_user_id: command.scope.actor_user_id,
-                page_id: command.scope.page_id,
-                block_id: command.scope.block_id,
-                expected_source_revision: Some(expected_source_revision),
-                source: FrontstageBlockSourceInput { source_code },
-                audit_log,
-            })
-            .await
-            .map_err(map_block_repository_error)
-    }
-
     async fn resolve_runtime_descriptor(
         &self,
         workspace_id: Uuid,
@@ -992,38 +946,6 @@ fn source_fragment(
         next_column: has_more.then_some(end_column),
         truncated_by_max_chars,
     })
-}
-
-fn apply_source_edits(source: &str, edits: Vec<FrontstageSourceEdit>) -> Result<String> {
-    if edits.is_empty() || edits.len() > MAX_SOURCE_EDITS {
-        return Err(ControlPlaneError::InvalidInput("edits").into());
-    }
-    let line_starts = source_line_starts(source);
-    let mut ranges = edits
-        .into_iter()
-        .map(|edit| {
-            let start =
-                source_position_offset(source, &line_starts, edit.start_line, edit.start_column)?;
-            let end = source_position_offset(source, &line_starts, edit.end_line, edit.end_column)?;
-            if start > end {
-                return Err(ControlPlaneError::InvalidInput("source_edit_range").into());
-            }
-            Ok((start, end, edit.replacement))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    ranges.sort_by_key(|(start, end, _)| (*start, *end));
-    for pair in ranges.windows(2) {
-        let previous = &pair[0];
-        let current = &pair[1];
-        if current.0 < previous.1 || current.0 == previous.0 {
-            return Err(ControlPlaneError::InvalidInput("source_edit_overlap").into());
-        }
-    }
-    let mut patched = source.to_owned();
-    for (start, end, replacement) in ranges.into_iter().rev() {
-        patched.replace_range(start..end, &replacement);
-    }
-    Ok(patched)
 }
 
 fn source_line_starts(source: &str) -> Vec<usize> {

@@ -527,10 +527,16 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     .await;
     assert_eq!(write_status, StatusCode::FORBIDDEN);
 
+    let (replace_status, _) = send_json(&app, "POST", &format!("{blocks_path}/{block_id}/code/replace"),
+        &viewer_cookie, &viewer_csrf, json!({"expected_source_revision":"a".repeat(64),"edits":[{"old_text":"export","new_text":"bad"}]})).await;
+    assert_eq!(replace_status, StatusCode::FORBIDDEN);
+
     for runtime_path in [
         format!("{blocks_path}/{block_id}"),
         format!("{blocks_path}/{block_id}/ancestors"),
         format!("{blocks_path}/{block_id}/code"),
+        format!("{blocks_path}/{block_id}/code/fragment"),
+        format!("{blocks_path}/{block_id}/code/search?query=export"),
         format!("{blocks_path}/{block_id}/open"),
     ] {
         let (status, payload) = get_json(&app, &runtime_path, &viewer_cookie).await;
@@ -610,11 +616,14 @@ async fn ac_001_to_003_block_code_supports_bounded_reads_and_revision_guarded_ra
     )
     .await;
     assert_eq!(patch_status, StatusCode::OK, "{patch_payload}");
+    assert_eq!(patch_payload["data"]["applied_edits"], 2);
+    assert!(patch_payload["data"].get("source_code").is_none());
+    let (_, saved_source) = get_json(&app, &code_path, &cookie).await;
     assert_eq!(
-        patch_payload["data"]["source_code"],
+        saved_source["data"]["source_code"],
         json!("alpha\n订单完成✅\ncharlie\nomega")
     );
-    let updated_revision = patch_payload["data"]["source_sha256"]
+    let updated_revision = patch_payload["data"]["source_revision"]
         .as_str()
         .expect("patched source must have a revision")
         .to_owned();
@@ -699,3 +708,6 @@ async fn ac_001_to_003_block_code_supports_bounded_reads_and_revision_guarded_ra
         json!("alpha\n订单完成✅\ncharlie\nomega")
     );
 }
+
+#[path = "block_tree/source_editing.rs"]
+mod source_editing;

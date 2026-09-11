@@ -34,6 +34,8 @@ use crate::{
 use super::parse_uuid;
 
 pub(crate) mod interface;
+mod source_editing;
+pub use source_editing::*;
 
 async fn invoke_blocks(
     state: Arc<ApiState>,
@@ -394,6 +396,20 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             )
             .patch(
                 patch_frontstage_block_node_code,
+                ConsoleOperation("frontstage.blocks.code.update".into()),
+            ),
+        )
+        .route(
+            "/frontstage/pages/:page_id/blocks/:block_id/code/search",
+            console_get(
+                search_frontstage_block_code,
+                ConsoleOperation("frontstage.blocks.code.view".into()),
+            ),
+        )
+        .route(
+            "/frontstage/pages/:page_id/blocks/:block_id/code/replace",
+            console_post(
+                replace_frontstage_block_code,
                 ConsoleOperation("frontstage.blocks.code.update".into()),
             ),
         )
@@ -831,11 +847,11 @@ pub async fn save_frontstage_block_node_code(
     path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code",
     request_body = PatchFrontstageBlockNodeCodeBody,
     summary = "Patch Frontstage block source ranges",
-    description = "Atomically applies non-overlapping edits expressed as 1-based Unicode line and column half-open ranges. The expected source revision is required and stale revisions fail with conflict without changing source.",
+    description = "Atomically applies non-overlapping edits expressed as 1-based Unicode line and column half-open ranges. The expected source revision is required and stale revisions fail with conflict without changing source. Returns an edit receipt with at most 8000 Unicode scalars of original/replacement text and explicit truncation; no full source is returned.",
     responses(
-        (status = 200, body = FrontstageBlockNodeCodeResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 409, body = crate::error_response::ErrorBody),
+        (status = 200, body = FrontstageCodeEditReceiptResponse),
+        (status = 400, body = FrontstageSourceEditErrorResponse),
+        (status = 409, body = FrontstageSourceEditErrorResponse),
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
@@ -844,8 +860,8 @@ pub async fn patch_frontstage_block_node_code(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<PatchFrontstageBlockNodeCodeBody>,
-) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
-    let interface::FrontstageBlocksOutput::Code(value) = invoke_blocks(
+) -> Result<Json<ApiSuccess<FrontstageCodeEditReceiptResponse>>, ApiError> {
+    let interface::FrontstageBlocksOutput::EditedCode(value) = invoke_blocks(
         state,
         headers,
         "http.console.frontstage.blocks.code.patch.v1",

@@ -20,6 +20,7 @@ import type {
   DeleteConsoleFrontstageBlockSubtreeInput,
   MoveConsoleFrontstageBlockNodeInput,
   PatchConsoleFrontstageBlockNodeCodeInput,
+  ConsoleFrontstageCodeEditReceipt,
   SaveConsoleFrontstageBlockNodeCodeInput,
   UpdateConsoleFrontstageBlockDescriptorsInput,
   UpdateConsoleFrontstageBlockNodeInput
@@ -300,7 +301,7 @@ export function patchConsoleFrontstageBlockNodeCode(
   input: PatchConsoleFrontstageBlockNodeCodeInput,
   csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleFrontstageBlockNodeCode> {
+): Promise<ConsoleFrontstageCodeEditReceipt> {
   return apiFetch({
     path: `${blockPath(pageId, blockId)}/code`,
     method: 'PATCH',

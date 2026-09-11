@@ -94,6 +94,14 @@ fn frontstage_route_assembly_freezes_business_operations_and_authenticated_catal
             ),
             (
                 "GET",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/search"
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/replace"
+            ),
+            (
+                "GET",
                 "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/fragment",
             ),
             (
