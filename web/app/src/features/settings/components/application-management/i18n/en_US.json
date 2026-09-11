@@ -39,5 +39,16 @@
     "application_management_creators_load_failed": "Failed to load creators",
     "application_management_export_applications": "Export applications ({{value1}})",
     "application_management_permission_required": "Application edit permission is required"
+  },
+  "batch_delete": {
+    "action": "Delete ({{count}})",
+    "title": "Delete selected applications",
+    "confirm": "Delete the {{count}} selected applications? This action cannot be undone.",
+    "summary": "Deleted: {{succeeded}}, failed: {{failed}}",
+    "permission_required": "Application deletion permission is required",
+    "selection_permission_required": "The selection includes applications you cannot delete",
+    "not_found": "The application does not exist or has already been deleted",
+    "session_expired": "Your session has expired. Sign in again and retry.",
+    "request_failed": "The delete request failed. Refresh the list to check the application status before retrying."
   }
 }

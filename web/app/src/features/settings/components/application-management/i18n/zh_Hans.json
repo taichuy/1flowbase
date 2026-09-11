@@ -39,5 +39,16 @@
     "application_management_creators_load_failed": "创建者加载失败",
     "application_management_export_applications": "导出应用（{{value1}}）",
     "application_management_permission_required": "缺少应用编辑权限"
+  },
+  "batch_delete": {
+    "action": "删除（{{count}}）",
+    "title": "批量删除应用",
+    "confirm": "确定删除选中的 {{count}} 个应用？此操作不可撤销。",
+    "summary": "删除成功：{{succeeded}}，失败：{{failed}}",
+    "permission_required": "缺少应用删除权限",
+    "selection_permission_required": "选中项包含无删除权限的应用",
+    "not_found": "应用不存在或已被删除",
+    "session_expired": "登录已失效，请重新登录后重试",
+    "request_failed": "删除请求失败，请刷新列表确认应用状态后重试"
   }
 }

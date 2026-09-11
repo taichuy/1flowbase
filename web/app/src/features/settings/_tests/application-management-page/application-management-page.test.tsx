@@ -1,3 +1,4 @@
+import { ApiClientError } from '@1flowbase/api-client';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import { App } from 'antd';
@@ -381,6 +382,208 @@ describe('ApplicationManagementPanel', () => {
       user_protection_limit: 10
     });
   });
+
+  test.each(['success', 'partial', 'failure'] as const)(
+    'batch delete AC-001 AC-002 AC-004 confirms the selection and handles %s',
+    async (outcome) => {
+      const initial =
+        await applicationManagementApi.fetchSettingsApplicationManagement();
+      let items = [
+        initial.items[0],
+        { ...initial.items[0], id: 'app-second', name: 'Second App' }
+      ];
+      applicationManagementApi.fetchSettingsApplicationManagement.mockImplementation(
+        async () => ({
+          ...initial,
+          items,
+          total: 20 + items.length
+        })
+      );
+      let releaseFirst!: () => void;
+      const firstRequest = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      applicationsApi.deleteApplication.mockImplementation(
+        async (id: string) => {
+          if (id === 'app-workflow') await firstRequest;
+          if (
+            outcome === 'failure' ||
+            (outcome === 'partial' && id === 'app-second')
+          ) {
+            throw new ApiClientError({
+              status: 403,
+              code: 'forbidden',
+              message: 'internal detail'
+            });
+          }
+          items = items.filter((item) => item.id !== id);
+        }
+      );
+      render(
+        <AppProviders>
+          <ApplicationManagementPanel />
+        </AppProviders>
+      );
+      await screen.findByText('Second App');
+      expect(screen.getByRole('button', { name: '删除（0）' })).toBeDisabled();
+      fireEvent.click(screen.getAllByRole('checkbox')[0]);
+      fireEvent.click(screen.getByRole('button', { name: '删除（2）' }));
+      let dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByText('确定删除选中的 2 个应用？此操作不可撤销。')
+      ).toBeInTheDocument();
+      expect(applicationsApi.deleteApplication).not.toHaveBeenCalled();
+      fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      );
+      expect(screen.getByRole('button', { name: '删除（2）' })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: '删除（2）' }));
+      dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+      await waitFor(() =>
+        expect(applicationsApi.deleteApplication).toHaveBeenCalledWith(
+          'app-workflow',
+          'csrf-123'
+        )
+      );
+      expect(applicationsApi.deleteApplication).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: '删除（2）' })).toBeDisabled();
+      expect(screen.getAllByRole('checkbox')[1]).toBeDisabled();
+      releaseFirst();
+      const failedCount =
+        outcome === 'success' ? 0 : outcome === 'partial' ? 1 : 2;
+      await screen.findAllByText(
+        `删除成功：${2 - failedCount}，失败：${failedCount}`
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: `删除（${failedCount}）` })
+        ).not.toHaveClass('ant-btn-loading')
+      );
+      expect(applicationsApi.deleteApplication.mock.calls).toEqual([
+        ['app-workflow', 'csrf-123'],
+        ['app-second', 'csrf-123']
+      ]);
+      if (failedCount === 0) {
+        expect(screen.queryByText('Daily Report')).not.toBeInTheDocument();
+        expect(screen.queryByText('Second App')).not.toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: '删除（0）' })
+        ).toBeDisabled();
+      } else {
+        expect(screen.getAllByRole('checkbox').slice(1)).toHaveLength(
+          failedCount
+        );
+        for (const checkbox of screen.getAllByRole('checkbox').slice(1))
+          expect(checkbox).toBeChecked();
+        expect(screen.getAllByText(/缺少应用删除权限/)).toHaveLength(
+          failedCount
+        );
+        expect(screen.queryByText('internal detail')).not.toBeInTheDocument();
+        // Retrying must submit only the entries that failed previously.
+        fireEvent.click(
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: /关\s*闭/
+          })
+        );
+        await waitFor(() =>
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+        );
+        applicationsApi.deleteApplication.mockImplementation(
+          async (id: string) => {
+            items = items.filter((item) => item.id !== id);
+          }
+        );
+        fireEvent.click(
+          screen.getByRole('button', { name: `删除（${failedCount}）` })
+        );
+        fireEvent.click(
+          within(await screen.findByRole('dialog')).getByRole('button', {
+            name: /删\s*除/
+          })
+        );
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: '删除（0）' })
+          ).toBeDisabled()
+        );
+        await screen.findByText(`删除成功：${failedCount}，失败：0`);
+        await waitFor(() =>
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+        );
+        expect(
+          applicationsApi.deleteApplication.mock.calls
+            .slice(2)
+            .map(([id]) => id)
+        ).toEqual(
+          outcome === 'partial'
+            ? ['app-second']
+            : ['app-workflow', 'app-second']
+        );
+      }
+    }
+  );
+
+  test.each([
+    { permissions: [] },
+    { permissions: ['application.delete.own'] },
+    { permissions: ['application.delete.all'] }
+  ])(
+    'batch delete AC-003 respects deletion permissions %j without restricting export selection',
+    async ({ permissions }) => {
+      const initial =
+        await applicationManagementApi.fetchSettingsApplicationManagement();
+      applicationManagementApi.fetchSettingsApplicationManagement.mockResolvedValue(
+        {
+          ...initial,
+          items: [
+            initial.items[0],
+            {
+              ...initial.items[0],
+              id: 'app-other',
+              name: 'Other App',
+              created_by: 'other-user'
+            }
+          ]
+        }
+      );
+      const { actor, me } = useAuthStore.getState();
+      useAuthStore.getState().setAuthenticated({
+        csrfToken: 'csrf-123',
+        actor: { ...actor!, effective_display_role: 'member' },
+        me: { ...me!, effective_display_role: 'member', permissions }
+      });
+      render(
+        <AppProviders>
+          <ApplicationManagementPanel />
+        </AppProviders>
+      );
+      await screen.findByText('Other App');
+      fireEvent.click(screen.getAllByRole('checkbox')[1]);
+      if (permissions.length === 0) {
+        expect(
+          screen.queryByRole('button', { name: /删除（/ })
+        ).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByRole('button', { name: '删除（1）' })).toBeEnabled();
+        fireEvent.click(screen.getAllByRole('checkbox')[2]);
+        if (permissions.includes('application.delete.all')) {
+          expect(
+            screen.getByRole('button', { name: '删除（2）' })
+          ).toBeEnabled();
+        } else {
+          expect(
+            screen.getByRole('button', { name: '删除（2）' })
+          ).toBeDisabled();
+        }
+      }
+      expect(
+        screen.getByRole('button', { name: /导出应用（[12]）/ })
+      ).toBeEnabled();
+      expect(applicationsApi.deleteApplication).not.toHaveBeenCalled();
+    }
+  );
 
   test('AC-003 AC-006 restores URL filters and renders backend management fields', async () => {
     render(
@@ -796,9 +999,9 @@ describe('ApplicationManagementPanel', () => {
     expect(
       within(toolbar)
         .getAllByRole('button')
-        .slice(0, 3)
+        .slice(0, 4)
         .map((button) => button.textContent?.replace(/\s/g, ''))
-    ).toEqual(['新增', '导入应用', '导出应用（0）']);
+    ).toEqual(['新增', '删除（0）', '导入应用', '导出应用（0）']);
     const input = screen.getByLabelText('导入');
     const chooseFile = vi.spyOn(input, 'click');
     fireEvent.click(importButton);

@@ -1,3 +1,4 @@
+import { ApiClientError } from '@1flowbase/api-client';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
@@ -223,6 +224,73 @@ export function ApplicationManagementPanel() {
         i18nText('applications', 'auto.delete_application_failed')
       )
   });
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (applications: SettingsApplicationManagementItem[]) => {
+      const succeededIds = new Set<string>();
+      const failures: Array<{ id: string; name: string; reason: string }> = [];
+      for (const application of applications) {
+        try {
+          await deleteApplication(application.id, csrfToken);
+          succeededIds.add(application.id);
+        } catch (error) {
+          const status = error instanceof ApiClientError ? error.status : null;
+          const reason =
+            status === 403
+              ? i18nText(
+                  'settingsApplicationManagement',
+                  'batch_delete.permission_required'
+                )
+              : status === 404
+                ? i18nText(
+                    'settingsApplicationManagement',
+                    'batch_delete.not_found'
+                  )
+                : status === 401
+                  ? i18nText(
+                      'settingsApplicationManagement',
+                      'batch_delete.session_expired'
+                    )
+                  : i18nText(
+                      'settingsApplicationManagement',
+                      'batch_delete.request_failed'
+                    );
+          failures.push({ id: application.id, name: application.name, reason });
+        }
+      }
+      return { succeededIds, failures };
+    },
+    onSuccess: async ({ succeededIds, failures }) => {
+      setSelectedApplicationIds((current) =>
+        current.filter((id) => !succeededIds.has(id))
+      );
+      await invalidateApplications();
+      const summary = i18nText(
+        'settingsApplicationManagement',
+        'batch_delete.summary',
+        {
+          succeeded: succeededIds.size,
+          failed: failures.length
+        }
+      );
+      if (failures.length === 0) {
+        messageApi.success(summary);
+      } else {
+        modalApi.warning({
+          title: summary,
+          okText: i18nText('applications', 'auto.close'),
+          content: (
+            <ul>
+              {failures.map(({ id, name, reason }) => (
+                <li key={id}>
+                  <strong>{name}</strong>：{reason}
+                </li>
+              ))}
+            </ul>
+          )
+        });
+      }
+    }
+  });
   const copyMutation = useMutation({
     mutationFn: (application: SettingsApplicationManagementItem) =>
       createApplication(
@@ -307,6 +375,36 @@ export function ApplicationManagementPanel() {
       canDeleteAny || (canDeleteOwn && application.created_by === actor?.id),
     [actor?.id, canDeleteAny, canDeleteOwn]
   );
+
+  const selectedApplications = (applicationsQuery.data?.items ?? []).filter(
+    (application) => selectedApplicationIds.includes(application.id)
+  );
+  const canDeleteSelection =
+    selectedApplicationIds.length > 0 &&
+    selectedApplications.length === selectedApplicationIds.length &&
+    selectedApplications.every(canDelete);
+  const confirmBatchDelete = () => {
+    const confirmation = modalApi.confirm({
+      title: i18nText('settingsApplicationManagement', 'batch_delete.title'),
+      content: i18nText(
+        'settingsApplicationManagement',
+        'batch_delete.confirm',
+        {
+          count: selectedApplications.length
+        }
+      ),
+      okText: i18nText('applications', 'auto.delete'),
+      okButtonProps: { danger: true },
+      cancelText: i18nText('applications', 'auto.cancel'),
+      onOk: () => {
+        confirmation.update({
+          cancelButtonProps: { disabled: true },
+          keyboard: false
+        });
+        return batchDeleteMutation.mutateAsync(selectedApplications);
+      }
+    });
+  };
 
   const confirmDelete = useCallback(
     (application: SettingsApplicationManagementItem) => {
@@ -515,7 +613,10 @@ export function ApplicationManagementPanel() {
               icon: <DeleteOutlined />,
               label: i18nText('applications', 'auto.delete'),
               danger: true,
-              disabled: !deleteAllowed
+              disabled:
+                !deleteAllowed ||
+                batchDeleteMutation.isPending ||
+                deleteMutation.isPending
             }
           ];
           return (
@@ -566,6 +667,8 @@ export function ApplicationManagementPanel() {
       }
     ],
     [
+      batchDeleteMutation.isPending,
+      deleteMutation.isPending,
       canCreate,
       canDelete,
       canEdit,
@@ -826,6 +929,9 @@ export function ApplicationManagementPanel() {
           rowKey="id"
           rowSelection={{
             selectedRowKeys: selectedApplicationIds,
+            getCheckboxProps: () => ({
+              disabled: batchDeleteMutation.isPending
+            }),
             onChange: (keys) =>
               setSelectedApplicationIds(keys.map((key) => String(key)))
           }}
@@ -840,6 +946,47 @@ export function ApplicationManagementPanel() {
                 >
                   {i18nText('settings', 'auto.new')}
                 </Button>
+              ) : null}
+              {canDeleteAny || canDeleteOwn ? (
+                <Tooltip
+                  title={
+                    selectedApplicationIds.length > 0 && !canDeleteSelection
+                      ? i18nText(
+                          'settingsApplicationManagement',
+                          'batch_delete.selection_permission_required'
+                        )
+                      : undefined
+                  }
+                >
+                  <span>
+                    <Button
+                      danger
+                      aria-label={i18nText(
+                        'settingsApplicationManagement',
+                        'batch_delete.action',
+                        {
+                          count: selectedApplicationIds.length
+                        }
+                      )}
+                      icon={<DeleteOutlined />}
+                      disabled={
+                        !canDeleteSelection ||
+                        batchDeleteMutation.isPending ||
+                        deleteMutation.isPending
+                      }
+                      loading={batchDeleteMutation.isPending}
+                      onClick={confirmBatchDelete}
+                    >
+                      {i18nText(
+                        'settingsApplicationManagement',
+                        'batch_delete.action',
+                        {
+                          count: selectedApplicationIds.length
+                        }
+                      )}
+                    </Button>
+                  </span>
+                </Tooltip>
               ) : null}
               {canCreate ? (
                 <ApplicationManagementImportButton
