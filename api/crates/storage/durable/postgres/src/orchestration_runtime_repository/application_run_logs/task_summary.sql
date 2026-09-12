@@ -1,6 +1,7 @@
             with tasks as (
                 select coalesce(log_task_run_id,flow_run_id) as anchor_id,
-                    application_id,scope_id,api_key_id,coalesce(external_user,'') as external_user_key,count(*)::bigint as invocation_count,
+                    application_id,scope_id,api_key_id,coalesce(external_user,'') as external_user_key,
+                    sum(invocation_count)::bigint as invocation_count,sum(compaction_count)::bigint as compaction_count,
                     min(started_at) as started_at,min(created_at) as created_at,
                     max(updated_at) as updated_at,
                     case when bool_and(finished_at is not null) then max(finished_at) end as finished_at,

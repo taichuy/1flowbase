@@ -62,6 +62,7 @@ export interface ConsoleApplicationRunSummary {
   caused_by_run_id: string | null;
   log_conversation_id: string | null;
   log_task_run_id: string | null;
+  call_kind: string;
   id: string;
   application_id?: string;
   application_type?: string;
@@ -88,6 +89,7 @@ export interface ConsoleApplicationRunSummary {
 
 export interface ConsoleApplicationRunStatistics {
   invocation_count: number;
+  compaction_count: number;
   count_tokens_input_tokens: number | null;
   total_tokens: number | null;
   input_tokens: number | null;

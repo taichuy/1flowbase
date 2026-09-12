@@ -70,6 +70,8 @@ pub struct ApplicationRunLogResponse {
 pub struct ApplicationRunStatisticsResponse {
     #[serde(default = "single_run_invocation_count")]
     pub invocation_count: i64,
+    #[serde(default)]
+    pub compaction_count: i64,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_tokens: Option<i64>,

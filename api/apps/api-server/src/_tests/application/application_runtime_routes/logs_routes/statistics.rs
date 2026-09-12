@@ -219,8 +219,10 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     .await
     .unwrap();
 
+    // #2034 AC-001: single debug runs report their call kind and zero compactions.
     let expected_statistics = json!({
         "invocation_count": 1,
+        "compaction_count": 0,
         "total_tokens": 50,
         "input_tokens": 10,
         "output_tokens": 20,
@@ -250,6 +252,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
         list_payload["data"]["items"][0]["statistics"],
         expected_statistics
     );
+    assert_eq!(list_payload["data"]["items"][0]["call_kind"], "generate");
 
     let trace_tree = app
         .clone()

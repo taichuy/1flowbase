@@ -114,6 +114,7 @@ export function sampleRunDetail(): ApplicationRunDetail {
     },
     statistics: {
       invocation_count: 1,
+      compaction_count: 0,
       count_tokens_input_tokens: null,
       total_tokens: 50,
       input_tokens: 40,
@@ -247,6 +248,7 @@ export function sampleTraceTree() {
     },
     statistics: {
       invocation_count: 1,
+      compaction_count: 0,
       total_tokens: 50,
       input_tokens: 40,
       output_tokens: 10,

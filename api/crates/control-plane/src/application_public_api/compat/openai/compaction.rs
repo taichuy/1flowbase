@@ -53,6 +53,10 @@ impl OpenAiResponsesRequestContext {
         self.captured_codex_turn_metadata = Some(metadata);
         self
     }
+
+    pub(crate) fn captured_codex_turn_metadata(&self) -> Option<&Value> {
+        self.captured_codex_turn_metadata.as_ref()
+    }
 }
 
 /// A closed classifier failure. Unknown Codex implementations are deliberately

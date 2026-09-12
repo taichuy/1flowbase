@@ -794,13 +794,10 @@ impl PgControlPlaneStore {
                     null::text as model,(select string_agg(m.content,E'\n' order by m.display_sequence) from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='assistant') as answer,
                     runs.started_at,runs.finished_at,
                     (extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_summaries s
+                from application_run_log_conversation_runs($1,
+                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
+                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
                 join flow_runs runs on runs.id=s.flow_run_id
-                join application_conversations c on c.id=s.log_conversation_id
-                where s.application_id=$1 and c.application_id=$1
-                    and c.id::text=$2 and c.client_thread_id is not null
-                    and runs.api_key_id=c.api_key_id
-                    and coalesce(runs.external_user,'')=coalesce(c.external_user,'')
             ),
             ordered as (
                 select
@@ -883,13 +880,10 @@ impl PgControlPlaneStore {
                 group by runs.id
                 union all
                 select runs.id,(extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_summaries s
+                from application_run_log_conversation_runs($1,
+                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
+                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
                 join flow_runs runs on runs.id=s.flow_run_id
-                join application_conversations c on c.id=s.log_conversation_id
-                where s.application_id=$1 and c.application_id=$1
-                    and c.id::text=$2 and c.client_thread_id is not null
-                    and runs.api_key_id=c.api_key_id
-                    and coalesce(runs.external_user,'')=coalesce(c.external_user,'')
             ),
             ordered as (
                 select

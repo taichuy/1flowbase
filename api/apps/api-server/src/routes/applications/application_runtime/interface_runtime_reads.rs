@@ -256,6 +256,7 @@ impl ApplicationRuntimeReadsAdapter {
             .map(|log_summary| {
                 let statistics = application_logs::ApplicationRunStatisticsResponse {
                     invocation_count: log_summary.invocation_count,
+                    compaction_count: log_summary.compaction_count,
                     count_tokens_input_tokens: log_summary.count_tokens_input_tokens,
                     total_tokens: log_summary.total_tokens,
                     input_tokens: log_summary.input_tokens,
@@ -275,6 +276,7 @@ impl ApplicationRuntimeReadsAdapter {
                 response.log_conversation_id =
                     log_summary.log_conversation_id.map(|id| id.to_string());
                 response.log_task_run_id = log_summary.log_task_run_id.map(|id| id.to_string());
+                response.call_kind = log_summary.call_kind;
                 response
             })
             .collect();

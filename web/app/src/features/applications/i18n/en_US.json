@@ -320,6 +320,7 @@
     "trigger_load_failed": "Failed to load trigger configuration",
     "tags": "Tags",
     "task_invocation_count": "{{count}} calls",
+    "task_compaction_count": "{{count}} compactions",
     "show_current_task": "Show current task",
     "show_log_conversation": "Show conversation",
     "parent_task": "Parent task"

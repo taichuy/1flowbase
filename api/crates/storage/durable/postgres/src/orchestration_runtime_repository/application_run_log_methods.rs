@@ -123,7 +123,8 @@ impl PgControlPlaneStore {
                 started_at,
                 finished_at,
                 created_at,
-                updated_at
+                updated_at,
+                call_kind
             ) values (
                 $1, (select workspace_id from applications where id = $2), $2, $3, $4,
                 $5, $6, $7, $8, $20,
@@ -287,19 +288,20 @@ impl PgControlPlaneStore {
                         where c.flow_run_id=$1 and coalesce(t.item->>'call_id',t.item->>'id')=e.payload#>>'{item,call_id}'
                       )
                       and not exists (
-                        select 1 from flow_runs current_run join flow_runs prior
-                          on prior.application_id=current_run.application_id and prior.api_key_id=current_run.api_key_id
-                          and prior.log_context->>'log_conversation_id'=current_run.log_context->>'log_conversation_id'
-                          and prior.id<current_run.id
-                        join runtime_events earlier on earlier.flow_run_id=prior.id
+                        select 1 from flow_runs current_run
+                        join application_run_log_conversation_runs(current_run.application_id,
+                            (current_run.log_context->>'log_conversation_id')::uuid) prior on prior.run_id<current_run.id
+                        join runtime_events earlier on earlier.flow_run_id=prior.run_id
                         where current_run.id=$1 and earlier.event_type='provider_output_item_done'
                           and earlier.payload#>>'{item,call_id}'=e.payload#>>'{item,call_id}'
                       )
                 ),
-                $16, $17, $18, $19
+                $16, $17, $18, $19,
+                application_run_log_call_kind($1)
             )
             on conflict (flow_run_id) do update
             set application_id = excluded.application_id,
+                call_kind = excluded.call_kind,
                 scope_id = excluded.scope_id,
                 run_mode = excluded.run_mode,
                 status = excluded.status,

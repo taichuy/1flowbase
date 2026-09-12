@@ -41,6 +41,7 @@ fn to_flow_run_summary_response(
         caused_by_run_id: None,
         log_conversation_id: None,
         log_task_run_id: None,
+        call_kind: domain::AiNativeOperation::default().kind().to_owned(),
         id: summary.id.to_string(),
         application_id: application.id.to_string(),
         application_type,
@@ -190,6 +191,7 @@ fn application_run_statistics_for_records(
 
     application_logs::ApplicationRunStatisticsResponse {
         invocation_count: 1,
+        compaction_count: 0,
         count_tokens_input_tokens: None,
         total_tokens,
         input_tokens,

@@ -100,6 +100,13 @@ export function getApplicationRunsTableColumns(
               })}
             </Tag>
           )}
+          {record.compaction_count > 0 && (
+            <Tag>
+              {t('auto.task_compaction_count', {
+                count: record.compaction_count
+              })}
+            </Tag>
+          )}
           {value ? `${value}` : '-'}
           {record.parent_run_id && (
             <a

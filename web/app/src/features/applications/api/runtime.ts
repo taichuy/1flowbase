@@ -58,7 +58,9 @@ export type ApplicationRunSummary = {
   log_task_run_id: string | null;
   parent_run_id: string | null;
   caused_by_run_id: string | null;
+  call_kind: string;
   invocation_count: number;
+  compaction_count: number;
   id: string;
   application_id: string;
   scope_id: string;
@@ -1070,7 +1072,9 @@ function toApplicationRunSummary(
     log_task_run_id: optionalStringField(record, 'log_task_run_id'),
     parent_run_id: optionalStringField(record, 'parent_run_id'),
     caused_by_run_id: optionalStringField(record, 'caused_by_run_id'),
+    call_kind: stringField(record, 'call_kind'),
     invocation_count: numberField(record, 'invocation_count'),
+    compaction_count: numberField(record, 'compaction_count'),
     run_mode: stringField(
       record,
       'run_mode'

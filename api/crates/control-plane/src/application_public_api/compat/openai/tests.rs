@@ -984,7 +984,7 @@ fn issue_2032_log_identity_rejects_conflicts_and_preserves_fork_provenance() {
         "thread_id":"child", "turn_id":"turn-child",
         "x-codex-turn-metadata":serde_json::json!({"thread_id":"child","turn_id":"turn-child","forked_from_thread_id":"parent","request_kind":"turn"}).to_string()
     },"input":[{"role":"user","content":"same question"}]});
-    let mut context = capture_application_run_log_context(&body);
+    let mut context = capture_application_run_log_context(&body, None);
     let snapshot = serde_json::to_value(&context).unwrap();
     assert_eq!(snapshot["forked_from_thread_id"], "parent");
     assert!(snapshot["identity_sources"]
@@ -999,6 +999,189 @@ fn issue_2032_log_identity_rejects_conflicts_and_preserves_fork_provenance() {
     assert!(context.thread_id.is_none());
     let invalid = capture_application_run_log_context(
         &serde_json::json!({"client_metadata":{"x-codex-turn-metadata":"[]"}}),
+        None,
     );
     assert_eq!(invalid.identity_status, "invalid_identity");
+}
+
+// #2034 AC-002/003/004/005: the mapping layer reconciles every Codex projection
+// (body flat keys, x-codex-turn-metadata, ingress headers) into one protocol
+// neutral declaration and writes the protocol name itself.
+#[test]
+fn issue_2034_mapping_layer_reconciles_header_only_identity_and_subagent() {
+    use super::log_context::reconcile_client_log_headers;
+    let turn_metadata = serde_json::json!({"thread_id":"thread-H","turn_id":"turn-H","request_kind":"turn","subagent_kind":"review"});
+    let context = OpenAiResponsesRequestContext::responses()
+        .with_captured_codex_turn_metadata(turn_metadata.clone());
+    let translated = translate_response_request_with_context(
+        json!({"model":"1flowbase","input":[{"role":"user","content":"header only"}]}),
+        context,
+    )
+    .unwrap();
+    let mut log_context = translated
+        .request
+        .metadata
+        .application_run_log_context()
+        .cloned()
+        .expect("header declared identity is captured without body client_metadata");
+    assert_eq!(log_context.protocol.as_deref(), Some("openai_responses"));
+    assert_eq!(log_context.thread_id.as_deref(), Some("thread-H"));
+    assert_eq!(log_context.turn_id.as_deref(), Some("turn-H"));
+    assert_eq!(log_context.identity_status, "identified");
+    assert_eq!(log_context.subagent_kind.as_deref(), Some("review"));
+    assert_eq!(log_context.call_kind.as_deref(), Some("generate"));
+    assert!(log_context
+        .identity_sources
+        .iter()
+        .any(|source| source == "header.x-codex-turn-metadata"));
+    // The envelope session-id is the route's key-scoped reconnect identity, not
+    // the client's session; it must never be treated as a conflicting declaration.
+    let headers = std::collections::BTreeMap::from([
+        ("thread-id".to_string(), vec!["thread-H".to_string()]),
+        ("session-id".to_string(), vec!["9f2c3a".repeat(10)]),
+        ("x-openai-subagent".to_string(), vec!["review".to_string()]),
+    ]);
+    reconcile_client_log_headers(&mut log_context, &headers);
+    assert_eq!(log_context.identity_status, "identified");
+    assert_eq!(log_context.session_id, None);
+    assert!(!log_context
+        .identity_sources
+        .iter()
+        .any(|source| source == "header.session-id"));
+    let conflicting = std::collections::BTreeMap::from([(
+        "x-openai-subagent".to_string(),
+        vec!["compact".to_string()],
+    )]);
+    reconcile_client_log_headers(&mut log_context, &conflicting);
+    assert_eq!(log_context.identity_status, "conflicting_identity");
+    assert!(log_context.thread_id.is_none());
+
+    // A WebSocket handshake replays the prewarm header for every turn: the
+    // thread must still agree, but the body owns the turn-scoped declarations.
+    let handshake = OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(
+        json!({"thread_id":"thread-H","session_id":"session-H","request_kind":"prewarm"}),
+    );
+    let turn = translate_response_request_with_context(
+        json!({"model":"1flowbase","client_metadata":{"thread_id":"thread-H","turn_id":"turn-1",
+            "x-codex-turn-metadata":json!({"thread_id":"thread-H","turn_id":"turn-1","request_kind":"turn","root_turn_id":"turn-1"}).to_string()},
+            "input":[{"role":"user","content":"real turn"}]}),
+        handshake.clone(),
+    )
+    .unwrap();
+    let context = turn.request.metadata.application_run_log_context().unwrap();
+    assert_eq!(context.identity_status, "identified");
+    assert_eq!(context.request_kind.as_deref(), Some("turn"));
+    assert_eq!(context.turn_id.as_deref(), Some("turn-1"));
+    let other_thread = translate_response_request_with_context(
+        json!({"model":"1flowbase","client_metadata":{"thread_id":"thread-X","turn_id":"turn-1"},
+            "input":[{"role":"user","content":"real turn"}]}),
+        handshake,
+    )
+    .unwrap();
+    assert_eq!(
+        other_thread
+            .request
+            .metadata
+            .application_run_log_context()
+            .unwrap()
+            .identity_status,
+        "conflicting_identity"
+    );
+}
+
+// #2034 AC-001/004: call_kind is owned by the AI Native operation; request_kind
+// is retained as the client's own value and never decides grouping by itself.
+#[test]
+fn issue_2034_call_kind_derives_from_native_operation_not_request_kind() {
+    let compaction = translate_response_request_with_context(
+        json!({"model":"1flowbase","input":[{"role":"user","content":"compact"},{"type":"compaction_trigger"}]}),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "thread_id":"thread-C","turn_id":"turn-C","request_kind":"compaction",
+            "compaction":{"implementation":"responses_compaction_v2"}
+        })),
+    )
+    .unwrap();
+    let context = compaction
+        .request
+        .metadata
+        .application_run_log_context()
+        .unwrap();
+    assert_eq!(context.call_kind.as_deref(), Some("compact"));
+    assert_eq!(context.request_kind.as_deref(), Some("compaction"));
+    assert_eq!(context.turn_id.as_deref(), Some("turn-C"));
+    // Codex's default local-summary compaction executes as a generate profile;
+    // the log still classifies it as a compaction of the same turn.
+    let local_summary = translate_response_request_with_context(
+        json!({"model":"1flowbase","input":[{"role":"user","content":"summarize history"}]}),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "thread_id":"thread-C","turn_id":"turn-C","request_kind":"compaction",
+            "compaction":{"implementation":"responses"}
+        })),
+    )
+    .unwrap();
+    let context = local_summary
+        .request
+        .metadata
+        .application_run_log_context()
+        .unwrap();
+    assert_eq!(context.call_kind.as_deref(), Some("compact"));
+    assert_eq!(context.turn_id.as_deref(), Some("turn-C"));
+    let memory = translate_response_request_with_context(
+        json!({"model":"1flowbase","input":[{"role":"user","content":"remember"}]}),
+        OpenAiResponsesRequestContext::responses()
+            .with_captured_codex_turn_metadata(json!({"request_kind":"memory","turn_id":"turn-M"})),
+    )
+    .unwrap();
+    let context = memory
+        .request
+        .metadata
+        .application_run_log_context()
+        .unwrap();
+    assert_eq!(context.identity_status, "missing_identity");
+    assert_eq!(context.request_kind.as_deref(), Some("memory"));
+    assert_eq!(context.call_kind.as_deref(), Some("generate"));
+}
+
+// #2034 AC-002 diagnostic: the real HTTP ingress envelope must reconcile with
+// the body declarations without inventing a conflict.
+#[test]
+fn issue_2034_ingress_envelope_headers_reconcile_with_body_identity() {
+    use super::log_context::reconcile_client_log_headers;
+    use crate::application_public_api::client_protocol_envelope::{
+        capture_client_protocol_envelope, ClientProtocolIngressPolicy,
+    };
+    let thread = "probe-thread-1";
+    let meta = json!({"thread_id":thread,"turn_id":"probe-turn-1","request_kind":"turn","session_id":thread}).to_string();
+    let mut envelope = capture_client_protocol_envelope(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        [
+            ("authorization", "Bearer secret"),
+            ("content-type", "application/json"),
+            ("thread-id", thread),
+            ("session-id", thread),
+            ("x-codex-turn-metadata", meta.as_str()),
+        ],
+    )
+    .expect("headers captured");
+    // Mirror bind_responses_session_context: the route replaces session-id
+    // with a scoped digest before the run service reconciles the log context.
+    envelope
+        .headers
+        .insert("session-id".into(), vec!["a".repeat(64)]);
+    let translated = translate_response_request_with_context(
+        json!({"model":"1flowbase","client_metadata":{"thread_id":thread,"turn_id":"probe-turn-1","session_id":thread,"x-codex-turn-metadata":meta},
+            "input":[{"role":"user","content":"OK"}]}),
+        OpenAiResponsesRequestContext::responses()
+            .with_captured_codex_turn_metadata(serde_json::from_str(&meta).unwrap()),
+    )
+    .unwrap();
+    let mut context = translated
+        .request
+        .metadata
+        .application_run_log_context()
+        .cloned()
+        .unwrap();
+    reconcile_client_log_headers(&mut context, &envelope.headers);
+    assert_eq!(context.identity_status, "identified", "{context:?}");
+    assert_eq!(context.session_id.as_deref(), Some(thread));
 }

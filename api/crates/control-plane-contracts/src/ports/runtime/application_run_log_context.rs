@@ -7,6 +7,15 @@ pub struct ApplicationRunLogContext {
     pub identity_status: String,
     #[serde(default)]
     pub identity_sources: Vec<String>,
+    /// Client protocol that declared the identity; written by the mapping layer.
+    #[serde(default)]
+    pub protocol: Option<String>,
+    /// AI Native operation kind (generate / compact / count_tokens) owned by the
+    /// Native layer. Grouping counts rely on it, never on `request_kind`.
+    #[serde(default)]
+    pub call_kind: Option<String>,
+    #[serde(default)]
+    pub subagent_kind: Option<String>,
     pub forked_from_thread_id: Option<String>,
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,

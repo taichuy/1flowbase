@@ -54,6 +54,17 @@ impl AiNativeOperation {
         }
     }
 
+    /// Log-facing call kind. A local summary is a compaction the client asked
+    /// for; it only executes through a generate profile, so the log classifies
+    /// it with the other compactions instead of as a user-visible invocation.
+    pub fn call_kind(self) -> &'static str {
+        match self {
+            Self::Generate(AiNativeGenerateProfile::Standard) => "generate",
+            Self::Generate(AiNativeGenerateProfile::LocalSummary) | Self::Compact(_) => "compact",
+            Self::CountTokens => "count_tokens",
+        }
+    }
+
     pub fn kind(self) -> &'static str {
         match self {
             Self::Generate(_) => "generate",

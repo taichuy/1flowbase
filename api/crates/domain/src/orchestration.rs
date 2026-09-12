@@ -470,7 +470,9 @@ pub struct ApplicationRunSummary {
 pub struct ApplicationRunLogSummary {
     pub parent_run_id: Option<Uuid>,
     pub caused_by_run_id: Option<Uuid>,
+    pub call_kind: String,
     pub invocation_count: i64,
+    pub compaction_count: i64,
     pub log_conversation_id: Option<Uuid>,
     pub log_task_run_id: Option<Uuid>,
     pub run: ApplicationRunSummary,

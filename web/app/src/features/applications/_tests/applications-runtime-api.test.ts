@@ -572,6 +572,8 @@ describe('applications runtime api', () => {
         {
           id: 'run-1',
           invocation_count: 4,
+          compaction_count: 1,
+          call_kind: 'generate',
           log_conversation_id: 'log-conversation-1',
           log_task_run_id: 'run-1',
           application_id: 'app-1',
@@ -613,6 +615,8 @@ describe('applications runtime api', () => {
         {
           id: 'run-1',
           invocation_count: 4,
+          compaction_count: 1,
+          call_kind: 'generate',
           log_conversation_id: 'log-conversation-1',
           log_task_run_id: 'run-1',
           application_id: 'app-1',

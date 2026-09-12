@@ -523,7 +523,9 @@ pub(super) fn map_application_run_log_summary(
         StoredApplicationRunLogSummaryRow {
             parent_run_id: row.get("parent_run_id"),
             caused_by_run_id: row.get("caused_by_run_id"),
+            call_kind: row.get("call_kind"),
             invocation_count: row.get("invocation_count"),
+            compaction_count: row.get("compaction_count"),
             log_conversation_id: row.get("log_conversation_id"),
             log_task_run_id: row.get("log_task_run_id"),
             run: StoredApplicationRunSummaryRow {

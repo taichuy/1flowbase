@@ -215,6 +215,9 @@ pub struct FlowRunSummaryResponse {
     pub caused_by_run_id: Option<String>,
     pub log_conversation_id: Option<String>,
     pub log_task_run_id: Option<String>,
+    /// AI Native operation kind of the anchor call (generate / compact / count_tokens).
+    #[serde(default = "generate_call_kind")]
+    pub call_kind: String,
     pub id: String,
     pub application_id: String,
     pub application_type: String,
@@ -689,4 +692,8 @@ pub struct NodeLastRunResponse {
     pub node_run: NodeRunResponse,
     pub checkpoints: Vec<CheckpointResponse>,
     pub events: Vec<RunEventResponse>,
+}
+
+fn generate_call_kind() -> String {
+    domain::AiNativeOperation::default().kind().to_owned()
 }

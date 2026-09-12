@@ -15,6 +15,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     let mut input = CreateFlowRunInput {
         application_run_log_context: Some(ApplicationRunLogContext {
             identity_status: "identified".into(),
+            protocol: Some("openai_responses".into()),
             thread_id: Some("thread-1".into()),
             turn_id: Some("turn-1".into()),
             ..Default::default()
@@ -358,6 +359,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     input.idempotency_key = Some("child-task".into());
     input.application_run_log_context = Some(ApplicationRunLogContext {
         identity_status: "identified".into(),
+        protocol: Some("openai_responses".into()),
         thread_id: Some("child-thread".into()),
         turn_id: Some("child-turn".into()),
         parent_thread_id: Some("thread-1".into()),
@@ -384,6 +386,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         input.status = FlowRunStatus::Succeeded;
         input.application_run_log_context = Some(ApplicationRunLogContext {
             identity_status: "conflicting_identity".into(),
+            protocol: Some("openai_responses".into()),
             thread_id: Some("thread-1".into()),
             turn_id: Some("turn-1".into()),
             ..Default::default()
@@ -446,6 +449,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     input.status = FlowRunStatus::Running;
     input.application_run_log_context = Some(ApplicationRunLogContext {
         identity_status: "identified".into(),
+        protocol: Some("openai_responses".into()),
         thread_id: Some("thread-1".into()),
         turn_id: Some("turn-1".into()),
         ..Default::default()

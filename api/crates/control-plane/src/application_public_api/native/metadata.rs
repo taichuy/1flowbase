@@ -82,10 +82,14 @@ impl NativeRequestMetadata {
         self.application_run_log_context.as_ref()
     }
 
+    /// The Native layer owns the call kind: it is the classified AI Native
+    /// operation, so protocol mappers cannot declare a kind the runtime will not execute.
     pub(crate) fn set_application_run_log_context(
         &mut self,
-        context: control_plane_contracts::ports::ApplicationRunLogContext,
+        mut context: control_plane_contracts::ports::ApplicationRunLogContext,
+        execution_operation: domain::AiNativeOperation,
     ) {
+        context.call_kind = Some(execution_operation.call_kind().to_owned());
         self.application_run_log_context = Some(context);
     }
 

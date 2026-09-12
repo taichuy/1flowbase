@@ -173,6 +173,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         "size"
         | "total_tokens"
         | "invocation_count"
+        | "compaction_count"
         | "unique_node_count"
         | "tool_callback_count"
         | "input_tokens"
@@ -395,7 +396,9 @@ const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
     "log_task_run_id",
     "parent_run_id",
     "caused_by_run_id",
+    "call_kind",
     "invocation_count",
+    "compaction_count",
     "id",
     "flow_run_id",
     "scope_id",

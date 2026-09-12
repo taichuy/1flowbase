@@ -224,7 +224,7 @@ impl PgControlPlaneStore {
     ) -> Result<control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage> {
         let limit = input.limit.clamp(1, 50);
         let related_runs = sqlx::query_scalar::<_, Uuid>(
-            "select sibling.flow_run_id from application_run_log_summaries anchor              join application_run_log_summaries sibling on sibling.application_id=anchor.application_id              and sibling.scope_id=anchor.scope_id              and sibling.api_key_id is not distinct from anchor.api_key_id              and coalesce(sibling.external_user,'')=coalesce(anchor.external_user,'')              and (sibling.flow_run_id=anchor.flow_run_id or                   (anchor.log_task_run_id is not null and sibling.log_task_run_id=anchor.log_task_run_id))              where anchor.application_id=$1 and anchor.flow_run_id=$2 order by sibling.flow_run_id",
+            "select run_id from application_run_log_task_runs($1,$2) order by run_id",
         ).bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await?;
         for related in related_runs {
             self.ensure_application_run_conversation_message_items_projection_for_read(
@@ -798,15 +798,8 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
 // the original list. Single-run cursors retain their existing sequence values.
 fn application_run_task_message_items_cte() -> &'static str {
     r#"with task_runs as (
-        select sibling.*
-        from application_run_log_summaries anchor
-        join application_run_log_summaries sibling on sibling.application_id=anchor.application_id
-            and sibling.scope_id=anchor.scope_id
-            and sibling.api_key_id is not distinct from anchor.api_key_id
-            and coalesce(sibling.external_user,'')=coalesce(anchor.external_user,'')
-            and (sibling.flow_run_id=anchor.flow_run_id or
-                (anchor.log_task_run_id is not null and sibling.log_task_run_id=anchor.log_task_run_id))
-        where anchor.application_id=$1 and anchor.flow_run_id=$2
+        select s.* from application_run_log_task_runs($1,$2) member
+        join application_run_log_summaries s on s.flow_run_id=member.run_id
     ), message_items as (
         select m.* from task_runs s
         join application_run_conversation_message_items m on m.flow_run_id=s.flow_run_id
@@ -896,9 +889,10 @@ impl PgControlPlaneStore {
         let revision = Self::application_run_native_message_source_revision(tx, run.id).await?;
         let rows = sqlx::query(
             r#"with scope_runs as materialized (
-                select id,log_context from flow_runs where application_id=$2
-                and api_key_id is not distinct from $3 and coalesce(external_user,'')=coalesce($4::text,'')
-                and (id=$1 or ($5::text is not null and log_context->>'log_conversation_id'=$5))
+                select id,log_context from flow_runs where id=$1
+                union
+                select f.id,f.log_context from application_run_log_conversation_runs($2,$3::uuid) member
+                join flow_runs f on f.id=member.run_id
             ), facts as (
                 select f.id as run_id,e.sequence,
                     'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
@@ -918,8 +912,8 @@ impl PgControlPlaneStore {
             select o.source_key,o.item,
                 exists(select 1 from facts f where f.source_key=o.source_key and f.item is distinct from o.item) as conflicting
             from owners o where run_id=$1 order by sequence,source_key"#,
-        ).bind(run.id).bind(run.application_id).bind(run.api_key_id).bind(run.external_user.as_deref())
-            .bind(context.get("log_conversation_id").and_then(Value::as_str))
+        ).bind(run.id).bind(run.application_id)
+            .bind(context.get("log_conversation_id").and_then(Value::as_str).and_then(|v| Uuid::parse_str(v).ok()))
             .fetch_all(&mut **tx).await?;
         let mut items = Vec::new();
         // A full request history does not create another user message. Only an
@@ -997,12 +991,11 @@ impl PgControlPlaneStore {
         sqlx::query_scalar(r#"
             with anchor as (select * from flow_runs where id=$1 and log_context is not null),
             members as materialized (
-                select f.id,f.log_context from flow_runs f join anchor a
-                  on f.application_id=a.application_id and f.scope_id=a.scope_id
-                  and f.api_key_id is not distinct from a.api_key_id
-                  and coalesce(f.external_user,'')=coalesce(a.external_user,'')
-                  and (f.id=a.id or (a.log_context->>'log_conversation_id' is not null
-                    and f.log_context->>'log_conversation_id'=a.log_context->>'log_conversation_id'))
+                select id,log_context from anchor
+                union
+                select f.id,f.log_context from anchor a
+                join application_run_log_conversation_runs(a.application_id,(a.log_context->>'log_conversation_id')::uuid) member on true
+                join flow_runs f on f.id=member.run_id
             )
             select case when exists(select 1 from anchor) then
                 (select count(*)+coalesce(sum(jsonb_array_length(coalesce(log_context->'tool_results','[]'::jsonb))),0)::bigint from members)

@@ -430,6 +430,7 @@ describe('ApplicationLogsPage - artifacts trace overview', () => {
     };
     priorRunDetail.statistics = {
       invocation_count: 1,
+      compaction_count: 0,
       count_tokens_input_tokens: null,
       total_tokens: 4213,
       input_tokens: 3414,
@@ -446,6 +447,7 @@ describe('ApplicationLogsPage - artifacts trace overview', () => {
     currentRunDetail.node_runs[0]!.flow_run_id = 'run-2';
     currentRunDetail.statistics = {
       invocation_count: 1,
+      compaction_count: 0,
       count_tokens_input_tokens: null,
       total_tokens: 3843,
       input_tokens: 3353,
