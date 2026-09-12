@@ -91,7 +91,13 @@ export function getApplicationRunsTableColumns(
       dataIndex: 'title',
       width: 240,
       ellipsis: true,
-      render: (value, record) => (
+      render: (value) => (value ? `${value}` : '-')
+    },
+    {
+      key: 'task_summary',
+      title: t('auto.task_summary'),
+      width: 200,
+      render: (_value, record) => (
         <span>
           {record.invocation_count > 1 && (
             <Tag>
@@ -113,7 +119,6 @@ export function getApplicationRunsTableColumns(
           {record.outcome === 'no_final_answer' && (
             <Tag color="warning">{t('auto.task_outcome_no_final_answer')}</Tag>
           )}
-          {value ? `${value}` : '-'}
           {record.parent_run_id && (
             <a
               href={`?run_id=${encodeURIComponent(record.parent_run_id)}`}

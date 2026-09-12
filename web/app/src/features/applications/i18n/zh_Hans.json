@@ -319,6 +319,7 @@
     "schedule_enabled": "启用定时任务",
     "trigger_load_failed": "触发器配置加载失败",
     "tags": "标签",
+    "task_summary": "任务概况",
     "task_invocation_count": "{{count}} 次调用",
     "task_compaction_count": "{{count}} 次压缩",
     "task_outcome_in_progress": "进行中",

@@ -319,6 +319,7 @@
     "schedule_enabled": "Enable schedule",
     "trigger_load_failed": "Failed to load trigger configuration",
     "tags": "Tags",
+    "task_summary": "Task summary",
     "task_invocation_count": "{{count}} calls",
     "task_compaction_count": "{{count}} compactions",
     "task_outcome_in_progress": "In progress",

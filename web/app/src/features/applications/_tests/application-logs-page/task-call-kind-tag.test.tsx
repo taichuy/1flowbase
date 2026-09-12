@@ -5,8 +5,7 @@ import { describe, expect, test } from 'vitest';
 import type { ApplicationRunSummary } from '../../api/runtime';
 import { getApplicationRunsTableColumns } from '../../components/logs/application-runs-table-columns';
 
-// #2034 AC-008: the original title column reports compaction calls separately
-// from the user-facing invocation count, using backend field names verbatim.
+// Task indicators belong to their own column; the title stays independent.
 const t = ((key: string, options?: { count?: number }) =>
   options?.count === undefined
     ? key
@@ -54,16 +53,32 @@ function summary(
   } as ApplicationRunSummary;
 }
 
-function renderTitle(record: ApplicationRunSummary) {
+function renderIndicators(record: ApplicationRunSummary) {
   const column = getApplicationRunsTableColumns(t).find(
-    (c) => c.key === 'title'
+    (c) => c.key === 'task_summary'
   );
   render(<>{column?.render?.(record.title, record, 0)}</>);
 }
 
 describe('task call kind tag', () => {
+  test('keeps task indicators out of the title column', () => {
+    const record = summary({ invocation_count: 4, outcome: 'no_final_answer' });
+    const title = getApplicationRunsTableColumns(t).find((c) => c.key === 'title');
+    render(<>{title?.render?.(record.title, record, 0)}</>);
+    expect(screen.getByText(record.title)).toBeInTheDocument();
+    expect(screen.queryByText(/auto\.task_/)).not.toBeInTheDocument();
+  });
+
+  test.each(['in_progress', 'no_final_answer'] as const)(
+    'shows %s in the independent column',
+    (outcome) => {
+      renderIndicators(summary({ outcome }));
+      expect(screen.getByText(`auto.task_outcome_${outcome}`)).toBeInTheDocument();
+    }
+  );
+
   test('shows generate invocations and compactions as separate tags', () => {
-    renderTitle(summary({ invocation_count: 3, compaction_count: 1 }));
+    renderIndicators(summary({ invocation_count: 3, compaction_count: 1 }));
     expect(
       screen.getByText('auto.task_invocation_count:3')
     ).toBeInTheDocument();
@@ -73,8 +88,8 @@ describe('task call kind tag', () => {
   });
 
   test('omits both tags for a single plain call', () => {
-    renderTitle(summary({}));
-    expect(screen.queryByText(/auto\.task_invocation_count/)).toBeNull();
-    expect(screen.queryByText(/auto\.task_compaction_count/)).toBeNull();
+    renderIndicators(summary({}));
+    expect(screen.queryByText(/auto\.task_invocation_count/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/auto\.task_compaction_count/)).not.toBeInTheDocument();
   });
 });
