@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use axum::{Json, Router, extract::State, http::HeaderMap};
+use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, FrontendContributionBinding, ListFrontendBlockCatalogQuery,
 };
@@ -12,7 +12,7 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -320,9 +320,9 @@ impl InterfaceContract for FrontendBlocksOutput {
                                         "primitives",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(&(item).context_contract).primitives).len()
-                                            ),
+                                            serde_json::json!((&(&(item).context_contract)
+                                                .primitives)
+                                                .len()),
                                         )]),
                                     ),
                                     (

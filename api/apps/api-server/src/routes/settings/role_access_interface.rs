@@ -535,11 +535,9 @@ mod tests {
     fn f08c_registry_freezes_role_access_bindings() {
         let registry = compile_registry(Arc::new(UnavailableRoleAccessPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

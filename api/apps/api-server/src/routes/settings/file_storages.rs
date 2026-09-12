@@ -5,9 +5,9 @@ use access_control::{
     FILE_STORAGES_LIST_OPERATION_ID, FILE_STORAGES_UPDATE_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::file_management::{
     CreateFileStorageCommand, DeleteFileStorageCommand, FileStorageService,
@@ -28,7 +28,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError, ConsoleLocaleHints,
         },
-        console_route_assembly::{ConsoleRouteAssembly, console_get, console_put},
+        console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
     },
 };
 

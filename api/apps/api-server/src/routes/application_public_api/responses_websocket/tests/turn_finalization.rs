@@ -394,90 +394,176 @@ async fn root_1998_normal_bridge_delivers_terminal_and_finalizes_once() {
 
 #[tokio::test]
 async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completion() {
+    use super::super::actor::run_connection_loop;
     use axum::{extract::ws::WebSocketUpgrade, routing::get, Router};
     use futures_util::{SinkExt, StreamExt};
     use std::collections::VecDeque;
     use tokio_tungstenite::tungstenite::Message;
-    use super::super::actor::run_connection_loop;
 
     tokio::time::timeout(Duration::from_secs(5), async {
         let (first, first_invocation, first_observed) = invocation().await;
         let (second, second_invocation, second_observed) = invocation().await;
-        let invocations = Arc::new(Mutex::new(VecDeque::from([first_invocation, second_invocation])));
+        let invocations = Arc::new(Mutex::new(VecDeque::from([
+            first_invocation,
+            second_invocation,
+        ])));
         let (dispatched, mut dispatches) = mpsc::unbounded_channel();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let router = Router::new().route("/ws", get(move |upgrade: WebSocketUpgrade| {
-            let invocations = invocations.clone();
-            let dispatched = dispatched.clone();
-            async move {
-                upgrade.on_upgrade(move |socket| run_connection_loop(socket, move |_, frames| {
-                    let invocation = invocations.lock().unwrap().pop_front().expect("exactly two turns");
-                    dispatched.send(()).unwrap();
-                    let (events, completion) = invocation.into_parts();
-                    project_turn(events, completion, ResponsesWebSocketProjector::new("model".into(), None), frames)
-                }))
-            }
-        }));
-        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
-        let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws")).await.unwrap();
-        let create = Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string());
+        let router = Router::new().route(
+            "/ws",
+            get(move |upgrade: WebSocketUpgrade| {
+                let invocations = invocations.clone();
+                let dispatched = dispatched.clone();
+                async move {
+                    upgrade.on_upgrade(move |socket| {
+                        run_connection_loop(socket, move |_, frames| {
+                            let invocation = invocations
+                                .lock()
+                                .unwrap()
+                                .pop_front()
+                                .expect("exactly two turns");
+                            dispatched.send(()).unwrap();
+                            let (events, completion) = invocation.into_parts();
+                            project_turn(
+                                events,
+                                completion,
+                                ResponsesWebSocketProjector::new("model".into(), None),
+                                frames,
+                            )
+                        })
+                    })
+                }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws"))
+            .await
+            .unwrap();
+        let create =
+            Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string());
         socket.send(create.clone()).await.unwrap();
         dispatches.recv().await.unwrap();
         let mut first_run = run();
         first_run.status = NativeRunStatus::Succeeded;
-        first.emit(CompatibilityStreamEvent::new(first_run.clone(), RuntimeEventEnvelope::new(
-            first_run.id, 1, debug_stream_events::flow_finished(first_run.id, json!({})),
-        ))).await.unwrap();
-        let frame: Value = serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        first
+            .emit(CompatibilityStreamEvent::new(
+                first_run.clone(),
+                RuntimeEventEnvelope::new(
+                    first_run.id,
+                    1,
+                    debug_stream_events::flow_finished(first_run.id, json!({})),
+                ),
+            ))
+            .await
+            .unwrap();
+        let frame: Value =
+            serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert_eq!(frame["type"], "response.completed");
         socket.send(create).await.unwrap();
         socket.send(Message::Ping(vec![42])).await.unwrap();
         // Pong is a causal barrier proving the queued create was consumed while
         // the real Kernel terminal remains held, without using sleeps.
-        assert_eq!(socket.next().await.unwrap().unwrap(), Message::Pong(vec![42]));
-        assert!(dispatches.try_recv().is_err(), "next invocation must await the prior receipt");
-        first.finish(InterfaceStreamTerminal::Completed(CompatibilityBlockingOutput(first_run))).await.unwrap();
+        assert_eq!(
+            socket.next().await.unwrap().unwrap(),
+            Message::Pong(vec![42])
+        );
+        assert!(
+            dispatches.try_recv().is_err(),
+            "next invocation must await the prior receipt"
+        );
+        first
+            .finish(InterfaceStreamTerminal::Completed(
+                CompatibilityBlockingOutput(first_run),
+            ))
+            .await
+            .unwrap();
         drop(first);
         dispatches.recv().await.unwrap();
         let mut second_run = run();
         second_run.status = NativeRunStatus::Succeeded;
-        second.emit(CompatibilityStreamEvent::new(second_run.clone(), RuntimeEventEnvelope::new(
-            second_run.id, 1, debug_stream_events::flow_finished(second_run.id, json!({})),
-        ))).await.unwrap();
-        second.finish(InterfaceStreamTerminal::Completed(CompatibilityBlockingOutput(second_run))).await.unwrap();
+        second
+            .emit(CompatibilityStreamEvent::new(
+                second_run.clone(),
+                RuntimeEventEnvelope::new(
+                    second_run.id,
+                    1,
+                    debug_stream_events::flow_finished(second_run.id, json!({})),
+                ),
+            ))
+            .await
+            .unwrap();
+        second
+            .finish(InterfaceStreamTerminal::Completed(
+                CompatibilityBlockingOutput(second_run),
+            ))
+            .await
+            .unwrap();
         drop(second);
-        let frame: Value = serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        let frame: Value =
+            serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert_eq!(frame["type"], "response.completed");
         socket.close(None).await.unwrap();
         completed_once(first_observed, InterfaceInvocationTerminal::Completed).await;
         completed_once(second_observed, InterfaceInvocationTerminal::Completed).await;
         server.abort();
-    }).await.expect("two socket turns and their Kernel receipts must complete");
+    })
+    .await
+    .expect("two socket turns and their Kernel receipts must complete");
 }
 
 #[tokio::test]
 async fn issue_2028_sse_terminal_closes_delivery_without_waiting_for_producer_drop() {
     use crate::routes::application_public_api::{
-        compatibility_interface::project_compatibility_stream,
         compat_sse::openai_responses_interface_projection,
+        compatibility_interface::project_compatibility_stream,
     };
     for writer_closed in [false, true] {
         let (publisher, invocation, observed) = invocation().await;
         let (frames, mut received) = mpsc::channel(4);
-        if writer_closed { received.close(); }
+        if writer_closed {
+            received.close();
+        }
         let mut run = run();
         run.status = NativeRunStatus::Succeeded;
-        publisher.emit(CompatibilityStreamEvent::new(run.clone(), RuntimeEventEnvelope::new(
-            run.id, 1, debug_stream_events::flow_finished(run.id, json!({})),
-        ))).await.unwrap();
-        publisher.finish(InterfaceStreamTerminal::Completed(CompatibilityBlockingOutput(run))).await.unwrap();
+        publisher
+            .emit(CompatibilityStreamEvent::new(
+                run.clone(),
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    1,
+                    debug_stream_events::flow_finished(run.id, json!({})),
+                ),
+            ))
+            .await
+            .unwrap();
+        publisher
+            .finish(InterfaceStreamTerminal::Completed(
+                CompatibilityBlockingOutput(run),
+            ))
+            .await
+            .unwrap();
         let (events, completion) = invocation.into_parts();
-        tokio::time::timeout(Duration::from_secs(2), project_compatibility_stream(
-            events, completion, openai_responses_interface_projection("model".into(), None), frames,
-        )).await.expect("a producer retaining its sender must not hold SSE delivery open after terminal");
-        if !writer_closed { assert!(received.recv().await.is_some()); }
-        assert!(received.recv().await.is_none(), "SSE sender must close after the independent receipt");
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            project_compatibility_stream(
+                events,
+                completion,
+                openai_responses_interface_projection("model".into(), None),
+                frames,
+            ),
+        )
+        .await
+        .expect("a producer retaining its sender must not hold SSE delivery open after terminal");
+        if !writer_closed {
+            assert!(received.recv().await.is_some());
+        }
+        assert!(
+            received.recv().await.is_none(),
+            "SSE sender must close after the independent receipt"
+        );
         completed_once(observed, InterfaceInvocationTerminal::Completed).await;
         drop(publisher);
     }

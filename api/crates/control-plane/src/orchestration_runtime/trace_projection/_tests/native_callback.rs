@@ -139,14 +139,12 @@ fn ac_010_native_request_overlay_preserves_completed_callback_truth() {
     for source in original.source_refs.as_array().unwrap() {
         assert!(content.source_refs.as_array().unwrap().contains(source));
     }
-    assert!(
-        content
-            .source_refs
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|source| source["source_kind"] == "application_run_conversation_message_items")
-    );
+    assert!(content
+        .source_refs
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["source_kind"] == "application_run_conversation_message_items"));
 }
 
 fn flow_run(flow_run_id: Uuid, now: OffsetDateTime) -> domain::FlowRunRecord {

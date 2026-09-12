@@ -1,7 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
-    model_catalog::{AgentModelDescriptor, extract_agent_model_catalog_from_start_node},
+    model_catalog::{extract_agent_model_catalog_from_start_node, AgentModelDescriptor},
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
 };
 use interface_runtime::{
@@ -17,9 +17,9 @@ use interface_runtime::{
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    AUTHENTICATION_ADAPTER, AUTHORIZATION_ADAPTER, CompatibilityBlockingAuthorization,
-    CompatibilityBlockingTargetError, OPENAI_CHAT_MODELS_BINDING_ID, OPENAI_MODELS_BINDING_ID,
-    OPENAI_MODELS_ROOT_BINDING_ID, invocation_error, register_authentication,
+    invocation_error, register_authentication, CompatibilityBlockingAuthorization,
+    CompatibilityBlockingTargetError, AUTHENTICATION_ADAPTER, AUTHORIZATION_ADAPTER,
+    OPENAI_CHAT_MODELS_BINDING_ID, OPENAI_MODELS_BINDING_ID, OPENAI_MODELS_ROOT_BINDING_ID,
 };
 use crate::{
     app_state::ApiState,

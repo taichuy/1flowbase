@@ -1,10 +1,10 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use axum::{
-    Json,
     body::Bytes,
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
+    Json,
 };
 use interface_runtime::{
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
@@ -441,7 +441,7 @@ impl RuntimeModelOperationPort for UnavailableRuntimeModelOperationPort {
 }
 
 #[cfg(test)]
-pub(super) fn compile_registry_for_test()
--> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+pub(super) fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(Arc::new(UnavailableRuntimeModelOperationPort))
 }

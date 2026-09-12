@@ -1325,8 +1325,13 @@ impl ProviderInvocationInput {
     }
 
     pub fn synchronize_required_capabilities(&mut self) -> Result<(), String> {
-        if self.native_transport.is_some() || self.required_capabilities.contains(&ProviderInvocationCapability::ResponsesNativePassthrough) {
-            self.required_capabilities.insert(ProviderInvocationCapability::ResponsesNativeOutputV1);
+        if self.native_transport.is_some()
+            || self
+                .required_capabilities
+                .contains(&ProviderInvocationCapability::ResponsesNativePassthrough)
+        {
+            self.required_capabilities
+                .insert(ProviderInvocationCapability::ResponsesNativeOutputV1);
         }
         self.required_capabilities
             .extend(self.derived_required_capabilities()?);

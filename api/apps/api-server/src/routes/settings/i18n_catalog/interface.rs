@@ -10,8 +10,8 @@ use control_plane::{
         VerifiedOfficialCatalogSeed,
     },
     plugin_management::{
-        ExtensionInstallationService, ExtensionRiskOverride,
         installed_extension_integrity_warnings, validate_extension_integrity_override,
+        ExtensionInstallationService, ExtensionRiskOverride,
     },
     ports::I18nCatalogRepository,
 };
@@ -20,13 +20,13 @@ use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    ActivateI18nCatalogBody, ActivateI18nCatalogResponse, ActivateInstalledI18nCatalogBody,
-    I18nCatalogStateResponse, I18nCatalogUpdateStatusResponse, InstalledI18nCatalogPreviewResponse,
     management::{
         CatalogEntryMutationResponse, CatalogManagementPageResponse, CatalogRevisionResponse,
         DeleteCustomCatalogKeyBody, GetCatalogEntryQuery, ListCatalogEntriesQuery,
         RestoreCatalogOverrideBody, RestoreCatalogOverridesBody, UpsertCatalogTranslationBody,
     },
+    ActivateI18nCatalogBody, ActivateI18nCatalogResponse, ActivateInstalledI18nCatalogBody,
+    I18nCatalogStateResponse, I18nCatalogUpdateStatusResponse, InstalledI18nCatalogPreviewResponse,
 };
 use crate::{
     error_response::ApiError,

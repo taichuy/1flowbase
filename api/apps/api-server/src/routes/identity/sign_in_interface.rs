@@ -332,8 +332,8 @@ pub(crate) fn public_sign_in_port(
 }
 
 #[cfg(test)]
-pub(crate) fn compile_registry_for_test()
--> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+pub(crate) fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(Arc::new(UnavailablePublicSignInPort))
 }
 

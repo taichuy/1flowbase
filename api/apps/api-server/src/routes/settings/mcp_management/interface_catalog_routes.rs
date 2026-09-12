@@ -303,9 +303,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                             "organization",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).organization).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .organization)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         ("bundle_id", mp::text(&(item).bundle_id)?),
@@ -340,22 +340,20 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "prefix",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).llm_tool_registration)
-                                                                    .prefix)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .llm_tool_registration)
+                                                                .prefix)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "tools",
                                                         mp::object_value(&[(
                                                             "item_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).llm_tool_registration)
-                                                                    .tools)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .llm_tool_registration)
+                                                                .tools)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                 ]),
@@ -785,9 +783,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                             "organization",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).organization).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .organization)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         ("bundle_id", mp::text(&(item).bundle_id)?),
@@ -822,22 +820,20 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "prefix",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).llm_tool_registration)
-                                                                    .prefix)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .llm_tool_registration)
+                                                                .prefix)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "tools",
                                                         mp::object_value(&[(
                                                             "item_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).llm_tool_registration)
-                                                                    .tools)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .llm_tool_registration)
+                                                                .tools)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                 ]),

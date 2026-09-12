@@ -12,7 +12,13 @@ async fn invocation_inline_state_has_bounded_stack_cost() {
     );
     let invocation = kernel.invoke::<Input, Output, TargetError>(snapshot, envelope(actor(true)));
     let bytes = std::mem::size_of_val(&invocation);
-    assert!(bytes <= 16 * 1024, "invocation inline state uses {bytes} bytes");
+    assert!(
+        bytes <= 16 * 1024,
+        "invocation inline state uses {bytes} bytes"
+    );
     let result = invocation.await.unwrap();
-    assert_eq!(result.receipt().terminal(), InterfaceInvocationTerminal::Completed);
+    assert_eq!(
+        result.receipt().terminal(),
+        InterfaceInvocationTerminal::Completed
+    );
 }

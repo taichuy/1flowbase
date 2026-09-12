@@ -1011,11 +1011,9 @@ mod tests {
     fn f08c_registry_freezes_auth_center_bindings() {
         let registry = compile_registry(Arc::new(UnavailableAuthCenterPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

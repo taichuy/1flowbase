@@ -95,7 +95,7 @@ function buildSkippedCfgTestLines(lines) {
     if (pendingCfgTest) {
       skipped.add(lineNumber);
 
-      if (/\bmod\s+\w+\s*\{/u.test(line)) {
+      if (line.includes('{')) {
         inCfgTestBlock = true;
         cfgTestDepth = countChar(line, '{') - countChar(line, '}');
 
@@ -105,7 +105,7 @@ function buildSkippedCfgTestLines(lines) {
         }
       }
 
-      pendingCfgTest = trimmed.length === 0 || trimmed.startsWith('#[');
+      pendingCfgTest = !inCfgTestBlock;
       return;
     }
 

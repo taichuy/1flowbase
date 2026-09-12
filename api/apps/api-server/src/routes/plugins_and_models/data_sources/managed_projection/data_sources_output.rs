@@ -720,9 +720,9 @@ impl InterfaceContract for DataSourcesOutput {
                                     "display_name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).data_source).display_name).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).data_source)
+                                            .display_name)
+                                            .len()),
                                     )]),
                                 ),
                                 ("status", mp::text(&(&(_field_0).data_source).status)?),
@@ -738,10 +738,9 @@ impl InterfaceContract for DataSourcesOutput {
                                     "default_data_model_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).data_source).default_data_model_status)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).data_source)
+                                            .default_data_model_status)
+                                            .len()),
                                     )]),
                                 ),
                                 (

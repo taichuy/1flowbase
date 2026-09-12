@@ -18,13 +18,14 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    ASSISTANT_META_KEY, AssistantConversationMessageResponse, AssistantConversationPageResponse,
-    AssistantConversationResponse, AssistantPageReferenceBody, AssistantPreferenceBody,
-    AssistantRunActivityPageResponse, AssistantRunActivityQuery, AssistantRunDependencies,
-    AssistantRunResponse, AssistantSettingsResponse, CreateAssistantConversationBody,
-    ListAssistantConversationsQuery, StartAssistantRunBody, assistant_preference_for_actor,
-    assistant_run_capabilities, available_targets, execute_assistant_run,
-    launch_assistant_execution, prepare_assistant_execution, read_preference, validate_preference,
+    assistant_preference_for_actor, assistant_run_capabilities, available_targets,
+    execute_assistant_run, launch_assistant_execution, prepare_assistant_execution,
+    read_preference, validate_preference, AssistantConversationMessageResponse,
+    AssistantConversationPageResponse, AssistantConversationResponse, AssistantPageReferenceBody,
+    AssistantPreferenceBody, AssistantRunActivityPageResponse, AssistantRunActivityQuery,
+    AssistantRunDependencies, AssistantRunResponse, AssistantSettingsResponse,
+    CreateAssistantConversationBody, ListAssistantConversationsQuery, StartAssistantRunBody,
+    ASSISTANT_META_KEY,
 };
 use super::{
     conversation_events::{
@@ -772,11 +773,9 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantSettingsPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
@@ -788,11 +787,9 @@ mod tests {
         ))
         .unwrap();
         for declaration in CONVERSATION_DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), CONVERSATION_DECLARATIONS.len());
     }

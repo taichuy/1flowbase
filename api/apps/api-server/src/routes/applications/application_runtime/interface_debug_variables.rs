@@ -17,7 +17,7 @@ use super::{
     debug_variable_cache::{
         DeleteDebugVariableCacheEntriesBody, UpsertDebugVariableCacheEntryBody,
     },
-    debug_variable_snapshot::{DebugVariableSnapshotResponse, build_debug_variable_snapshot},
+    debug_variable_snapshot::{build_debug_variable_snapshot, DebugVariableSnapshotResponse},
 };
 use crate::{
     error_response::ApiError,
@@ -494,11 +494,9 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

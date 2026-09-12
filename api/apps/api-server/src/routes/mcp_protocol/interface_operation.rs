@@ -315,10 +315,9 @@ impl InterfaceContract for McpInvocationInput {
                                     "effective_display_role",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).actor).effective_display_role)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_context).actor)
+                                            .effective_display_role)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -379,9 +378,9 @@ impl InterfaceContract for McpInvocationInput {
                                     "discovery_policies",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).catalog).discovery_policies).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_context).catalog)
+                                            .discovery_policies)
+                                            .len()),
                                     )]),
                                 ),
                             ]),

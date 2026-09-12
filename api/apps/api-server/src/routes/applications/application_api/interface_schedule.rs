@@ -9,8 +9,8 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    WorkflowScheduleTriggerBody, WorkflowScheduleTriggerResponse,
-    to_workflow_schedule_trigger_response,
+    to_workflow_schedule_trigger_response, WorkflowScheduleTriggerBody,
+    WorkflowScheduleTriggerResponse,
 };
 use crate::{
     error_response::ApiError,

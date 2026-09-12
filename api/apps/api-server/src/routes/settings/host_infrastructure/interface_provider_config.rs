@@ -185,7 +185,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     interface_id: "host_infrastructure.providers.configure",
     binding_id: "http.console.host-infrastructure.providers.configure.v1",
     method: "PUT",
-    path: "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
+    path:
+        "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
     mutating: true,
 }];
 
@@ -238,11 +239,9 @@ mod tests {
             Arc::new(Unavailable),
         )
         .unwrap();
-        assert!(
-            registry
-                .binding(&BindingId::new(DECLARATIONS[0].binding_id).unwrap())
-                .is_some()
-        );
+        assert!(registry
+            .binding(&BindingId::new(DECLARATIONS[0].binding_id).unwrap())
+            .is_some());
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }

@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, future::Future, pin::Pin, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use control_plane::{
     host_infrastructure_config::HostInfrastructureProviderConfigList,
     ports::RoleConsolePolicyReader,
@@ -33,7 +33,7 @@ use plugin_framework::{
     HostExtensionInterfaceOperationMethod,
 };
 
-use super::{HostInfrastructureProviderConfigResponse, to_provider_response};
+use super::{to_provider_response, HostInfrastructureProviderConfigResponse};
 use crate::app_state::ApiState;
 
 pub const INTERFACE_OPERATION_POINT_ID: &str = "1flowbase.application.interface-operation";
@@ -956,8 +956,8 @@ pub fn validate_console_registry(
     Ok(())
 }
 
-pub(crate) fn official_local_infra_host_providers_view_descriptor()
--> HostExtensionInterfaceOperationManifest {
+pub(crate) fn official_local_infra_host_providers_view_descriptor(
+) -> HostExtensionInterfaceOperationManifest {
     HostExtensionInterfaceOperationManifest {
         operation_id: HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
         method: HostExtensionInterfaceOperationMethod::Get,

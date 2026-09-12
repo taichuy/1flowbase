@@ -482,19 +482,18 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "provider_egress_key",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).provider_egress_key)
-                                                                        .len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .provider_egress_key)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "display_name",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).display_name).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .display_name)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
@@ -524,18 +523,18 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "availability",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).availability).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .availability)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "synced_at",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).synced_at).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .synced_at)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                     ]))
@@ -674,9 +673,9 @@ impl InterfaceContract for NetworkCenterOutput {
                                                 "provider_egress_key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).provider_egress_key).len()
-                                                    ),
+                                                    serde_json::json!((&(item)
+                                                        .provider_egress_key)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (

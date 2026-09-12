@@ -878,20 +878,20 @@ impl InterfaceContract for McpCoreOutput {
                                                 "prefix",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(&(item).llm_tool_registration).prefix)
-                                                            .len()
-                                                    ),
+                                                    serde_json::json!((&(&(item)
+                                                        .llm_tool_registration)
+                                                        .prefix)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "tools",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!(
-                                                        (&(&(item).llm_tool_registration).tools)
-                                                            .len()
-                                                    ),
+                                                    serde_json::json!((&(&(item)
+                                                        .llm_tool_registration)
+                                                        .tools)
+                                                        .len()),
                                                 )]),
                                             ),
                                         ]),
@@ -982,18 +982,18 @@ impl InterfaceContract for McpCoreOutput {
                                     "prefix",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).llm_tool_registration).prefix).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).llm_tool_registration)
+                                            .prefix)
+                                            .len()),
                                     )]),
                                 ),
                                 (
                                     "tools",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).llm_tool_registration).tools).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).llm_tool_registration)
+                                            .tools)
+                                            .len()),
                                     )]),
                                 ),
                             ]),

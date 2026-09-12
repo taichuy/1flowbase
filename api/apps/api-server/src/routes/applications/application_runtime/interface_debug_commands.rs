@@ -8,11 +8,11 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::{
+        debug_stream_events, project_runtime_event_stream_terminal,
+        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
         OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
-        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand, debug_stream_events,
-        project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
-        wait_for_runtime_debug_event_persister,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
     },
     ports::{ApplicationRepository, OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
 };
@@ -21,11 +21,11 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    ApplicationActivityKind, ApplicationRunDetailResponse, CompleteCallbackTaskBody,
-    NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody, StartNodeDebugPreviewBody,
     offload_application_run_detail_artifacts_with_dependencies, scope_application_activity,
     to_application_run_detail_response, to_node_last_run_response,
-    to_trace_projection_statistics_response,
+    to_trace_projection_statistics_response, ApplicationActivityKind, ApplicationRunDetailResponse,
+    CompleteCallbackTaskBody, NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody,
+    StartNodeDebugPreviewBody,
 };
 use crate::{
     app_state::ApiState,
@@ -183,9 +183,9 @@ pub(crate) fn port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-            ApplicationRuntimeDebugCommandsInput,
-            ApplicationRuntimeDebugCommandsOutput,
-        >,
+        ApplicationRuntimeDebugCommandsInput,
+        ApplicationRuntimeDebugCommandsOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -194,10 +194,10 @@ pub(crate) fn stream_port(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Arc<
     dyn ConsoleServerStreamPort<
-            ApplicationRuntimeDebugStreamInput,
-            ApplicationRuntimeDebugStreamEvent,
-            ApplicationRuntimeDebugStreamOutput,
-        >,
+        ApplicationRuntimeDebugStreamInput,
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
 }
@@ -1003,7 +1003,8 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "applications.runtime.callback-tasks.complete",
         binding_id: "http.console.applications.runtime.callback-tasks.complete.v1",
         method: "POST",
-        path: "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
+        path:
+            "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

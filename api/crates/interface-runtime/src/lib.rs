@@ -59,9 +59,9 @@ pub use registry::{
     RegistryCompilationError, RegistryCompiler,
 };
 pub use stream::{
-    InterfaceEventStream, InterfaceStreamCompletion, InterfaceStreamHandler,
-    InterfaceStreamHandlerFuture, InterfaceStreamInvocation, InterfaceStreamPublisher,
-    InterfaceStreamTerminalOutcome, interface_stream_channel,
+    interface_stream_channel, InterfaceEventStream, InterfaceStreamCompletion,
+    InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceStreamInvocation,
+    InterfaceStreamPublisher, InterfaceStreamTerminalOutcome,
 };
 
 #[cfg(test)]
@@ -82,8 +82,8 @@ pub use decision::{
     TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
 };
 pub use extension::{
-    CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError, InterfaceExtensionFact,
-    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
-    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandlerCandidate,
-    OrderedInterfaceExtensionRegistration, compile_effective_handler,
+    compile_effective_handler, CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError,
+    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
+    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
+    InterfaceHandlerCandidate, OrderedInterfaceExtensionRegistration,
 };

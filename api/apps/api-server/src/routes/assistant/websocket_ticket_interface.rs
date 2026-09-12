@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::ports::CacheStore;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use rand_core::{OsRng, RngCore};
@@ -286,11 +286,9 @@ mod tests {
         let registry =
             compile_registry_with_port(Arc::new(UnavailableAssistantWebSocketTicketPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

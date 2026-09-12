@@ -9,9 +9,9 @@ use super::DocsCategoryOperationsQuery;
 use crate::{
     error_response::ApiError,
     openapi_docs::{
-        ApiDocsRegistry, DocsCatalog, DocsCatalogCategoryOperationsPage,
         build_api_docs_registry_with_cookie_name, filter_category_operations,
-        paginate_category_operations,
+        paginate_category_operations, ApiDocsRegistry, DocsCatalog,
+        DocsCatalogCategoryOperationsPage,
     },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,

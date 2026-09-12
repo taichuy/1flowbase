@@ -62,6 +62,8 @@ function packageRoot(specifier) {
     || specifier.startsWith('/')
     || specifier.startsWith('node:')
     || specifier.startsWith('\0')
+    || specifier.startsWith('virtual:')
+    || specifier.includes('${')
   ) {
     return null;
   }
@@ -262,27 +264,93 @@ function discoverLazyImports({ repoRoot }) {
   );
 }
 
-function parseOptimizeDepsInclude(viteConfigSource) {
-  const optimizeDepsMatch = /optimizeDeps\s*:\s*\{([\s\S]*?)\n\s*\}/u.exec(viteConfigSource);
+function extractDelimitedContent(source, start, open, close) {
+  if (source[start] !== open) {
+    return null;
+  }
+
+  let depth = 0;
+  let quote = null;
+
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+
+    if (character === open) {
+      depth += 1;
+    } else if (character === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start + 1, index);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseOptimizeDepsEntries(viteConfigSource, property) {
+  const optimizeDepsMatch = /optimizeDeps\s*:\s*\{/u.exec(viteConfigSource);
   if (!optimizeDepsMatch) {
     return [];
   }
 
-  const includeMatch = /include\s*:\s*\[([\s\S]*?)\]/u.exec(optimizeDepsMatch[1]);
-  if (!includeMatch) {
+  const optimizeDepsBody = extractDelimitedContent(
+    viteConfigSource,
+    optimizeDepsMatch.index + optimizeDepsMatch[0].length - 1,
+    '{',
+    '}'
+  );
+  if (!optimizeDepsBody) {
     return [];
   }
 
-  const includes = [];
-  const stringPattern = /['"]([^'"]+)['"]/gu;
-  let match = stringPattern.exec(includeMatch[1]);
-
-  while (match) {
-    includes.push(match[1]);
-    match = stringPattern.exec(includeMatch[1]);
+  const propertyMatch = new RegExp(`\\b${property}\\s*:\\s*\\[`, 'u').exec(optimizeDepsBody);
+  if (!propertyMatch) {
+    return [];
   }
 
-  return uniqueSorted(includes);
+  const propertyBody = extractDelimitedContent(
+    optimizeDepsBody,
+    propertyMatch.index + propertyMatch[0].length - 1,
+    '[',
+    ']'
+  );
+  if (!propertyBody) {
+    return [];
+  }
+
+  const entries = [];
+  const stringPattern = /['"]([^'"]+)['"]/gu;
+  let match = stringPattern.exec(propertyBody);
+
+  while (match) {
+    entries.push(match[1]);
+    match = stringPattern.exec(propertyBody);
+  }
+
+  return uniqueSorted(entries);
+}
+
+function parseOptimizeDepsInclude(viteConfigSource) {
+  return parseOptimizeDepsEntries(viteConfigSource, 'include');
+}
+
+function parseOptimizeDepsExclude(viteConfigSource) {
+  return parseOptimizeDepsEntries(viteConfigSource, 'exclude');
 }
 
 function loadManifest(manifestPath) {
@@ -339,8 +407,11 @@ function analyzeStaticLazyDeps({
   const packageInfo = readWebPackageInfo(repoRoot);
   const mainEntry = path.join(repoRoot, 'web', 'app', 'src', 'main.tsx');
   const viteConfigPath = path.join(repoRoot, 'web', 'app', 'vite.config.ts');
-  const optimizeDepsInclude = parseOptimizeDepsInclude(readText(viteConfigPath));
+  const viteConfigSource = readText(viteConfigPath);
+  const optimizeDepsInclude = parseOptimizeDepsInclude(viteConfigSource);
+  const optimizeDepsExclude = parseOptimizeDepsExclude(viteConfigSource);
   const optimizedRoots = new Set(optimizeDepsInclude.map(packageRoot).filter(Boolean));
+  const excludedRoots = new Set(optimizeDepsExclude.map(packageRoot).filter(Boolean));
   const eagerGraph = collectModuleGraphDependencies({
     entryFiles: [mainEntry],
     packageInfo,
@@ -398,7 +469,7 @@ function analyzeStaticLazyDeps({
   );
 
   for (const dependency of lazyOnlyDependencies) {
-    if (!optimizedRoots.has(dependency)) {
+    if (!optimizedRoots.has(dependency) && !excludedRoots.has(dependency)) {
       findings.push({
         code: 'missing-optimize-dep',
         dependency,
@@ -439,6 +510,7 @@ function analyzeStaticLazyDeps({
     })),
     lazyOnlyDependencies,
     optimizeDepsInclude,
+    optimizeDepsExclude,
   };
 }
 

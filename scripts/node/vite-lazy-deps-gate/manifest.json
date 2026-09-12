@@ -3,6 +3,44 @@
   "entries": [
     {
       "source": "web/app/src/app/router.tsx",
+      "specifier": "../app-shell/AppShellFrame",
+      "smokePaths": [
+        "/"
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/home/pages/HomePage",
+      "smokePaths": [
+        "/"
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/frontstage/pages/FrontstageWorkspacePage",
+      "smokePaths": [
+        {
+          "path": "/vite-lazy-deps-frontstage",
+          "requiresFixture": true
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/me/pages/MePage",
+      "smokePaths": [
+        "/me"
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/templates/pages/TemplatesPage",
+      "smokePaths": [
+        "/templates"
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
       "specifier": "../features/applications/pages/ApplicationDetailPage",
       "smokePaths": [
         {
@@ -89,6 +127,76 @@
       ]
     },
     {
+      "source": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "specifier": "../components/HeroAnimation",
+      "smokePaths": [
+        "/sign-in"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "./MemberSettingsTabs",
+      "smokePaths": [
+        "/settings/members"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../../components/RolePermissionPanel",
+      "smokePaths": [
+        "/settings/roles/console-policy"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../../components/SystemRuntimePanel",
+      "smokePaths": [
+        "/settings/system-runtime"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "./SettingsAuthCenterSection",
+      "smokePaths": [
+        "/settings/auth-center"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "./SettingsDataModelsSection",
+      "smokePaths": [
+        "/settings/data-models"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "./SettingsFilesSection",
+      "smokePaths": [
+        "/settings/files"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "specifier": "../../components/billing/PricingCatalogPanel",
+      "smokePaths": [
+        "/settings/extension-center/runtime-extensions"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "specifier": "../../components/extension-center/UiComponentCatalogPanel",
+      "smokePaths": [
+        "/settings/extension-center/runtime-extensions"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "specifier": "../../components/extension-center/ExtensionApplicationFlow",
+      "smokePaths": [
+        "/settings/extension-center/runtime-extensions"
+      ]
+    },
+    {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "../../components/ApiDocsPanel",
       "smokePaths": [
@@ -113,7 +221,7 @@
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "./SettingsExtensionCenterSection",
       "smokePaths": [
-        "/settings/extensions"
+        "/settings/extension-center/runtime-extensions"
       ]
     },
     {

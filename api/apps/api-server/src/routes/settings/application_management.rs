@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::Query, extract::State, http::HeaderMap};
+use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
@@ -23,7 +23,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 #[derive(Debug, Deserialize)]

@@ -1153,9 +1153,7 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     "entry_ref",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).metadata).entry_ref).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).metadata).entry_ref).len()),
                                     )]),
                                 ),
                                 (
@@ -1169,9 +1167,9 @@ impl InterfaceContract for MemoryInspectionOutput {
                                     "inspection_path",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).metadata).inspection_path).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).metadata)
+                                            .inspection_path)
+                                            .len()),
                                     )]),
                                 ),
                                 (

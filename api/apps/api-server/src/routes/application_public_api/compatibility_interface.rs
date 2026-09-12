@@ -3,8 +3,8 @@ mod managed_projection;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use axum::response::{
-    IntoResponse, Response,
     sse::{KeepAlive, Sse},
+    IntoResponse, Response,
 };
 use control_plane::{
     application_public_api::{
@@ -33,7 +33,7 @@ use interface_runtime::{
 };
 
 mod models;
-pub(crate) use models::{CompatibilityModelsPort, compatibility_models_port, invoke_models};
+pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
 
 use crate::{
     app_state::ApiState,
@@ -480,8 +480,8 @@ pub(crate) fn compile_registry(
 }
 
 #[cfg(test)]
-pub(crate) fn compile_registry_for_test()
--> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+pub(crate) fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(
         Arc::new(UnavailableCompatibilityBlockingPort),
         models::unavailable_port(),
@@ -920,7 +920,10 @@ fn project_stream_invocation(
 /// settles the invocation even when the client has stopped reading.
 pub(super) async fn project_compatibility_stream(
     mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
-    completion: interface_runtime::InterfaceStreamCompletion<CompatibilityBlockingOutput, CompatibilityBlockingTargetError>,
+    completion: interface_runtime::InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
     mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
 ) {
@@ -934,7 +937,9 @@ pub(super) async fn project_compatibility_stream(
                 projection_open = false;
             }
         }
-        if terminal { break; }
+        if terminal {
+            break;
+        }
     }
     if let Ok(Ok(terminal)) = completion.await {
         let _receipt = terminal.receipt().clone().projected();

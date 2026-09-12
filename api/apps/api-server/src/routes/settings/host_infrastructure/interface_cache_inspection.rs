@@ -10,9 +10,9 @@ use interface_runtime::InterfaceContract;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
+    has_registered_simple_operations, to_cache_domain_response, to_cache_entry_metadata_response,
     CacheEntriesResponse, CacheEntryKeyBody, CacheEntryValueResponse, CacheOverviewResponse,
-    ClearCacheDomainResponse, ClearCacheEntryResponse, has_registered_simple_operations,
-    to_cache_domain_response, to_cache_entry_metadata_response,
+    ClearCacheDomainResponse, ClearCacheEntryResponse,
 };
 use crate::{
     error_response::ApiError,
@@ -831,11 +831,9 @@ mod tests {
         })
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

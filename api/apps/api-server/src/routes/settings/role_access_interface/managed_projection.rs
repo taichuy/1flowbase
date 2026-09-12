@@ -465,30 +465,27 @@ impl InterfaceContract for RoleAccessInput {
                                     "default_view_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_body).default_policy).default_view_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_body).default_policy)
+                                            .default_view_scope)
+                                            .len()),
                                     )]),
                                 ),
                                 (
                                     "default_update_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_body).default_policy).default_update_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_body).default_policy)
+                                            .default_update_scope)
+                                            .len()),
                                     )]),
                                 ),
                                 (
                                     "default_delete_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_body).default_policy).default_delete_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_body).default_policy)
+                                            .default_delete_scope)
+                                            .len()),
                                     )]),
                                 ),
                             ]),
@@ -1131,30 +1128,27 @@ impl InterfaceContract for RoleAccessOutput {
                                     "default_view_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).default_policy).default_view_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).default_policy)
+                                            .default_view_scope)
+                                            .len()),
                                     )]),
                                 ),
                                 (
                                     "default_update_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).default_policy).default_update_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).default_policy)
+                                            .default_update_scope)
+                                            .len()),
                                     )]),
                                 ),
                                 (
                                     "default_delete_scope",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).default_policy).default_delete_scope)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).default_policy)
+                                            .default_delete_scope)
+                                            .len()),
                                     )]),
                                 ),
                             ]),

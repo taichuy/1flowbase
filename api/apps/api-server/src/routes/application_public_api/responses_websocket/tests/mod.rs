@@ -333,14 +333,33 @@ fn invalid_generate_is_a_protocol_policy_error_and_idle_close_is_terminal() {
 // AC-005/014: shared handshake extraction, used by the actual upgrade entry.
 #[test]
 fn handshake_freezes_safe_context_and_allocates_distinct_missing_session_ids() {
-    let mut headers=HeaderMap::new();
-    for (name,value) in [("authorization","Bearer fixture"),("cookie","fixture"),("x-api-key","fixture"),("x-1flowbase-session-id","spoof"),("session-id","client-session"),("thread-id","thread"),("x-codex-turn-state","opaque-state"),("x-codex-turn-metadata","{}"),("openai-beta",RESPONSES_WEBSOCKET_BETA)] {headers.insert(name,value.parse().unwrap());}
-    let captured=super::auth::responses_handshake_headers(&headers);
-    assert_eq!(captured["session-id"],"client-session");
-    assert_eq!(captured["x-codex-turn-state"],"opaque-state");
-    assert_eq!(captured["x-codex-turn-metadata"],"{}");
-    for name in ["authorization","cookie","x-api-key","x-1flowbase-session-id"] {assert!(!captured.contains_key(name));}
-    let first=super::auth::responses_handshake_headers(&HeaderMap::new());
-    let second=super::auth::responses_handshake_headers(&HeaderMap::new());
-    assert_ne!(first["session-id"],second["session-id"]);
+    let mut headers = HeaderMap::new();
+    for (name, value) in [
+        ("authorization", "Bearer fixture"),
+        ("cookie", "fixture"),
+        ("x-api-key", "fixture"),
+        ("x-1flowbase-session-id", "spoof"),
+        ("session-id", "client-session"),
+        ("thread-id", "thread"),
+        ("x-codex-turn-state", "opaque-state"),
+        ("x-codex-turn-metadata", "{}"),
+        ("openai-beta", RESPONSES_WEBSOCKET_BETA),
+    ] {
+        headers.insert(name, value.parse().unwrap());
+    }
+    let captured = super::auth::responses_handshake_headers(&headers);
+    assert_eq!(captured["session-id"], "client-session");
+    assert_eq!(captured["x-codex-turn-state"], "opaque-state");
+    assert_eq!(captured["x-codex-turn-metadata"], "{}");
+    for name in [
+        "authorization",
+        "cookie",
+        "x-api-key",
+        "x-1flowbase-session-id",
+    ] {
+        assert!(!captured.contains_key(name));
+    }
+    let first = super::auth::responses_handshake_headers(&HeaderMap::new());
+    let second = super::auth::responses_handshake_headers(&HeaderMap::new());
+    assert_ne!(first["session-id"], second["session-id"]);
 }

@@ -10,8 +10,8 @@ use control_plane::{
     },
     mcp_management::McpManagementService,
     plugin_management::{
-        ExtensionInstallationService, ExtensionRiskOverride,
         installed_extension_integrity_warnings, validate_extension_integrity_override,
+        ExtensionInstallationService, ExtensionRiskOverride,
     },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -19,15 +19,15 @@ use uuid::Uuid;
 
 use super::{
     bundles::{
-        BuiltinMcpTemplateImportResponse, BuiltinMcpTemplatePreviewResponse,
-        BuiltinMcpTemplateSelector, ExportMcpBundleBody, ExportMcpInstanceBundleBody,
-        InstalledMcpExtensionImportResponse, InstalledMcpExtensionIntegrityChallengeResponse,
-        InstalledMcpExtensionPreviewResponse, InstalledMcpExtensionSelector,
-        McpBundleExportDefaults, McpBundleImportSourceResponse, McpBundleLibraryVersionBody,
-        McpBundlePreviewSourceResponse, McpBundleSourceBody, McpInstanceBundleExportProfile,
-        OfficialMcpBundleSelector, build_bundle_archive, parse_bundle_archive,
+        build_bundle_archive, parse_bundle_archive, BuiltinMcpTemplateImportResponse,
+        BuiltinMcpTemplatePreviewResponse, BuiltinMcpTemplateSelector, ExportMcpBundleBody,
+        ExportMcpInstanceBundleBody, InstalledMcpExtensionImportResponse,
+        InstalledMcpExtensionIntegrityChallengeResponse, InstalledMcpExtensionPreviewResponse,
+        InstalledMcpExtensionSelector, McpBundleExportDefaults, McpBundleImportSourceResponse,
+        McpBundleLibraryVersionBody, McpBundlePreviewSourceResponse, McpBundleSourceBody,
+        McpInstanceBundleExportProfile, OfficialMcpBundleSelector,
     },
-    interface_catalog::{McpInterfaceCatalogDependencies, mcp_interface_catalog_entries_with},
+    interface_catalog::{mcp_interface_catalog_entries_with, McpInterfaceCatalogDependencies},
 };
 use crate::{
     app_state::resolve_official_source_label_with,

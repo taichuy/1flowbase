@@ -11,13 +11,13 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    ApplicationRunDetailResponse, RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS,
-    ResolveRuntimeDebugArtifactsBody, ResolveRuntimeDebugArtifactsResponse,
-    RuntimeDebugArtifactContent, RuntimeDebugArtifactReadDependencies,
-    RuntimeDebugArtifactValueResponse, load_runtime_debug_artifact_content,
-    load_runtime_debug_artifact_json_value_with_dependencies,
+    load_runtime_debug_artifact_content, load_runtime_debug_artifact_json_value_with_dependencies,
     offload_application_run_detail_artifacts_with_dependencies, to_application_run_detail_response,
     to_context_snapshot_response, to_trace_projection_statistics_response,
+    ApplicationRunDetailResponse, ResolveRuntimeDebugArtifactsBody,
+    ResolveRuntimeDebugArtifactsResponse, RuntimeDebugArtifactContent,
+    RuntimeDebugArtifactReadDependencies, RuntimeDebugArtifactValueResponse,
+    RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS,
 };
 use crate::{
     error_response::ApiError,
@@ -266,11 +266,9 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

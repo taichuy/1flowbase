@@ -333,10 +333,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                             "run_mode",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!(
-                                                    (&(&(&(_field_0).detail).flow_run).run_mode)
-                                                        .len()
-                                                ),
+                                                serde_json::json!((&(&(&(_field_0).detail)
+                                                    .flow_run)
+                                                    .run_mode)
+                                                    .len()),
                                             )]),
                                         ),
                                         (
@@ -356,9 +356,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                             "title",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!(
-                                                    (&(&(&(_field_0).detail).flow_run).title).len()
-                                                ),
+                                                serde_json::json!((&(&(&(_field_0).detail)
+                                                    .flow_run)
+                                                    .title)
+                                                    .len()),
                                             )]),
                                         ),
                                         (
@@ -427,20 +428,20 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                             "created_by",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!(
-                                                    (&(&(&(_field_0).detail).flow_run).created_by)
-                                                        .len()
-                                                ),
+                                                serde_json::json!((&(&(&(_field_0).detail)
+                                                    .flow_run)
+                                                    .created_by)
+                                                    .len()),
                                             )]),
                                         ),
                                         (
                                             "started_at",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!(
-                                                    (&(&(&(_field_0).detail).flow_run).started_at)
-                                                        .len()
-                                                ),
+                                                serde_json::json!((&(&(&(_field_0).detail)
+                                                    .flow_run)
+                                                    .started_at)
+                                                    .len()),
                                             )]),
                                         ),
                                         (
@@ -537,9 +538,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                     "checkpoints",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).detail).checkpoints).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).detail).checkpoints).len()),
                                     )]),
                                 ),
                                 (
@@ -775,18 +774,18 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                                 "accuracy",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(&(item).measurement).accuracy).len()
-                                                    ),
+                                                    serde_json::json!((&(&(item).measurement)
+                                                        .accuracy)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "coverage",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(&(item).measurement).coverage).len()
-                                                    ),
+                                                    serde_json::json!((&(&(item).measurement)
+                                                        .coverage)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
@@ -1051,11 +1050,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                                         "run_mode",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).source_flow_run)
-                                                                    .run_mode)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .source_flow_run)
+                                                                .run_mode)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
@@ -1078,10 +1076,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                                         "title",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).source_flow_run).title)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .source_flow_run)
+                                                                .title)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
@@ -1155,22 +1153,20 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
                                                         "created_by",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).source_flow_run)
-                                                                    .created_by)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .source_flow_run)
+                                                                .created_by)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "started_at",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).source_flow_run)
-                                                                    .started_at)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .source_flow_run)
+                                                                .started_at)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (

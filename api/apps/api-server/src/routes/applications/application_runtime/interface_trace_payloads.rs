@@ -7,13 +7,13 @@ use control_plane::{
     errors::ControlPlaneError,
     orchestration_runtime::{
         debug_artifacts::{
-            RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON, RUNTIME_DEBUG_ARTIFACT_RETENTION_ACTIVE,
             build_runtime_debug_artifact_object_path, build_runtime_debug_artifact_preview,
-            inline_budget_for_kind,
+            inline_budget_for_kind, RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON,
+            RUNTIME_DEBUG_ARTIFACT_RETENTION_ACTIVE,
         },
         trace_projection::{
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
-            merge_trace_node_run_detail, projection_status_needs_lazy_rebuild,
+            build_application_run_trace_projection, merge_trace_node_run_detail,
+            projection_status_needs_lazy_rebuild, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
         },
     },
     ports::{
@@ -231,9 +231,9 @@ pub(crate) fn trace_payloads_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-            ApplicationRuntimeTracePayloadsInput,
-            ApplicationRuntimeTracePayloadsOutput,
-        >,
+        ApplicationRuntimeTracePayloadsInput,
+        ApplicationRuntimeTracePayloadsOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeTracePayloadsAdapter {
         store,

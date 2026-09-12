@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use anyhow::{Context, bail};
-use axum::{Json, extract::State, http::HeaderMap};
+use anyhow::{bail, Context};
+use axum::{extract::State, http::HeaderMap, Json};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -186,9 +186,9 @@ impl InterfaceContract for BlockContextContractResponse {
                                                         "description",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(item).description).len()
-                                                            ),
+                                                            serde_json::json!((&(item)
+                                                                .description)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                 ]))

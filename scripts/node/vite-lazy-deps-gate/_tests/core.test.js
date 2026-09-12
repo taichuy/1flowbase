@@ -110,6 +110,38 @@ test('analyzeStaticLazyDeps passes when lazy-only dependencies are listed in opt
   assert.deepEqual(result.lazyOnlyDependencies, ['present-lazy']);
 });
 
+test('analyzeStaticLazyDeps reads optimizeDeps.include after nested options', () => {
+  const { repoRoot, manifestPath } = createFixtureRepo({
+    optimizeDepsInclude: ['present-lazy'],
+    manifestEntries: [
+      {
+        source: 'web/app/src/app/router.tsx',
+        specifier: '../features/lazy/LazyPage',
+        smokePaths: ['/lazy/example'],
+      },
+    ],
+  });
+  writeFile(
+    repoRoot,
+    'web/app/vite.config.ts',
+    [
+      'export default {',
+      '  optimizeDeps: {',
+      '    rolldownOptions: {',
+      '      output: { minify: true }',
+      '    },',
+      "    include: ['present-lazy']",
+      '  }',
+      '};',
+    ].join('\n')
+  );
+
+  const result = analyzeStaticLazyDeps({ repoRoot, manifestPath });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.findings, []);
+});
+
 test('analyzeStaticLazyDeps fails when a lazy-only bare npm import is not optimized', () => {
   const { repoRoot, manifestPath } = createFixtureRepo({
     manifestEntries: [
@@ -129,6 +161,35 @@ test('analyzeStaticLazyDeps fails when a lazy-only bare npm import is not optimi
     'missing-optimize-dep',
   ]);
   assert.equal(result.findings[0].dependency, 'missing-lazy');
+});
+
+test('analyzeStaticLazyDeps accepts a lazy-only dependency explicitly excluded by Vite', () => {
+  const { repoRoot, manifestPath } = createFixtureRepo({
+    manifestEntries: [
+      {
+        source: 'web/app/src/app/router.tsx',
+        specifier: '../features/lazy/LazyPage',
+        smokePaths: ['/lazy/example'],
+      },
+    ],
+  });
+  writeFile(
+    repoRoot,
+    'web/app/vite.config.ts',
+    [
+      'export default {',
+      '  optimizeDeps: {',
+      "    exclude: ['present-lazy'],",
+      '    include: []',
+      '  }',
+      '};',
+    ].join('\n')
+  );
+
+  const result = analyzeStaticLazyDeps({ repoRoot, manifestPath });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.findings, []);
 });
 
 test('analyzeStaticLazyDeps does not require optimizeDeps for dependencies already loaded eagerly', () => {
@@ -166,6 +227,27 @@ test('analyzeStaticLazyDeps treats local @1flowbase aliases as workspace imports
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.lazyOnlyDependencies, []);
+});
+
+test('analyzeStaticLazyDeps ignores virtual and interpolated lazy graph specifiers', () => {
+  const { repoRoot, manifestPath } = createFixtureRepo({
+    manifestEntries: [
+      {
+        source: 'web/app/src/app/router.tsx',
+        specifier: '../features/lazy/LazyPage',
+        smokePaths: ['/lazy/example'],
+      },
+    ],
+    lazyPageImport: [
+      "import 'virtual:generated-module';",
+      "const moduleName = import('${packageRoot}/generated-module');",
+    ].join('\n'),
+  });
+
+  const result = analyzeStaticLazyDeps({ repoRoot, manifestPath });
+
+  assert.equal(result.ok, true);
   assert.deepEqual(result.lazyOnlyDependencies, []);
 });
 

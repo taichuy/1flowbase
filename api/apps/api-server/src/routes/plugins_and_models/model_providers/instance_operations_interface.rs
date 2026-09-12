@@ -400,9 +400,9 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                     "configured_models",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).instance).configured_models).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).instance)
+                                            .configured_models)
+                                            .len()),
                                     )]),
                                 ),
                                 ("enabled_model_ids", {

@@ -14,14 +14,14 @@ use uuid::Uuid;
 use super::ApplicationApiDocsQuery;
 use crate::{
     application_public_docs::{
-        ApplicationPublicDocsContext, ApplicationSessionOperation,
         build_application_public_docs_catalog, build_application_public_docs_category_operations,
         build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
+        ApplicationPublicDocsContext, ApplicationSessionOperation,
     },
     error_response::ApiError,
     openapi_docs::{
-        ApiDocsRegistry, DocsCatalog, DocsCatalogCategoryOperationsPage,
-        filter_category_operations, paginate_category_operations,
+        filter_category_operations, paginate_category_operations, ApiDocsRegistry, DocsCatalog,
+        DocsCatalogCategoryOperationsPage,
     },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,

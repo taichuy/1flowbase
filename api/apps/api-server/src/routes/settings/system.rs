@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
-    http::{HeaderMap, header::ACCEPT_LANGUAGE},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap},
+    Json, Router,
 };
 use control_plane::system_runtime::SystemRuntimeService;
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -19,7 +19,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
     runtime_profile_client::RuntimeProfileSnapshotCache,
 };
 
@@ -351,9 +351,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                     "powershell",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).upgrade_commands).powershell).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).upgrade_commands)
+                                            .powershell)
+                                            .len()),
                                     )]),
                                 ),
                             ]),
@@ -422,9 +422,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                         "resolved_locale",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!(
-                                                (&(&(_field_0).locale_meta).resolved_locale).len()
-                                            ),
+                                            serde_json::json!((&(&(_field_0).locale_meta)
+                                                .resolved_locale)
+                                                .len()),
                                         )]),
                                     ),
                                     (
@@ -472,19 +472,18 @@ impl InterfaceContract for SystemInterfaceOutput {
                                         "fallback_locale",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!(
-                                                (&(&(_field_0).locale_meta).fallback_locale).len()
-                                            ),
+                                            serde_json::json!((&(&(_field_0).locale_meta)
+                                                .fallback_locale)
+                                                .len()),
                                         )]),
                                     ),
                                     (
                                         "supported_locales",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(&(_field_0).locale_meta).supported_locales)
-                                                    .len()
-                                            ),
+                                            serde_json::json!((&(&(_field_0).locale_meta)
+                                                .supported_locales)
+                                                .len()),
                                         )]),
                                     ),
                                 ]),
@@ -534,11 +533,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                 "service",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(&(&(_field_0).services).api_server)
-                                                            .service)
-                                                            .len()
-                                                    ),
+                                                    serde_json::json!((&(&(&(_field_0).services)
+                                                        .api_server)
+                                                        .service)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
@@ -589,11 +587,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                 "service",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(&(&(_field_0).services).plugin_runner)
-                                                            .service)
-                                                            .len()
-                                                    ),
+                                                    serde_json::json!((&(&(&(_field_0).services)
+                                                        .plugin_runner)
+                                                        .service)
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
@@ -646,9 +643,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                     "host_fingerprint",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (&(item).host_fingerprint).len()
-                                                        ),
+                                                        serde_json::json!((&(item)
+                                                            .host_fingerprint)
+                                                            .len()),
                                                     )]),
                                                 ),
                                                 (
@@ -658,19 +655,20 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                             "os",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(&(item).platform).os).len()
-                                                                ),
+                                                                serde_json::json!((&(&(item)
+                                                                    .platform)
+                                                                    .os)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "arch",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(&(item).platform).arch)
-                                                                        .len()
-                                                                ),
+                                                                serde_json::json!((&(&(item)
+                                                                    .platform)
+                                                                    .arch)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
@@ -693,11 +691,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                             "rust_target_triple",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(&(item).platform)
-                                                                        .rust_target_triple)
-                                                                        .len()
-                                                                ),
+                                                                serde_json::json!((&(&(item)
+                                                                    .platform)
+                                                                    .rust_target_triple)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                     ]),

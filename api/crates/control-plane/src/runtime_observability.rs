@@ -276,7 +276,7 @@ where
             ProviderStreamEvent::NativeEvent { .. }
                 | ProviderStreamEvent::ReasoningSignatureDelta { .. }
                 | ProviderStreamEvent::ResponsesOutputDelta { .. }
-            | ProviderStreamEvent::OutputItem { .. }
+                | ProviderStreamEvent::OutputItem { .. }
         ) {
             continue;
         }

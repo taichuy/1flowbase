@@ -108,7 +108,6 @@
     "orchestration": "Arrange",
     "manual_input": "manual input",
     "copied_application_name": "{{value1}} copy",
-    "close": "Close",
     "close_run_details": "Close run details",
     "application_copied": "App copied",
     "new_tag_name_required": "Please enter a new label name",

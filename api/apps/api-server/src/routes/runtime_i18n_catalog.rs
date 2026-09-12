@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::{Query, State},
-    http::{HeaderMap, HeaderValue, Response, StatusCode, header},
+    http::{header, HeaderMap, HeaderValue, Response, StatusCode},
 };
 use control_plane::{errors::ControlPlaneError, i18n_catalog::RuntimeI18nCatalogService};
 use domain::CatalogLocale;
@@ -18,7 +18,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{ConsoleRouteAssembly, console_get},
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
 const CATALOG_CACHE_CONTROL: &str = "no-cache";

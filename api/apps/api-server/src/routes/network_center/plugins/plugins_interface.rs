@@ -281,9 +281,7 @@ impl InterfaceContract for NetworkPluginInput {
                                         "acknowledged_warnings",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(item).acknowledged_warnings).len()
-                                            ),
+                                            serde_json::json!((&(item).acknowledged_warnings).len()),
                                         )]),
                                     ),
                                 ]),

@@ -9,8 +9,8 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
-        projection_status_needs_lazy_rebuild,
+        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{
         FileManagementRepository, GetRuntimeDebugArtifactInput,
@@ -19,7 +19,7 @@ use control_plane::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
 use super::*;
@@ -220,9 +220,9 @@ pub(crate) fn trace_exports_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-            ApplicationRuntimeTraceExportsInput,
-            ApplicationRuntimeTraceExportsOutput,
-        >,
+        ApplicationRuntimeTraceExportsInput,
+        ApplicationRuntimeTraceExportsOutput,
+    >,
 > {
     Arc::new(ApplicationRuntimeTraceExportsAdapter {
         artifacts: TraceExportArtifactReader {

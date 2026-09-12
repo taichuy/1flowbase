@@ -50,7 +50,10 @@ pub(crate) async fn upgrade(
     )
     .await?
     .into_principal();
-    let authorization = ResponsesWebSocketAuthorization { principal, handshake_headers: auth::responses_handshake_headers(&headers) };
+    let authorization = ResponsesWebSocketAuthorization {
+        principal,
+        handshake_headers: auth::responses_handshake_headers(&headers),
+    };
 
     Ok(websocket.on_upgrade(move |socket| async move {
         actor::run_connection(socket, state, Arc::new(authorization)).await;

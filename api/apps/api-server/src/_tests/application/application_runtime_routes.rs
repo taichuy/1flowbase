@@ -987,7 +987,7 @@ async fn load_trace_node_detail_payload_for_kind(
 mod artifacts_billing_routes;
 mod lazy_tree_contract_routes;
 mod logs_routes;
+mod mcp_settings;
 mod read_side_effect_routes;
 mod resume_cancel_routes;
 mod stream_routes;
-mod mcp_settings;

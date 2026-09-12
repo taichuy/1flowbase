@@ -5,13 +5,13 @@ use access_control::{
     FILE_TABLES_LIST_OPERATION_ID, FILE_TABLES_STORAGE_BIND_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::file_management::{
-    BindFileTableStorageCommand, CreateFileTableCommand, DeleteFileTableCommand, FileTableService,
-    FileTableWithStorageTitle, project_builtin_file_table_title,
+    project_builtin_file_table_title, BindFileTableStorageCommand, CreateFileTableCommand,
+    DeleteFileTableCommand, FileTableService, FileTableWithStorageTitle,
 };
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::RuntimeRegistrySync;
@@ -30,7 +30,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError, ConsoleLocaleHints,
         },
-        console_route_assembly::{ConsoleRouteAssembly, console_delete, console_get, console_put},
+        console_route_assembly::{console_delete, console_get, console_put, ConsoleRouteAssembly},
     },
 };
 

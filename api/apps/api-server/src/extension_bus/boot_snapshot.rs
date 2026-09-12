@@ -5,19 +5,20 @@ use std::{
 
 use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
-    ContractDescriptor, ContributionId, ContributionResolutionReceipt, EffectiveExtensionGraph,
-    EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract, HookMutationCapability,
-    HookPhase, HookPointBinding, HookPointContract, ModuleId, ModuleResolutionReceipt, Provenance,
-    compile_hook_plans,
+    compile_hook_plans, ContractDescriptor, ContributionId, ContributionResolutionReceipt,
+    EffectiveExtensionGraph, EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract,
+    HookMutationCapability, HookPhase, HookPointBinding, HookPointContract, ModuleId,
+    ModuleResolutionReceipt, Provenance,
 };
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID,
-    InterfaceContributionCollector, input_assembly::ExtensionGraphInputAssembly,
+    input_assembly::ExtensionGraphInputAssembly,
     production_host_extension_authentication_factories, production_interface_contributions,
+    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
+    InterfaceContributionCollector, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
+    INTERFACE_COMPLETION_HOOK_POINT_ID,
 };
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";

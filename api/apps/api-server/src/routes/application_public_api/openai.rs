@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
-    Json,
     body::Bytes,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
+    Json,
 };
 use control_plane::application_public_api::{
     callback_resume::{
@@ -13,13 +13,13 @@ use control_plane::application_public_api::{
         ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        ClientProtocolIngressPolicy, capture_client_protocol_envelope,
-        capture_client_protocol_query, merge_client_protocol_envelopes,
+        capture_client_protocol_envelope, capture_client_protocol_query,
+        merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
     },
     compat::openai::{
-        OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
-        OpenAiResponsesEndpoint, response_id_from_run_id, run_id_from_response_id,
-        translate_chat_completion_request, translate_response_request_with_context_and_previous,
+        response_id_from_run_id, run_id_from_response_id, translate_chat_completion_request,
+        translate_response_request_with_context_and_previous, OpenAiCompatError,
+        OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
     },
     native::{
         ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
@@ -36,7 +36,7 @@ use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
     ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tracing::{info, warn};
 use uuid::Uuid;
 

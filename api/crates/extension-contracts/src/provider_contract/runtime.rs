@@ -322,7 +322,9 @@ impl ProviderRuntimeLine {
                 Some(ProviderStreamEvent::McpCallDelta { call_id, delta })
             }
             Self::McpCallCommit { call } => Some(ProviderStreamEvent::McpCallCommit { call }),
-            Self::ResponsesOutputDelta { event } => Some(ProviderStreamEvent::ResponsesOutputDelta { event }),
+            Self::ResponsesOutputDelta { event } => {
+                Some(ProviderStreamEvent::ResponsesOutputDelta { event })
+            }
             Self::OutputItem {
                 phase,
                 output_index,
@@ -408,18 +410,35 @@ where
 /// Finite formal streaming surface consumed by Responses clients. Lifecycle
 /// terminals and diagnostic events have independent owners and are excluded.
 pub fn validate_responses_output_delta(event: &Value) -> Result<(), String> {
-    let kind=event.get("type").and_then(Value::as_str).unwrap_or_default();
-    if !matches!(kind,
-        "response.output_text.delta" | "response.output_text.done"
-        | "response.content_part.added" | "response.content_part.done"
-        | "response.reasoning_summary_part.added" | "response.reasoning_summary_part.done"
-        | "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done"
-        | "response.reasoning_text.delta" | "response.reasoning_text.done"
-        | "response.custom_tool_call_input.delta" | "response.custom_tool_call_input.done"
-        | "response.function_call_arguments.delta" | "response.function_call_arguments.done"
-    ) { return Err("unsupported formal Responses output event".into()); }
+    let kind = event
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(
+        kind,
+        "response.output_text.delta"
+            | "response.output_text.done"
+            | "response.content_part.added"
+            | "response.content_part.done"
+            | "response.reasoning_summary_part.added"
+            | "response.reasoning_summary_part.done"
+            | "response.reasoning_summary_text.delta"
+            | "response.reasoning_summary_text.done"
+            | "response.reasoning_text.delta"
+            | "response.reasoning_text.done"
+            | "response.custom_tool_call_input.delta"
+            | "response.custom_tool_call_input.done"
+            | "response.function_call_arguments.delta"
+            | "response.function_call_arguments.done"
+    ) {
+        return Err("unsupported formal Responses output event".into());
+    }
     if event.get("output_index").and_then(Value::as_u64).is_none()
-        || !event.get("item_id").and_then(Value::as_str).is_some_and(|id| !id.is_empty()) {
+        || !event
+            .get("item_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
+    {
         return Err("formal Responses output event requires output_index and item_id".into());
     }
     if kind.ends_with(".delta") && !event.get("delta").is_some_and(Value::is_string) {
@@ -428,8 +447,10 @@ pub fn validate_responses_output_delta(event: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn deserialize_responses_output_delta<'de,D: serde::Deserializer<'de>>(deserializer:D)->Result<Value,D::Error> {
-    let event=Value::deserialize(deserializer)?;
+fn deserialize_responses_output_delta<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Value, D::Error> {
+    let event = Value::deserialize(deserializer)?;
     validate_responses_output_delta(&event).map_err(serde::de::Error::custom)?;
     Ok(event)
 }

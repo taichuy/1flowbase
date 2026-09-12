@@ -655,7 +655,8 @@ runtime:
     );
 
     // Root #2028 AC-010: the package intake accepts exactly the negotiated version.
-    let unknown_native_output = raw.replace("responses.native_output.v1", "responses.native_output.v2");
+    let unknown_native_output =
+        raw.replace("responses.native_output.v1", "responses.native_output.v2");
     assert!(parse_plugin_manifest(&unknown_native_output).is_err());
 
     let anthropic_source_request_v2 = raw.replace(

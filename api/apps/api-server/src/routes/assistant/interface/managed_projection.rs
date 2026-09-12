@@ -227,9 +227,9 @@ impl InterfaceContract for AssistantSettingsOutput {
                                     "enabled_client_tools",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).preference).enabled_client_tools).len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).preference)
+                                            .enabled_client_tools)
+                                            .len()),
                                     )]),
                                 ),
                             ]),
@@ -866,18 +866,18 @@ impl InterfaceContract for AssistantConversationsOutput {
                                                             "page_title",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).page_title).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .page_title)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "outer_html",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).outer_html).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .outer_html)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                     ]))

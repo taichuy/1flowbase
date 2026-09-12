@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::{
     debug_execute::{self, McpDebugDispatchError, McpDebugExecuteBody, McpServerBoundInputs},
-    interface_catalog::{McpInterfaceCatalogDependencies, bindable_mcp_interface_with},
+    interface_catalog::{bindable_mcp_interface_with, McpInterfaceCatalogDependencies},
 };
 use crate::{
     error_response::ApiError,

@@ -1046,11 +1046,9 @@ mod tests {
     fn f09a_registry_freezes_all_console_application_bindings() {
         let registry = compile_registry(Arc::new(UnavailableApplicationsPort)).unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

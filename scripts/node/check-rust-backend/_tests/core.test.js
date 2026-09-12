@@ -53,6 +53,20 @@ test('scanRustSource flags production escape hatches while ignoring cfg test mod
   );
 });
 
+test('scanRustSource ignores a cfg test function outside a test module', () => {
+  const findings = scanRustSource({
+    relativePath: 'api/apps/api-server/src/routes/settings/file_storages.rs',
+    content: [
+      '#[cfg(test)]',
+      'pub(crate) fn projection_fixture() {',
+      '    Some(1).unwrap();',
+      '}',
+    ].join('\n'),
+  });
+
+  assert.deepEqual(findings, []);
+});
+
 test('scanRustSource flags sensitive serialized fields', () => {
   const findings = scanRustSource({
     relativePath: 'api/crates/domain/src/auth.rs',

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
-    Json,
     body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, HeaderValue, header},
+    http::{header, HeaderMap, HeaderValue},
     response::Response,
+    Json,
 };
 use control_plane::{
     errors::ControlPlaneError,
@@ -431,10 +431,10 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                                         "identity",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(&(item).upstream).identity)
-                                                                    .len()
-                                                            ),
+                                                            serde_json::json!((&(&(item)
+                                                                .upstream)
+                                                                .identity)
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (

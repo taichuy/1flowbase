@@ -10,16 +10,16 @@ use crate::contribution::ErasedDefinitionContribution;
 use crate::decision::ErasedInterfaceDecisionPlan;
 use crate::hook::ErasedInterfaceHookPlan;
 use crate::{
-    ActivatedAuthenticationAdapter, AdmissionAdapterReference, AuthenticationAdapterReference,
-    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
-    CompiledInterfaceExtensionPlan, ContractIdentity, ExecutionAttempt, GraphFingerprint,
-    HandlerReference, InterfaceExtensionPoint, InterfaceExtensionRegistration,
-    InterfaceHandlerCandidate, InterfaceId, InterfaceOwner, InterfaceStreamHandler,
-    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
-    PluginIdentity, PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity,
-    TargetReference, TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
-    TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
-    TypedInterfaceStreamDefinitionContribution, UserPrincipal, compile_effective_handler,
+    compile_effective_handler, ActivatedAuthenticationAdapter, AdmissionAdapterReference,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingFingerprint, BindingId, CompiledInterfaceExtensionPlan, ContractIdentity,
+    ExecutionAttempt, GraphFingerprint, HandlerReference, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceHandlerCandidate, InterfaceId, InterfaceOwner,
+    InterfaceStreamHandler, InterfaceTargetFailure, InterfaceVersion, InvocationId,
+    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalProfile, PrincipalSummary,
+    RegistryFingerprint, RouteIdentity, TargetReference, TypedInterfaceAdmissionPlan,
+    TypedInterfaceAuthorizationPlan, TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
+    TypedInterfaceStreamDefinitionContribution, UserPrincipal,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -779,7 +779,7 @@ where
     P: InvocationPrincipal,
 {
     fn invoke(&self, context: InterfaceHandlerContext<P>, input: I)
-    -> InterfaceHandlerFuture<O, E>;
+        -> InterfaceHandlerFuture<O, E>;
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
@@ -2434,7 +2434,7 @@ impl RegistryCompiler {
         &mut self,
         id: &InterfaceId,
     ) -> Result<(), RegistryCompilationError> {
-        use crate::hook::{ManagedLifecycleBridge, managed_bridge_identity};
+        use crate::hook::{managed_bridge_identity, ManagedLifecycleBridge};
         use crate::{
             InterfaceExtensionFact as Fact, InterfaceExtensionIsolation,
             InterfaceExtensionPermission as Permission, InterfaceExtensionTier,

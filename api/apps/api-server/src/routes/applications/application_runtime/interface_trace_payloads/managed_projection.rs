@@ -315,10 +315,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).projection_status)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .projection_status)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -331,10 +330,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).source_watermark)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .source_watermark)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -468,10 +466,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).projection_status)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .projection_status)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -484,10 +481,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).source_watermark)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .source_watermark)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -615,10 +611,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).projection_status)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .projection_status)
+                                            .len()),
                                     )]),
                                 ),
                                 (
@@ -631,10 +626,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).projection_status).source_watermark)
-                                                .len()
-                                        ),
+                                        serde_json::json!((&(&(_field_0).projection_status)
+                                            .source_watermark)
+                                            .len()),
                                     )]),
                                 ),
                                 (

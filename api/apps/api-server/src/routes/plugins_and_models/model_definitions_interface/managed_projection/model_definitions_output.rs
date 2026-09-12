@@ -299,27 +299,27 @@ impl InterfaceContract for ModelDefinitionsOutput {
                                                             "summary",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).summary).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .summary)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "description",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).description).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .description)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "field_kind",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).field_kind).len()
-                                                                ),
+                                                                serde_json::json!((&(item)
+                                                                    .field_kind)
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (

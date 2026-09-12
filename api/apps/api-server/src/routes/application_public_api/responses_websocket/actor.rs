@@ -243,13 +243,16 @@ pub(crate) async fn run_connection(
     run_connection_loop(socket, move |response, frames| {
         let bridge = bridge.clone();
         async move { bridge.execute(response, frames).await }
-    }).await;
+    })
+    .await;
 }
 
 pub(super) async fn run_connection_loop<F, Fut>(socket: WebSocket, execute: F)
 where
     F: Fn(Value, mpsc::Sender<String>) -> Fut,
-    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>> + Send + 'static,
+    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
+        + Send
+        + 'static,
 {
     let (mut sender, mut receiver) = socket.split();
     let mut terminal_delivered = false;

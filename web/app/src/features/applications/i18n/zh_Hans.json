@@ -108,7 +108,6 @@
     "orchestration": "编排",
     "manual_input": "人工输入",
     "copied_application_name": "{{value1}} 副本",
-    "close": "关闭",
     "close_run_details": "关闭运行详情",
     "application_copied": "已复制应用",
     "new_tag_name_required": "请输入新标签名称",

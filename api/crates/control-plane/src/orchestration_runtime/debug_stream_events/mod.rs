@@ -595,11 +595,18 @@ pub fn heartbeat() -> RuntimeEventPayload {
     }
 }
 
-pub fn provider_responses_output_delta(node_id:&str,node_run_id:Uuid,event:Value)->RuntimeEventPayload {
+pub fn provider_responses_output_delta(
+    node_id: &str,
+    node_run_id: Uuid,
+    event: Value,
+) -> RuntimeEventPayload {
     RuntimeEventPayload {
-        event_type:"provider_responses_output_delta".into(),source:RuntimeEventSource::Provider,
-        durability:RuntimeEventDurability::Ephemeral,persist_required:false,trace_visible:true,
-        payload:json!({"type":"provider_responses_output_delta","node_id":node_id,"node_run_id":node_run_id,"event":event}),
+        event_type: "provider_responses_output_delta".into(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: true,
+        payload: json!({"type":"provider_responses_output_delta","node_id":node_id,"node_run_id":node_run_id,"event":event}),
     }
 }
 

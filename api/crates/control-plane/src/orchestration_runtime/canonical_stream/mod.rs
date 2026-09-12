@@ -177,7 +177,9 @@ pub enum CanonicalStreamEvent {
         call_id: CanonicalCallId,
         delta: String,
     },
-    ResponsesOutputDelta { event: Value },
+    ResponsesOutputDelta {
+        event: Value,
+    },
     OutputItem {
         phase: ProviderOutputItemPhase,
         output_index: usize,
@@ -580,12 +582,34 @@ impl CanonicalStreamState {
             }
             CanonicalStreamEvent::ResponsesOutputDelta { event } => {
                 plugin_framework::provider_contract::validate_responses_output_delta(&event)
-                    .map_err(|message| CanonicalStreamTransitionError::InvalidOutputItem { message })?;
-                let index=event["output_index"].as_u64().unwrap() as usize;
-                let id=event["item_id"].as_str().unwrap();
-                let added=accumulated.output_items.iter().any(|item| item.phase==ProviderOutputItemPhase::Added && item.output_index==index && item.item["id"]==id);
-                let done=accumulated.output_items.iter().any(|item| item.phase==ProviderOutputItemPhase::Done && item.output_index==index);
-                if !added || done { return Err(CanonicalStreamTransitionError::InvalidOutputItem { message:"Responses delta has no active matching output item".into() }); }
+                    .map_err(
+                        |message| CanonicalStreamTransitionError::InvalidOutputItem { message },
+                    )?;
+                let index = event
+                    .get("output_index")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| CanonicalStreamTransitionError::InvalidOutputItem {
+                        message: "formal Responses output event requires output_index".into(),
+                    })? as usize;
+                let id = event
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CanonicalStreamTransitionError::InvalidOutputItem {
+                        message: "formal Responses output event requires item_id".into(),
+                    })?;
+                let added = accumulated.output_items.iter().any(|item| {
+                    item.phase == ProviderOutputItemPhase::Added
+                        && item.output_index == index
+                        && item.item["id"] == id
+                });
+                let done = accumulated.output_items.iter().any(|item| {
+                    item.phase == ProviderOutputItemPhase::Done && item.output_index == index
+                });
+                if !added || done {
+                    return Err(CanonicalStreamTransitionError::InvalidOutputItem {
+                        message: "Responses delta has no active matching output item".into(),
+                    });
+                }
                 Ok(())
             }
             CanonicalStreamEvent::OutputItem {

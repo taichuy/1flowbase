@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use argon2::{
-    Argon2,
     password_hash::{PasswordHash, PasswordVerifier},
+    Argon2,
 };
 use control_plane::{errors::ControlPlaneError, system_recovery::ConfirmedRecoveryIntent};
 use domain::{BackupSetId, ContentDigest, RecoveryJobId};
@@ -13,12 +13,12 @@ use tokio::io::{AsyncWriteExt, DuplexStream};
 use uuid::Uuid;
 
 use super::{
-    BackupJobStatusResponse, BackupMutationResponse, BackupSetDetailResponse,
-    BackupSetListResponse, BackupSetSummaryResponse, BackupVerificationResponse,
-    CreateRecoveryIntentRequest, QueuedBackupResponse, RecoveryIntentResponse,
-    RecoveryPreflightResponse, RecoveryReauthRequest, RecoveryReauthResponse,
-    RecoveryStatusResponse, canonical_backup_name, detail_response, mutation_response,
-    preflight_response, require_compatible_digest, validate_exact_name,
+    canonical_backup_name, detail_response, mutation_response, preflight_response,
+    require_compatible_digest, validate_exact_name, BackupJobStatusResponse,
+    BackupMutationResponse, BackupSetDetailResponse, BackupSetListResponse,
+    BackupSetSummaryResponse, BackupVerificationResponse, CreateRecoveryIntentRequest,
+    QueuedBackupResponse, RecoveryIntentResponse, RecoveryPreflightResponse, RecoveryReauthRequest,
+    RecoveryReauthResponse, RecoveryStatusResponse,
 };
 use crate::{
     error_response::{ApiError, ApiServiceUnavailable},
@@ -1121,11 +1121,9 @@ mod tests {
             "system_backups.recovery.reauth",
             "system_backups.recovery.intent",
         ] {
-            assert!(
-                DECLARATIONS
-                    .iter()
-                    .any(|declaration| declaration.interface_id == operation)
-            );
+            assert!(DECLARATIONS
+                .iter()
+                .any(|declaration| declaration.interface_id == operation));
         }
     }
 }

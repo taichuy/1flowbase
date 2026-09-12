@@ -13,11 +13,11 @@ use control_plane::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
 use super::{
-    McpToolResponse, to_tool_response_with_operation,
+    to_tool_response_with_operation,
     upstream::{
         DebugMcpProxyToolBody, DebugMcpProxyToolResponse, ImportMcpUpstreamToolsBody,
         McpUpstreamConnectionResponse, McpUpstreamDiscoverResponse, McpUpstreamDraftTestResponse,
@@ -25,6 +25,7 @@ use super::{
         SaveMcpUpstreamCredentialBody, TestMcpUpstreamConnectionDraftBody,
     },
     upstream_client::{McpDiscoveryResult, McpProxyExecutionTrace, McpUpstreamServerInfo},
+    McpToolResponse,
 };
 use crate::{
     error_response::ApiError,

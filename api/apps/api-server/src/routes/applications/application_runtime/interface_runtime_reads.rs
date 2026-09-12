@@ -6,8 +6,8 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
-        projection_status_needs_lazy_rebuild,
+        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{
         CacheStore, GetApplicationRunMonitoringReportInput,
@@ -1024,11 +1024,9 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

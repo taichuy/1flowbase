@@ -1,6 +1,6 @@
 //! Explicit, read-only views for the frozen canonical interface inventory.
 //! Field selection stays in typed owners. These primitives cannot serialize an arbitrary DTO.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub(crate) const MAX_TEXT_BYTES: usize = 256;
 

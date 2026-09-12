@@ -6,7 +6,7 @@ use std::{
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
 };
 use control_plane::model_provider::ModelProviderService;

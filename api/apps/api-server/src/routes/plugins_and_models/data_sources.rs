@@ -3,13 +3,13 @@ mod managed_projection;
 use std::sync::Arc;
 
 use access_control::{
-    AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID, ConsoleRouteOwnership::ConsoleOperation,
+    ConsoleRouteOwnership::ConsoleOperation, AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID,
     DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
 };
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    Json, Router,
 };
 use control_plane::data_source::{
     CreateDataSourceInstanceCommand, DataSourceBackendView, DataSourceCatalogEntryView,
@@ -38,11 +38,11 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError,
         },
-        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
     },
 };
 
-use super::model_definitions::{ModelDefinitionResponse, to_model_definition_response};
+use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateDataSourceBody {
@@ -376,7 +376,8 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "data_sources.map_to_model",
         binding_id: "http.console.data-sources.resources.map-to-model.v1",
         method: "POST",
-        path: "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
+        path:
+            "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
         mutating: true,
     },
 ];

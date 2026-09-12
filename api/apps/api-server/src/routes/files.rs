@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     body::Body,
     extract::{Multipart, Path, State},
-    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::Response,
+    Json, Router,
 };
 use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -23,7 +23,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError,
         },
-        console_route_assembly::{ConsoleRouteAssembly, console_get, console_post},
+        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
     },
 };
 

@@ -12,17 +12,17 @@ use interface_runtime::InterfaceContract;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    MemoryEntriesResponse, MemoryEntryRevealBody, MemoryEntryValueResponse, MemoryOverviewResponse,
-    MemoryPageQuery, MemoryPathQuery, MemorySearchQuery, MemoryStatsOverviewResponse,
-    MemoryStatsResponse, MemoryTreeResponse,
     memory_support::{
-        MemoryInspectionDependencies, empty_memory_entry_page, empty_memory_tree_page,
-        format_memory_reveal_mode, format_memory_value_state, memory_contract_definitions,
-        memory_contract_label, memory_contract_stats_response, memory_contract_summary,
-        memory_contract_supported, memory_inspection_target, memory_page_request,
-        memory_query_path, parse_memory_reveal_mode,
+        empty_memory_entry_page, empty_memory_tree_page, format_memory_reveal_mode,
+        format_memory_value_state, memory_contract_definitions, memory_contract_label,
+        memory_contract_stats_response, memory_contract_summary, memory_contract_supported,
+        memory_inspection_target, memory_page_request, memory_query_path, parse_memory_reveal_mode,
+        MemoryInspectionDependencies,
     },
-    to_memory_entry_metadata_response, to_memory_tree_node_response,
+    to_memory_entry_metadata_response, to_memory_tree_node_response, MemoryEntriesResponse,
+    MemoryEntryRevealBody, MemoryEntryValueResponse, MemoryOverviewResponse, MemoryPageQuery,
+    MemoryPathQuery, MemorySearchQuery, MemoryStatsOverviewResponse, MemoryStatsResponse,
+    MemoryTreeResponse,
 };
 use crate::{
     error_response::ApiError,
@@ -528,11 +528,9 @@ mod tests {
         })
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(
-                registry
-                    .binding(&BindingId::new(declaration.binding_id).unwrap())
-                    .is_some()
-            );
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

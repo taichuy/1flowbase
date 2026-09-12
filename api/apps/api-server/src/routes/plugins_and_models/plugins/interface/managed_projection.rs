@@ -454,9 +454,7 @@ impl InterfaceContract for PluginInterfaceInput {
                                         "acknowledged_warnings",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(item).acknowledged_warnings).len()
-                                            ),
+                                            serde_json::json!((&(item).acknowledged_warnings).len()),
                                         )]),
                                     ),
                                 ]),
@@ -744,9 +742,7 @@ impl InterfaceContract for PluginInterfaceInput {
                                         "acknowledged_warnings",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(item).acknowledged_warnings).len()
-                                            ),
+                                            serde_json::json!((&(item).acknowledged_warnings).len()),
                                         )]),
                                     ),
                                 ]),
