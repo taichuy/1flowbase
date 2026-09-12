@@ -125,6 +125,7 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     assert!(model_codes.contains(&"users"));
     assert!(model_codes.contains(&"roles"));
     assert!(model_codes.contains(&"application_run_log_summaries"));
+    assert!(model_codes.contains(&"application_run_log_tasks"));
     assert!(models.iter().any(|model| {
         model["id"].as_str() == Some(&model_id)
             && model["source_kind"].as_str() == Some("main_source")

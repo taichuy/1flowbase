@@ -130,6 +130,10 @@ fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -235,6 +239,10 @@ fn builder_projects_node_run_tool_group_and_tool_callbacks() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -397,6 +405,8 @@ fn builder_projects_linked_agent_tools_as_subagent_llm_nodes() {
             events: Vec::new(),
             runtime_events: Vec::new(),
         }],
+        task_rounds: Vec::new(),
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -574,6 +584,8 @@ fn builder_projects_linked_agent_without_llm_node_run_as_fallback_llm_node() {
             events: Vec::new(),
             runtime_events: Vec::new(),
         }],
+        task_rounds: Vec::new(),
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -704,6 +716,10 @@ fn builder_projects_node_run_content_as_lightweight_refs() {
         }],
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -814,6 +830,10 @@ fn builder_projects_tool_route_fusion_and_branch_nodes() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -934,6 +954,10 @@ fn builder_projects_intercepted_route_tool_callback_status() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -1102,6 +1126,10 @@ fn builder_merges_callback_task_tools_with_internal_route_tools() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();
@@ -1162,6 +1190,10 @@ fn builder_projects_stitched_trace_as_collapsed_context_group() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
     detail
         .stitched_trace
@@ -1300,6 +1332,10 @@ fn builder_nests_stitched_trace_under_current_llm_root_as_tool_sibling() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
     detail
         .stitched_trace
@@ -1475,4 +1511,144 @@ fn status_record(
         created_at: now,
         updated_at: now,
     }
+}
+
+// #2035 AC-004/005: the task anchor's LLM node owns a Rounds group for later
+// member calls (with their client tool callbacks) and an Agents group for child tasks.
+#[test]
+fn issue_2035_builder_projects_task_rounds_and_child_tasks_under_llm_node() {
+    let flow_run_id = Uuid::now_v7();
+    let now = OffsetDateTime::UNIX_EPOCH;
+    let llm_node_run_id = Uuid::now_v7();
+    let llm = |id: Uuid, run_id: Uuid, offset: i64| domain::NodeRunRecord {
+        id,
+        flow_run_id: run_id,
+        node_id: "node-llm".to_string(),
+        node_type: "llm".to_string(),
+        node_alias: "gpt".to_string(),
+        status: domain::NodeRunStatus::Succeeded,
+        input_payload: json!({}),
+        output_payload: json!({}),
+        error_payload: None,
+        metrics_payload: json!({}),
+        debug_payload: json!({}),
+        started_at: now + time::Duration::seconds(offset),
+        finished_at: Some(now + time::Duration::seconds(offset + 1)),
+    };
+    let round_run_id = Uuid::now_v7();
+    let compact_run_id = Uuid::now_v7();
+    let child_run_id = Uuid::now_v7();
+    let mut round_run = flow_run(round_run_id, now + time::Duration::seconds(10));
+    round_run.application_id = Uuid::nil();
+    let mut compact_run = flow_run(compact_run_id, now + time::Duration::seconds(20));
+    compact_run.application_id = Uuid::nil();
+    let mut child_run = flow_run(child_run_id, now + time::Duration::seconds(30));
+    child_run.title = "review diff".to_string();
+    let detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
+        flow_run: flow_run(flow_run_id, now),
+        node_runs: vec![llm(llm_node_run_id, flow_run_id, 0)],
+        checkpoints: Vec::new(),
+        callback_tasks: Vec::new(),
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+        task_rounds: vec![
+            domain::ApplicationRunTaskRoundTrace {
+                call_kind: "generate".to_string(),
+                source_flow_run: round_run,
+                node_runs: vec![llm(Uuid::now_v7(), round_run_id, 10)],
+                callback_tasks: Vec::new(),
+                native_messages: vec![json!({
+                    "role":"assistant","content":"exec",
+                    "_source_item":{"type":"custom_tool_call","call_id":"call-1","name":"exec","input":"cat entry.txt"},
+                    "tool_result":{"type":"custom_tool_call_output","call_id":"call-1","output":"FINAL=1"}
+                })],
+            },
+            domain::ApplicationRunTaskRoundTrace {
+                call_kind: "compact".to_string(),
+                source_flow_run: compact_run,
+                node_runs: vec![llm(Uuid::now_v7(), compact_run_id, 20)],
+                callback_tasks: Vec::new(),
+                native_messages: Vec::new(),
+            },
+        ],
+        child_task_traces: vec![domain::ApplicationRunChildTaskTrace {
+            subagent_kind: Some("review".to_string()),
+            source_flow_run: child_run,
+            node_runs: vec![llm(Uuid::now_v7(), child_run_id, 30)],
+            callback_tasks: Vec::new(),
+        }],
+    };
+
+    let projection = build_application_run_trace_projection(&detail).unwrap();
+    let llm_root = projection
+        .nodes
+        .iter()
+        .find(|node| {
+            node.parent_trace_node_id.is_none() && node.node_type.as_deref() == Some("llm")
+        })
+        .expect("anchor llm root");
+    let groups = projection
+        .nodes
+        .iter()
+        .filter(|node| node.parent_trace_node_id == Some(llm_root.trace_node_id))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        groups
+            .iter()
+            .map(|node| node.node_kind.as_str())
+            .collect::<Vec<_>>(),
+        vec!["round_group", "agent_group"],
+        "{groups:?}"
+    );
+    let rounds = projection
+        .nodes
+        .iter()
+        .filter(|node| node.parent_trace_node_id == Some(groups[0].trace_node_id))
+        .collect::<Vec<_>>();
+    assert_eq!(rounds.len(), 2);
+    assert_eq!(rounds[0].node_kind, "task_round");
+    assert_eq!(rounds[0].source_flow_run_id, Some(round_run_id));
+    assert_eq!(rounds[0].node_alias, "Round 2");
+    assert_eq!(rounds[1].node_alias, "Compaction 3");
+    assert_eq!(rounds[1].node_mode.as_deref(), Some("compact"));
+    // The round's client tool callback lives under the round, not at the root.
+    let tool = projection
+        .nodes
+        .iter()
+        .find(|node| {
+            node.node_kind == "tool_callback" && node.owner_id.as_deref() == Some("call-1")
+        })
+        .expect("round tool callback");
+    let mut parent = tool.parent_trace_node_id;
+    let mut reached_round = false;
+    while let Some(id) = parent {
+        let node = projection
+            .nodes
+            .iter()
+            .find(|node| node.trace_node_id == id)
+            .unwrap();
+        if node.trace_node_id == rounds[0].trace_node_id {
+            reached_round = true;
+            break;
+        }
+        parent = node.parent_trace_node_id;
+    }
+    assert!(reached_round);
+    assert_eq!(tool.status, "returned");
+    let agents = projection
+        .nodes
+        .iter()
+        .filter(|node| node.parent_trace_node_id == Some(groups[1].trace_node_id))
+        .collect::<Vec<_>>();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].node_kind, "child_task");
+    assert_eq!(agents[0].source_flow_run_id, Some(child_run_id));
+    assert_eq!(agents[0].node_alias, "review · review diff");
+    assert!(projection
+        .nodes
+        .iter()
+        .all(|node| node.parent_trace_node_id.is_some()
+            || node.trace_node_id == llm_root.trace_node_id));
 }

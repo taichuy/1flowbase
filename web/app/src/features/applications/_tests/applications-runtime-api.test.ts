@@ -457,7 +457,7 @@ describe('applications runtime api', () => {
     await fetchApplicationRunArchiveImportJob('app-1', 'job-1');
 
     expect(fetchConsoleRuntimeModelRecords).toHaveBeenCalledWith(
-      'application_run_log_summaries',
+      'application_run_log_tasks',
       expect.objectContaining({
         page: 1,
         page_size: 20,
@@ -575,7 +575,11 @@ describe('applications runtime api', () => {
           compaction_count: 1,
           call_kind: 'generate',
           log_conversation_id: 'log-conversation-1',
-          log_task_run_id: 'run-1',
+          parent_task_run_id: null,
+          member_run_ids: ['run-1', 'run-2', 'run-3', 'run-4', 'run-5'],
+          outcome: 'final_answer_observed',
+          user_input: '退款流程是什么',
+          final_output: '退款总结',
           application_id: 'app-1',
           scope_id: 'workspace-1',
           run_mode: 'published_api_run',
@@ -618,7 +622,9 @@ describe('applications runtime api', () => {
           compaction_count: 1,
           call_kind: 'generate',
           log_conversation_id: 'log-conversation-1',
-          log_task_run_id: 'run-1',
+          parent_task_run_id: null,
+          member_run_ids: ['run-1', 'run-2', 'run-3', 'run-4', 'run-5'],
+          outcome: 'final_answer_observed',
           application_id: 'app-1',
           scope_id: 'workspace-1',
           title: '退款总结',
@@ -636,12 +642,13 @@ describe('applications runtime api', () => {
     expect(runsPage.items[0]).not.toHaveProperty('flow_run_id');
 
     expect(fetchConsoleRuntimeModelRecords).toHaveBeenCalledWith(
-      'application_run_log_summaries',
+      'application_run_log_tasks',
       {
         page: 1,
         page_size: 20,
         filter: {
           application_id: { $eq: 'app-1' },
+          is_root: { $eq: true },
           title: { $includes: '退款' }
         },
         sort: {

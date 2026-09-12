@@ -121,20 +121,18 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             .unwrap();
         ids.push(created.flow_run.id);
     }
-    // AC-011: capture the actual shared query plan on this isolated six-call fixture.
-    let summary_sql = include_str!("../../../../storage/durable/postgres/src/orchestration_runtime_repository/application_run_logs/task_summary.sql")
-        .replace("/* log_scope */", &format!("application_id='{}'::uuid", seeded.application_id));
-    let plan: serde_json::Value = sqlx::query_scalar(&format!(
-        "explain (format json) select flow_run_id,invocation_count from ({summary_sql}) summaries order by created_at desc,flow_run_id desc limit 20"
-    )).fetch_one(store.pool()).await.unwrap();
+    // AC-011 (#2035): the original page consumes the task projection through
+    // Runtime Data Model records; the run projection stays one row per run.
+    let plan: serde_json::Value = sqlx::query_scalar(
+        "explain (format json) select id,invocation_count from application_run_log_tasks where application_id=$1 and is_root order by created_at desc,id desc limit 20",
+    ).bind(seeded.application_id).fetch_one(store.pool()).await.unwrap();
     eprintln!("original_log_task_query_plan={plan}");
-    // AC-001/011: the original page consumes Runtime Data Model records.
     let metadata = store
         .list_runtime_model_metadata()
         .await
         .unwrap()
         .into_iter()
-        .find(|model| model.model_code == "application_run_log_summaries")
+        .find(|model| model.model_code == "application_run_log_tasks")
         .unwrap();
     let runtime_page =
         storage_durable::runtime_record_repository::RuntimeRecordRepository::list_records(
@@ -240,9 +238,17 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         detail_ids,
-        ids[..4].iter().copied().collect(),
-        "original detail contains all task calls only"
+        std::iter::once(ids[0]).collect(),
+        "run message projection stays single-run; task convergence is served from the task row"
     );
+    let task = store
+        .get_application_run_log_task(seeded.application_id, ids[0])
+        .await
+        .unwrap()
+        .expect("task row for the anchor call");
+    assert_eq!(task.member_run_ids, ids[..4]);
+    assert_eq!(task.outcome, "final_answer_observed");
+    assert_eq!(task.final_output.as_deref(), Some("done"));
     let projected=sqlx::query_scalar::<_,serde_json::Value>("select native_message->'_source_item' from application_run_conversation_message_items where flow_run_id=any($1) and source_item_key is not null order by flow_run_id,display_sequence").bind(&ids[..4]).fetch_all(store.pool()).await.unwrap();
     assert_eq!(
         projected
@@ -426,21 +432,30 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    assert_eq!(final_page.total, 6);
-    let child_row = final_page
+    // #2035: the child task lives under its parent's trace tree, not as a list row,
+    // so the six earlier calls stay at five root rows (task, second task, other
+    // credential, two conflicting identities).
+    assert_eq!(final_page.total, 5);
+    assert!(final_page
         .items
         .iter()
-        .find(|row| row.run.id == child.flow_run.id)
-        .unwrap();
-    assert_eq!(child_row.parent_run_id, Some(ids[0]));
-    assert_eq!(child_row.run.status, FlowRunStatus::Failed);
+        .all(|row| row.run.id != child.flow_run.id));
+    let child_task = store
+        .get_application_run_log_task(seeded.application_id, child.flow_run.id)
+        .await
+        .unwrap()
+        .expect("child task row");
+    assert_eq!(child_task.parent_task_run_id, Some(ids[0]));
+    assert!(!child_task.is_root);
+    assert_eq!(child_task.status, FlowRunStatus::Failed);
     assert_eq!(
         final_page
             .items
             .iter()
-            .filter(|row| row.log_task_run_id.is_none())
+            .filter(|row| row.log_conversation_id.is_none())
             .count(),
-        2
+        2,
+        "conflicting identities stay independent root rows without a log conversation"
     );
     // AC-008/011: a live task member must remain visible beside terminal calls,
     // without writing a terminal message projection or duplicating its prompt.
@@ -473,8 +488,19 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         live_page
             .items
             .iter()
-            .any(|item| item.detail_run_id == Some(active.flow_run.id) && item.status == "running"),
-        "active member must be visible in original task detail"
+            .all(|item| item.flow_run_id == ids[0]),
+        "run message projection stays single-run"
+    );
+    let live_task = store
+        .get_application_run_log_task(seeded.application_id, ids[0])
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        live_task.member_run_ids.contains(&active.flow_run.id)
+            && live_task.status == FlowRunStatus::Running
+            && live_task.outcome == "in_progress",
+        "an active member keeps the task visibly in progress: {live_task:?}"
     );
     let persisted: i64 = sqlx::query_scalar(
         "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
@@ -506,8 +532,8 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .await
         .unwrap();
     assert_eq!(
-        grouped.total, 6,
-        "empty and absent external user retain the existing identity scope semantics"
+        grouped.total, 5,
+        "empty and absent external user share one identity scope: the blank-user call joins the first task instead of adding a root row"
     );
     assert_eq!(
         grouped
@@ -530,10 +556,15 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    assert!(live
-        .items
-        .iter()
-        .any(|item| item.detail_run_id == Some(blank.flow_run.id)));
+    // #2035: the run projection stays single-run; the blank-user call is a task member.
+    assert!(live.items.iter().all(|item| item.flow_run_id == ids[0]));
+    assert!(store
+        .get_application_run_log_task(seeded.application_id, ids[0])
+        .await
+        .unwrap()
+        .unwrap()
+        .member_run_ids
+        .contains(&blank.flow_run.id));
     // AC-007: a later call can contradict an already projected canonical item.
     // Reading the original owner must expose that conflict without a manual rebuild.
     store.append_runtime_event(&AppendRuntimeEventInput {

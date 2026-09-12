@@ -134,6 +134,13 @@ async fn application_runtime_routes_logs_default_to_recent_time_window() {
     .execute(&pool)
     .await
     .unwrap();
+    // The raw edit bypassed the projection writer; refresh the task row the
+    // writer would have recomputed so the list reflects the aged summary.
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(Uuid::parse_str(&old_run_id).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let default_payload = get_console_json(
         &app,

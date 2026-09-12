@@ -223,16 +223,11 @@ impl PgControlPlaneStore {
         input: ListApplicationRunConversationMessageItemsPageInput,
     ) -> Result<control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage> {
         let limit = input.limit.clamp(1, 50);
-        let related_runs = sqlx::query_scalar::<_, Uuid>(
-            "select run_id from application_run_log_task_runs($1,$2) order by run_id",
-        ).bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await?;
-        for related in related_runs {
-            self.ensure_application_run_conversation_message_items_projection_for_read(
-                application_id,
-                related,
-            )
-            .await?;
-        }
+        self.ensure_application_run_conversation_message_items_projection_for_read(
+            application_id,
+            flow_run_id,
+        )
+        .await?;
         let total_count = self
             .application_run_conversation_message_items_count(application_id, flow_run_id)
             .await?;
@@ -794,33 +789,13 @@ fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-// Original message projection, scoped by the same durable task identity as
-// the original list. Single-run cursors retain their existing sequence values.
+// The run message projection is single-run scoped; task-level convergence is
+// served from the task row, never by joining member projections at read time.
 fn application_run_task_message_items_cte() -> &'static str {
-    r#"with task_runs as (
-        select s.* from application_run_log_task_runs($1,$2) member
-        join application_run_log_summaries s on s.flow_run_id=member.run_id
-    ), message_items as (
-        select m.* from task_runs s
-        join application_run_conversation_message_items m on m.flow_run_id=s.flow_run_id
-            and m.application_id=s.application_id and m.scope_id=s.scope_id
-        where m.projection_version=$3
-        union all
-        select live.* from task_runs s
-        cross join lateral jsonb_populate_record(null::application_run_conversation_message_items,
-            jsonb_build_object('id',s.flow_run_id,'scope_id',s.scope_id,'application_id',s.application_id,
-                'flow_run_id',s.flow_run_id,'display_sequence',0,'source_kind','current_run',
-                'detail_run_id',s.flow_run_id,'can_open_detail',true,'is_current',s.flow_run_id=$2,
-                'status',s.status,'started_at',s.started_at,'finished_at',s.finished_at,
-                'created_at',s.created_at,'updated_at',s.updated_at,'projection_version',$3)) live
-        where s.log_task_run_id is not null
-            and s.status in ('queued','running','waiting_callback','waiting_human','paused')
-            and not exists(select 1 from application_run_conversation_message_items m
-                where m.flow_run_id=s.flow_run_id and m.projection_version=$3)
-    ), task_message_items as (
-        select m.*,case when s.log_task_run_id is null then m.display_sequence
-            else row_number() over(order by m.flow_run_id,m.display_sequence,m.id)-1 end as task_sequence
-        from message_items m join task_runs s on s.flow_run_id=m.flow_run_id
+    r#"with task_message_items as (
+        select m.*, m.display_sequence as task_sequence
+        from application_run_conversation_message_items m
+        where m.application_id=$1 and m.flow_run_id=$2 and m.projection_version=$3
     )"#
 }
 

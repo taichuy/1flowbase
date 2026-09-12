@@ -523,6 +523,15 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (application_id, input);
         anyhow::bail!("list_application_run_logs_page not implemented")
     }
+    /// The task row anchored by `task_run_id`; `None` for member runs.
+    async fn get_application_run_log_task(
+        &self,
+        application_id: Uuid,
+        task_run_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ApplicationRunLogTask>> {
+        let _ = (application_id, task_run_id);
+        Ok(None)
+    }
     async fn list_application_run_count_tokens_results(
         &self,
         flow_run_ids: &[Uuid],

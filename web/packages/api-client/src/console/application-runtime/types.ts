@@ -63,6 +63,12 @@ export interface ConsoleApplicationRunSummary {
   log_conversation_id: string | null;
   log_task_run_id: string | null;
   call_kind: string;
+  member_run_ids?: string[];
+  parent_task_run_id?: string | null;
+  outcome?: string;
+  user_input?: string | null;
+  final_output?: string | null;
+  final_output_run_id?: string | null;
   id: string;
   application_id?: string;
   application_type?: string;

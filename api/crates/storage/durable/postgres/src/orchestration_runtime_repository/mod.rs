@@ -73,6 +73,7 @@ include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
 include!("application_run_logs/assistant_conversation_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
+include!("application_run_logs/task_projection_methods.rs");
 include!("application_run_trace_projection_methods.rs");
 include!("application_run_monitoring_methods.rs");
 include!("debug_variable_cache_methods.rs");
@@ -792,6 +793,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: control_plane_contracts::ports::ListApplicationRunsPageInput,
     ) -> Result<control_plane_contracts::ports::ApplicationRunLogSummaryPage> {
         PgControlPlaneStore::list_application_run_logs_page(self, application_id, input).await
+    }
+
+    async fn get_application_run_log_task(
+        &self,
+        application_id: Uuid,
+        task_run_id: Uuid,
+    ) -> Result<Option<domain::ApplicationRunLogTask>> {
+        PgControlPlaneStore::get_application_run_log_task(self, application_id, task_run_id).await
     }
 
     async fn list_application_run_count_tokens_results(

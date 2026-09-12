@@ -829,6 +829,7 @@ impl PgControlPlaneStore {
             )
             .await?;
         }
+        Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
 
         if is_terminal_application_run_log_status(flow_run.status) {
@@ -912,6 +913,7 @@ impl PgControlPlaneStore {
                 )
                 .await?;
             }
+            Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
             tx.commit().await?;
             if is_terminal_application_run_log_status(flow_run.status) {
                 self.upsert_application_conversation_messages_for_flow_run(&flow_run)
@@ -1029,6 +1031,7 @@ impl PgControlPlaneStore {
             .await?;
         Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
             .await?;
+        Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
 
         let scope_id = flow_run_scope_id_for_update(&mut tx, flow_run.id).await?;
         let flow_event_sequence = next_event_sequence(&mut tx, flow_run.id).await?;

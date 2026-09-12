@@ -61,6 +61,10 @@ fn builder_projects_artifact_indexed_host_internal_tool_lifecycle() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let projection = build_application_run_trace_projection(&detail).unwrap();

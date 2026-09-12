@@ -157,16 +157,18 @@ pub use network_egress::{
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{
-    ApplicationConversationRunSummary, ApplicationRunConversationMessageItem, ApplicationRunDetail,
-    ApplicationRunLogSummary, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
-    ApplicationRunSummary, ApplicationRunTraceNodeContentRecord, ApplicationRunTraceNodeRecord,
-    ApplicationRunTraceProjectionDiagnostic, ApplicationRunTraceProjectionStatus,
-    ApplicationRunTraceProjectionStatusRecord, CallbackTaskRecord, CallbackTaskStatus,
-    CheckpointRecord, CompiledPlanRecord, DataModelSideEffectReceiptRecord,
-    FlowRunCallbackResumeAttemptRecord, FlowRunCallbackResumeAttemptStatus, FlowRunExecutionStage,
-    FlowRunInvocationContext, FlowRunInvocationSource, FlowRunMode, FlowRunPrincipal,
-    FlowRunPrincipalKind, FlowRunRecord, FlowRunStatus, NodeDebugPreviewResult, NodeLastRun,
-    NodeRunRecord, NodeRunStatus, RunEventRecord, RuntimeDebugArtifactRecord,
+    ApplicationConversationRunSummary, ApplicationRunChildTaskTrace,
+    ApplicationRunConversationMessageItem, ApplicationRunDetail, ApplicationRunLogSummary,
+    ApplicationRunLogTask, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
+    ApplicationRunSummary, ApplicationRunTaskRoundTrace, ApplicationRunTraceNodeContentRecord,
+    ApplicationRunTraceNodeRecord, ApplicationRunTraceProjectionDiagnostic,
+    ApplicationRunTraceProjectionStatus, ApplicationRunTraceProjectionStatusRecord,
+    CallbackTaskRecord, CallbackTaskStatus, CheckpointRecord, CompiledPlanRecord,
+    DataModelSideEffectReceiptRecord, FlowRunCallbackResumeAttemptRecord,
+    FlowRunCallbackResumeAttemptStatus, FlowRunExecutionStage, FlowRunInvocationContext,
+    FlowRunInvocationSource, FlowRunMode, FlowRunPrincipal, FlowRunPrincipalKind, FlowRunRecord,
+    FlowRunStatus, NodeDebugPreviewResult, NodeLastRun, NodeRunRecord, NodeRunStatus,
+    RunEventRecord, RuntimeDebugArtifactRecord,
 };
 pub use plugin_worker::{PluginWorkerLeaseRecord, PluginWorkerStatus};
 pub use resource::runtime_model_resource_code;

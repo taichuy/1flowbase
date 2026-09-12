@@ -93,9 +93,26 @@ pub fn trace_projection_source_watermark(detail: &domain::ApplicationRunDetail) 
         detail.stitched_trace.len(),
         detail.subagent_traces.len(),
     );
-    control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(
+    let base =
+        control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(
+            base,
+            &detail.native_messages,
+        );
+    let task_output_count = detail
+        .task_rounds
+        .iter()
+        .map(|round| round.native_messages.len())
+        .sum::<usize>()
+        + detail
+            .native_messages
+            .iter()
+            .filter(|message| message.get("_source_item").is_some())
+            .count();
+    control_plane_contracts::persistence_projection::trace_projection_task_watermark(
         base,
-        &detail.native_messages,
+        detail.task_rounds.len(),
+        detail.child_task_traces.len(),
+        task_output_count,
     )
 }
 
@@ -136,6 +153,16 @@ fn trace_visible_node_run_groups(
     }
 
     groups
+}
+
+/// The task groups attach to the same LLM root the stitched context targets:
+/// the run's target LLM node, else its first LLM node. Returns its order key.
+fn task_groups_target_index(detail: &domain::ApplicationRunDetail) -> Option<String> {
+    if detail.task_rounds.is_empty() && detail.child_task_traces.is_empty() {
+        return None;
+    }
+    let groups = trace_visible_current_node_run_groups(detail);
+    stitched_context_target_index(detail, &groups).map(root_order_key)
 }
 
 fn stitched_context_target_index(
@@ -279,9 +306,18 @@ impl TraceProjectionBuilder {
             .iter()
             .filter(|task| task.callback_kind != "llm_tool_calls")
             .count();
+        let task_group_count = if first_node_run.node_type == "llm"
+            && task_groups_target_index(detail) == Some(order_key.clone())
+        {
+            usize::from(!detail.task_rounds.is_empty())
+                + usize::from(!detail.child_task_traces.is_empty())
+        } else {
+            0
+        };
         let child_group_count = usize::from(!stitched_trace.is_empty())
             + usize::from(ordinary_tool_call_count > 0)
-            + usize::from(linked_subagent_count > 0);
+            + usize::from(linked_subagent_count > 0)
+            + task_group_count;
         let child_count =
             i64::try_from(non_tool_callback_count + child_group_count).unwrap_or(i64::MAX);
 
@@ -404,6 +440,21 @@ impl TraceProjectionBuilder {
                 parent_trace_node_id,
                 parent_stable_locator,
                 task,
+            )?;
+        }
+
+        // Task-level groups attach to the LLM node that owns the client turn.
+        if parent_node_runs
+            .first()
+            .is_some_and(|node_run| node_run.node_type == "llm")
+            && task_groups_target_index(detail) == Some(parent_order_key.to_string())
+        {
+            self.push_task_groups(
+                parent_order_key,
+                parent_trace_node_id,
+                parent_stable_locator,
+                child_index,
+                detail,
             )?;
         }
 
@@ -1474,3 +1525,4 @@ fn child_order_key(parent_order_key: &str, index: usize) -> String {
 mod tests;
 
 mod native_messages;
+mod task_rounds;

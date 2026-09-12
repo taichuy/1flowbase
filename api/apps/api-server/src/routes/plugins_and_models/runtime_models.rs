@@ -254,8 +254,15 @@ fn normalize_application_run_observability(record: &mut Value) {
     }
 }
 
+fn is_application_run_log_model(model_code: &str) -> bool {
+    matches!(
+        model_code,
+        "application_run_log_summaries" | "application_run_log_tasks"
+    )
+}
+
 fn runtime_record_response(model_code: &str, mut record: Value) -> Value {
-    if model_code == "application_run_log_summaries" {
+    if is_application_run_log_model(model_code) {
         normalize_application_log_cache_hit_rate(&mut record);
         normalize_application_run_observability(&mut record);
     }
@@ -303,7 +310,7 @@ async fn enrich_application_run_count_tokens_results(
     model_code: &str,
     records: &mut [Value],
 ) -> Result<(), ApiError> {
-    if model_code != "application_run_log_summaries" {
+    if !is_application_run_log_model(model_code) {
         return Ok(());
     }
     let flow_run_ids = records

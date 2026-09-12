@@ -134,7 +134,7 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
         .await
         .unwrap()
         .into_iter()
-        .find(|model| model.model_code == "application_run_log_summaries")
+        .find(|model| model.model_code == "application_run_log_tasks")
         .unwrap();
     let runtime_page =
         storage_durable::runtime_record_repository::RuntimeRecordRepository::list_records(
@@ -160,19 +160,8 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
     assert_eq!(runtime_page.items[0]["compaction_count"], 1);
     assert_eq!(runtime_page.items[0]["call_kind"], "generate");
 
-    // AC-006: the task and conversation scope are defined once in the database
-    // and every read path resolves members through that definition.
-    let task_members: Vec<Uuid> = sqlx::query_scalar(
-        "select run_id from application_run_log_task_runs($1,$2) order by run_id",
-    )
-    .bind(seeded.application_id)
-    .bind(ids[1])
-    .fetch_all(store.pool())
-    .await
-    .unwrap();
-    let mut expected = ids.clone();
-    expected.sort();
-    assert_eq!(task_members, expected);
+    // AC-006 (#2034) → #2035: task membership is owned by the task projection;
+    // the conversation scope helper remains the single conversation definition.
     let conversation_members: Vec<Uuid> = sqlx::query_scalar(
         "select run_id from application_run_log_conversation_runs($1,$2) order by run_id",
     )
@@ -184,6 +173,8 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
     .fetch_all(store.pool())
     .await
     .unwrap();
+    let mut expected = ids.clone();
+    expected.sort();
     assert_eq!(conversation_members, expected);
     assert_eq!(
         store
@@ -209,7 +200,7 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
         .iter()
         .filter_map(|item| item.detail_run_id)
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(detail_ids, ids.iter().copied().collect());
+    assert_eq!(detail_ids, std::iter::once(ids[1]).collect());
 }
 
 // #2034 AC-007: existing summaries gain call_kind from the retained native

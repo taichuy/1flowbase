@@ -1996,6 +1996,10 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 .unwrap_or_default(),
             stitched_trace: Vec::new(),
             subagent_traces: Vec::new(),
+
+            task_rounds: Vec::new(),
+
+            child_task_traces: Vec::new(),
         }))
     }
 

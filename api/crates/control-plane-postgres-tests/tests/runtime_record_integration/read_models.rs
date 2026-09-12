@@ -20,6 +20,8 @@ async fn runtime_record_repository_registers_builtin_runtime_read_models() {
         .collect::<Vec<_>>();
     for expected in [
         "application_run_log_summaries",
+        // #2035: the task projection is the list unit.
+        "application_run_log_tasks",
         "application_conversations",
         "application_conversation_messages",
         "node_runs",

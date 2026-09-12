@@ -61,6 +61,11 @@ export type ApplicationRunSummary = {
   call_kind: string;
   invocation_count: number;
   compaction_count: number;
+  member_run_ids: string[];
+  parent_task_run_id: string | null;
+  outcome: string;
+  user_input: string | null;
+  final_output: string | null;
   id: string;
   application_id: string;
   scope_id: string;
@@ -445,11 +450,11 @@ export function fetchApplicationRuns(
   const pageSize = input.pageSize ?? 20;
 
   return fetchConsoleRuntimeModelRecords(
-    'application_run_log_summaries',
+    'application_run_log_tasks',
     {
       page,
       page_size: pageSize,
-      filter: applicationRunLogSummaryFilter(applicationId, input),
+      filter: applicationRunLogTaskFilter(applicationId, input),
       sort: {
         field: input.sortBy ?? 'started_at',
         direction: input.sortOrder ?? 'desc'
@@ -912,12 +917,14 @@ export function completeCallbackTask(
   );
 }
 
-function applicationRunLogSummaryFilter(
+function applicationRunLogTaskFilter(
   applicationId: string,
   input: FetchApplicationRunsInput
 ) {
+  // Child tasks (subagent threads) are shown inside their parent's trace tree.
   const filter: Record<string, unknown> = {
-    application_id: { $eq: applicationId }
+    application_id: { $eq: applicationId },
+    is_root: { $eq: true }
   };
   const titleIncludes = input.titleIncludes?.trim();
 
@@ -1002,6 +1009,19 @@ function optionalStringField(
   return value;
 }
 
+function stringArrayField(
+  record: Record<string, unknown>,
+  field: string
+): string[] {
+  const value = record[field];
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`invalid_${field}`);
+  }
+
+  return value as string[];
+}
+
 function numberField(record: Record<string, unknown>, field: string): number {
   const value = record[field];
 
@@ -1075,6 +1095,11 @@ function toApplicationRunSummary(
     call_kind: stringField(record, 'call_kind'),
     invocation_count: numberField(record, 'invocation_count'),
     compaction_count: numberField(record, 'compaction_count'),
+    member_run_ids: stringArrayField(record, 'member_run_ids'),
+    parent_task_run_id: optionalStringField(record, 'parent_task_run_id'),
+    outcome: stringField(record, 'outcome'),
+    user_input: optionalStringField(record, 'user_input'),
+    final_output: optionalStringField(record, 'final_output'),
     run_mode: stringField(
       record,
       'run_mode'

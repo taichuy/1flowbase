@@ -48,3 +48,17 @@ pub fn trace_projection_native_message_watermark(
     hash.update(serde_json::to_vec(messages).expect("JSON values serialize"));
     format!("{base}:{:x}", hash.finalize())
 }
+
+/// Task-level trace inputs: later member rounds, child tasks, and the formal
+/// output facts across every member (a round's tool result changes its node).
+pub fn trace_projection_task_watermark(
+    base: String,
+    task_round_count: usize,
+    child_task_count: usize,
+    task_output_count: usize,
+) -> String {
+    if task_round_count == 0 && child_task_count == 0 {
+        return base;
+    }
+    format!("{base}/task_rounds:{task_round_count}/child_tasks:{child_task_count}/task_outputs:{task_output_count}")
+}

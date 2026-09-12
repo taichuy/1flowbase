@@ -107,6 +107,12 @@ export function getApplicationRunsTableColumns(
               })}
             </Tag>
           )}
+          {record.outcome === 'in_progress' && (
+            <Tag color="processing">{t('auto.task_outcome_in_progress')}</Tag>
+          )}
+          {record.outcome === 'no_final_answer' && (
+            <Tag color="warning">{t('auto.task_outcome_no_final_answer')}</Tag>
+          )}
           {value ? `${value}` : '-'}
           {record.parent_run_id && (
             <a

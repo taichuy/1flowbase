@@ -1,4 +1,56 @@
 #[cfg(test)]
+mod converged_task_tests {
+    use super::*;
+
+    fn task(outcome: &str, final_output: Option<&str>) -> domain::ApplicationRunLogTask {
+        domain::ApplicationRunLogTask {
+            id: Uuid::nil(),
+            application_id: Uuid::nil(),
+            scope_id: Uuid::nil(),
+            member_run_ids: vec![Uuid::nil(), Uuid::max()],
+            parent_task_run_id: None,
+            is_root: true,
+            log_conversation_id: None,
+            client_thread_id: Some("thread".into()),
+            client_turn_id: Some("turn".into()),
+            subagent_kind: None,
+            status: domain::FlowRunStatus::Succeeded,
+            outcome: outcome.into(),
+            user_input: Some("refactor login".into()),
+            final_output: final_output.map(str::to_owned),
+            final_output_run_id: Some(Uuid::max()),
+            invocation_count: 2,
+            compaction_count: 0,
+            started_at: OffsetDateTime::UNIX_EPOCH,
+            finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+        }
+    }
+
+    // #2035 AC-003: the anchor converges to input + final output and both open
+    // the anchor run whose trace tree holds the rounds.
+    #[test]
+    fn converged_task_detail_opens_anchor_for_both_items() {
+        let page = converged_task_conversation_messages(&task(
+            "final_answer_observed",
+            Some("login refactored"),
+        ));
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.items[0].role.as_deref(), Some("user"));
+        assert_eq!(page.items[0].content.as_deref(), Some("refactor login"));
+        assert_eq!(page.items[1].answer.as_deref(), Some("login refactored"));
+        assert_eq!(page.items[1].run_id, Uuid::max().to_string());
+        assert_eq!(
+            page.items[1].detail_run_id.as_deref(),
+            Some(Uuid::nil().to_string().as_str())
+        );
+        assert!(page.items[1].is_current);
+        let open = converged_task_conversation_messages(&task("in_progress", None));
+        assert_eq!(open.items[1].status, "running");
+        assert_eq!(open.items[1].answer, None);
+    }
+}
+
+#[cfg(test)]
 async fn to_application_conversation_message_response<F, Fut>(
     run: domain::FlowRunRecord,
     current_run_id: Option<Uuid>,
@@ -193,6 +245,71 @@ fn conversation_messages_from_projection_page(
                 .after_cursor
                 .and_then(|cursor| usize::try_from(cursor).ok())
                 .map(|cursor| imported_context_cursor(run_id, cursor)),
+        },
+    }
+}
+
+/// The task anchor's detail: one user turn and the model's final answer. The
+/// answer item points at the member run that produced it so the console can
+/// still open that run; an unobserved answer stays an open, non-terminal item.
+fn converged_task_conversation_messages(
+    task: &domain::ApplicationRunLogTask,
+) -> ApplicationConversationMessagesPageResponse {
+    let anchor = task.id.to_string();
+    let started_at = format_time(task.started_at);
+    let finished_at = format_optional_time(task.finished_at);
+    let mut items = Vec::with_capacity(2);
+    if let Some(user_input) = task.user_input.as_deref().filter(|v| !v.trim().is_empty()) {
+        items.push(ApplicationConversationMessageResponse {
+            message_id: format!("{anchor}:user_input"),
+            run_id: anchor.clone(),
+            detail_run_id: Some(anchor.clone()),
+            can_open_detail: true,
+            role: Some("user".to_string()),
+            content: Some(user_input.to_string()),
+            started_at: started_at.clone(),
+            finished_at: finished_at.clone(),
+            status: task.status.as_str().to_string(),
+            query: None,
+            model: None,
+            answer: None,
+            is_current: false,
+        });
+    }
+    // Both items open the anchor run: its trace tree carries the task's rounds,
+    // tools and child tasks, including the round that produced the answer.
+    let answer_run = task
+        .final_output_run_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| anchor.clone());
+    items.push(ApplicationConversationMessageResponse {
+        message_id: format!("{anchor}:final_output"),
+        run_id: answer_run,
+        detail_run_id: Some(anchor.clone()),
+        can_open_detail: true,
+        role: None,
+        content: None,
+        started_at,
+        finished_at,
+        status: if task.outcome == "final_answer_observed" {
+            task.status.as_str().to_string()
+        } else if task.outcome == "in_progress" {
+            "running".to_string()
+        } else {
+            task.status.as_str().to_string()
+        },
+        query: None,
+        model: None,
+        answer: task.final_output.clone(),
+        is_current: true,
+    });
+    ApplicationConversationMessagesPageResponse {
+        items,
+        page: ApplicationConversationMessagesPageInfoResponse {
+            has_before: false,
+            has_after: false,
+            before_cursor: None,
+            after_cursor: None,
         },
     }
 }

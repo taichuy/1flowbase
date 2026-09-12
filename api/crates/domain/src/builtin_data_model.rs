@@ -162,7 +162,9 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
     match field_code {
-        "meta" => crate::ModelFieldKind::Json,
+        "meta" | "member_run_ids" => crate::ModelFieldKind::Json,
+        "is_root" => crate::ModelFieldKind::Boolean,
+        "user_input" | "final_output" => crate::ModelFieldKind::Text,
         "email_login_enabled"
         | "phone_login_enabled"
         | "is_builtin"
@@ -246,6 +248,34 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
                 | "source_version"
                 | "source_checksum"
                 | "created_by"
+        ),
+        "application_run_log_tasks" => !matches!(
+            field_code,
+            "parent_task_run_id"
+                | "log_conversation_id"
+                | "client_thread_id"
+                | "client_turn_id"
+                | "subagent_kind"
+                | "user_input"
+                | "final_output"
+                | "final_output_run_id"
+                | "target_node_id"
+                | "external_user"
+                | "created_by"
+                | "authorized_account"
+                | "api_key_id"
+                | "api_key_name_snapshot"
+                | "publication_version_id"
+                | "external_conversation_id"
+                | "external_trace_id"
+                | "compatibility_mode"
+                | "idempotency_key"
+                | "total_tokens"
+                | "input_tokens"
+                | "output_tokens"
+                | "input_cache_hit_tokens"
+                | "input_cache_hit_rate"
+                | "finished_at"
         ),
         "application_run_log_summaries" => !matches!(
             field_code,
@@ -387,6 +417,51 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
     "source_checksum",
     "extensions",
     "created_by",
+    "created_at",
+    "updated_at",
+];
+
+const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
+    "id",
+    "application_id",
+    "scope_id",
+    "member_run_ids",
+    "parent_task_run_id",
+    "is_root",
+    "log_conversation_id",
+    "client_thread_id",
+    "client_turn_id",
+    "subagent_kind",
+    "run_mode",
+    "status",
+    "outcome",
+    "user_input",
+    "final_output",
+    "final_output_run_id",
+    "target_node_id",
+    "title",
+    "external_user",
+    "created_by",
+    "authorized_account",
+    "api_key_id",
+    "api_key_name_snapshot",
+    "publication_version_id",
+    "external_conversation_id",
+    "external_trace_id",
+    "compatibility_mode",
+    "idempotency_key",
+    "call_kind",
+    "invocation_count",
+    "compaction_count",
+    "total_tokens",
+    "input_tokens",
+    "output_tokens",
+    "input_cache_hit_tokens",
+    "input_cache_hit_rate",
+    "unique_node_count",
+    "tool_callback_count",
+    "started_at",
+    "finished_at",
     "created_at",
     "updated_at",
 ];
@@ -869,6 +944,13 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
             physical_table_name: "application_run_log_summaries",
             kind: BuiltinDataModelKind::RuntimeRead,
             system_field_codes: APPLICATION_RUN_LOG_SUMMARIES_FIELDS,
+            capabilities: runtime_read_capabilities,
+        },
+        "application_run_log_tasks" => BuiltinDataModelContract {
+            code: "application_run_log_tasks",
+            physical_table_name: "application_run_log_tasks",
+            kind: BuiltinDataModelKind::RuntimeRead,
+            system_field_codes: APPLICATION_RUN_LOG_TASKS_FIELDS,
             capabilities: runtime_read_capabilities,
         },
         "application_conversations" => BuiltinDataModelContract {

@@ -175,6 +175,9 @@ export function isTraceGroupNode(node: ConversationLogTraceNodeSummary) {
     node.node_kind === 'agent_group' ||
     node.node_kind === 'stitched_context' ||
     node.node_kind === 'stitched_run' ||
+    node.node_kind === 'round_group' ||
+    node.node_kind === 'task_round' ||
+    node.node_kind === 'child_task' ||
     node.node_type === 'tools' ||
     node.node_type === 'agents' ||
     node.node_type === 'stitched_context'

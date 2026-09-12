@@ -1,18 +1,3 @@
-// UUID predicates constrain the fact scan before aggregation. The caller still
-// applies its full authorization, filter, projection and pagination contract.
-pub(crate) fn application_run_task_summaries_sql(
-    application_id: Option<Uuid>,
-    scope_id: Option<Uuid>,
-) -> String {
-    let mut predicate = "true".to_owned();
-    if let Some(id) = application_id {
-        predicate.push_str(&format!(" and application_id='{id}'::uuid"));
-    }
-    if let Some(id) = scope_id {
-        predicate.push_str(&format!(" and scope_id='{id}'::uuid"));
-    }
-    include_str!("application_run_logs/task_summary.sql").replace("/* log_scope */", &predicate)
-}
 
 impl PgControlPlaneStore {
     async fn list_application_run_count_tokens_results(
@@ -69,6 +54,9 @@ impl PgControlPlaneStore {
             )
             .await?;
         }
+        // The task row derives from member summaries and message projections;
+        // refresh it in the same transaction so list and detail never disagree.
+        Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
 
         if is_terminal {
@@ -562,52 +550,6 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    async fn list_application_run_logs_page(
-        &self,
-        application_id: Uuid,
-        input: ListApplicationRunsPageInput,
-    ) -> Result<control_plane_contracts::ports::ApplicationRunLogSummaryPage> {
-        let page = input.page.max(1);
-        let page_size = input.page_size.clamp(1, 100);
-        let offset = (page - 1) * page_size;
-        let created_after = input.created_after;
-        let order_by = Self::application_runs_page_order_by(
-            input.sort_by.as_deref(),
-            input.sort_order.as_deref(),
-        );
-        let source = application_run_task_summaries_sql(Some(application_id), None);
-        let total = sqlx::query_scalar::<_, i64>(&format!(
-            "select count(*)::bigint from ({source}) logs where application_id=$1 and ($2::timestamptz is null or created_at>=$2)"
-        )).bind(application_id).bind(created_after).fetch_one(self.pool()).await?;
-        let rows = sqlx::query(&format!(
-            "select * from ({source}) logs where application_id=$1 and ($2::timestamptz is null or created_at>=$2) order by {order_by} limit $3 offset $4"
-        )).bind(application_id).bind(created_after).bind(page_size).bind(offset)
-            .fetch_all(self.pool()).await?;
-
-        let mut items = rows
-            .into_iter()
-            .map(map_application_run_log_summary)
-            .collect::<Result<Vec<_>>>()?;
-        let flow_run_ids = items.iter().map(|item| item.run.id).collect::<Vec<_>>();
-        let count_tokens_results = self
-            .list_application_run_count_tokens_results(&flow_run_ids)
-            .await?
-            .into_iter()
-            .map(|result| (result.flow_run_id, result.input_tokens))
-            .collect::<std::collections::HashMap<_, _>>();
-        for item in &mut items {
-            item.count_tokens_input_tokens = count_tokens_results.get(&item.run.id).copied();
-        }
-
-        Ok(
-            control_plane_contracts::ports::ApplicationRunLogSummaryPage {
-                items,
-                total,
-                page,
-                page_size,
-            },
-        )
-    }
 }
 
 #[derive(Debug)]

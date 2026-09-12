@@ -218,6 +218,20 @@ pub struct FlowRunSummaryResponse {
     /// AI Native operation kind of the anchor call (generate / compact / count_tokens).
     #[serde(default = "generate_call_kind")]
     pub call_kind: String,
+    /// Task projection: every call of this client turn, anchor first.
+    #[serde(default)]
+    pub member_run_ids: Vec<String>,
+    #[serde(default)]
+    pub parent_task_run_id: Option<String>,
+    /// final_answer_observed / in_progress / no_final_answer.
+    #[serde(default)]
+    pub outcome: String,
+    #[serde(default)]
+    pub user_input: Option<String>,
+    #[serde(default)]
+    pub final_output: Option<String>,
+    #[serde(default)]
+    pub final_output_run_id: Option<String>,
     pub id: String,
     pub application_id: String,
     pub application_type: String,

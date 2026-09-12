@@ -277,6 +277,18 @@ impl ApplicationRuntimeReadsAdapter {
                     log_summary.log_conversation_id.map(|id| id.to_string());
                 response.log_task_run_id = log_summary.log_task_run_id.map(|id| id.to_string());
                 response.call_kind = log_summary.call_kind;
+                response.member_run_ids = log_summary
+                    .member_run_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect();
+                response.parent_task_run_id =
+                    log_summary.parent_task_run_id.map(|id| id.to_string());
+                response.outcome = log_summary.outcome;
+                response.user_input = log_summary.user_input;
+                response.final_output = log_summary.final_output;
+                response.final_output_run_id =
+                    log_summary.final_output_run_id.map(|id| id.to_string());
                 response
             })
             .collect();
@@ -344,6 +356,18 @@ impl ApplicationRuntimeReadsAdapter {
         query: ApplicationConversationMessagesQuery,
     ) -> Result<ApplicationConversationMessagesPageResponse, ApiError> {
         self.visible_application(actor, application_id).await?;
+        // A task anchor converges to what the user asked and what the model
+        // finally answered; the calls in between live in the trace tree.
+        if let Some(task) = <_ as OrchestrationRuntimeRepository>::get_application_run_log_task(
+            &self.store,
+            application_id,
+            run_id,
+        )
+        .await?
+        .filter(|task| task.member_run_ids.len() > 1)
+        {
+            return Ok(converged_task_conversation_messages(&task));
+        }
         let projection_page = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &self.store,
             application_id,

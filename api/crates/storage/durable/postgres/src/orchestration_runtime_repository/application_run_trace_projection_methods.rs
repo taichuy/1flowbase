@@ -238,7 +238,16 @@ impl PgControlPlaneStore {
         let messages = self
             .application_run_native_trace_messages(application_id, flow_run_id)
             .await?;
-        Ok(Some(control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(base,&messages)))
+        let base = control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(base,&messages);
+        let (task_rounds, child_tasks, task_outputs) = self
+            .task_trace_source_counts(application_id, flow_run_id, messages.len())
+            .await?;
+        Ok(Some(control_plane_contracts::persistence_projection::trace_projection_task_watermark(
+            base,
+            task_rounds,
+            child_tasks,
+            task_outputs,
+        )))
     }
 
     async fn replace_application_run_trace_projection(

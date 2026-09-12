@@ -321,6 +321,8 @@
     "tags": "标签",
     "task_invocation_count": "{{count}} 次调用",
     "task_compaction_count": "{{count}} 次压缩",
+    "task_outcome_in_progress": "进行中",
+    "task_outcome_no_final_answer": "未观察到最终回答",
     "show_current_task": "返回当前任务",
     "show_log_conversation": "查看此会话",
     "parent_task": "父任务"

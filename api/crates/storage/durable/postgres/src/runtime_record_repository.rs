@@ -250,19 +250,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
     ) -> Result<RuntimeListResult> {
         let page = query.page.max(1);
         let page_size = query.page_size.max(1);
-        let table_name = if metadata.model_code == "application_run_log_summaries"
-            && metadata.physical_table_name == "application_run_log_summaries"
-        {
-            format!(
-                "({}) application_run_log_summaries",
-                crate::orchestration_runtime_repository::application_run_task_summaries_sql(
-                    application_log_filter_id(&query.filter),
-                    query.scope_id
-                )
-            )
-        } else {
-            quote_identifier(&metadata.physical_table_name)?
-        };
+        let table_name = quote_identifier(&metadata.physical_table_name)?;
         let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
         let offset = (page - 1) * page_size;
 
@@ -1153,19 +1141,5 @@ fn is_runtime_object_missing_error(error: &sqlx::Error) -> bool {
             matches!(database_error.code().as_deref(), Some("42P01" | "42703"))
         }
         _ => false,
-    }
-}
-
-// Only a conjunctive application equality is safe to push into task aggregation.
-// Disjunctions and all other predicates remain in the original runtime query.
-fn application_log_filter_id(filter: &domain::ResourceFilterExpr) -> Option<Uuid> {
-    match filter {
-        domain::ResourceFilterExpr::Field {
-            field,
-            operator: domain::ResourceFilterOperator::Eq,
-            value,
-        } if field == "application_id" => Uuid::parse_str(value.as_str()?).ok(),
-        domain::ResourceFilterExpr::All(items) => items.iter().find_map(application_log_filter_id),
-        _ => None,
     }
 }

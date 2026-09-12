@@ -133,6 +133,11 @@ function applicationRunsPage<T>(
     items: items.map((item) => ({
       log_conversation_id: null,
       log_task_run_id: null,
+      member_run_ids: [],
+      parent_task_run_id: null,
+      outcome: 'final_answer_observed',
+      user_input: null,
+      final_output: null,
       execution_stage: (item as { run_mode?: string }).run_mode?.startsWith(
         'debug_'
       )

@@ -76,6 +76,8 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
         "roles",
         "model_pricing_rules",
         "application_run_log_summaries",
+        // #2035: the task projection is a builtin runtime read model.
+        "application_run_log_tasks",
         "application_conversations",
         "application_conversation_messages",
         "node_runs",

@@ -41,6 +41,13 @@ async fn application_run_log_list_uses_summary_projection_without_raw_payload() 
     .execute(store.pool())
     .await
     .unwrap();
+    // The raw edit bypassed the projection writer; re-run the task refresh the
+    // writer would have performed so the list row mirrors the edited summary.
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
 
     let logs =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_logs_page(

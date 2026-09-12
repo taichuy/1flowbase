@@ -8,5 +8,6 @@ mod run_detail_summary;
 
 mod rework;
 mod call_kind;
+mod task_projection;
 
 mod rework_migration;

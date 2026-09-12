@@ -533,6 +533,10 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                     events: outcome.events,
                     stitched_trace: Vec::new(),
                     subagent_traces: Vec::new(),
+
+                    task_rounds: Vec::new(),
+
+                    child_task_traces: Vec::new(),
                 },
             )
             .await?;

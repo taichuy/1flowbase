@@ -253,6 +253,52 @@ async fn application_runtime_routes_logs_report_run_statistics() {
         expected_statistics
     );
     assert_eq!(list_payload["data"]["items"][0]["call_kind"], "generate");
+    // #2035 AC-002/003: list rows are task rows built from the task projection.
+    assert_eq!(
+        list_payload["data"]["items"][0]["member_run_ids"],
+        json!([flow_run_id.to_string()])
+    );
+    assert_eq!(
+        list_payload["data"]["items"][0]["parent_task_run_id"],
+        Value::Null
+    );
+    assert_eq!(
+        list_payload["data"]["items"][0]["outcome"],
+        "final_answer_observed"
+    );
+    let filter = serde_json::json!({"application_id":{"$eq":application_id}}).to_string();
+    let query = form_urlencoded::Serializer::new(String::new())
+        .append_pair("filter", &filter)
+        .finish();
+    let task_records = get_console_json(
+        &app,
+        &cookie,
+        format!("/api/runtime/models/application_run_log_tasks/list?{query}"),
+    )
+    .await;
+    assert_eq!(task_records["data"]["total"], 1);
+    assert_eq!(task_records["data"]["items"][0]["statistics"], Value::Null);
+    assert_eq!(task_records["data"]["items"][0]["invocation_count"], 1);
+    assert_eq!(task_records["data"]["items"][0]["execution_stage"], "debug");
+    assert_eq!(
+        task_records["data"]["items"][0]["principal"]["kind"],
+        "user"
+    );
+    assert_eq!(
+        task_records["data"]["items"][0]["input_cache_hit_rate"],
+        0.98
+    );
+    let run_records = get_console_json(
+        &app,
+        &cookie,
+        format!("/api/runtime/models/application_run_log_summaries/list?{query}"),
+    )
+    .await;
+    assert_eq!(run_records["data"]["total"], 1);
+    assert_eq!(
+        run_records["data"]["items"][0]["flow_run_id"],
+        flow_run_id.to_string()
+    );
 
     let trace_tree = app
         .clone()

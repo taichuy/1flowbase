@@ -321,6 +321,8 @@
     "tags": "Tags",
     "task_invocation_count": "{{count}} calls",
     "task_compaction_count": "{{count}} compactions",
+    "task_outcome_in_progress": "In progress",
+    "task_outcome_no_final_answer": "No final answer observed",
     "show_current_task": "Show current task",
     "show_log_conversation": "Show conversation",
     "parent_task": "Parent task"

@@ -18,6 +18,11 @@ function summary(
   return {
     log_conversation_id: 'conversation-1',
     log_task_run_id: 'run-1',
+    member_run_ids: ['run-1'],
+    parent_task_run_id: null,
+    outcome: 'final_answer_observed',
+    user_input: 'refactor login',
+    final_output: 'done',
     parent_run_id: null,
     caused_by_run_id: null,
     invocation_count: 1,

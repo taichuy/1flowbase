@@ -475,6 +475,20 @@ pub struct ApplicationRunLogSummary {
     pub compaction_count: i64,
     pub log_conversation_id: Option<Uuid>,
     pub log_task_run_id: Option<Uuid>,
+    /// Task projection facts. A list row is one task; `member_run_ids` starts
+    /// with the anchor run and follows the calls in start order.
+    #[serde(default)]
+    pub member_run_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub parent_task_run_id: Option<Uuid>,
+    #[serde(default)]
+    pub outcome: String,
+    #[serde(default)]
+    pub user_input: Option<String>,
+    #[serde(default)]
+    pub final_output: Option<String>,
+    #[serde(default)]
+    pub final_output_run_id: Option<Uuid>,
     pub run: ApplicationRunSummary,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
@@ -632,6 +646,55 @@ pub struct ApplicationRunDetail {
     pub events: Vec<RunEventRecord>,
     pub stitched_trace: Vec<ApplicationRunStitchedTrace>,
     pub subagent_traces: Vec<ApplicationRunSubagentTrace>,
+    /// Later calls of the same client task, present only on the task anchor run.
+    #[serde(default)]
+    pub task_rounds: Vec<ApplicationRunTaskRoundTrace>,
+    /// Tasks whose client declared this task as their parent (subagent threads).
+    #[serde(default)]
+    pub child_task_traces: Vec<ApplicationRunChildTaskTrace>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRunTaskRoundTrace {
+    pub call_kind: String,
+    pub source_flow_run: FlowRunRecord,
+    pub node_runs: Vec<NodeRunRecord>,
+    pub callback_tasks: Vec<CallbackTaskRecord>,
+    #[serde(default)]
+    pub native_messages: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRunChildTaskTrace {
+    pub subagent_kind: Option<String>,
+    pub source_flow_run: FlowRunRecord,
+    pub node_runs: Vec<NodeRunRecord>,
+    pub callback_tasks: Vec<CallbackTaskRecord>,
+}
+
+/// One client task: the anchor run plus every later call bound to the same
+/// client turn. Persisted by the log projection writer; read by list and detail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRunLogTask {
+    pub id: Uuid,
+    pub application_id: Uuid,
+    pub scope_id: Uuid,
+    pub member_run_ids: Vec<Uuid>,
+    pub parent_task_run_id: Option<Uuid>,
+    pub is_root: bool,
+    pub log_conversation_id: Option<Uuid>,
+    pub client_thread_id: Option<String>,
+    pub client_turn_id: Option<String>,
+    pub subagent_kind: Option<String>,
+    pub status: FlowRunStatus,
+    pub outcome: String,
+    pub user_input: Option<String>,
+    pub final_output: Option<String>,
+    pub final_output_run_id: Option<Uuid>,
+    pub invocation_count: i64,
+    pub compaction_count: i64,
+    pub started_at: OffsetDateTime,
+    pub finished_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -104,25 +104,3 @@ impl PgControlPlaneStore {
     }
 }
 
-impl PgControlPlaneStore {
-    async fn expand_application_run_log_tasks(
-        &self,
-        application_id: Uuid,
-        flow_run_ids: &[Uuid],
-    ) -> Result<Vec<Uuid>> {
-        let selected = flow_run_ids
-            .iter()
-            .copied()
-            .collect::<std::collections::BTreeSet<_>>();
-        let existing:i64=sqlx::query_scalar("select count(*) from application_run_log_summaries where application_id=$1 and flow_run_id=any($2)")
-            .bind(application_id).bind(flow_run_ids).fetch_one(self.pool()).await?;
-        if existing as usize != selected.len() {
-            return Err(ControlPlaneError::NotFound("flow_run").into());
-        }
-        sqlx::query_scalar(r#"select member.run_id
-            from unnest($2::uuid[]) with ordinality requested(id,position)
-            cross join lateral application_run_log_task_runs($1,requested.id) member
-            group by member.run_id order by min(requested.position),member.run_id"#)
-            .bind(application_id).bind(flow_run_ids).fetch_all(self.pool()).await.map_err(Into::into)
-    }
-}

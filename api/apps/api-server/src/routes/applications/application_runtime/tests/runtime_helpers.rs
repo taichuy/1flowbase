@@ -198,6 +198,10 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
         events: Vec::new(),
         stitched_trace: Vec::new(),
         subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
     };
 
     let statistics = application_run_statistics(&detail);
