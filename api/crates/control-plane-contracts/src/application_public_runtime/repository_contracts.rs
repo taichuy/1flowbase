@@ -288,6 +288,16 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
         input: &ListWaitingCallbackPublishedRunsInput,
     ) -> Result<Vec<Uuid>>;
 
+    /// Returns complete native callback facts, including consumed rounds, for exact admission.
+    async fn find_native_responses_callbacks_by_call_ids(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        call_ids: &[String],
+    ) -> Result<Vec<domain::CallbackTaskRecord>>;
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,

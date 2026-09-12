@@ -951,6 +951,8 @@ impl NativeResumePort for NativeResumeAdapter {
                 .resume_callback_for_actor(
                     actor,
                     ResumePublishedCallbackCommand {
+                        reserved_attempt_id: None,
+                        native_transport: None,
                         bearer_token: String::new(),
                         target: PublishedCallbackResumeTarget::FlowRun {
                             flow_run_id: input.run_id,

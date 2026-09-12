@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     body::Bytes,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
-    Json,
 };
 use control_plane::application_public_api::{
     callback_resume::{
@@ -13,13 +13,13 @@ use control_plane::application_public_api::{
         ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
-        capture_client_protocol_envelope, capture_client_protocol_query,
-        merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
+        ClientProtocolIngressPolicy, capture_client_protocol_envelope,
+        capture_client_protocol_query, merge_client_protocol_envelopes,
     },
     compat::openai::{
-        response_id_from_run_id, run_id_from_response_id, translate_chat_completion_request,
-        translate_response_request_with_context_and_previous, OpenAiCompatError,
-        OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
+        OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
+        OpenAiResponsesEndpoint, response_id_from_run_id, run_id_from_response_id,
+        translate_chat_completion_request, translate_response_request_with_context_and_previous,
     },
     native::{
         ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
@@ -36,7 +36,7 @@ use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
     ProtocolContextEnvelope, ProviderCompactProfile, ProviderCompactResult,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -52,8 +52,8 @@ use crate::{
 };
 
 mod compact;
-mod session_context;
 mod model_list;
+mod session_context;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -602,17 +602,57 @@ async fn dispatch_response_for_endpoint(
         .map(|previous| previous.flow_run_id);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
     if endpoint == OpenAiResponsesEndpoint::Responses {
-        if let Some(resume) =
+        let encoded_resume =
             correlate_openai_responses_callback(&value, previous_response_id.as_deref())
-                .map_err(|error| openai_invalid_request(error.param, error.message))?
-        {
-            let command = openai_resume_command(
+                .map_err(|error| openai_invalid_request(error.param, error.message))?;
+        let native_resume = if encoded_resume.is_none() {
+            control_plane::application_public_api::native_tool_resume::correlate_native_responses_callback(
+                &state.store, &application_actor, &value,
+            ).await.map_err(native::service_error)?
+        } else {
+            None
+        };
+        if let Some((task, _)) = &native_resume {
+            let continuation = state
+                .infrastructure
+                .provider_transport_store()
+                .get_continuation(ProviderContinuationSlotId::for_flow_run(task.flow_run_id))
+                .await
+                .map_err(native::service_error)?;
+            if continuation.is_none() {
+                return Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::CONFLICT,
+                    "ephemeral_continuation_missing",
+                    "the waiting Provider continuation is no longer available",
+                )));
+            }
+        }
+        let native_transport = if native_resume.is_some() {
+            Some(
+                ProviderTransportPayload::openai_responses(value.clone())
+                    .map_err(native::service_error)?,
+            )
+        } else {
+            None
+        };
+        let resume = encoded_resume.or_else(|| {
+            native_resume.map(|(task, tool_results)| {
+                super::callback_adapter::CorrelatedToolCallback {
+                    callback_task_id: task.id,
+                    tool_results: tool_results["tool_results"].clone(),
+                }
+            })
+        });
+        if let Some(resume) = resume {
+            let mut command = openai_resume_command(
                 "",
                 resume.callback_task_id,
                 PublishedCallbackResumeSource::OpenAiResponses,
                 resume.tool_results,
                 response_mode.clone(),
             );
+            let is_native_resume = native_transport.is_some();
+            command.native_transport = native_transport;
             match compat_sse::prepare_compatible_resume_for_actor(
                 state.clone(),
                 application_actor.clone(),
@@ -621,12 +661,14 @@ async fn dispatch_response_for_endpoint(
             .await
             {
                 Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                    ensure_openai_responses_resume_matches_previous_response(
-                        state.as_ref(),
-                        previous_response_id.as_deref(),
-                        resume.callback_task_id,
-                    )
-                    .await?;
+                    if !is_native_resume {
+                        ensure_openai_responses_resume_matches_previous_response(
+                            state.as_ref(),
+                            previous_response_id.as_deref(),
+                            resume.callback_task_id,
+                        )
+                        .await?;
+                    }
                     if response_mode.as_deref() == Some("streaming") {
                         let input = compatibility_interface::CompatibilityBlockingInput {
                             command:
@@ -669,9 +711,16 @@ async fn dispatch_response_for_endpoint(
                             }
                         };
                     }
-                    let run = compatibility_interface::invoke_blocking_with_principal(
+                    // Match blocking Generate: the typed turn owns background
+                    // execution, avoiding inline callback polling on the HTTP stack.
+                    let stream_binding_id = if route_path == "/responses" {
+                        compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
+                    } else {
+                        compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
+                    };
+                    let invocation = compatibility_interface::invoke_typed_stream_with_principal(
                         state,
-                        authentication_binding_id,
+                        stream_binding_id,
                         principal,
                         compatibility_interface::CompatibilityBlockingInput {
                             command:
@@ -682,14 +731,10 @@ async fn dispatch_response_for_endpoint(
                         },
                     )
                     .await?;
-                    return Ok(OpenAiResponseDispatch::Http(
-                        Json(to_openai_responses_response(
-                            run,
-                            model,
-                            previous_response_id,
-                        )?)
-                        .into_response(),
-                    ));
+                    let response =
+                        collect_blocking_native_response(invocation, model, previous_response_id)
+                            .await?;
+                    return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
                 }
                 Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
                     // The callback delivery is complete; re-admit its full history as a new turn.
@@ -729,7 +774,11 @@ async fn dispatch_response_for_endpoint(
         request.client_protocol_envelope,
     );
     if endpoint == OpenAiResponsesEndpoint::Responses {
-        session_context::bind_responses_session_context(&mut request.client_protocol_envelope, principal.principal(), &headers)?;
+        session_context::bind_responses_session_context(
+            &mut request.client_protocol_envelope,
+            principal.principal(),
+            &headers,
+        )?;
     }
     let operation = *request.execution.execution_operation();
     if matches!(operation, AiNativeOperation::Compact(_)) {
@@ -746,7 +795,17 @@ async fn dispatch_response_for_endpoint(
     let mut provider_transport_payload = request.metadata.take_provider_transport_payload();
     if let Some(previous_flow_run_id) = previous_flow_run_id {
         if let Some(payload) = provider_transport_payload.take() {
-            let continuation_slot = ProviderContinuationSlotId::for_flow_run(previous_flow_run_id);
+            let round_id = previous_response_id
+                .as_deref()
+                .and_then(|id| run_id_from_response_id(id).ok())
+                .ok_or_else(|| {
+                    openai_invalid_request(
+                        "previous_response_id",
+                        "previous response must identify a response round",
+                    )
+                })?;
+            let continuation_slot =
+                ProviderContinuationSlotId::for_response_round(previous_flow_run_id, round_id);
             let store = state.infrastructure.provider_transport_store();
             let continuation_exists = store
                 .get_continuation(continuation_slot)
@@ -803,9 +862,14 @@ async fn dispatch_response_for_endpoint(
     match operation {
         AiNativeOperation::Generate(_) => {
             if response_mode.as_deref() != Some("streaming") {
-                let run = compatibility_interface::invoke_blocking_with_principal(
+                let stream_binding_id = if route_path == "/responses" {
+                    compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
+                } else {
+                    compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
+                };
+                let invocation = compatibility_interface::invoke_typed_stream_with_principal(
                     state,
-                    blocking_binding_id,
+                    stream_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
                         command: compatibility_interface::CompatibilityInvocationCommand::Start {
@@ -821,24 +885,17 @@ async fn dispatch_response_for_endpoint(
                     },
                 )
                 .await?;
+                let response =
+                    collect_blocking_native_response(invocation, model, previous_response_id)
+                        .await?;
                 info!(
                     route,
                     auth_source,
-                    application_id = %run.application_id,
-                    flow_run_id = %run.id,
                     response_mode = "blocking",
-                    model = %model,
                     translation_decision_count,
                     "openai responses compatible request accepted"
                 );
-                return Ok(OpenAiResponseDispatch::Http(
-                    Json(to_openai_responses_response(
-                        run,
-                        model,
-                        previous_response_id,
-                    )?)
-                    .into_response(),
-                ));
+                return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
             }
 
             if matches!(delivery, OpenAiResponseDelivery::Http) {
@@ -1154,6 +1211,8 @@ fn openai_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        reserved_attempt_id: None,
+        native_transport: None,
         bearer_token: bearer_token.to_string(),
         target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
         source,
@@ -1219,7 +1278,10 @@ async fn load_previous_response_context_for_actor(
             provider_continuation: state
                 .infrastructure
                 .provider_transport_store()
-                .get_continuation(ProviderContinuationSlotId::for_flow_run(run.id))
+                .get_continuation(ProviderContinuationSlotId::for_response_round(
+                    run.id,
+                    run_id_from_response_id(response_id)?,
+                ))
                 .await
                 .map_err(|_| {
                     OpenAiRouteError::Native(native::NativeApiError::new(
@@ -1290,7 +1352,7 @@ fn to_openai_response(
         | NativeRunStatus::Running
         | NativeRunStatus::Failed
         | NativeRunStatus::Cancelled => {
-            return Err(native::blocking_run_projection_error(&run).into())
+            return Err(native::blocking_run_projection_error(&run).into());
         }
     };
     let finish_reason = if tool_calls.is_some() {
@@ -1320,14 +1382,131 @@ fn to_openai_response(
     })
 }
 
+async fn collect_blocking_native_response(
+    invocation: compatibility_interface::CompatibilityTypedStreamInvocation,
+    model: String,
+    previous_response_id: Option<String>,
+) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
+    let (mut events, completion) = invocation.into_parts();
+    // The typed turn already applies the resume sequence boundary. Keep the
+    // completion owner alive even if the blocking HTTP caller disconnects.
+    let completion = tokio::spawn(completion.complete());
+    let mut items = None;
+    while let Some(event) = events.recv().await {
+        let (_, envelope) = event.into_parts();
+        collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
+    }
+    let terminal = completion
+        .await
+        .map_err(|error| {
+            native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_completion_failed",
+                error.to_string(),
+            )
+        })?
+        .map_err(|error| {
+            native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_completion_failed",
+                format!("{error:?}"),
+            )
+        })?;
+    let (terminal, receipt) = terminal.into_parts();
+    let run = match terminal {
+        interface_runtime::InterfaceStreamTerminal::Completed(output) => output.0,
+        interface_runtime::InterfaceStreamTerminal::Failed(failure) => {
+            let error = &failure.error().0;
+            return Err(native::NativeApiError::new(
+                error.status,
+                error.code,
+                error.message.clone(),
+            )
+            .into());
+        }
+        interface_runtime::InterfaceStreamTerminal::Rejected { classification } => {
+            return Err(native::NativeApiError::new(
+                StatusCode::FORBIDDEN,
+                "interface_rejected",
+                classification.to_string(),
+            )
+            .into());
+        }
+        interface_runtime::InterfaceStreamTerminal::Cancelled => {
+            return Err(native::NativeApiError::new(
+                StatusCode::CONFLICT,
+                "run_cancelled",
+                "published run cancelled",
+            )
+            .into());
+        }
+    };
+    let response =
+        to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
+    let _receipt = receipt.projected();
+    Ok(response)
+}
+
+fn collect_blocking_response_output_item(
+    items: &mut Option<Vec<Value>>,
+    event_type: &str,
+    payload: &Value,
+) {
+    if !matches!(
+        event_type,
+        "provider_output_item_added" | "provider_output_item_done"
+    ) {
+        return;
+    }
+    // None retains canonical projection. Some(empty) records native item mode
+    // even when no completed formal item is available, preventing synthesis.
+    let items = items.get_or_insert_with(Vec::new);
+    if event_type == "provider_output_item_done" {
+        if let Some(item) = payload.get("item") {
+            items.push(item.clone());
+        }
+    }
+}
+
+pub(super) fn native_response_id(run: &NativeRunResult) -> String {
+    run.metadata
+        .get("response_round_id")
+        .and_then(Value::as_str)
+        .map(|round| format!("resp_{round}"))
+        .unwrap_or_else(|| response_id_from_run_id(run.id))
+}
+
 fn to_openai_responses_response(
     run: NativeRunResult,
     model: String,
     previous_response_id: Option<String>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
-    let callback_task_id = callback_task_id_from_required_action(&run);
-    let function_call_items =
-        openai_response_function_call_items(run.tool_calls.as_ref(), callback_task_id);
+    to_openai_responses_response_with_native_items(run, model, previous_response_id, None)
+}
+
+fn to_openai_responses_response_with_native_items(
+    run: NativeRunResult,
+    model: String,
+    previous_response_id: Option<String>,
+    native_items: Option<Vec<Value>>,
+) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
+    let function_call_items = if native_items.is_none() {
+        openai_response_function_call_items(
+            run.tool_calls.as_ref(),
+            callback_task_id_from_required_action(&run),
+        )
+    } else {
+        None
+    };
+    let has_tool_calls = function_call_items.is_some()
+        || native_items.as_ref().is_some_and(|items| {
+            items.iter().any(|item| {
+                matches!(
+                    item.get("type").and_then(Value::as_str),
+                    Some("function_call" | "custom_tool_call")
+                )
+            })
+        });
     let (status, incomplete_details) = match run.status {
         NativeRunStatus::Succeeded => ("completed", None),
         NativeRunStatus::Incomplete => (
@@ -1336,25 +1515,35 @@ fn to_openai_responses_response(
                 reason: "max_output_tokens",
             }),
         ),
-        NativeRunStatus::Waiting if function_call_items.is_some() => ("completed", None),
+        NativeRunStatus::Waiting if has_tool_calls => ("completed", None),
         NativeRunStatus::Waiting => return Err(OpenAiRouteError::RequiredAction),
         NativeRunStatus::Created
         | NativeRunStatus::Queued
         | NativeRunStatus::Running
         | NativeRunStatus::Failed
         | NativeRunStatus::Cancelled => {
-            return Err(native::blocking_run_projection_error(&run).into())
+            return Err(native::blocking_run_projection_error(&run).into());
         }
     };
-    let output_text = if function_call_items.is_some() {
+    let output_text = if let Some(items) = &native_items {
+        items
+            .iter()
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+            .filter_map(|item| item.get("content").and_then(Value::as_array))
+            .flatten()
+            .filter(|part| part.get("type").and_then(Value::as_str) == Some("output_text"))
+            .filter_map(|part| part.get("text").and_then(Value::as_str))
+            .collect::<String>()
+    } else if function_call_items.is_some() {
         String::new()
     } else {
         run.answer.clone().unwrap_or_default()
     };
-    let output = function_call_items
+    let output = native_items
+        .or(function_call_items)
         .unwrap_or_else(|| vec![openai_response_message_item(&run, &output_text, status)]);
     Ok(OpenAiResponsesObject {
-        id: response_id_from_run_id(run.id),
+        id: native_response_id(&run),
         object: "response",
         created_at: run.created_at.unix_timestamp(),
         status,

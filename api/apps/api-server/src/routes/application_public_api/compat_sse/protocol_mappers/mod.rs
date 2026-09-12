@@ -104,7 +104,7 @@ fn openai_response_runtime_event_to_sse(
             "response.reasoning_text.delta",
             json!({
                 "type": "response.reasoning_text.delta",
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "item_id": format!("rs_{}", initial_run.id),
                 "output_index": 0,
                 "content_index": 0,
@@ -164,6 +164,22 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
+        "waiting_callback"
+            if completed_output_items.iter().any(|item| {
+                matches!(
+                    item.get("type").and_then(Value::as_str),
+                    Some("function_call" | "custom_tool_call")
+                )
+            }) =>
+        {
+            vec![event_json_sse(
+                "response.completed",
+                json!({
+                    "type": "response.completed",
+                    "response": openai_response_completed_snapshot(initial_run, model, previous_response_id, completed_output_items),
+                }),
+            )]
+        }
         "waiting_callback" => {
             if let Some(items) = openai_response_function_call_output_items(&envelope.payload) {
                 openai_response_function_call_sse(initial_run, model, previous_response_id, items)
@@ -191,7 +207,7 @@ fn openai_response_stream_snapshot(
     status: &'static str,
 ) -> Value {
     json!({
-        "id": response_id_from_run_id(initial_run.id),
+        "id": native_response_id(initial_run),
         "object": "response",
         "created_at": initial_run.created_at.unix_timestamp(),
         "status": status,
@@ -267,7 +283,7 @@ fn openai_responses_usage_payload(usage: Option<&NativeUsage>) -> Value {
 fn openai_response_output_text_delta_payload(initial_run: &NativeRunResult, text: String) -> Value {
     json!({
         "type": "response.output_text.delta",
-        "response_id": response_id_from_run_id(initial_run.id),
+        "response_id": native_response_id(initial_run),
         "item_id": format!("msg_{}", initial_run.id),
         "output_index": 0,
         "content_index": 0,
@@ -356,7 +372,7 @@ fn openai_response_function_call_sse(
             "response.output_item.added",
             json!({
                 "type": "response.output_item.added",
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "output_index": index,
                 "item": item
             }),
@@ -365,7 +381,7 @@ fn openai_response_function_call_sse(
             "response.output_item.done",
             json!({
                 "type": "response.output_item.done",
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "output_index": index,
                 "item": item
             }),

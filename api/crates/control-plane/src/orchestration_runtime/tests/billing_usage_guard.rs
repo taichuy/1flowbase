@@ -27,6 +27,8 @@ fn billing_invoker(
 > {
     let flow_run_id = Uuid::now_v7();
     RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime,
         workspace_id: Uuid::nil(),

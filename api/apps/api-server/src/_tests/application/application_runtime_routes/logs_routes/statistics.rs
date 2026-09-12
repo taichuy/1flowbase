@@ -198,6 +198,25 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     .await
     .unwrap();
 
+    // #2036: repeated logical generations share one node snapshot; usage is ledger-owned.
+    sqlx::query("delete from runtime_spans where flow_run_id = $1 and kind = 'llm_turn'")
+        .bind(flow_run_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        sqlx::query("insert into runtime_spans(id,flow_run_id,node_run_id,kind,name,status,started_at) values($1,$2,$3,'llm_turn','LLM','succeeded',now())")
+            .bind(Uuid::now_v7()).bind(flow_run_id).bind(llm_run_id)
+            .execute(&pool).await.unwrap();
+    }
+    sqlx::query("delete from runtime_usage_ledger where flow_run_id = $1")
+        .bind(flow_run_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("insert into runtime_usage_ledger(id,flow_run_id,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,usage_status) values($1,$2,15064,7532,7532,7532,'recorded')")
+        .bind(Uuid::now_v7()).bind(flow_run_id).execute(&pool).await.unwrap();
+
     let flow_run = <MainDurableStore as OrchestrationRuntimeRepository>::get_flow_run(
         &state.store,
         Uuid::parse_str(&application_id).unwrap(),
@@ -221,14 +240,14 @@ async fn application_runtime_routes_logs_report_run_statistics() {
 
     // #2034 AC-001: single debug runs report their call kind and zero compactions.
     let expected_statistics = json!({
-        "invocation_count": 1,
+        "invocation_count": 2,
         "compaction_count": 0,
-        "total_tokens": 50,
-        "input_tokens": 10,
-        "output_tokens": 20,
+        "total_tokens": 15064,
+        "input_tokens": 7532,
+        "output_tokens": 7532,
         "count_tokens_input_tokens": null,
-        "input_cache_hit_tokens": 49,
-        "input_cache_hit_rate": 0.98,
+        "input_cache_hit_tokens": 7532,
+        "input_cache_hit_rate": 0.5,
         "unique_node_count": 3,
         "tool_callback_count": 20
     });
@@ -278,7 +297,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     .await;
     assert_eq!(task_records["data"]["total"], 1);
     assert_eq!(task_records["data"]["items"][0]["statistics"], Value::Null);
-    assert_eq!(task_records["data"]["items"][0]["invocation_count"], 1);
+    assert_eq!(task_records["data"]["items"][0]["invocation_count"], 2);
     assert_eq!(task_records["data"]["items"][0]["execution_stage"], "debug");
     assert_eq!(
         task_records["data"]["items"][0]["principal"]["kind"],
@@ -286,7 +305,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
     );
     assert_eq!(
         task_records["data"]["items"][0]["input_cache_hit_rate"],
-        0.98
+        0.5
     );
     let run_records = get_console_json(
         &app,
@@ -320,6 +339,33 @@ async fn application_runtime_routes_logs_report_run_statistics() {
         trace_tree_payload["data"]["statistics"],
         expected_statistics
     );
+    for path in [
+        format!("/api/console/applications/{application_id}/logs/runs/{flow_run_id}/overview"),
+        format!(
+            "/api/console/applications/{application_id}/orchestration/runs/{flow_run_id}/debug-snapshot"
+        ),
+    ] {
+        let payload = get_console_json(&app, &cookie, path).await;
+        assert_eq!(payload["data"]["statistics"], expected_statistics);
+    }
+    let export = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/logs/runs/{flow_run_id}/export"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(export.status(), StatusCode::OK);
+    let export_body = to_bytes(export.into_body(), usize::MAX).await.unwrap();
+    let exported: Value = serde_json::from_slice(&export_body).unwrap();
+    assert_eq!(exported["statistics"], expected_statistics);
+    assert_eq!(exported["trace_tree"]["statistics"], expected_statistics);
 }
 
 #[tokio::test]

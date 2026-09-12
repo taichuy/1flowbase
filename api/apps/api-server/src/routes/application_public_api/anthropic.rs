@@ -494,6 +494,8 @@ fn anthropic_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        reserved_attempt_id: None,
+        native_transport: None,
         bearer_token: bearer_token.to_string(),
         target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
         source: PublishedCallbackResumeSource::AnthropicMessages,

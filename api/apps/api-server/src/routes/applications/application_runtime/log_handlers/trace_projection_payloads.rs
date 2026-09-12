@@ -118,9 +118,9 @@ pub(super) fn to_trace_projection_statistics_response(
     statistics: ApplicationRunTraceProjectionStatistics,
 ) -> application_logs::ApplicationRunStatisticsResponse {
     application_logs::ApplicationRunStatisticsResponse {
-        invocation_count: 1,
-        compaction_count: 0,
-        count_tokens_input_tokens: None,
+        invocation_count: statistics.invocation_count,
+        compaction_count: statistics.compaction_count,
+        count_tokens_input_tokens: statistics.count_tokens_input_tokens,
         total_tokens: statistics.total_tokens,
         input_tokens: statistics.input_tokens,
         output_tokens: statistics.output_tokens,

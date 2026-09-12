@@ -36,20 +36,38 @@ impl ProviderInvoker for CapturingProviderInvoker {
         _runtime: &CompiledLlmRuntime,
         input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput> {
+        let native = input
+            .required_capabilities
+            .contains(&ProviderInvocationCapability::ResponsesNativePassthrough);
         *self
             .captured_input
             .lock()
             .expect("captured input mutex poisoned") = Some(input);
 
         Ok(ProviderInvocationOutput {
-            events: vec![
-                ProviderStreamEvent::TextDelta {
-                    delta: "ok".to_string(),
-                },
-                ProviderStreamEvent::Finish {
-                    reason: ProviderFinishReason::Stop,
-                },
-            ],
+            events: if native {
+                [
+                    extension_contracts::provider_contract::ProviderOutputItemPhase::Added,
+                    extension_contracts::provider_contract::ProviderOutputItemPhase::Done,
+                ]
+                .into_iter()
+                .map(|phase| ProviderStreamEvent::OutputItem {
+                    phase,
+                    output_index: 0,
+                    item: json!({"id":"msg_ok","type":"message","role":"assistant",
+                    "content":[{"type":"output_text","text":"ok"}]}),
+                })
+                .collect()
+            } else {
+                vec![
+                    ProviderStreamEvent::TextDelta {
+                        delta: "ok".to_string(),
+                    },
+                    ProviderStreamEvent::Finish {
+                        reason: ProviderFinishReason::Stop,
+                    },
+                ]
+            },
             result: ProviderInvocationResult {
                 final_content: Some("ok".to_string()),
                 finish_reason: Some(ProviderFinishReason::Stop),

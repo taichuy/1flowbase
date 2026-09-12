@@ -820,6 +820,22 @@ where
                 invocation_error.get_or_insert(error);
             }
         }
+        if let (Some(transport), Some(flow_run_id), Some(output)) = (
+            &self.provider_transport_payload,
+            self.flow_run_id,
+            invocation_output.as_mut(),
+        ) {
+            let round_id = self.response_round_id.unwrap_or(flow_run_id);
+            let metadata = &mut output.result.provider_metadata;
+            if !metadata.is_object() {
+                *metadata = json!({});
+            }
+            metadata["native_response"] = json!({
+                "response_id": format!("resp_{round_id}"),
+                "configuration_digest": transport.configuration_digest()?,
+                "user_messages_digest": transport.user_messages_digest()?.or_else(|| self.native_user_messages_digest.clone()),
+            });
+        }
         fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
                 reservation: billing,
@@ -1464,6 +1480,8 @@ where
             provider_transport_payload: self.provider_transport_payload.clone(),
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: self.provider_continuation.clone(),
+            response_round_id: self.response_round_id,
+            native_user_messages_digest: self.native_user_messages_digest.clone(),
             model_pricing_cache_store: self.model_pricing_cache_store.clone(),
         }
     }
@@ -1530,6 +1548,15 @@ where
                 &runtime.model,
             ),
         )?;
+        store
+            .put_continuation(
+                crate::ports::ProviderContinuationSlotId::for_response_round(
+                    flow_run_id,
+                    self.response_round_id.unwrap_or(flow_run_id),
+                ),
+                continuation.clone(),
+            )
+            .await?;
         store
             .put_continuation(
                 crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),

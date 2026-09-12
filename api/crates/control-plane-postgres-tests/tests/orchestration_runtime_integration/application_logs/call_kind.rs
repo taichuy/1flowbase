@@ -88,7 +88,47 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
             ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
                 .await
                 .unwrap();
+        // #2036 AC-009: two generations on the same node run, with two
+        // provider attempts each, contribute two invocations rather than four.
+        // A compaction span never contributes; the last legacy run has no spans.
+        if index < 2 {
+            let node = store
+                .create_node_run(&CreateNodeRunInput {
+                    flow_run_id: created.flow_run.id,
+                    node_id: "node-1".into(),
+                    node_type: "llm".into(),
+                    node_alias: "LLM".into(),
+                    status: domain::NodeRunStatus::Running,
+                    input_payload: json!({}),
+                    debug_payload: json!({}),
+                    started_at: OffsetDateTime::now_utc(),
+                })
+                .await
+                .unwrap();
+            for _ in 0..(if index == 0 { 2 } else { 1 }) {
+                let span = Uuid::now_v7();
+                sqlx::query("insert into runtime_spans(id,flow_run_id,node_run_id,kind,name,status,started_at) values($1,$2,$3,'llm_turn','LLM','running',now())")
+                    .bind(span).bind(created.flow_run.id).bind(node.id)
+                    .execute(store.pool()).await.unwrap();
+                for attempt in 0..2_i32 {
+                    sqlx::query("insert into model_failover_attempt_ledger(id,flow_run_id,node_run_id,llm_turn_span_id,attempt_index,provider_code,upstream_model_id,protocol,started_at,status) values($1,$2,$3,$4,$5,'fixture','fixture','responses',now(),'succeeded')")
+                        .bind(Uuid::now_v7()).bind(created.flow_run.id).bind(node.id)
+                        .bind(span).bind(attempt).execute(store.pool()).await.unwrap();
+                }
+            }
+        }
         record_usage(&store, created.flow_run.id, 1000 * (index as i64 + 1)).await;
+        // Re-projecting an unchanged outcome cannot increment the count.
+        store
+            .update_flow_run(&UpdateFlowRunInput {
+                flow_run_id: created.flow_run.id,
+                status: FlowRunStatus::Succeeded,
+                output_payload: json!({"answer":"done"}),
+                error_payload: None,
+                finished_at: Some(OffsetDateTime::now_utc()),
+            })
+            .await
+            .unwrap();
         ids.push(created.flow_run.id);
     }
     // AC-005: the binder persists the declared protocol verbatim.
@@ -125,7 +165,7 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
     assert_eq!(page.total, 1);
     let task = &page.items[0];
     assert_eq!(task.run.id, ids[0]);
-    assert_eq!(task.invocation_count, 2);
+    assert_eq!(task.invocation_count, 3);
     assert_eq!(task.compaction_count, 1);
     assert_eq!(task.total_tokens, Some(6000));
     assert_eq!(task.call_kind, "generate");
@@ -156,7 +196,7 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
         )
         .await
         .unwrap();
-    assert_eq!(runtime_page.items[0]["invocation_count"], 2);
+    assert_eq!(runtime_page.items[0]["invocation_count"], 3);
     assert_eq!(runtime_page.items[0]["compaction_count"], 1);
     assert_eq!(runtime_page.items[0]["call_kind"], "generate");
 
@@ -241,6 +281,14 @@ async fn issue_2034_migration_backfills_call_kind_and_retires_placeholder_column
             .execute(store.pool()).await.unwrap();
         sqlx::query("insert into application_run_log_summaries(flow_run_id,scope_id,application_id,run_mode,status,title,input_payload,api_key_id,total_tokens,started_at,finished_at,created_at,updated_at) select id,scope_id,application_id,run_mode,status,'legacy',input_payload,api_key_id,$2,started_at,finished_at,created_at,updated_at from flow_runs where id=$1")
             .bind(run).bind(10 * (index as i64 + 1)).execute(store.pool()).await.unwrap();
+        // #2036 AC-009 migration: existing formal generations replace the old
+        // per-run contribution; rows without facts retain their stored values.
+        if index == 0 {
+            for _ in 0..2 {
+                sqlx::query("insert into runtime_spans(id,flow_run_id,kind,name,status,started_at) values($1,$2,'llm_turn','LLM','running',now())")
+                    .bind(Uuid::now_v7()).bind(run).execute(store.pool()).await.unwrap();
+            }
+        }
         runs.push(run);
     }
     run_migrations(store.pool()).await.unwrap();
@@ -254,15 +302,15 @@ async fn issue_2034_migration_backfills_call_kind_and_retires_placeholder_column
     assert_eq!(kinds[0], (runs[0], "generate".into(), Some(10)));
     assert_eq!(kinds[1], (runs[1], "compact".into(), Some(20)));
     assert_eq!(kinds[2], (runs[2], "compact".into(), Some(30)));
-    // The column survives only as a per-run contribution generated from call_kind;
-    // the constant default and its `= 1` check constraint are gone.
+    // #2036 retains the column as a projection of logical generation facts;
+    // the former generated expression and constant check are both gone.
     let generated: Option<String> = sqlx::query_scalar(
         "select is_generated from information_schema.columns where table_schema=current_schema() and table_name='application_run_log_summaries' and column_name='invocation_count'",
     )
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(generated.as_deref(), Some("ALWAYS"));
+    assert_eq!(generated.as_deref(), Some("NEVER"));
     let constant_check: bool = sqlx::query_scalar(
         "select exists(select 1 from pg_constraint where conrelid='application_run_log_summaries'::regclass and pg_get_constraintdef(oid) like '%invocation_count = 1%')",
     )
@@ -280,5 +328,13 @@ async fn issue_2034_migration_backfills_call_kind_and_retires_placeholder_column
     .fetch_all(store.pool())
     .await
     .unwrap();
-    assert_eq!(contributions, [(1, 0), (0, 1), (0, 1)]);
+    assert_eq!(contributions, [(2, 0), (0, 1), (0, 1)]);
+    let task_count: i64 = sqlx::query_scalar(
+        "select sum(invocation_count)::bigint from application_run_log_tasks where application_id=$1",
+    )
+    .bind(seeded.application_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(task_count, 2);
 }

@@ -6,6 +6,8 @@ async fn main_instance_routing_uses_current_registered_instances_instead_of_froz
     let (frozen_instance_id, current_instance_id) = repository.seed_included_provider_instances();
     repository.set_instance_included_in_main(frozen_instance_id, false);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -70,6 +72,8 @@ async fn main_instance_routing_reads_current_distribution_rule_and_order() {
         Vec::new(),
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -153,6 +157,8 @@ async fn publisher_cutover_agent_flow_route_reads_receipt_marked_legacy_provider
         .mark_provider_manifest_legacy_missing_publisher_namespace(installation_id)
         .await;
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -195,6 +201,8 @@ async fn root_1534_resolved_provider_route_pins_the_installation_used_for_invoca
     let (runtime_port, captured_inputs) =
         test_support::InMemoryProviderRuntime::with_invocation_capture();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository: repository.clone(),
         runtime: runtime_port,
         workspace_id: Uuid::nil(),

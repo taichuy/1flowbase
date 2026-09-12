@@ -1,3 +1,6 @@
+use super::openai::native_response_id;
+#[cfg(test)]
+use control_plane::application_public_api::compat::openai::response_id_from_run_id;
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 #[cfg(test)]
@@ -17,10 +20,7 @@ use control_plane::application_public_api::{
     native::NativeRunStatus,
 };
 use control_plane::{
-    application_public_api::{
-        compat::openai::response_id_from_run_id,
-        native::{NativeRunResult, NativeUsage},
-    },
+    application_public_api::native::{NativeRunResult, NativeUsage},
     orchestration_runtime::{
         debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
@@ -269,7 +269,7 @@ pub(crate) fn anthropic_interface_projection(model: String) -> CompatibleProtoco
 pub(crate) async fn prepare_compatible_resume_for_actor(
     state: Arc<ApiState>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    command: ResumePublishedCallbackCommand,
+    mut command: ResumePublishedCallbackCommand,
 ) -> Result<CompatibleResumeAdmission, NativeApiError> {
     let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
     let runtime_service = OrchestrationRuntimeService::new(
@@ -288,14 +288,30 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let prepared =
+    let service =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .prepare_callback_resume_for_actor(actor, &command)
-            .await
-            .map_err(service_error)?;
+            .with_last_used_cache(state.infrastructure.cache_store());
+    let prepared = service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .map_err(service_error)?;
     Ok(match prepared {
-        PreparedPublishedCallbackResume::Resume { initial_run } => {
+        PreparedPublishedCallbackResume::Resume { mut initial_run } => {
+            if command.native_transport.is_some() {
+                command.reserved_attempt_id = Some(
+                    service
+                        .reserve_native_callback_for_actor(actor, &command)
+                        .await
+                        .map_err(service_error)?,
+                );
+                let round_id = match command.target {
+                    PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
+                    | PublishedCallbackResumeTarget::FlowRun {
+                        callback_task_id, ..
+                    } => callback_task_id,
+                };
+                initial_run.metadata["response_round_id"] = json!(round_id);
+            }
             CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
                 initial_run: *initial_run,
                 command,
@@ -312,6 +328,10 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     command: ResumePublishedCallbackCommand,
 ) -> Result<NativeRunResult, NativeApiError> {
+    let round_id = command
+        .native_transport
+        .as_ref()
+        .map(|_| callback_task_id_from_resume_command(&command));
     let runtime_internal_tool_invoker = dependencies
         .native
         .runtime_invoker_factory
@@ -327,7 +347,12 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     .with_last_used_cache(dependencies.native.cache_store.clone())
     .resume_callback_for_actor(actor, command)
     .await
-    .map(|result| result.run)
+    .map(|mut result| {
+        if let Some(round_id) = round_id {
+            result.run.metadata["response_round_id"] = json!(round_id);
+        }
+        result.run
+    })
     .map_err(service_error)
 }
 

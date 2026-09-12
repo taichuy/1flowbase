@@ -242,12 +242,14 @@ impl PgControlPlaneStore {
         let (task_rounds, child_tasks, task_outputs) = self
             .task_trace_source_counts(application_id, flow_run_id, messages.len())
             .await?;
-        Ok(Some(control_plane_contracts::persistence_projection::trace_projection_task_watermark(
-            base,
-            task_rounds,
-            child_tasks,
-            task_outputs,
-        )))
+        Ok(Some(
+            control_plane_contracts::persistence_projection::trace_projection_task_watermark(
+                base,
+                task_rounds,
+                child_tasks,
+                task_outputs,
+            ),
+        ))
     }
 
     async fn replace_application_run_trace_projection(
@@ -468,69 +470,38 @@ impl PgControlPlaneStore {
         &self,
         flow_run_id: Uuid,
     ) -> Result<ApplicationRunTraceProjectionStatistics> {
+        // Task anchors use the same aggregate as the list; member runs use their summary.
+        // Trace nodes are presentation snapshots and can repeat parent/child usage.
         let row = sqlx::query(
             r#"
-            select
-                sum(
-                    case
-                        when metrics_payload #>> '{usage,total_tokens}' ~ '^-?[0-9]+$'
-                        then (metrics_payload #>> '{usage,total_tokens}')::bigint
-                        when metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                          or metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
-                          or metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
-                        then
-                            coalesce(
-                                case
-                                    when metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                                    then (metrics_payload #>> '{usage,input_tokens}')::bigint
-                                end,
-                                0
-                            )
-                            + coalesce(
-                                case
-                                    when metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
-                                    then (metrics_payload #>> '{usage,output_tokens}')::bigint
-                                end,
-                                0
-                            )
-                            + coalesce(
-                                case
-                                    when metrics_payload #>> '{usage,reasoning_tokens}' ~ '^-?[0-9]+$'
-                                    then (metrics_payload #>> '{usage,reasoning_tokens}')::bigint
-                                end,
-                                0
-                            )
-                    end
-                )::bigint as total_tokens,
-                sum(
-                    case
-                        when metrics_payload #>> '{usage,input_tokens}' ~ '^-?[0-9]+$'
-                        then (metrics_payload #>> '{usage,input_tokens}')::bigint
-                    end
-                )::bigint as input_tokens,
-                sum(
-                    case
-                        when metrics_payload #>> '{usage,output_tokens}' ~ '^-?[0-9]+$'
-                        then (metrics_payload #>> '{usage,output_tokens}')::bigint
-                    end
-                )::bigint as output_tokens,
-                sum(
-                    case
-                        when metrics_payload #>> '{usage,input_cache_hit_tokens}' ~ '^-?[0-9]+$'
-                        then (metrics_payload #>> '{usage,input_cache_hit_tokens}')::bigint
-                        when metrics_payload #>> '{usage,cache_read_tokens}' ~ '^-?[0-9]+$'
-                        then (metrics_payload #>> '{usage,cache_read_tokens}')::bigint
-                    end
-                )::bigint as input_cache_hit_tokens,
-                count(distinct node_id) filter (where node_id is not null)::bigint as unique_node_count,
-                count(*) filter (where node_kind = 'tool_callback')::bigint as tool_callback_count
-            from application_run_trace_nodes
-            where flow_run_id = $1
+            select invocation_count, compaction_count, total_tokens, input_tokens,
+                   output_tokens, input_cache_hit_tokens, unique_node_count, tool_callback_count
+            from application_run_log_tasks where id = $1
+            union all
+            select invocation_count, compaction_count, total_tokens, input_tokens,
+                   output_tokens, input_cache_hit_tokens, unique_node_count, tool_callback_count
+            from application_run_log_summaries where flow_run_id = $1
+              and not exists (select 1 from application_run_log_tasks where id = $1)
             "#,
-        );
-        let row = row.bind(flow_run_id).fetch_one(self.pool()).await?;
-
+        )
+        .bind(flow_run_id)
+        .fetch_optional(self.pool())
+        .await?;
+        let count_tokens_input_tokens = self
+            .list_application_run_count_tokens_results(&[flow_run_id])
+            .await?
+            .first()
+            .map(|result| result.input_tokens);
+        let Some(row) = row else {
+            return Ok(ApplicationRunTraceProjectionStatistics {
+                count_tokens_input_tokens,
+                ..Default::default()
+            });
+        };
         Ok(ApplicationRunTraceProjectionStatistics {
+            invocation_count: row.get("invocation_count"),
+            compaction_count: row.get("compaction_count"),
+            count_tokens_input_tokens,
             total_tokens: row.get("total_tokens"),
             input_tokens: row.get("input_tokens"),
             output_tokens: row.get("output_tokens"),

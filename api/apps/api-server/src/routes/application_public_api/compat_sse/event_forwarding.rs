@@ -73,7 +73,7 @@ async fn forward_ordered_typed_events(
             continue;
         };
         let terminal = is_public_terminal_runtime_event(&event.event_type);
-        let run = if terminal {
+        let mut run = if terminal {
             let run = match load_durable_native_run_for_terminal_projection_with_dependencies(
                 terminal_dependencies,
                 initial_run,
@@ -119,6 +119,9 @@ async fn forward_ordered_typed_events(
         } else {
             initial_run.clone()
         };
+        if let Some(round_id) = initial_run.metadata.get("response_round_id") {
+            run.metadata["response_round_id"] = round_id.clone();
+        }
         *emitted_answer_delta |= is_answer_presentation_delta(&event);
         if sender
             .send(CompatibleProjectionInput {

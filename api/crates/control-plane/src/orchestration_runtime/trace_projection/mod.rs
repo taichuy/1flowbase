@@ -14,7 +14,7 @@ pub use control_plane_contracts::persistence_projection::{
     trace_node_id_for_locator, trace_projection_source_watermark_from_counts,
 };
 
-pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 13;
+pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 14;
 
 pub fn legacy_locator_component(
     source_path: &str,
@@ -1526,3 +1526,7 @@ mod tests;
 
 mod native_messages;
 mod task_rounds;
+
+#[cfg(test)]
+#[path = "_tests/native_callback.rs"]
+mod native_callback_tests;

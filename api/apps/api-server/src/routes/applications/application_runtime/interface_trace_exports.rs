@@ -9,18 +9,17 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+        projection_status_needs_lazy_rebuild,
     },
     ports::{
-        ApplicationRunTraceProjectionStatistics, FileManagementRepository,
-        GetRuntimeDebugArtifactInput, ListApplicationRunTraceChildrenPageInput,
-        OrchestrationRuntimeRepository,
+        FileManagementRepository, GetRuntimeDebugArtifactInput,
+        ListApplicationRunTraceChildrenPageInput, OrchestrationRuntimeRepository,
     },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use super::*;
@@ -221,9 +220,9 @@ pub(crate) fn trace_exports_port(
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<
     dyn ConsoleInterfacePort<
-        ApplicationRuntimeTraceExportsInput,
-        ApplicationRuntimeTraceExportsOutput,
-    >,
+            ApplicationRuntimeTraceExportsInput,
+            ApplicationRuntimeTraceExportsOutput,
+        >,
 > {
     Arc::new(ApplicationRuntimeTraceExportsAdapter {
         artifacts: TraceExportArtifactReader {
@@ -452,7 +451,7 @@ impl ApplicationRuntimeTraceExportsAdapter {
             export_status: "complete".to_string(),
             export_warnings: Vec::new(),
             run: detail_response.run,
-            statistics: detail_response.statistics,
+            statistics: trace_tree.statistics.clone(),
             detail: detail_response.detail,
             flow_run: detail_response.flow_run,
             answer_snapshot: detail_response.answer_snapshot,
@@ -556,17 +555,13 @@ impl ApplicationRuntimeTraceExportsAdapter {
             .trace_projection_status(application.id, flow_run.id)
             .await?;
         let projection_status = to_trace_projection_status_response(&status);
-        let statistics = if projection_is_succeeded(&status) {
-            to_trace_projection_statistics_response(
-                <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
-                    &self.store,
-                    flow_run.id,
-                )
-                .await?,
+        let statistics = to_trace_projection_statistics_response(
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
+                &self.store,
+                flow_run.id,
             )
-        } else {
-            empty_trace_projection_statistics_response()
-        };
+            .await?,
+        );
         let nodes = if projection_is_succeeded(&status) {
             let roots = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
                 &self.store,
@@ -908,18 +903,6 @@ fn runtime_debug_artifact_ref(value: &serde_json::Value) -> Option<Uuid> {
         .get("artifact_ref")
         .and_then(serde_json::Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
-}
-
-fn empty_trace_projection_statistics_response() -> application_logs::ApplicationRunStatisticsResponse
-{
-    to_trace_projection_statistics_response(ApplicationRunTraceProjectionStatistics {
-        total_tokens: None,
-        input_tokens: None,
-        output_tokens: None,
-        input_cache_hit_tokens: None,
-        unique_node_count: 0,
-        tool_callback_count: 0,
-    })
 }
 
 fn build_selected_runs_zip(

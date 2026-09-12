@@ -4,6 +4,8 @@ use plugin_framework::provider_contract::ProviderInvocationResult;
 
 fn invoker(repository: Repository) -> RuntimeProviderInvoker<Repository, ()> {
     RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: (),
         workspace_id: Uuid::nil(),

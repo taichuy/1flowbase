@@ -1311,7 +1311,9 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             where flow_runs.application_id = $1
               and flow_runs.api_key_id = $2
               and flow_runs.run_mode = 'published_api_run'
-              and node_runs.output_payload ->> 'response_id' = $3
+              and (node_runs.output_payload ->> 'response_id' = $3
+                      or node_runs.output_payload #>> '{provider_metadata,native_response,response_id}' = $3
+                   or exists (select 1 from runtime_spans rs where rs.flow_run_id = flow_runs.id and rs.metadata #>> '{native_response,response_id}' = $3))
             order by node_runs.finished_at desc nulls last, node_runs.id desc
             limit 1
             "#,
@@ -1404,6 +1406,47 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .await?;
 
         Ok(rows)
+    }
+
+    async fn find_native_responses_callbacks_by_call_ids(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        call_ids: &[String],
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
+                   c.request_payload, c.response_payload, c.external_ref_payload,
+                   c.created_at, c.completed_at
+            from flow_run_callback_tasks c
+            join flow_runs f on f.id = c.flow_run_id
+            join applications a on a.id = f.application_id
+            where a.workspace_id = $1 and f.application_id = $2
+              and f.api_key_id = $3 and f.created_by = $4
+              and f.run_mode = 'published_api_run'
+              and c.callback_kind = 'llm_tool_calls'
+              and jsonb_typeof(c.request_payload #> '{provider_metadata,native_response}') = 'object'
+              and exists (
+                  select 1 from jsonb_array_elements(
+                      case when jsonb_typeof(c.request_payload->'tool_calls') = 'array'
+                           then c.request_payload->'tool_calls' else '[]'::jsonb end
+                  ) tool_call(item)
+                  where coalesce(item->>'call_id', item->>'id') = any($5)
+              )
+            order by c.created_at, c.id
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(actor_user_id)
+        .bind(call_ids)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_callback_task_record).collect()
     }
 
     async fn get_published_callback_task(

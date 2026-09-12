@@ -29,6 +29,7 @@ use super::{persistence::PreparedNodeRuns, RuntimeActiveNode, RuntimeFlowExecuti
 pub(in crate::orchestration_runtime) struct PersistedNodeLifecycle<'a, R, H> {
     service: &'a OrchestrationRuntimeService<R, H>,
     flow_run_id: uuid::Uuid,
+    resumed_node_run: Option<(String, crate::ports::CallbackResumeWaitingNode)>,
     prepared_node_runs: Arc<std::sync::Mutex<PreparedNodeRuns>>,
     flow_execution_context: Arc<RuntimeFlowExecutionContext>,
 }
@@ -42,9 +43,18 @@ impl<'a, R, H> PersistedNodeLifecycle<'a, R, H> {
         Self {
             service,
             flow_run_id,
+            resumed_node_run: None,
             prepared_node_runs: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
             flow_execution_context,
         }
+    }
+
+    pub(in crate::orchestration_runtime) fn with_resumed_node_run(
+        mut self,
+        node_run: Option<(String, crate::ports::CallbackResumeWaitingNode)>,
+    ) -> Self {
+        self.resumed_node_run = node_run;
+        self
     }
 
     pub(in crate::orchestration_runtime) fn prepared_node_runs(&self) -> Result<PreparedNodeRuns> {
@@ -80,20 +90,43 @@ where
             ));
         }
 
-        let node_run = self
-            .service
-            .repository
-            .create_node_run(&CreateNodeRunInput {
-                flow_run_id: self.flow_run_id,
-                node_id: node.node_id.clone(),
-                node_type: node.node_type.clone(),
-                node_alias: node.alias.clone(),
-                status: domain::NodeRunStatus::Running,
-                input_payload: input_payload.clone(),
-                debug_payload: json!({}),
-                started_at: OffsetDateTime::now_utc(),
-            })
-            .await?;
+        let node_run = if let Some((_, previous)) = self
+            .resumed_node_run
+            .as_ref()
+            .filter(|(node_id, _)| *node_id == node.node_id)
+        {
+            super::ensure_node_run_transition(
+                previous.status,
+                domain::NodeRunStatus::Running,
+                "resume_native_llm_node",
+            )?;
+            self.service
+                .repository
+                .update_node_run(&crate::ports::UpdateNodeRunInput {
+                    node_run_id: previous.id,
+                    status: domain::NodeRunStatus::Running,
+                    output_payload: previous.output_payload.clone(),
+                    error_payload: None,
+                    metrics_payload: json!({}),
+                    debug_payload: json!({}),
+                    finished_at: None,
+                })
+                .await?
+        } else {
+            self.service
+                .repository
+                .create_node_run(&CreateNodeRunInput {
+                    flow_run_id: self.flow_run_id,
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    status: domain::NodeRunStatus::Running,
+                    input_payload: input_payload.clone(),
+                    debug_payload: json!({}),
+                    started_at: OffsetDateTime::now_utc(),
+                })
+                .await?
+        };
 
         append_runtime_event(
             self.service,

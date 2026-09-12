@@ -475,3 +475,39 @@ async fn wp12_sealed_body_and_token_do_not_enter_debug_or_error_text() {
         assert!(!safe_text.contains("provider-response-secret"));
     }
 }
+
+// #2036 AC-003/008: public first-round identity must not alias mutable flow continuation.
+#[tokio::test]
+async fn native_response_round_slots_survive_resume_and_are_cleared_with_owner() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let run = Uuid::now_v7();
+    let current = ProviderContinuationSlotId::for_flow_run(run);
+    let first = ProviderContinuationSlotId::for_response_round(run, run);
+    let next = ProviderContinuationSlotId::for_response_round(run, Uuid::now_v7());
+    let original = responses_continuation();
+    let later = ProviderContinuation::new("provider-later", original.affinity().clone()).unwrap();
+    store
+        .put_continuation(first, original.clone())
+        .await
+        .unwrap();
+    store
+        .put_continuation(current, original.clone())
+        .await
+        .unwrap();
+    store.consume_continuation(current).await.unwrap();
+    store.put_continuation(next, later.clone()).await.unwrap();
+    store
+        .put_continuation(current, later.clone())
+        .await
+        .unwrap();
+    assert_eq!(store.get_continuation(first).await.unwrap(), Some(original));
+    assert_eq!(
+        store.get_continuation(next).await.unwrap(),
+        Some(later.clone())
+    );
+    assert_eq!(store.get_continuation(current).await.unwrap(), Some(later));
+    store.clear_flow_run(run).await.unwrap();
+    for slot in [first, next, current] {
+        assert!(store.get_continuation(slot).await.unwrap().is_none());
+    }
+}

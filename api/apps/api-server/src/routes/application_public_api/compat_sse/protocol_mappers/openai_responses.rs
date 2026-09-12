@@ -55,7 +55,7 @@ impl OpenAiResponseStreamMapper {
             "response.output_item.added",
             json!({
                 "type": "response.output_item.added",
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "output_index": self.output_item_index,
                 "item": openai_response_output_item_payload(initial_run, kind, None)
             }),
@@ -77,7 +77,7 @@ impl OpenAiResponseStreamMapper {
             "response.output_item.done",
             json!({
                 "type": "response.output_item.done",
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "output_index": self.output_item_index,
                 "item": openai_response_output_item_payload(initial_run, kind, Some(text))
             }),
@@ -108,7 +108,10 @@ impl OpenAiResponseStreamMapper {
             return true;
         };
 
-        if matches!(item.get("type").and_then(Value::as_str),Some("message" | "reasoning" | "function_call" | "custom_tool_call")) {
+        if matches!(
+            item.get("type").and_then(Value::as_str),
+            Some("message" | "reasoning" | "function_call" | "custom_tool_call")
+        ) {
             self.native_output = true;
         }
         self.close_output_item(initial_run, events);
@@ -116,7 +119,7 @@ impl OpenAiResponseStreamMapper {
             event_name,
             json!({
                 "type": event_name,
-                "response_id": response_id_from_run_id(initial_run.id),
+                "response_id": native_response_id(initial_run),
                 "sequence_number": envelope.sequence,
                 "output_index": output_index,
                 "item": item.clone()
@@ -155,14 +158,16 @@ impl OpenAiResponseStreamMapper {
         if envelope.event_type == "provider_responses_output_delta" {
             self.native_output = true;
             if let Some(mut payload) = envelope.payload.get("event").cloned() {
-                payload["response_id"] = json!(response_id_from_run_id(initial_run.id));
+                payload["response_id"] = json!(native_response_id(initial_run));
                 payload["sequence_number"] = json!(envelope.sequence);
-                let kind=payload["type"].as_str().unwrap_or_default().to_string();
-                events.push(event_json_sse(&kind,payload));
+                let kind = payload["type"].as_str().unwrap_or_default().to_string();
+                events.push(event_json_sse(&kind, payload));
             }
             return events;
         }
-        if self.native_output && event.answer_delta().is_some() { return events; }
+        if self.native_output && event.answer_delta().is_some() {
+            return events;
+        }
         if self.project_provider_output_item(initial_run, envelope, &mut events) {
             return events;
         }

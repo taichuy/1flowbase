@@ -57,6 +57,8 @@ pub enum PublishedCallbackResumeTarget {
 
 #[derive(Debug, Clone)]
 pub struct ResumePublishedCallbackCommand {
+    pub reserved_attempt_id: Option<Uuid>,
+    pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub bearer_token: String,
     pub target: PublishedCallbackResumeTarget,
     pub source: PublishedCallbackResumeSource,
@@ -66,6 +68,7 @@ pub struct ResumePublishedCallbackCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompletePublishedCallbackInput {
+    pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub callback_task_id: Uuid,
@@ -156,6 +159,36 @@ where
         })
     }
 
+    /// Reserve before opening the shared runtime stream, so a losing delivery cannot close it.
+    pub async fn reserve_native_callback_for_actor(
+        &self,
+        actor: super::api_keys::ApplicationApiKeyActor,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<Uuid> {
+        let context = self
+            .resolve_resume_context_for_actor(actor, command)
+            .await?;
+        ensure_callback_is_consumable(
+            &context.flow_run,
+            &context.callback_task,
+            &command.response_payload,
+        )?;
+        let reserved = self
+            .repository
+            .record_published_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+                flow_run_id: context.flow_run.id,
+                callback_task_id: context.callback_task.id,
+                source: command.source.as_str().to_string(),
+                response_payload: command.response_payload.clone(),
+                idempotency_key: format!("callback_task:{}", context.callback_task.id),
+            })
+            .await?;
+        if !reserved.inserted {
+            return Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into());
+        }
+        Ok(reserved.attempt.id)
+    }
+
     pub async fn resume_callback(
         &self,
         command: ResumePublishedCallbackCommand,
@@ -181,32 +214,50 @@ where
         let callback_task = context.callback_task;
         let flow_run = context.flow_run;
 
-        if let Some(existing) = self
+        let existing = self
             .repository
             .get_published_callback_resume_attempt(callback_task.id)
-            .await?
-        {
-            return self
-                .resume_existing_attempt(&actor, &callback_task, existing, &command)
-                .await;
-        }
-
-        ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
-        let attempt_output = self
-            .repository
-            .record_published_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
-                flow_run_id: flow_run.id,
-                callback_task_id: callback_task.id,
-                source: command.source.as_str().to_string(),
-                response_payload: command.response_payload.clone(),
-                idempotency_key: format!("callback_task:{}", callback_task.id),
-            })
             .await?;
-        if !attempt_output.inserted {
-            return self
-                .resume_existing_attempt(&actor, &callback_task, attempt_output.attempt, &command)
-                .await;
-        }
+        let attempt = if let Some(reserved_id) = command.reserved_attempt_id {
+            let existing = existing.ok_or(ControlPlaneError::Conflict(
+                "callback_resume_reservation_missing",
+            ))?;
+            if existing.id != reserved_id
+                || existing.response_payload != command.response_payload
+                || existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+            {
+                return Err(
+                    ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into(),
+                );
+            }
+            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
+            existing
+        } else {
+            if let Some(existing) = existing {
+                return self
+                    .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                    .await;
+            }
+            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
+            let recorded = self
+                .repository
+                .record_published_callback_resume_attempt(
+                    &RecordFlowRunCallbackResumeAttemptInput {
+                        flow_run_id: flow_run.id,
+                        callback_task_id: callback_task.id,
+                        source: command.source.as_str().to_string(),
+                        response_payload: command.response_payload.clone(),
+                        idempotency_key: format!("callback_task:{}", callback_task.id),
+                    },
+                )
+                .await?;
+            if !recorded.inserted {
+                return self
+                    .resume_existing_attempt(&actor, &callback_task, recorded.attempt, &command)
+                    .await;
+            }
+            recorded.attempt
+        };
 
         self.append_resume_event(
             flow_run.id,
@@ -214,7 +265,7 @@ where
             "public_run_resume_requested",
             json!({
                 "callback_task_id": callback_task.id,
-                "resume_attempt_id": attempt_output.attempt.id,
+                "resume_attempt_id": attempt.id,
                 "source": command.source.as_str(),
                 "response_mode": command.response_mode,
                 "response_payload": command.response_payload,
@@ -225,10 +276,11 @@ where
         let result = self
             .consumer
             .complete_published_callback(CompletePublishedCallbackInput {
+                native_transport: command.native_transport.clone(),
                 actor_user_id: actor.creator_user_id,
                 application_id: actor.application_id,
                 callback_task_id: callback_task.id,
-                response_payload: attempt_output.attempt.response_payload.clone(),
+                response_payload: attempt.response_payload.clone(),
             })
             .await;
 
@@ -238,7 +290,7 @@ where
                     .repository
                     .finish_published_callback_resume_attempt(
                         &FinishFlowRunCallbackResumeAttemptInput {
-                            attempt_id: attempt_output.attempt.id,
+                            attempt_id: attempt.id,
                             status: domain::FlowRunCallbackResumeAttemptStatus::Succeeded,
                             error_payload: None,
                             completed_at: OffsetDateTime::now_utc(),
@@ -276,7 +328,7 @@ where
                     .repository
                     .finish_published_callback_resume_attempt(
                         &FinishFlowRunCallbackResumeAttemptInput {
-                            attempt_id: attempt_output.attempt.id,
+                            attempt_id: attempt.id,
                             status: domain::FlowRunCallbackResumeAttemptStatus::Failed,
                             error_payload: Some(error_payload.clone()),
                             completed_at: OffsetDateTime::now_utc(),
@@ -504,6 +556,7 @@ where
         input: CompletePublishedCallbackInput,
     ) -> Result<domain::FlowRunRecord> {
         self.complete_callback_task_run(CompleteCallbackTaskCommand {
+            native_transport: input.native_transport,
             actor_user_id: input.actor_user_id,
             application_id: input.application_id,
             callback_task_id: input.callback_task_id,

@@ -4,6 +4,8 @@ use super::*;
 async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source_instance_id() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -37,6 +39,8 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (alpha_instance_id, _) = repository.seed_included_provider_instances();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -81,6 +85,8 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         domain::ModelProviderInstanceStatus::Disabled,
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -119,6 +125,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -160,6 +168,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
         vec!["gpt-5.4-mini"],
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -205,6 +215,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
             .installation_id;
     repository.remove_assignment_for_installation(Uuid::nil(), installation_id);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -254,6 +266,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         domain::PluginAvailabilityStatus::Available,
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -300,6 +314,8 @@ async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installatio
         domain::PluginAvailabilityStatus::ArtifactMissing,
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -339,6 +355,8 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
     let (_, backup_instance_id) = repository.seed_included_provider_instances();
     repository.set_instance_enabled_models(backup_instance_id, vec!["gpt-5.4-mini"]);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository: repository.clone(),
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -392,6 +410,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
     repository
         .set_instance_catalog_models(selected_instance_id, vec!["other-model", "gpt-5.4-mini"]);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),

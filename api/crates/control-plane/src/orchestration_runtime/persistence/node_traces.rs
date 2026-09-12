@@ -69,7 +69,8 @@ where
                 })
                 .await?
         };
-        let started_at = node_run.started_at;
+        // A resumed LLM keeps its node row, while each generation owns its attempt interval.
+        let started_at = trace_started_at(trace).unwrap_or(node_run.started_at);
         let span_kind = if trace.node_type == "llm" {
             domain::RuntimeSpanKind::LlmTurn
         } else {
@@ -87,6 +88,7 @@ where
                 metadata: json!({
                     "node_id": trace.node_id,
                     "node_type": trace.node_type,
+                    "native_response": trace.output_payload.pointer("/provider_metadata/native_response"),
                 }),
             },
         )
@@ -194,6 +196,23 @@ where
     })
 }
 
+fn trace_started_at(
+    trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
+) -> Option<OffsetDateTime> {
+    trace
+        .metrics_payload
+        .get("attempts")?
+        .as_array()?
+        .iter()
+        .filter_map(|attempt| {
+            attempt
+                .get("started_at")?
+                .as_str()
+                .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+        })
+        .min()
+}
+
 fn trace_finished_at(
     trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
 ) -> Option<OffsetDateTime> {
@@ -261,14 +280,18 @@ mod tests {
             error_payload: None,
             metrics_payload: json!({
                 "attempts": [
-                    { "finished_at": "2026-08-06T10:00:04Z" },
-                    { "finished_at": "2026-08-06T10:00:09Z" }
+                    { "started_at": "2026-08-06T10:00:01Z", "finished_at": "2026-08-06T10:00:04Z" },
+                    { "started_at": "2026-08-06T10:00:05Z", "finished_at": "2026-08-06T10:00:09Z" }
                 ]
             }),
             debug_payload: json!({}),
             provider_events: Vec::new(),
         };
 
+        assert_eq!(
+            trace_started_at(&trace),
+            Some(OffsetDateTime::parse("2026-08-06T10:00:01Z", &Rfc3339).unwrap())
+        );
         assert_eq!(
             trace_finished_at(&trace),
             Some(OffsetDateTime::parse("2026-08-06T10:00:09Z", &Rfc3339).unwrap())

@@ -138,6 +138,8 @@ fn issue_1743_invoker(
     test_support::InMemoryProviderRuntime,
 > {
     RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository: test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]),
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),

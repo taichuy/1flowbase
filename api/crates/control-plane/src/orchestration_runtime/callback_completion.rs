@@ -148,6 +148,12 @@ where
                 let waiting_node_id = checkpoint_node_id(&checkpoint)?;
                 let execution = self
                     .resume_execution_segment(ResumeExecutionSegmentInput {
+                        resumed_node_run: command
+                            .native_transport
+                            .as_ref()
+                            .map(|_| waiting_node.clone()),
+                        native_transport: command.native_transport.clone(),
+                        response_round_id: Some(callback_task.id),
                         actor: &actor,
                         application: &application,
                         flow_run: &flow_run,
@@ -183,18 +189,20 @@ where
                         "response_payload": command.response_payload,
                     }),
                     base_started_at,
-                    waiting_node_resume: Some(WaitingNodeResumeUpdate {
-                        node_run_id: callback_task.node_run_id,
-                        from_status: waiting_node.status,
-                        output_payload: waiting_node_output_payload,
-                        metrics_payload: json!({
-                            "resumed": true,
-                            "callback_kind": callback_task.callback_kind,
-                        }),
-                        debug_payload: json!({
-                            "callback_task_id": callback_task.id,
-                            "callback_kind": callback_task.callback_kind,
-                        }),
+                    waiting_node_resume: command.native_transport.is_none().then(|| {
+                        WaitingNodeResumeUpdate {
+                            node_run_id: callback_task.node_run_id,
+                            from_status: waiting_node.status,
+                            output_payload: waiting_node_output_payload,
+                            metrics_payload: json!({
+                                "resumed": true,
+                                "callback_kind": callback_task.callback_kind,
+                            }),
+                            debug_payload: json!({
+                                "callback_task_id": callback_task.id,
+                                "callback_kind": callback_task.callback_kind,
+                            }),
+                        }
                     }),
                     resume_claim_id: Some(claim.claim.id),
                     resume_claim_token: Some(claim.claim.claim_token),
@@ -325,6 +333,12 @@ where
             checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint).await?;
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
+                resumed_node_run: command
+                    .native_transport
+                    .as_ref()
+                    .map(|_| waiting_node.clone()),
+                native_transport: command.native_transport.clone(),
+                response_round_id: Some(callback_task.id),
                 actor,
                 application,
                 flow_run,

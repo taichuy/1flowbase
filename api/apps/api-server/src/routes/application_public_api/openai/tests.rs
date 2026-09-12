@@ -302,11 +302,13 @@ fn openai_response_filters_internal_visible_llm_tool_calls() {
         json!("visible internal LLM output")
     );
     assert_eq!(responses_payload["output"][0]["type"], json!("message"));
-    assert!(responses_payload["output"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|item| item["type"] != json!("function_call")));
+    assert!(
+        responses_payload["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["type"] != json!("function_call"))
+    );
 }
 
 #[test]
@@ -504,4 +506,173 @@ fn openai_continuation_inputs_are_translated_to_native() {
         }))
         .expect("previous_response_id should be resolved by the route");
     assert_eq!(responses.request.query, "continue");
+}
+
+// #2036 AC-003: blocking Responses uses formal current-round items, preserving
+// custom calls, encrypted reasoning, phases and original call IDs exactly.
+#[test]
+fn native_blocking_responses_preserves_formal_items_and_round_identity() {
+    let mut run = blocking_run(NativeRunStatus::Waiting);
+    let round = Uuid::from_u128(0x77777777777777777777777777777777);
+    run.metadata["response_round_id"] = json!(round);
+    run.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".into(),
+        payload: json!({"callback_task_id":Uuid::now_v7(),"callback_kind":"llm_tool_calls"}),
+    });
+    run.tool_calls = Some(json!([{"id":"legacy-shadow","name":"must_not_project","arguments":{}}]));
+    let items = vec![
+        json!({"id":"rs_native","type":"reasoning","encrypted_content":"opaque","summary":[]}),
+        json!({"id":"msg_native","type":"message","role":"assistant","phase":"commentary","status":"completed","content":[{"type":"output_text","text":"Checking files.","annotations":[]}]}),
+        json!({"id":"fc_native","type":"function_call","call_id":"original_function","name":"read","arguments":"{\"path\":\"first\"}","status":"completed"}),
+        json!({"id":"ct_native","type":"custom_tool_call","call_id":"original_custom","name":"exec","input":"cat next-file","status":"completed"}),
+    ];
+    let response = to_openai_responses_response_with_native_items(
+        run,
+        "provider/model".into(),
+        Some("resp_previous_round".into()),
+        Some(items.clone()),
+    )
+    .unwrap();
+    assert_eq!(response.output, items);
+    assert_eq!(response.id, format!("resp_{round}"));
+    assert_eq!(
+        response.previous_response_id.as_deref(),
+        Some("resp_previous_round")
+    );
+    assert_eq!(response.status, "completed");
+    assert_eq!(response.output_text, "Checking files.");
+}
+
+#[test]
+fn native_blocking_responses_empty_formal_output_does_not_synthesize_a_message() {
+    let response = to_openai_responses_response_with_native_items(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+        None,
+        Some(vec![]),
+    )
+    .unwrap();
+    assert!(response.output.is_empty());
+    assert_eq!(response.output_text, "");
+}
+
+#[test]
+fn native_responses_resume_command_keeps_tool_results_as_an_array() {
+    let results =
+        json!([{"tool_call_id":"native_call","content":[{"type":"input_text","text":"result"}]}]);
+    let correlated = json!({"tool_results":results});
+    let command = openai_resume_command(
+        "",
+        Uuid::now_v7(),
+        PublishedCallbackResumeSource::OpenAiResponses,
+        correlated["tool_results"].clone(),
+        Some("blocking".into()),
+    );
+    assert_eq!(command.response_payload, correlated);
+    assert!(command.response_payload["tool_results"].is_array());
+}
+
+// Issue 2036 blocking regression: the collector must distinguish canonical
+// tool events from an observed, but empty, native formal output stream.
+#[test]
+fn blocking_collector_keeps_canonical_function_tool_fallback() {
+    let mut items = None;
+    collect_blocking_response_output_item(
+        &mut items,
+        "tool_call_commit",
+        &json!({"id":"call_inventory"}),
+    );
+    assert!(items.is_none());
+    let callback_task_id = Uuid::now_v7();
+    let mut run = blocking_run(NativeRunStatus::Waiting);
+    run.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".into(),
+        payload: json!({"callback_task_id":callback_task_id,"callback_kind":"llm_tool_calls"}),
+    });
+    run.tool_calls = Some(
+        json!([{"id":"call_inventory","name":"lookup_inventory","arguments":{"sku":"sku_123"}}]),
+    );
+    let response =
+        to_openai_responses_response_with_native_items(run, "provider/model".into(), None, items)
+            .unwrap();
+    let payload = serde_json::to_value(response).unwrap();
+    assert_eq!(payload["status"], "completed");
+    assert_eq!(payload["output"][0]["type"], "function_call");
+    assert_eq!(
+        decode_openai_callback_tool_call_id(payload["output"][0]["call_id"].as_str().unwrap()),
+        Some((callback_task_id, "call_inventory".into()))
+    );
+}
+
+#[test]
+fn blocking_collector_observed_native_items_suppresses_empty_output_fallback() {
+    let mut items = None;
+    collect_blocking_response_output_item(
+        &mut items,
+        "provider_output_item_added",
+        &json!({"item":{"type":"message","id":"msg_native"}}),
+    );
+    assert_eq!(items, Some(vec![]));
+    let response = to_openai_responses_response_with_native_items(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+        None,
+        items,
+    )
+    .unwrap();
+    let payload = serde_json::to_value(response).unwrap();
+    assert_eq!(payload["output"], json!([]));
+    assert_eq!(payload["output_text"], "");
+}
+
+#[test]
+fn blocking_collector_keeps_native_done_item_order_and_shape() {
+    let mut items = None;
+    let expected = vec![
+        json!({"type":"reasoning","id":"rs_native","encrypted_content":"opaque"}),
+        json!({"type":"custom_tool_call","call_id":"call_original","name":"exec","input":"pwd"}),
+    ];
+    for item in &expected {
+        collect_blocking_response_output_item(
+            &mut items,
+            "provider_output_item_added",
+            &json!({"item":item}),
+        );
+        collect_blocking_response_output_item(
+            &mut items,
+            "provider_output_item_done",
+            &json!({"item":item}),
+        );
+    }
+    assert_eq!(items, Some(expected));
+}
+
+#[test]
+fn blocking_collector_projects_canonical_callback_completion() {
+    let mut items = None;
+    collect_blocking_response_output_item(
+        &mut items,
+        "answer_delta",
+        &json!({"delta":"Inventory confirmed"}),
+    );
+    collect_blocking_response_output_item(&mut items, "flow_completed", &json!({}));
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.answer = Some("Inventory confirmed".into());
+    let response = to_openai_responses_response_with_native_items(
+        run,
+        "provider/model".into(),
+        Some("resp_previous".into()),
+        items,
+    )
+    .unwrap();
+    let payload = serde_json::to_value(response).unwrap();
+    assert_eq!(payload["status"], "completed");
+    assert_eq!(payload["previous_response_id"], "resp_previous");
+    assert_eq!(payload["output_text"], "Inventory confirmed");
+    assert_eq!(payload["output"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["output"][0]["type"], "message");
+    assert_eq!(
+        payload["output"][0]["content"][0]["text"],
+        "Inventory confirmed"
+    );
 }

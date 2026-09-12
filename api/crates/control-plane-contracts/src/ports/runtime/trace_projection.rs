@@ -102,8 +102,11 @@ pub struct ListApplicationRunTraceChildrenPage {
     pub page_size: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ApplicationRunTraceProjectionStatistics {
+    pub invocation_count: i64,
+    pub compaction_count: i64,
+    pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,

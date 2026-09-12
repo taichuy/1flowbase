@@ -17,7 +17,7 @@ use super::{
     RuntimeDebugArtifactValueResponse, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value_with_dependencies,
     offload_application_run_detail_artifacts_with_dependencies, to_application_run_detail_response,
-    to_context_snapshot_response,
+    to_context_snapshot_response, to_trace_projection_statistics_response,
 };
 use crate::{
     error_response::ApiError,
@@ -154,6 +154,11 @@ impl ApplicationRuntimeDebugArtifactsAdapter {
                 )
                 .await?;
                 let mut response = to_application_run_detail_response(&application, detail);
+                response.statistics = to_trace_projection_statistics_response(
+                    self.store
+                        .get_application_run_trace_statistics(run_id)
+                        .await?,
+                );
                 response.context_snapshot = to_context_snapshot_response(&runtime_events);
                 Ok(ApplicationRuntimeDebugArtifactsOutput::Snapshot(response))
             }

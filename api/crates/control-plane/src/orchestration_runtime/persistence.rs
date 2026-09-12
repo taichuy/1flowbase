@@ -399,7 +399,8 @@ where
                     context_content: recovery.context_content,
                     parent_context_version_id: recovery.parent_context_version_id,
                     context_transition_kind: domain::ContextTransitionKind::Callback,
-                    recovery_idempotency_key: format!("waiting_callback:{}", waiting_node_run.id),
+                    // A node can wait multiple times; the callback identifies this wait occurrence.
+                    recovery_idempotency_key: format!("waiting_callback:{callback_task_id}"),
                     resume_claim_id,
                     resume_claim_token,
                     waiting_event: waiting_event_input,

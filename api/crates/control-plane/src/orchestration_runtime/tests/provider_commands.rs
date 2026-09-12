@@ -66,6 +66,8 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     let captured = Arc::new(Mutex::new(Vec::new()));
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: CapturingCompactRuntime {
             captured: captured.clone(),
@@ -200,6 +202,8 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     let captured = Arc::new(Mutex::new(Vec::new()));
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: CapturingCountTokensRuntime {
             captured: captured.clone(),

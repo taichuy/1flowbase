@@ -225,6 +225,17 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         Ok(self.continuations.write().await.remove(&slot_id).is_some())
     }
 
+    async fn clear_flow_run(&self, flow_run_id: uuid::Uuid) -> anyhow::Result<()> {
+        self.delete(ProviderTransportSlotId::for_flow_run(flow_run_id))
+            .await?;
+        self.continuations
+            .write()
+            .await
+            .retain(|slot, _| !slot.belongs_to(flow_run_id));
+        self.delete_flow_run_protocol_contexts(flow_run_id).await?;
+        Ok(())
+    }
+
     async fn clear_expired(&self) -> anyhow::Result<usize> {
         let now = OffsetDateTime::now_utc();
         let mut entries = self.entries.write().await;

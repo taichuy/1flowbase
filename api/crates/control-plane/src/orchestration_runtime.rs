@@ -157,6 +157,7 @@ pub struct ResumeFlowRunCommand {
 }
 
 pub struct CompleteCallbackTaskCommand {
+    pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
     pub callback_task_id: Uuid,
@@ -319,6 +320,8 @@ struct RuntimeProviderInvoker<R, H> {
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     provider_continuation: Option<crate::ports::ProviderContinuation>,
+    response_round_id: Option<Uuid>,
+    native_user_messages_digest: Option<String>,
     model_pricing_cache_store: Option<Arc<dyn CacheStore>>,
 }
 
@@ -343,6 +346,9 @@ struct RuntimeDataModelExecutionContext {
 }
 
 struct ResumeExecutionSegmentInput<'a> {
+    resumed_node_run: Option<crate::ports::CallbackResumeWaitingNode>,
+    native_transport: Option<crate::ports::ProviderTransportPayload>,
+    response_round_id: Option<Uuid>,
     actor: &'a domain::ActorContext,
     application: &'a domain::ApplicationRecord,
     flow_run: &'a domain::FlowRunRecord,
@@ -525,6 +531,8 @@ where
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
+            response_round_id: None,
+            native_user_messages_digest: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
@@ -551,6 +559,8 @@ where
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
+            response_round_id: None,
+            native_user_messages_digest: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
@@ -579,6 +589,11 @@ where
             self,
             input.flow_run.id,
             flow_execution_context.clone(),
+        )
+        .with_resumed_node_run(
+            input
+                .resumed_node_run
+                .map(|record| (input.waiting_node_id.to_string(), record)),
         );
         let invoker = self
             .runtime_invoker(input.application.workspace_id)
@@ -599,7 +614,38 @@ where
         } else {
             None
         };
-        let invoker = invoker.with_provider_continuation(provider_continuation);
+        let native_resume = input.native_transport.is_some();
+        let transport = match (input.native_transport, provider_continuation.as_ref()) {
+            (Some(payload), Some(continuation))
+                if payload.wire_body().get("previous_response_id").is_some() =>
+            {
+                Some(payload.bind_openai_continuation(continuation.clone())?)
+            }
+            (Some(payload), Some(continuation)) => {
+                Some(payload.with_affinity(continuation.affinity().clone()))
+            }
+            (Some(_), None) => return Err(anyhow!("ephemeral_continuation_missing")),
+            (None, _) => None,
+        };
+        let mut invoker = invoker
+            .with_provider_continuation(if native_resume {
+                None
+            } else {
+                provider_continuation
+            })
+            .with_provider_transport_payload(transport);
+        invoker.response_round_id = input.response_round_id;
+        invoker.native_user_messages_digest = input
+            .snapshot
+            .variable_pool
+            .get(input.waiting_node_id)
+            .and_then(|node| {
+                node.pointer(
+                    "/__llm_tool_callback/provider_metadata/native_response/user_messages_digest",
+                )
+            })
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         let answer_presentation = answer_presentation::AnswerPresentationCursor::from_plan(
             input.compiled_plan,
         )
@@ -629,6 +675,11 @@ where
                 runtime_context,
             )
             .await;
+        if native_resume {
+            runtime_context = runtime_context.with_provider_invocation_capability(
+                extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+            );
+        }
         if let Some(http_file_persister) = self.http_response_file_persister(input.actor.clone()) {
             runtime_context =
                 runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
@@ -1244,6 +1295,9 @@ where
         let result = async {
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
+                    resumed_node_run: None,
+                    native_transport: None,
+                    response_round_id: None,
                     actor: &actor,
                     application: &application,
                     flow_run: &flow_run,

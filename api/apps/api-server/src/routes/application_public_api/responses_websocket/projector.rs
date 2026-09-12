@@ -1,8 +1,5 @@
 use control_plane::{
-    application_public_api::{
-        compat::openai::response_id_from_run_id,
-        native::{NativeRunResult, NativeUsage},
-    },
+    application_public_api::native::{NativeRunResult, NativeUsage},
     orchestration_runtime::debug_stream_events,
     ports::RuntimeEventEnvelope,
 };
@@ -10,7 +7,7 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 use crate::routes::application_public_api::{
-    llm_tool_visibility::external_llm_tool_call_values,
+    llm_tool_visibility::external_llm_tool_call_values, openai::native_response_id,
     tool_callback_ids::encode_openai_callback_tool_call_id,
 };
 
@@ -96,7 +93,7 @@ impl ResponsesWebSocketProjector {
                 self.active_output_item_text.push_str(&delta);
                 events.push(json!({
                     "type": "response.reasoning_text.delta",
-                    "response_id": response_id_from_run_id(run.id),
+                    "response_id": native_response_id(run),
                     "item_id": format!("rs_{}", run.id),
                     "output_index": self.output_item_index,
                     "content_index": 0,
@@ -110,7 +107,7 @@ impl ResponsesWebSocketProjector {
                 self.active_output_item_text.push_str(&delta);
                 events.push(json!({
                     "type": "response.output_text.delta",
-                    "response_id": response_id_from_run_id(run.id),
+                    "response_id": native_response_id(run),
                     "item_id": format!("msg_{}", run.id),
                     "output_index": self.output_item_index,
                     "content_index": 0,
@@ -122,7 +119,7 @@ impl ResponsesWebSocketProjector {
                 self.native_output = true;
                 self.begin_streaming();
                 if let Some(mut event) = envelope.payload.get("event").cloned() {
-                    event["response_id"] = json!(response_id_from_run_id(run.id));
+                    event["response_id"] = json!(native_response_id(run));
                     events.push(event);
                 }
             }
@@ -167,7 +164,7 @@ impl ResponsesWebSocketProjector {
         self.close_output_item(run, events);
         events.push(json!({
             "type": "response.output_item.added",
-            "response_id": response_id_from_run_id(run.id),
+            "response_id": native_response_id(run),
             "output_index": self.output_item_index,
             "item": output_item_payload(run, kind, None)
         }));
@@ -183,7 +180,7 @@ impl ResponsesWebSocketProjector {
         let item = output_item_payload(run, kind, Some(text));
         events.push(json!({
             "type": "response.output_item.done",
-            "response_id": response_id_from_run_id(run.id),
+            "response_id": native_response_id(run),
             "output_index": self.output_item_index,
             "item": item.clone()
         }));
@@ -209,7 +206,10 @@ impl ResponsesWebSocketProjector {
             return;
         };
 
-        if matches!(item.get("type").and_then(Value::as_str), Some("message" | "reasoning" | "function_call" | "custom_tool_call")) {
+        if matches!(
+            item.get("type").and_then(Value::as_str),
+            Some("message" | "reasoning" | "function_call" | "custom_tool_call")
+        ) {
             self.native_output = true;
         }
         self.close_output_item(run, events);
@@ -220,7 +220,7 @@ impl ResponsesWebSocketProjector {
         };
         events.push(json!({
             "type": event_type,
-            "response_id": response_id_from_run_id(run.id),
+            "response_id": native_response_id(run),
             "output_index": output_index,
             "item": item.clone()
         }));
@@ -291,6 +291,17 @@ impl ResponsesWebSocketProjector {
     }
 
     fn waiting_callback_events(&mut self, run: &NativeRunResult, payload: &Value) -> Vec<Value> {
+        if self.native_output {
+            return vec![json!({
+                "type": "response.completed",
+                "response": completed_response_snapshot_with_output(
+                    run,
+                    &self.model,
+                    self.previous_response_id.as_deref(),
+                    self.completed_output_items.clone()
+                )
+            })];
+        }
         let Some(output) = function_call_output_items(payload) else {
             return vec![failed_response_event(
                 run,
@@ -305,13 +316,13 @@ impl ResponsesWebSocketProjector {
         for item in &output {
             events.push(json!({
                 "type": "response.output_item.added",
-                "response_id": response_id_from_run_id(run.id),
+                "response_id": native_response_id(run),
                 "output_index": self.output_item_index,
                 "item": item
             }));
             events.push(json!({
                 "type": "response.output_item.done",
-                "response_id": response_id_from_run_id(run.id),
+                "response_id": native_response_id(run),
                 "output_index": self.output_item_index,
                 "item": item
             }));
@@ -397,7 +408,7 @@ fn response_snapshot(
     status: &'static str,
 ) -> Value {
     json!({
-        "id": response_id_from_run_id(run.id),
+        "id": native_response_id(run),
         "object": "response",
         "created_at": run.created_at.unix_timestamp(),
         "status": status,

@@ -6,12 +6,12 @@ use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION, build_application_run_trace_projection,
+        projection_status_needs_lazy_rebuild,
     },
     ports::{
-        ApplicationRunTraceProjectionStatistics, CacheStore,
-        GetApplicationRunMonitoringReportInput, ListApplicationConversationRunsPageInput,
+        CacheStore, GetApplicationRunMonitoringReportInput,
+        ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         OrchestrationRuntimeRepository,
@@ -413,7 +413,13 @@ impl ApplicationRuntimeReadsAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        Ok(to_application_run_overview_response(&application, overview))
+        let mut response = to_application_run_overview_response(&application, overview);
+        response.statistics = to_trace_projection_statistics_response(
+            self.store
+                .get_application_run_trace_statistics(run_id)
+                .await?,
+        );
+        Ok(response)
     }
 
     async fn trace_tree(
@@ -440,24 +446,13 @@ impl ApplicationRuntimeReadsAdapter {
         } else {
             Vec::new()
         };
-        let statistics = if projection_is_succeeded(&status) {
-            to_trace_projection_statistics_response(
-                <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
-                    &self.store,
-                    run_id,
-                )
-                .await?,
+        let statistics = to_trace_projection_statistics_response(
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
+                &self.store,
+                run_id,
             )
-        } else {
-            to_trace_projection_statistics_response(ApplicationRunTraceProjectionStatistics {
-                total_tokens: None,
-                input_tokens: None,
-                output_tokens: None,
-                input_cache_hit_tokens: None,
-                unique_node_count: 0,
-                tool_callback_count: 0,
-            })
-        };
+            .await?,
+        );
         Ok(ApplicationRunTraceTreeResponse {
             run: application_run_log_response_for_trace_tree(&application, &flow_run),
             statistics,
@@ -1029,9 +1024,11 @@ mod tests {
         )
         .unwrap();
         for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
+            assert!(
+                registry
+                    .binding(&BindingId::new(declaration.binding_id).unwrap())
+                    .is_some()
+            );
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }

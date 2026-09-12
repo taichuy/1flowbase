@@ -1,4 +1,3 @@
-
 impl PgControlPlaneStore {
     async fn list_application_run_count_tokens_results(
         &self,
@@ -112,7 +111,8 @@ impl PgControlPlaneStore {
                 finished_at,
                 created_at,
                 updated_at,
-                call_kind
+                call_kind,
+                invocation_count
             ) values (
                 $1, (select workspace_id from applications where id = $2), $2, $3, $4,
                 $5, $6, $7, $8, $20,
@@ -285,11 +285,19 @@ impl PgControlPlaneStore {
                       )
                 ),
                 $16, $17, $18, $19,
-                application_run_log_call_kind($1)
+                application_run_log_call_kind($1),
+                case when application_run_log_call_kind($1) = 'compact' then 0
+                else coalesce(
+                    (select nullif(count(*), 0) from runtime_spans
+                     where flow_run_id = $1 and kind = 'llm_turn'),
+                    (select invocation_count from application_run_log_summaries where flow_run_id = $1),
+                    1
+                ) end
             )
             on conflict (flow_run_id) do update
             set application_id = excluded.application_id,
                 call_kind = excluded.call_kind,
+                invocation_count = excluded.invocation_count,
                 scope_id = excluded.scope_id,
                 run_mode = excluded.run_mode,
                 status = excluded.status,
@@ -549,7 +557,6 @@ impl PgControlPlaneStore {
 
         Ok(())
     }
-
 }
 
 #[derive(Debug)]

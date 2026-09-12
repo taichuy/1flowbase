@@ -544,34 +544,136 @@ fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
 // create another message, nor can diagnostic frames satisfy the oracle.
 #[test]
 fn native_formal_output_preserves_phase_reasoning_and_order_without_text_duplicates() {
-    let run=native_run(2030);
-    let node=Uuid::new_v4();
-    let mut projector=ResponsesWebSocketProjector::new("fixture".into(),None);
-    let items=[
+    let run = native_run(2030);
+    let node = Uuid::new_v4();
+    let mut projector = ResponsesWebSocketProjector::new("fixture".into(), None);
+    let items = [
         json!({"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"opaque"}),
         json!({"id":"msg_1","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"reading"}]}),
         json!({"id":"ct_1","type":"custom_tool_call","name":"exec","call_id":"call_1","input":"text(1)"}),
     ];
-    let mut facts=vec![];
-    for (index,item) in items.iter().enumerate() {
-        for phase in ["added","done"] {
-            let line: extension_contracts::provider_contract::ProviderRuntimeLine=serde_json::from_value(json!({"type":"output_item","phase":phase,"output_index":index,"item":item})).unwrap();
+    let mut facts = vec![];
+    for (index, item) in items.iter().enumerate() {
+        for phase in ["added", "done"] {
+            let line: extension_contracts::provider_contract::ProviderRuntimeLine =
+                serde_json::from_value(
+                    json!({"type":"output_item","phase":phase,"output_index":index,"item":item}),
+                )
+                .unwrap();
             match line.into_stream_event().unwrap() {
-                extension_contracts::provider_contract::ProviderStreamEvent::OutputItem {phase,output_index,item} => {
+                extension_contracts::provider_contract::ProviderStreamEvent::OutputItem {
+                    phase,
+                    output_index,
+                    item,
+                } => {
                     facts.push(match phase {
-                        extension_contracts::provider_contract::ProviderOutputItemPhase::Added=>debug_stream_events::provider_output_item_added("llm",node,output_index,item),
-                        extension_contracts::provider_contract::ProviderOutputItemPhase::Done=>debug_stream_events::provider_output_item_done("llm",node,output_index,item),
+                        extension_contracts::provider_contract::ProviderOutputItemPhase::Added => {
+                            debug_stream_events::provider_output_item_added(
+                                "llm",
+                                node,
+                                output_index,
+                                item,
+                            )
+                        }
+                        extension_contracts::provider_contract::ProviderOutputItemPhase::Done => {
+                            debug_stream_events::provider_output_item_done(
+                                "llm",
+                                node,
+                                output_index,
+                                item,
+                            )
+                        }
                     });
-                }, _=>unreachable!(),
+                }
+                _ => unreachable!(),
             }
         }
     }
-    facts.push(debug_stream_events::answer_text_delta("answer","reading".into(),0,Some("llm"),Some(node),Some("text")));
-    facts.push(debug_stream_events::flow_finished(run.id,json!({})));
-    let mut frames=vec![];
-    for (index,fact) in facts.into_iter().enumerate() {frames.extend(decoded(projector.project(&run,RuntimeEventEnvelope::new(run.id,index as i64,fact)).unwrap()));}
-    let done:Vec<_>=frames.iter().filter(|v|v["type"]=="response.output_item.done").map(|v|v["item"].clone()).collect();
-    assert_eq!(done,items);
-    assert_eq!(frames.last().unwrap()["response"]["output"],json!(items));
-    assert_eq!(frames.len(),7);
+    facts.push(debug_stream_events::answer_text_delta(
+        "answer",
+        "reading".into(),
+        0,
+        Some("llm"),
+        Some(node),
+        Some("text"),
+    ));
+    facts.push(debug_stream_events::flow_finished(run.id, json!({})));
+    let mut frames = vec![];
+    for (index, fact) in facts.into_iter().enumerate() {
+        frames.extend(decoded(
+            projector
+                .project(&run, RuntimeEventEnvelope::new(run.id, index as i64, fact))
+                .unwrap(),
+        ));
+    }
+    let done: Vec<_> = frames
+        .iter()
+        .filter(|v| v["type"] == "response.output_item.done")
+        .map(|v| v["item"].clone())
+        .collect();
+    assert_eq!(done, items);
+    assert_eq!(frames.last().unwrap()["response"]["output"], json!(items));
+    assert_eq!(frames.len(), 7);
+}
+
+// AC-003/AC-005: a resumed native turn keeps its own response identity and call ID.
+#[test]
+fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
+    let mut run = native_run(2036);
+    let round = Uuid::from_u128(2037);
+    run.metadata = json!({"response_round_id": round});
+    let expected = response_id_from_run_id(round);
+    let mut projector =
+        ResponsesWebSocketProjector::new("model".into(), Some(response_id_from_run_id(run.id)));
+    let item = json!({"id":"ct_native", "type":"custom_tool_call", "call_id":"call_original", "name":"exec", "input":"echo 2036"});
+    let mut frames = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+            )
+            .unwrap(),
+    );
+    for (sequence, event) in [
+        debug_stream_events::provider_output_item_added(
+            "llm",
+            Uuid::from_u128(42),
+            0,
+            item.clone(),
+        ),
+        debug_stream_events::provider_output_item_done("llm", Uuid::from_u128(42), 0, item.clone()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        frames.extend(decoded(
+            projector
+                .project(
+                    &run,
+                    RuntimeEventEnvelope::new(run.id, sequence as i64 + 2, event),
+                )
+                .unwrap(),
+        ));
+    }
+    frames.extend(decoded(
+        projector.project(&run, waiting_tool(&run, 4)).unwrap(),
+    ));
+    assert_eq!(
+        frames.len(),
+        4,
+        "native tool items must not be synthesized again at wait"
+    );
+    for frame in &frames {
+        assert_eq!(
+            frame.get("response_id").unwrap_or(&frame["response"]["id"]),
+            &json!(expected)
+        );
+    }
+    let terminal = frames.last().unwrap();
+    assert_eq!(terminal["type"], "response.completed");
+    assert_eq!(terminal["response"]["output"], json!([item]));
+    assert_eq!(
+        terminal["response"]["previous_response_id"],
+        response_id_from_run_id(run.id)
+    );
 }

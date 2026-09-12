@@ -1917,55 +1917,71 @@ async fn failover_queue_stops_when_primary_fails_after_finish_error_with_first_t
     }
 }
 
-// #2028 AC-007: a provider-owned native tool turn must not open a second host callback.
+// #2036 AC-002: native tools suspend the original node; formal output remains required.
 #[tokio::test]
-async fn issue_2028_native_tool_turn_requires_formal_output_before_completion() {
+async fn issue_2036_native_tool_turn_waits_on_original_node_with_formal_output() {
     for formal in [false, true] {
-    let plan = llm_answer_plan();
-    let mut response = tool_call_response(vec![ProviderToolCall {
-        id: "call_native".into(),
-        name: "exec".into(),
-        arguments: json!({"input":"text(1)"}),
-        provider_metadata: json!({"type":"custom_tool_call"}),
-    }]);
-    response.response_id = Some("resp_native".into());
-    let item=json!({"id":"item_native","type":"custom_tool_call","call_id":"call_native","name":"exec","input":"text(1)"});
-    let mut events=vec![];
-    if formal {
-        for phase in [extension_contracts::provider_contract::ProviderOutputItemPhase::Added,extension_contracts::provider_contract::ProviderOutputItemPhase::Done] {
-            events.push(ProviderStreamEvent::OutputItem { phase, output_index:0, item:json!({"id":"msg_native","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"need tools"}]}) });
-            events.push(ProviderStreamEvent::OutputItem { phase, output_index:1, item:item.clone() });
+        let plan = llm_answer_plan();
+        let mut response = tool_call_response(vec![ProviderToolCall {
+            id: "call_native".into(),
+            name: "exec".into(),
+            arguments: json!({"input":"text(1)"}),
+            provider_metadata: json!({"type":"custom_tool_call"}),
+        }]);
+        response.response_id = Some("resp_native".into());
+        let item = json!({"id":"item_native","type":"custom_tool_call","call_id":"call_native","name":"exec","input":"text(1)"});
+        let mut events = vec![];
+        if formal {
+            for phase in [
+                extension_contracts::provider_contract::ProviderOutputItemPhase::Added,
+                extension_contracts::provider_contract::ProviderOutputItemPhase::Done,
+            ] {
+                events.push(ProviderStreamEvent::OutputItem { phase, output_index:0, item:json!({"id":"msg_native","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"need tools"}]}) });
+                events.push(ProviderStreamEvent::OutputItem {
+                    phase,
+                    output_index: 1,
+                    item: item.clone(),
+                });
+            }
         }
-    }
-    let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput { events, result:response, first_token_at:None,time_to_first_token_ms:None }]);
-    let input = json!({"node-start":{"query":"read fixture"}});
-    let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
-        .unwrap()
-        .with_provider_invocation_capability(
-            ProviderInvocationCapability::ResponsesNativePassthrough,
+        let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput {
+            events,
+            result: response,
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        }]);
+        let input = json!({"node-start":{"query":"read fixture"}});
+        let context = ExecutionRuntimeContext::from_plan_input(&plan, input.as_object().unwrap())
+            .unwrap()
+            .with_provider_invocation_capability(
+                ProviderInvocationCapability::ResponsesNativePassthrough,
+            );
+        let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
+            .await
+            .unwrap();
+        if !formal {
+            assert!(
+                matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)),
+                "missing formal tool must fail: {:?}",
+                outcome.stop_reason
+            );
+            assert!(!outcome.variable_pool.contains_key("node-answer"));
+            continue;
+        }
+        assert!(
+            matches!(outcome.stop_reason, ExecutionStopReason::WaitingCallback(_)),
+            "native tool output must suspend the original workflow: {:?}",
+            outcome.stop_reason
         );
-    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &invoker)
-        .await
-        .unwrap();
-    if !formal {
-        assert!(matches!(outcome.stop_reason,ExecutionStopReason::Failed(_)), "missing formal tool must fail: {:?}",outcome.stop_reason);
-        assert!(!outcome.variable_pool.contains_key("node-answer"));
-        continue;
+        let llm = outcome
+            .node_traces
+            .iter()
+            .find(|trace| trace.node_id == "node-llm")
+            .unwrap();
+        assert_eq!(
+            llm.output_payload["provider_continuation"]["storage"],
+            "ephemeral"
+        );
+        assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
     }
-    assert!(
-        matches!(outcome.stop_reason, ExecutionStopReason::Completed),
-        "native continuation must own the next turn: {:?}",
-        outcome.stop_reason
-    );
-    let llm = outcome
-        .node_traces
-        .iter()
-        .find(|trace| trace.node_id == "node-llm")
-        .unwrap();
-    assert_eq!(
-        llm.output_payload["provider_continuation"]["storage"],
-        "ephemeral"
-    );
-    assert_eq!(llm.output_payload["tool_calls"][0]["id"], "call_native");
-}
 }

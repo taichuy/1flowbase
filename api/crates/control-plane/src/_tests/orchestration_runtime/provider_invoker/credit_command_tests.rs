@@ -50,6 +50,8 @@ fn credit_command_invoker(
     test_support::InMemoryProviderRuntime,
 > {
     RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::with_capability_output(output),
         workspace_id: Uuid::nil(),

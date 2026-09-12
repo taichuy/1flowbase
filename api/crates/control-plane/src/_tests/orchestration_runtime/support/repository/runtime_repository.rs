@@ -1074,6 +1074,18 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &crate::ports::PersistWaitingStateInput,
     ) -> Result<Option<crate::ports::PersistedWaitingState>> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        // Match PostgreSQL's (flow_run_id, idempotency_key) recovery uniqueness.
+        if inner
+            .recovery_history_by_flow_run_id
+            .get(&input.flow_run_id)
+            .is_some_and(|records| {
+                records
+                    .iter()
+                    .any(|record| record.idempotency_key == input.recovery_idempotency_key)
+            })
+        {
+            return Err(anyhow::anyhow!("duplicate recovery idempotency key"));
+        }
         force_status_before_next_flow_update(&mut inner, input.flow_run_id);
         let target_status = match input.kind {
             crate::ports::PersistWaitingKind::Human => domain::FlowRunStatus::WaitingHuman,

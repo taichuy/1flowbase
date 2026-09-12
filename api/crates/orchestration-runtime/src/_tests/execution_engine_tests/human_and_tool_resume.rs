@@ -1,3 +1,4 @@
+mod native_responses;
 use super::*;
 
 #[tokio::test]

@@ -36,6 +36,8 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
     );
     let (live_sender, mut live_receiver) = mpsc::channel(32);
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),

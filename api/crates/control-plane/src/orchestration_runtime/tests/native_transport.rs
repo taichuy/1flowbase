@@ -7,13 +7,15 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
     let (runtime_port, captured_inputs) =
         test_support::InMemoryProviderRuntime::with_invocation_capture();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),
         provider_secret_master_key: "test-master-key".to_string(),
         live_provider_events: None,
         runtime_event_stream: None,
-        flow_run_id: None,
+        flow_run_id: Some(Uuid::nil()),
         active_node_id: None,
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
@@ -49,9 +51,22 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
         ..ProviderInvocationInput::default()
     };
 
-    orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(&invoker, &runtime, input)
-        .await
-        .expect("ephemeral native transport should reach the provider invocation");
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker, &runtime, input,
+    )
+    .await
+    .expect("ephemeral native transport should reach the provider invocation");
+
+    // AC-003: billing and timing wrappers must not discard the native round binding.
+    let mut metadata = &output.result.provider_metadata;
+    while let Some(upstream) = metadata.get("_1flowbase_upstream_provider_metadata") {
+        metadata = upstream;
+    }
+    assert_eq!(
+        metadata["native_response"]["response_id"],
+        format!("resp_{}", Uuid::nil())
+    );
+    assert!(metadata["native_response"]["configuration_digest"].is_string());
 
     let captured = captured_inputs
         .lock()
@@ -75,6 +90,8 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
         "gpt-5.4-mini",
     );
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),
@@ -156,6 +173,8 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
     .bind_openai_continuation(continuation)
     .unwrap();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),

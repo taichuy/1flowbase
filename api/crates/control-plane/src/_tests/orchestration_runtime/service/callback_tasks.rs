@@ -432,6 +432,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
     service.reset_application_run_detail_read_count();
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: waiting_detail.callback_tasks[0].id,
@@ -576,6 +577,7 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: waiting.callback_tasks[0].id,
@@ -706,6 +708,7 @@ async fn assistant_llm_tool_callback_keeps_the_preview_stream_open_until_the_fin
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: waiting.callback_tasks[0].id,
@@ -843,6 +846,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let second_waiting = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: first_waiting.callback_tasks[0].id,
@@ -888,6 +892,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: second_callback_task_id,
@@ -939,6 +944,7 @@ async fn complete_callback_task_escapes_nul_characters_before_persisting_respons
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: seeded.callback_task_id,
@@ -1016,6 +1022,7 @@ async fn complete_llm_tool_callback_rejects_partial_results_without_consuming_ta
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id,
@@ -1086,6 +1093,7 @@ async fn complete_llm_tool_callback_rejects_wrong_application_without_consuming_
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: intruder.actor_user_id,
             application_id: intruder.application_id,
             callback_task_id,

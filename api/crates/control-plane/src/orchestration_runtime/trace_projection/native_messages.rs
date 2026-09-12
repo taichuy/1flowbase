@@ -31,22 +31,42 @@ impl TraceProjectionBuilder {
             });
             if let Some(index) = existing {
                 let content = &mut self.contents[index];
-                content.payload = payload;
-                content.source_refs = serde_json::json!([{"source_kind":"application_run_conversation_message_items","source_locator":call_id}]);
-                // Receiving a client result proves receipt, not verified execution.
-                if let Some(node) = self
-                    .nodes
-                    .iter_mut()
-                    .find(|node| node.trace_node_id == content.trace_node_id)
-                {
-                    node.status = if result.is_some() {
-                        "returned"
-                    } else {
-                        "waiting_callback"
+                // The original provider request is older than the callback task
+                // and its result. Overlay its formal shape without erasing that truth.
+                let has_callback_truth = ["callback_task_id", "tool_result", "callback_payload"]
+                    .iter()
+                    .any(|key| {
+                        content
+                            .payload
+                            .get(*key)
+                            .is_some_and(|value| !value.is_null())
+                    });
+                if has_callback_truth {
+                    content.payload["request_payload"] = item.clone();
+                    content.payload["tool_call"] = item.clone();
+                } else {
+                    content.payload = payload;
+                    // A client result proves receipt, not verified execution.
+                    if let Some(node) = self
+                        .nodes
+                        .iter_mut()
+                        .find(|node| node.trace_node_id == content.trace_node_id)
+                    {
+                        node.status = if result.is_some() {
+                            "returned"
+                        } else {
+                            "waiting_callback"
+                        }
+                        .into();
+                        node.finished_at = None;
+                        node.duration_ms = None;
                     }
-                    .into();
-                    node.finished_at = None;
-                    node.duration_ms = None;
+                }
+                if let Some(refs) = content.source_refs.as_array_mut() {
+                    let source = serde_json::json!({"source_kind":"application_run_conversation_message_items","source_locator":call_id});
+                    if !refs.contains(&source) {
+                        refs.push(source);
+                    }
                 }
                 continue;
             }

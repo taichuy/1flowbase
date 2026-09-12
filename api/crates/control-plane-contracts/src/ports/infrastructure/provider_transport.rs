@@ -27,11 +27,29 @@ impl ProviderTransportSlotId {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProviderContinuationSlotId(Uuid);
+pub struct ProviderContinuationSlotId {
+    flow_run_id: Uuid,
+    response_round_id: Option<Uuid>,
+}
 
 impl ProviderContinuationSlotId {
     pub const fn for_flow_run(flow_run_id: Uuid) -> Self {
-        Self(flow_run_id)
+        Self {
+            flow_run_id,
+            response_round_id: None,
+        }
+    }
+
+    /// Immutable public response identity, separate from the mutable waiting-node slot.
+    pub const fn for_response_round(flow_run_id: Uuid, response_round_id: Uuid) -> Self {
+        Self {
+            flow_run_id,
+            response_round_id: Some(response_round_id),
+        }
+    }
+
+    pub const fn belongs_to(self, flow_run_id: Uuid) -> bool {
+        self.flow_run_id.as_u128() == flow_run_id.as_u128()
     }
 }
 
@@ -428,6 +446,43 @@ impl ProviderTransportPayload {
 
     pub fn digest(&self) -> &str {
         &self.digest
+    }
+
+    /// Identifies the generation configuration independently of history and delivery metadata.
+    pub fn user_messages_digest(&self) -> anyhow::Result<Option<String>> {
+        let Some(input) = self.wire_body.get("input").and_then(Value::as_array) else {
+            return Ok(None);
+        };
+        let messages: Vec<_> = input
+            .iter()
+            .filter(|item| item.get("role").and_then(Value::as_str) == Some("user"))
+            .cloned()
+            .collect();
+        if messages.is_empty() {
+            return Ok(None);
+        }
+        let mut canonical = Vec::new();
+        write_canonical_json(&Value::Array(messages), &mut canonical)?;
+        Ok(Some(format!("sha256:{:x}", Sha256::digest(canonical))))
+    }
+
+    pub fn configuration_digest(&self) -> anyhow::Result<String> {
+        let mut configuration = self.wire_body.clone();
+        if let Some(body) = configuration.as_object_mut() {
+            for field in [
+                "input",
+                "previous_response_id",
+                "stream",
+                "stream_options",
+                "client_metadata",
+                "metadata",
+            ] {
+                body.remove(field);
+            }
+        }
+        let mut canonical = Vec::new();
+        write_canonical_json(&configuration, &mut canonical)?;
+        Ok(format!("sha256:{:x}", Sha256::digest(&canonical)))
     }
 
     pub const fn size_bytes(&self) -> usize {

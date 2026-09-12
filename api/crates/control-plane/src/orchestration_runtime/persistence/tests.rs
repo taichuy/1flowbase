@@ -763,3 +763,102 @@ fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac
         serde_json::from_value(payload).expect("legacy request log task");
     assert_eq!(restored.node_run_id, None);
 }
+
+// AC-002/005: exercise the production waiting-state writer with one reused node row.
+// The repository fixture enforces the same recovery-key uniqueness as PostgreSQL.
+#[tokio::test]
+async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
+    use crate::orchestration_runtime::{OrchestrationRuntimeService, StartFlowDebugRunCommand};
+    use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+    use orchestration_runtime::execution_state::{CheckpointSnapshot, PendingCallbackTask};
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("native wait persistence")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"test"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let mut run = started.flow_run;
+    let node = service
+        .repository
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "node-llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    for index in 0..3 {
+        let payload =
+            json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
+        let outcome = FlowDebugExecutionOutcome {
+            stop_reason: ExecutionStopReason::WaitingCallback(PendingCallbackTask {
+                node_id: node.node_id.clone(),
+                node_alias: "LLM".into(),
+                callback_kind: "llm_tool_calls".into(),
+                request_payload: payload.clone(),
+            }),
+            variable_pool: Map::new(),
+            checkpoint_snapshot: Some(CheckpointSnapshot {
+                next_node_index: 0,
+                variable_pool: Map::new(),
+                active_node_ids: vec![node.node_id.clone()],
+            }),
+            operation_terminal: None,
+            node_traces: vec![trace(&node.node_id, payload, None)],
+        };
+        let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
+        run = super::persist_flow_debug_outcome(
+            &service.repository,
+            super::PersistFlowDebugOutcomeInput {
+                scope_id: Uuid::nil(),
+                application_name: "native wait persistence",
+                task_queue: None,
+                application_id: seeded.application_id,
+                flow_run: &run,
+                compiled_plan: None,
+                outcome: &outcome,
+                prepared_node_runs: Some(&prepared),
+                answer_presentation: None,
+                trigger_event_type: "fixture",
+                trigger_event_payload: json!({}),
+                base_started_at: OffsetDateTime::now_utc(),
+                waiting_node_resume: None,
+                resume_claim_id: None,
+                resume_claim_token: None,
+            },
+        )
+        .await
+        .unwrap()
+        .flow_run;
+    }
+    let detail = service
+        .repository
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        detail.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    assert_eq!(detail.node_runs.len(), 1);
+    assert_eq!(detail.callback_tasks.len(), 3);
+    assert_eq!(detail.checkpoints.len(), 3);
+    assert!(detail
+        .callback_tasks
+        .iter()
+        .all(|task| task.node_run_id == node.id));
+}

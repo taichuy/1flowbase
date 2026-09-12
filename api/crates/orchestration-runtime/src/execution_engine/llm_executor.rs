@@ -690,7 +690,9 @@ where
             collect_dify_style_deltas(&output.events),
         );
         let stream_provider_error = first_provider_error(&output.events).cloned().or_else(|| {
-            native_responses_passthrough.then(|| native_output_contract_error(&output.result, &output.events)).flatten()
+            native_responses_passthrough
+                .then(|| native_output_contract_error(&output.result, &output.events))
+                .flatten()
         });
         let output_protocol_failure =
             first_provider_output_protocol_failure(&output.events).cloned();
@@ -896,16 +898,13 @@ where
                 context: Some(&invocation.debug_context),
             },
         )?;
-        // Native Responses tools belong to the client's provider continuation. Opening
-        // a host callback here creates a second owner and re-encodes custom tools.
-        if !native_responses_passthrough {
-            execution.pending_callback = build_llm_tool_callback_wait(
-                node,
-                variable_pool,
-                &execution.output_payload,
-                &tool_prompt_transcript,
-            )?;
-        }
+        // Client execution owns the tools; the workflow owns the suspended node.
+        execution.pending_callback = build_llm_tool_callback_wait(
+            node,
+            variable_pool,
+            &execution.output_payload,
+            &tool_prompt_transcript,
+        )?;
         return Ok(execution);
     }
 

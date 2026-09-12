@@ -5,6 +5,8 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -74,6 +76,8 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
     let (runtime_port, captured_inputs) =
         test_support::InMemoryProviderRuntime::with_invocation_capture();
     let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),

@@ -157,6 +157,7 @@ async fn ac_007_run_simple_allows_cancel_resume_and_callback_without_view() {
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: callback.actor_user_id,
             application_id: callback.application_id,
             callback_task_id: callback.callback_task_id,
@@ -226,6 +227,7 @@ async fn ac_1271_disabled_run_is_rejected_before_run_task_checkpoint_or_node_loo
         .expect_err("disabled run must reject resume before loading run or checkpoint");
     let callback_error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: Uuid::now_v7(),

@@ -289,6 +289,10 @@ pub fn ensure_node_run_transition(
             )
             | (
                 domain::NodeRunStatus::WaitingCallback,
+                domain::NodeRunStatus::Running
+            )
+            | (
+                domain::NodeRunStatus::WaitingCallback,
                 domain::NodeRunStatus::WaitingCallback
             )
             | (

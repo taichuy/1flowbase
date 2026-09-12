@@ -139,6 +139,8 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            reserved_attempt_id: None,
+            native_transport: None,
             bearer_token: token,
             target: PublishedCallbackResumeTarget::FlowRun {
                 flow_run_id: first.id,
@@ -186,6 +188,8 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            reserved_attempt_id: None,
+            native_transport: None,
             bearer_token: second_token,
             target: PublishedCallbackResumeTarget::FlowRun {
                 flow_run_id: run.id,
@@ -314,6 +318,8 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let result =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                reserved_attempt_id: None,
+                native_transport: None,
                 bearer_token: token,
                 target: PublishedCallbackResumeTarget::FlowRun {
                     flow_run_id: run.id,
@@ -442,6 +448,8 @@ async fn callback_resume_preserves_original_compatibility_mode() {
     ] {
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                reserved_attempt_id: None,
+                native_transport: None,
                 bearer_token: token.clone(),
                 target: PublishedCallbackResumeTarget::FlowRun {
                     flow_run_id,
@@ -682,6 +690,8 @@ mod tests {
         response_payload: Value,
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
+            reserved_attempt_id: None,
+            native_transport: None,
             bearer_token: token.to_string(),
             target: PublishedCallbackResumeTarget::FlowRun {
                 flow_run_id: run_id,
@@ -691,6 +701,144 @@ mod tests {
             response_payload,
             response_mode: Some("blocking".to_string()),
         }
+    }
+
+    // #2036: reserve is the pre-stream atomic admission boundary. Competing
+    // deliveries neither consume the callback nor create replacement runs.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn native_callback_reservation_has_one_winner_and_consumes_only_once() {
+        let (repository, consumer, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({
+                "tool_calls":[{"id":"call_native","name":"read","arguments":{}}]
+            }),
+        );
+        let actor = ApplicationApiKeyService::new(repository.clone())
+            .authenticate_bearer_token(&token)
+            .await
+            .unwrap();
+        let service = Arc::new(ApplicationPublishedCallbackResumeService::new(
+            repository.clone(),
+            consumer.clone(),
+        ));
+        let payload = json!({"tool_results":[{"tool_call_id":"call_native","content":"result"}]});
+        let mut command = resume_command(&token, run.id, callback.id, payload.clone());
+        command.source = PublishedCallbackResumeSource::OpenAiResponses;
+        let wire_body = json!({"model":"fixture","input":[{
+            "type":"function_call_output","call_id":"call_native","output":"result"
+        }]});
+        command.native_transport = Some(
+            control_plane_contracts::ports::ProviderTransportPayload::openai_responses(
+                wire_body.clone(),
+            )
+            .unwrap(),
+        );
+        let barrier = Arc::new(tokio::sync::Barrier::new(4));
+        let mut deliveries = Vec::new();
+        for _ in 0..4 {
+            let service = Arc::clone(&service);
+            let actor = actor.clone();
+            let command = command.clone();
+            let barrier = Arc::clone(&barrier);
+            deliveries.push(tokio::spawn(async move {
+                barrier.wait().await;
+                service
+                    .reserve_native_callback_for_actor(actor, &command)
+                    .await
+            }));
+        }
+        let mut winners = Vec::new();
+        for delivery in deliveries {
+            match delivery.await.unwrap() {
+                Ok(id) => winners.push(id),
+                Err(error) => assert_eq!(
+                    error.downcast_ref::<ControlPlaneError>(),
+                    Some(&ControlPlaneError::Conflict(
+                        "callback_resume_already_admitted"
+                    ))
+                ),
+            }
+        }
+        assert_eq!(winners.len(), 1);
+        assert_eq!(consumer.call_count(), 0);
+        assert_eq!(repository.flow_run_count(), 1);
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+        let attempts = repository.callback_resume_attempts();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].id, winners[0]);
+        assert_eq!(attempts[0].response_payload, payload);
+        assert_eq!(
+            attempts[0].status,
+            domain::FlowRunCallbackResumeAttemptStatus::Processing
+        );
+
+        command.reserved_attempt_id = Some(winners[0]);
+        let mut wrong_id = command.clone();
+        wrong_id.reserved_attempt_id = Some(Uuid::now_v7());
+        let mut wrong_payload = command.clone();
+        wrong_payload.response_payload["tool_results"][0]["content"] = json!("changed");
+        for invalid in [wrong_id, wrong_payload] {
+            let error = service.resume_callback(invalid).await.unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(&ControlPlaneError::Conflict(
+                    "callback_resume_reservation_mismatch"
+                ))
+            );
+        }
+        assert_eq!(consumer.call_count(), 0);
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+
+        let completed = service.resume_callback(command.clone()).await.unwrap();
+        assert_eq!(completed.attempt.id, winners[0]);
+        assert_eq!(
+            completed.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+        let replay = service.resume_callback(command).await.unwrap_err();
+        assert_eq!(
+            replay.downcast_ref::<ControlPlaneError>(),
+            Some(&ControlPlaneError::Conflict(
+                "callback_resume_reservation_mismatch"
+            ))
+        );
+        assert_eq!(consumer.call_count(), 1);
+        assert_eq!(
+            consumer.calls.lock().unwrap()[0]
+                .native_transport
+                .as_ref()
+                .unwrap()
+                .wire_body(),
+            &wire_body
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Completed
+        );
+        assert_eq!(repository.callback_resume_attempts().len(), 1);
+        assert_eq!(repository.flow_run_count(), 1);
     }
 
     #[tokio::test]
