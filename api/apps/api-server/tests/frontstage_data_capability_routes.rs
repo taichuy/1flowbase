@@ -230,7 +230,7 @@ async fn fixture_state() -> (
         ),
         file_storage_registry,
         runtime_engine,
-        provider_runtime,
+        provider_runtime: provider_runtime.clone(),
         process_started_at,
         runtime_activity: Arc::new(
             api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
@@ -254,6 +254,13 @@ async fn fixture_state() -> (
             api_server::app_state::build_official_i18n_catalog_update_service(
                 store.clone(),
                 &config,
+                api_server::network_egress_client::NetworkEgressHttpClientResolver::new(
+                    store.clone(),
+                    ApiProviderRuntime::new(provider_runtime.clone()),
+                    config.provider_secret_master_key.clone(),
+                    config.api_node_id.clone(),
+                ),
+                bootstrap.workspace_id,
             ),
         official_model_pricing_catalog_index_url: config
             .official_model_pricing_catalog_index_url

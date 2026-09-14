@@ -161,7 +161,11 @@ impl ByteReplace for Vec<u8> {
 #[tokio::test]
 async fn wp_d3_catalog_page_uses_index_pagination_and_validates_digest() {
     let (index_locator, server) = spawn_catalog(false).await;
-    let source = ApiUiComponentCatalogSource::new(index_locator);
+    let source = ApiUiComponentCatalogSource::new(
+        index_locator,
+        crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+        uuid::Uuid::nil(),
+    );
 
     let page = source.page(2).await.unwrap();
 
@@ -177,7 +181,11 @@ async fn wp_d3_catalog_page_uses_index_pagination_and_validates_digest() {
 #[tokio::test]
 async fn wp_d3_catalog_page_rejects_bytes_that_do_not_match_index_digest() {
     let (index_locator, server) = spawn_catalog(true).await;
-    let source = ApiUiComponentCatalogSource::new(index_locator);
+    let source = ApiUiComponentCatalogSource::new(
+        index_locator,
+        crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+        uuid::Uuid::nil(),
+    );
 
     let error = source.page(2).await.unwrap_err();
 

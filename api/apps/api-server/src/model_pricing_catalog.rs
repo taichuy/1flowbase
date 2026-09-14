@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, path::Path, time::Duration};
+use std::{collections::HashSet, fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 use control_plane::ports::{BillingRepository, UpsertPricingRuleInput};
@@ -200,13 +200,10 @@ pub(crate) async fn install_pricing_rules_if_absent<R: BillingRepository>(
 }
 
 pub(crate) async fn fetch_remote_pricing_catalog(
+    client: &reqwest::Client,
     catalog_index_url: &str,
 ) -> Result<RemotePricingCatalog, ApiError> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(8))
-        .build()?;
-    let index_bytes = fetch_document(&client, catalog_index_url, 512 * 1024).await?;
+    let index_bytes = fetch_document(client, catalog_index_url, 512 * 1024).await?;
     let index: RemotePricingCatalogIndex = serde_json::from_slice(&index_bytes)?;
     if index.schema_version != INDEX_SCHEMA_VERSION
         || index.currency_code != "USD"
@@ -231,7 +228,7 @@ pub(crate) async fn fetch_remote_pricing_catalog(
             )
             .into());
         }
-        let bytes = fetch_document(&client, &reference.locator, 2 * 1024 * 1024).await?;
+        let bytes = fetch_document(client, &reference.locator, 2 * 1024 * 1024).await?;
         let actual_checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
         if actual_checksum != reference.checksum {
             return Err(control_plane::errors::ControlPlaneError::Conflict(

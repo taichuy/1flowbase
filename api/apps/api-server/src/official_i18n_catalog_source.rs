@@ -17,11 +17,16 @@ pub struct ApiOfficialI18nCatalogSource {
     latest_url: String,
     release_base_url: String,
     github_proxy_url: Option<String>,
-    client: Client,
+    network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
 }
 
 impl ApiOfficialI18nCatalogSource {
-    pub fn new(config: ResolvedOfficialI18nCatalogSourceConfig) -> Self {
+    pub fn new(
+        config: ResolvedOfficialI18nCatalogSourceConfig,
+        network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+        workspace_id: uuid::Uuid,
+    ) -> Self {
         Self {
             latest_url: rewrite_github_raw_url(
                 &config.latest_url,
@@ -29,13 +34,13 @@ impl ApiOfficialI18nCatalogSource {
             ),
             release_base_url: config.release_base_url.trim_end_matches('/').to_owned(),
             github_proxy_url: config.github_proxy_url,
-            client: Client::new(),
+            network_egress,
+            workspace_id,
         }
     }
 
-    async fn download(&self, url: &str) -> Result<Vec<u8>> {
-        Ok(self
-            .client
+    async fn download(client: &Client, url: &str) -> Result<Vec<u8>> {
+        Ok(client
             .get(url)
             .send()
             .await
@@ -65,39 +70,62 @@ impl ApiOfficialI18nCatalogSource {
 #[async_trait]
 impl OfficialI18nCatalogSourcePort for ApiOfficialI18nCatalogSource {
     async fn check_latest_release(&self) -> Result<OfficialI18nCatalogReleaseDescriptor> {
-        let bytes = self.download(&self.latest_url).await?;
-        let inspected = inspect_catalog_seed(&bytes)?;
-        Ok(OfficialI18nCatalogReleaseDescriptor {
-            catalog_version: inspected.catalog_version,
-            semantic_sha256: inspected.semantic_sha256,
-            seed_sha256: inspected.seed_sha256,
-        })
+        let request = self
+            .network_egress
+            .resolve_http_request(
+                self.workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+            )
+            .await?;
+        let result = async {
+            let bytes = Self::download(request.http_client(), &self.latest_url).await?;
+            let inspected = inspect_catalog_seed(&bytes)?;
+            Ok(OfficialI18nCatalogReleaseDescriptor {
+                catalog_version: inspected.catalog_version,
+                semantic_sha256: inspected.semantic_sha256,
+                seed_sha256: inspected.seed_sha256,
+            })
+        }
+        .await;
+        request.finish(result).await
     }
 
     async fn fetch_verified_release(
         &self,
         release: &OfficialI18nCatalogReleaseDescriptor,
     ) -> Result<control_plane::i18n_catalog::VerifiedOfficialCatalogSeed> {
-        let (asset_url, sidecar_url) = self.fixed_release_urls(release.catalog_version.as_str());
-        let sidecar = self.download(&sidecar_url).await?;
-        validate_sidecar(
-            &sidecar,
-            release.seed_sha256.as_str(),
-            release.catalog_version.as_str(),
-        )?;
-        let seed_bytes = self.download(&asset_url).await?;
-        let actual = format!("sha256:{:x}", Sha256::digest(&seed_bytes));
-        if actual != release.seed_sha256.as_str() {
-            bail!("official i18n catalog Seed checksum mismatch");
+        let request = self
+            .network_egress
+            .resolve_http_request(
+                self.workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+            )
+            .await?;
+        let result = async {
+            let (asset_url, sidecar_url) =
+                self.fixed_release_urls(release.catalog_version.as_str());
+            let sidecar = Self::download(request.http_client(), &sidecar_url).await?;
+            validate_sidecar(
+                &sidecar,
+                release.seed_sha256.as_str(),
+                release.catalog_version.as_str(),
+            )?;
+            let seed_bytes = Self::download(request.http_client(), &asset_url).await?;
+            let actual = format!("sha256:{:x}", Sha256::digest(&seed_bytes));
+            if actual != release.seed_sha256.as_str() {
+                bail!("official i18n catalog Seed checksum mismatch");
+            }
+            decode_downloaded_catalog_seed(
+                &seed_bytes,
+                &CatalogSeedInspection {
+                    catalog_version: release.catalog_version.clone(),
+                    semantic_sha256: release.semantic_sha256.clone(),
+                    seed_sha256: release.seed_sha256.clone(),
+                },
+            )
         }
-        decode_downloaded_catalog_seed(
-            &seed_bytes,
-            &CatalogSeedInspection {
-                catalog_version: release.catalog_version.clone(),
-                semantic_sha256: release.semantic_sha256.clone(),
-                seed_sha256: release.seed_sha256.clone(),
-            },
-        )
+        .await;
+        request.finish(result).await
     }
 }
 

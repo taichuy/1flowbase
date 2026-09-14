@@ -100,6 +100,7 @@ pub(crate) struct UiManagementDependencies {
     pub(crate) store: MainDurableStore,
     pub(crate) api_node_id: String,
     pub(crate) surfaces: Arc<crate::console_surface_registry::ConsoleSurfaceRegistry>,
+    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 
 struct UiManagementAdapter(UiManagementDependencies);
@@ -110,10 +111,16 @@ impl UiManagementAdapter {
             .with_native_targets(self.0.surfaces.native_targets().to_vec())
     }
 
-    fn catalog_service(&self) -> crate::app_state::ApiUiComponentCatalogService {
+    fn catalog_service(
+        &self,
+        workspace_id: uuid::Uuid,
+    ) -> crate::app_state::ApiUiComponentCatalogService {
         UiComponentCatalogService::new(
             self.0.store.clone(),
-            ApiUiComponentCatalogSource::default_taichuy(),
+            ApiUiComponentCatalogSource::default_taichuy(
+                self.0.network_egress.clone(),
+                workspace_id,
+            ),
         )
     }
 
@@ -123,6 +130,7 @@ impl UiManagementAdapter {
         input: UiManagementInput,
     ) -> Result<UiManagementOutput, ApiError> {
         let actor_user_id = principal.actor().user_id;
+        let workspace_id = principal.actor().current_workspace_id;
         match input {
             UiManagementInput::PluginSettingsPage { route_id } => {
                 let page = self.0.surfaces.page(&route_id).ok_or(
@@ -308,7 +316,7 @@ impl UiManagementAdapter {
                 Ok(UiManagementOutput::NoContent)
             }
             UiManagementInput::CatalogIndex => {
-                let value = self.catalog_service().index().await?;
+                let value = self.catalog_service(workspace_id).index().await?;
                 use time::format_description::well_known::Rfc3339;
                 Ok(UiManagementOutput::CatalogIndex(CatalogIndexResponse {
                     catalog_version: value.catalog_version,
@@ -319,7 +327,7 @@ impl UiManagementAdapter {
                 }))
             }
             UiManagementInput::CatalogPage { page } => {
-                let value = self.catalog_service().page(page).await?;
+                let value = self.catalog_service(workspace_id).page(page).await?;
                 Ok(UiManagementOutput::CatalogPage(CatalogPageResponse {
                     catalog_version: value.catalog_version,
                     total_components: value.total_components,
@@ -338,7 +346,7 @@ impl UiManagementAdapter {
             }
             UiManagementInput::CatalogSearch(query) => {
                 let value = self
-                    .catalog_service()
+                    .catalog_service(workspace_id)
                     .search(&query.q, query.page, query.page_size)
                     .await?;
                 Ok(UiManagementOutput::CatalogSearch(CatalogSearchResponse {
@@ -371,11 +379,13 @@ impl UiManagementAdapter {
                 }))
             }
             UiManagementInput::CatalogUpdateStatus => Ok(UiManagementOutput::CatalogUpdateStatus(
-                catalog_update_status_response(self.catalog_service().update_status().await?),
+                catalog_update_status_response(
+                    self.catalog_service(workspace_id).update_status().await?,
+                ),
             )),
             UiManagementInput::CatalogDownload { component_code } => {
                 let value = self
-                    .catalog_service()
+                    .catalog_service(workspace_id)
                     .download_component(&component_code, actor_user_id)
                     .await?;
                 let local_version = Some(value.version.clone());
@@ -385,7 +395,7 @@ impl UiManagementAdapter {
             }
             UiManagementInput::CatalogSyncGroup { source, group } => {
                 let synchronized_records = self
-                    .catalog_service()
+                    .catalog_service(workspace_id)
                     .sync_source_group(&source, &group, actor_user_id)
                     .await?;
                 Ok(UiManagementOutput::CatalogSync(CatalogSyncResponse {

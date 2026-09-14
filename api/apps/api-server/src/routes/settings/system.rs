@@ -796,6 +796,7 @@ pub(crate) struct SystemInterfaceDependencies {
     pub(crate) api_node_id: String,
     pub(crate) provider_install_root: String,
     pub(crate) host_extension_dropin_root: String,
+    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 struct SystemInterfaceAdapter(SystemInterfaceDependencies);
 impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for SystemInterfaceAdapter {
@@ -807,7 +808,11 @@ impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for Syste
         Box::pin(async move {
             match input {
                 SystemInterfaceInput::ReleaseStatus => Ok(SystemInterfaceOutput::ReleaseStatus(
-                    super::release_status::fetch_console_release_status().await,
+                    super::release_status::fetch_console_release_status(
+                        &self.0.network_egress,
+                        principal.actor().current_workspace_id,
+                    )
+                    .await,
                 )),
                 SystemInterfaceInput::RuntimeProfile {
                     query_locale,

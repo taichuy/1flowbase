@@ -7,7 +7,6 @@ use control_plane::ports::{
     UiComponentCatalogSearchEntry, UiComponentCatalogSearchResult, UiComponentCatalogSeed,
     UiComponentCatalogSource,
 };
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -25,7 +24,8 @@ const MAX_CATALOG_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone)]
 pub struct ApiUiComponentCatalogSource {
     index_locator: String,
-    client: Client,
+    network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,25 +177,45 @@ struct SeedManifest {
 }
 
 impl ApiUiComponentCatalogSource {
-    pub fn new(index_locator: impl Into<String>) -> Self {
+    pub fn new(
+        index_locator: impl Into<String>,
+        network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+        workspace_id: uuid::Uuid,
+    ) -> Self {
         Self {
             index_locator: index_locator.into(),
-            client: Client::builder()
-                .connect_timeout(Duration::from_secs(3))
-                .build()
-                .expect("UI component catalog HTTP client configuration must be valid"),
+            network_egress,
+            workspace_id,
         }
     }
 
-    pub fn default_taichuy() -> Self {
-        Self::new(DEFAULT_UI_COMPONENT_CATALOG_INDEX_LOCATOR)
+    pub fn default_taichuy(
+        network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+        workspace_id: uuid::Uuid,
+    ) -> Self {
+        Self::new(
+            DEFAULT_UI_COMPONENT_CATALOG_INDEX_LOCATOR,
+            network_egress,
+            workspace_id,
+        )
     }
 
-    async fn fetch_bytes(&self, locator: &str) -> Result<Vec<u8>> {
-        let response = self
-            .client
+    async fn resolve_request(
+        &self,
+    ) -> Result<crate::network_egress_client::NetworkEgressHttpRequestScope> {
+        self.network_egress
+            .resolve_http_request_with_timeouts(
+                self.workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+                Duration::from_secs(3),
+                Duration::from_secs(8),
+            )
+            .await
+    }
+
+    async fn fetch_bytes(client: &reqwest::Client, locator: &str) -> Result<Vec<u8>> {
+        let response = client
             .get(locator)
-            .timeout(Duration::from_secs(8))
             .send()
             .await
             .with_context(|| format!("failed to request UI component catalog {locator}"))?
@@ -217,8 +237,8 @@ impl ApiUiComponentCatalogSource {
         Ok(bytes.to_vec())
     }
 
-    async fn load_index(&self) -> Result<IndexDocument> {
-        let bytes = self.fetch_bytes(&self.index_locator).await?;
+    async fn load_index(&self, client: &reqwest::Client) -> Result<IndexDocument> {
+        let bytes = Self::fetch_bytes(client, &self.index_locator).await?;
         let document: IndexDocument =
             serde_json::from_slice(&bytes).context("invalid UI component catalog index JSON")?;
         validate_index(&document)?;
@@ -402,72 +422,82 @@ fn validate_record(record: &PublishedRecord) -> Result<OfficialUiComponentCatalo
 #[async_trait]
 impl UiComponentCatalogSource for ApiUiComponentCatalogSource {
     async fn index(&self) -> Result<UiComponentCatalogIndex> {
-        let index = self.load_index().await?;
-        Ok(UiComponentCatalogIndex {
-            catalog_version: index.catalog_version,
-            generated_at: OffsetDateTime::parse(
-                &index.generated_at,
-                &time::format_description::well_known::Rfc3339,
-            )?,
-            page_size: index.page_size,
-            total_components: index.total_components,
-            source_fingerprint: index.source_fingerprint,
-        })
+        let request = self.resolve_request().await?;
+        let result = async {
+            let index = self.load_index(request.http_client()).await?;
+            Ok(UiComponentCatalogIndex {
+                catalog_version: index.catalog_version,
+                generated_at: OffsetDateTime::parse(
+                    &index.generated_at,
+                    &time::format_description::well_known::Rfc3339,
+                )?,
+                page_size: index.page_size,
+                total_components: index.total_components,
+                source_fingerprint: index.source_fingerprint,
+            })
+        }
+        .await;
+        request.finish(result).await
     }
 
     async fn page(&self, page: u32) -> Result<UiComponentCatalogPage> {
-        let index = self.load_index().await?;
-        let reference = index
-            .pages
-            .iter()
-            .find(|reference| reference.page == page)
-            .ok_or_else(|| anyhow::anyhow!("UI component catalog page not found"))?;
-        let bytes = self.fetch_bytes(&reference.locator).await?;
-        if digest(&bytes) != reference.checksum.as_deref().unwrap_or_default() {
-            bail!("UI component catalog page checksum mismatch");
-        }
-        let document: PageDocument =
-            serde_json::from_slice(&bytes).context("invalid UI component catalog page JSON")?;
-        if document.schema_version != PAGE_SCHEMA
-            || document.catalog_version != index.catalog_version
-            || document.page != reference.page
-            || document.cursor != reference.cursor
-            || document.components.len() != reference.component_count.unwrap_or_default()
-        {
-            bail!("UI component catalog page does not match index metadata");
-        }
-        let next_reference = index.pages.iter().find(|value| value.page == page + 1);
-        match (
-            &document.next_cursor,
-            &document.next_page_locator,
-            next_reference,
-        ) {
-            (Some(cursor), Some(locator), Some(next))
-                if cursor == &next.cursor && locator == &next.locator => {}
-            (None, None, None) => {}
-            _ => bail!("invalid UI component catalog page continuation"),
-        }
-        let mut previous = None::<String>;
-        let mut records = Vec::with_capacity(document.components.len());
-        for component in &document.components {
-            if previous
-                .as_deref()
-                .is_some_and(|value| value >= component.component_code.as_str())
-            {
-                bail!("UI component catalog page component order is invalid");
+        let request = self.resolve_request().await?;
+        let result = async {
+            let index = self.load_index(request.http_client()).await?;
+            let reference = index
+                .pages
+                .iter()
+                .find(|reference| reference.page == page)
+                .ok_or_else(|| anyhow::anyhow!("UI component catalog page not found"))?;
+            let bytes = Self::fetch_bytes(request.http_client(), &reference.locator).await?;
+            if digest(&bytes) != reference.checksum.as_deref().unwrap_or_default() {
+                bail!("UI component catalog page checksum mismatch");
             }
-            previous = Some(component.component_code.clone());
-            records.push(validate_record(component)?);
+            let document: PageDocument =
+                serde_json::from_slice(&bytes).context("invalid UI component catalog page JSON")?;
+            if document.schema_version != PAGE_SCHEMA
+                || document.catalog_version != index.catalog_version
+                || document.page != reference.page
+                || document.cursor != reference.cursor
+                || document.components.len() != reference.component_count.unwrap_or_default()
+            {
+                bail!("UI component catalog page does not match index metadata");
+            }
+            let next_reference = index.pages.iter().find(|value| value.page == page + 1);
+            match (
+                &document.next_cursor,
+                &document.next_page_locator,
+                next_reference,
+            ) {
+                (Some(cursor), Some(locator), Some(next))
+                    if cursor == &next.cursor && locator == &next.locator => {}
+                (None, None, None) => {}
+                _ => bail!("invalid UI component catalog page continuation"),
+            }
+            let mut previous = None::<String>;
+            let mut records = Vec::with_capacity(document.components.len());
+            for component in &document.components {
+                if previous
+                    .as_deref()
+                    .is_some_and(|value| value >= component.component_code.as_str())
+                {
+                    bail!("UI component catalog page component order is invalid");
+                }
+                previous = Some(component.component_code.clone());
+                records.push(validate_record(component)?);
+            }
+            Ok(UiComponentCatalogPage {
+                catalog_version: document.catalog_version,
+                total_components: index.total_components,
+                page_size: index.page_size,
+                page: document.page,
+                cursor: document.cursor,
+                next_cursor: document.next_cursor,
+                records,
+            })
         }
-        Ok(UiComponentCatalogPage {
-            catalog_version: document.catalog_version,
-            total_components: index.total_components,
-            page_size: index.page_size,
-            page: document.page,
-            cursor: document.cursor,
-            next_cursor: document.next_cursor,
-            records,
-        })
+        .await;
+        request.finish(result).await
     }
 
     async fn search(
@@ -476,158 +506,169 @@ impl UiComponentCatalogSource for ApiUiComponentCatalogSource {
         page: u32,
         page_size: usize,
     ) -> Result<UiComponentCatalogSearchResult> {
-        let index = self.load_index().await?;
-        let bytes = self.fetch_bytes(&index.search_index.locator).await?;
-        if digest(&bytes) != index.search_index.checksum {
-            bail!("UI component catalog search checksum mismatch");
-        }
-        let search: SearchDocument = serde_json::from_slice(&bytes)
-            .context("invalid UI component catalog search index JSON")?;
-        if search.schema_version != SEARCH_SCHEMA
-            || search.catalog_version != index.catalog_version
-            || search.source_fingerprint != index.source_fingerprint
-            || search.entries.len() != index.search_index.entry_count
-            || OffsetDateTime::parse(
-                &search.generated_at,
-                &time::format_description::well_known::Rfc3339,
-            )
-            .is_err()
-        {
-            bail!("UI component catalog search index does not match catalog index");
-        }
-        for entry in &search.entries {
-            let reference = index
-                .pages
-                .iter()
-                .find(|page| page.page == entry.catalog_page.page);
-            if entry.origin != "official"
-                || !valid_code(&entry.component_code)
-                || !valid_code(&entry.source)
-                || !valid_code(&entry.group)
-                || entry.name.is_empty()
-                || entry.description.is_empty()
-                || entry.upstream.identity.is_empty()
-                || entry.upstream.version.is_empty()
-                || reference.is_none()
-                || reference.and_then(|value| value.checksum.as_deref())
-                    != Some(entry.catalog_page.checksum.as_str())
-                || reference.map(|value| value.cursor.as_str())
-                    != Some(entry.catalog_page.cursor.as_str())
-                || reference.map(|value| value.locator.as_str())
-                    != Some(entry.catalog_page.locator.as_str())
-            {
-                bail!("invalid UI component catalog search entry");
+        let request = self.resolve_request().await?;
+        let result = async {
+            let index = self.load_index(request.http_client()).await?;
+            let bytes =
+                Self::fetch_bytes(request.http_client(), &index.search_index.locator).await?;
+            if digest(&bytes) != index.search_index.checksum {
+                bail!("UI component catalog search checksum mismatch");
             }
+            let search: SearchDocument = serde_json::from_slice(&bytes)
+                .context("invalid UI component catalog search index JSON")?;
+            if search.schema_version != SEARCH_SCHEMA
+                || search.catalog_version != index.catalog_version
+                || search.source_fingerprint != index.source_fingerprint
+                || search.entries.len() != index.search_index.entry_count
+                || OffsetDateTime::parse(
+                    &search.generated_at,
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .is_err()
+            {
+                bail!("UI component catalog search index does not match catalog index");
+            }
+            for entry in &search.entries {
+                let reference = index
+                    .pages
+                    .iter()
+                    .find(|page| page.page == entry.catalog_page.page);
+                if entry.origin != "official"
+                    || !valid_code(&entry.component_code)
+                    || !valid_code(&entry.source)
+                    || !valid_code(&entry.group)
+                    || entry.name.is_empty()
+                    || entry.description.is_empty()
+                    || entry.upstream.identity.is_empty()
+                    || entry.upstream.version.is_empty()
+                    || reference.is_none()
+                    || reference.and_then(|value| value.checksum.as_deref())
+                        != Some(entry.catalog_page.checksum.as_str())
+                    || reference.map(|value| value.cursor.as_str())
+                        != Some(entry.catalog_page.cursor.as_str())
+                    || reference.map(|value| value.locator.as_str())
+                        != Some(entry.catalog_page.locator.as_str())
+                {
+                    bail!("invalid UI component catalog search entry");
+                }
+            }
+            let normalized = query.trim().to_lowercase();
+            let filtered = search
+                .entries
+                .into_iter()
+                .filter(|entry| {
+                    normalized.is_empty()
+                        || entry.name.contains(&normalized)
+                        || entry.description.contains(&normalized)
+                        || entry.component_code.contains(&normalized)
+                        || entry
+                            .keywords
+                            .iter()
+                            .any(|keyword| keyword.contains(&normalized))
+                })
+                .collect::<Vec<_>>();
+            let total_entries = filtered.len();
+            let offset = (page.saturating_sub(1) as usize).saturating_mul(page_size);
+            let entries = filtered
+                .into_iter()
+                .skip(offset)
+                .take(page_size)
+                .map(|entry| UiComponentCatalogSearchEntry {
+                    component_code: entry.component_code,
+                    name: entry.name,
+                    description: entry.description,
+                    source: entry.source,
+                    group: entry.group,
+                    upstream: domain::UiComponentRecordUpstream {
+                        identity: entry.upstream.identity,
+                        version: entry.upstream.version,
+                    },
+                    version: entry.version,
+                    keywords: entry.keywords,
+                    catalog_page: entry.catalog_page.page,
+                })
+                .collect();
+            Ok(UiComponentCatalogSearchResult {
+                catalog_version: index.catalog_version,
+                page,
+                page_size,
+                total_entries,
+                entries,
+            })
         }
-        let normalized = query.trim().to_lowercase();
-        let filtered = search
-            .entries
-            .into_iter()
-            .filter(|entry| {
-                normalized.is_empty()
-                    || entry.name.contains(&normalized)
-                    || entry.description.contains(&normalized)
-                    || entry.component_code.contains(&normalized)
-                    || entry
-                        .keywords
-                        .iter()
-                        .any(|keyword| keyword.contains(&normalized))
-            })
-            .collect::<Vec<_>>();
-        let total_entries = filtered.len();
-        let offset = (page.saturating_sub(1) as usize).saturating_mul(page_size);
-        let entries = filtered
-            .into_iter()
-            .skip(offset)
-            .take(page_size)
-            .map(|entry| UiComponentCatalogSearchEntry {
-                component_code: entry.component_code,
-                name: entry.name,
-                description: entry.description,
-                source: entry.source,
-                group: entry.group,
-                upstream: domain::UiComponentRecordUpstream {
-                    identity: entry.upstream.identity,
-                    version: entry.upstream.version,
-                },
-                version: entry.version,
-                keywords: entry.keywords,
-                catalog_page: entry.catalog_page.page,
-            })
-            .collect();
-        Ok(UiComponentCatalogSearchResult {
-            catalog_version: index.catalog_version,
-            page,
-            page_size,
-            total_entries,
-            entries,
-        })
+        .await;
+        request.finish(result).await
     }
 
     async fn seed(&self) -> Result<UiComponentCatalogSeed> {
-        let index = self.load_index().await?;
-        let bytes = self.fetch_bytes(&index.download.locator).await?;
-        if digest(&bytes) != index.download.checksum {
-            bail!("UI component catalog seed checksum mismatch");
-        }
-        let seed: SeedDocument =
-            serde_json::from_slice(&bytes).context("invalid UI component catalog seed JSON")?;
-        if seed.manifest.schema_version != SEED_SCHEMA
-            || seed.manifest.catalog_version != index.catalog_version
-            || seed.manifest.page_size != index.page_size
-            || seed.manifest.total_components != seed.components.len()
-            || seed.manifest.total_components != index.total_components
-            || !valid_digest(&seed.manifest.components_sha256)
-            || !valid_digest(&seed.manifest.semantic_sha256)
-            || OffsetDateTime::parse(
-                &seed.manifest.generated_at,
-                &time::format_description::well_known::Rfc3339,
-            )
-            .is_err()
-        {
-            bail!("invalid UI component catalog seed manifest");
-        }
-        let components_value = serde_json::to_value(&seed.components)?;
-        let components_digest = digest(&canonical_json_bytes(&components_value)?);
-        if components_digest != seed.manifest.components_sha256
-            || components_digest != index.source_fingerprint
-        {
-            bail!("UI component catalog components digest mismatch");
-        }
-        let semantic = serde_json::json!({
-            "catalog_version": seed.manifest.catalog_version,
-            "generated_at": seed.manifest.generated_at,
-            "page_size": seed.manifest.page_size,
-            "total_components": seed.manifest.total_components,
-            "components_sha256": seed.manifest.components_sha256,
-            "components": seed.components,
-        });
-        if digest(&canonical_json_bytes(&semantic)?) != seed.manifest.semantic_sha256 {
-            bail!("UI component catalog semantic digest mismatch");
-        }
-        let semantic_components = semantic["components"]
-            .as_array()
-            .context("catalog semantic components are absent")?;
-        let published = semantic_components
-            .iter()
-            .map(|value| serde_json::from_value::<PublishedRecord>(value.clone()))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        let mut previous = None::<String>;
-        let mut records = Vec::with_capacity(published.len());
-        for component in &published {
-            if previous
-                .as_deref()
-                .is_some_and(|value| value >= component.component_code.as_str())
-            {
-                bail!("UI component catalog seed component order is invalid");
+        let request = self.resolve_request().await?;
+        let result = async {
+            let index = self.load_index(request.http_client()).await?;
+            let bytes = Self::fetch_bytes(request.http_client(), &index.download.locator).await?;
+            if digest(&bytes) != index.download.checksum {
+                bail!("UI component catalog seed checksum mismatch");
             }
-            previous = Some(component.component_code.clone());
-            records.push(validate_record(component)?);
+            let seed: SeedDocument =
+                serde_json::from_slice(&bytes).context("invalid UI component catalog seed JSON")?;
+            if seed.manifest.schema_version != SEED_SCHEMA
+                || seed.manifest.catalog_version != index.catalog_version
+                || seed.manifest.page_size != index.page_size
+                || seed.manifest.total_components != seed.components.len()
+                || seed.manifest.total_components != index.total_components
+                || !valid_digest(&seed.manifest.components_sha256)
+                || !valid_digest(&seed.manifest.semantic_sha256)
+                || OffsetDateTime::parse(
+                    &seed.manifest.generated_at,
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .is_err()
+            {
+                bail!("invalid UI component catalog seed manifest");
+            }
+            let components_value = serde_json::to_value(&seed.components)?;
+            let components_digest = digest(&canonical_json_bytes(&components_value)?);
+            if components_digest != seed.manifest.components_sha256
+                || components_digest != index.source_fingerprint
+            {
+                bail!("UI component catalog components digest mismatch");
+            }
+            let semantic = serde_json::json!({
+                "catalog_version": seed.manifest.catalog_version,
+                "generated_at": seed.manifest.generated_at,
+                "page_size": seed.manifest.page_size,
+                "total_components": seed.manifest.total_components,
+                "components_sha256": seed.manifest.components_sha256,
+                "components": seed.components,
+            });
+            if digest(&canonical_json_bytes(&semantic)?) != seed.manifest.semantic_sha256 {
+                bail!("UI component catalog semantic digest mismatch");
+            }
+            let semantic_components = semantic["components"]
+                .as_array()
+                .context("catalog semantic components are absent")?;
+            let published = semantic_components
+                .iter()
+                .map(|value| serde_json::from_value::<PublishedRecord>(value.clone()))
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            let mut previous = None::<String>;
+            let mut records = Vec::with_capacity(published.len());
+            for component in &published {
+                if previous
+                    .as_deref()
+                    .is_some_and(|value| value >= component.component_code.as_str())
+                {
+                    bail!("UI component catalog seed component order is invalid");
+                }
+                previous = Some(component.component_code.clone());
+                records.push(validate_record(component)?);
+            }
+            Ok(UiComponentCatalogSeed {
+                catalog_version: seed.manifest.catalog_version,
+                source_fingerprint: components_digest,
+                records,
+            })
         }
-        Ok(UiComponentCatalogSeed {
-            catalog_version: seed.manifest.catalog_version,
-            source_fingerprint: components_digest,
-            records,
-        })
+        .await;
+        request.finish(result).await
     }
 }

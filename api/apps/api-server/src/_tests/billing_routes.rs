@@ -475,9 +475,10 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
                 }),
             );
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let result = crate::model_pricing_catalog::fetch_remote_pricing_catalog(&format!(
-            "{base}index.json"
-        ))
+        let result = crate::model_pricing_catalog::fetch_remote_pricing_catalog(
+            &reqwest::Client::new(),
+            &format!("{base}index.json"),
+        )
         .await;
         server.abort();
         assert_eq!(
@@ -539,9 +540,12 @@ async fn pricing_catalog_sync_requires_auth_and_is_idempotent() {
 #[tokio::test]
 async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
     let (source_url, source_server) = remote_model_pricing_fixture().await;
-    let template = crate::model_pricing_catalog::fetch_remote_pricing_catalog(&source_url)
-        .await
-        .unwrap();
+    let template = crate::model_pricing_catalog::fetch_remote_pricing_catalog(
+        &reqwest::Client::new(),
+        &source_url,
+    )
+    .await
+    .unwrap();
     source_server.abort();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!(

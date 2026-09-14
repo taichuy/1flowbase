@@ -330,7 +330,12 @@ async fn test_state_with_runtime_profile_state(
         official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
         official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
         official_i18n_catalog_update_service:
-            crate::app_state::build_official_i18n_catalog_update_service(store.clone(), &config),
+            crate::app_state::build_official_i18n_catalog_update_service(
+                store.clone(),
+                &config,
+                crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+                bootstrap.workspace_id,
+            ),
         official_model_pricing_catalog_index_url: config
             .official_model_pricing_catalog_index_url
             .clone(),

@@ -274,6 +274,8 @@ fn build_library(
                 .to_public_key_pem(Default::default())
                 .unwrap(),
         }],
+        crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+        Uuid::nil(),
     );
     (library, installation_repository)
 }

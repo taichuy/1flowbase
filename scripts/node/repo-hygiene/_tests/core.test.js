@@ -5,11 +5,41 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST,
   collectRepoHygieneFindings,
   main,
   partitionTrackedWarnings,
   scanSourceFile,
 } = require("../core.js");
+
+test("scanSourceFile rejects outbound HTTP clients outside explicit Host owners", () => {
+  const findings = scanSourceFile({
+    relativePath: "api/apps/api-server/src/example_catalog.rs",
+    content: "let client = reqwest::Client::builder().build()?;\n",
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => [finding.rule, finding.severity]),
+    [["unowned-outbound-http-client", "error"]],
+  );
+});
+
+test("outbound HTTP client owner exceptions are narrow and documented", () => {
+  assert.equal(
+    [...OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.values()].every(
+      (reason) => reason.trim().length > 0,
+    ),
+    true,
+  );
+  const findings = scanSourceFile({
+    relativePath: "api/apps/api-server/src/network_egress_client.rs",
+    content: "let client = Client::builder().build()?;\n",
+  });
+  assert.equal(
+    findings.some((finding) => finding.rule === "unowned-outbound-http-client"),
+    false,
+  );
+});
 
 function writeFile(repoRoot, relativePath, content) {
   const absolutePath = path.join(repoRoot, relativePath);

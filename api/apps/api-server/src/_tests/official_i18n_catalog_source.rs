@@ -15,11 +15,15 @@ fn source(
     release_base_url: &str,
     github_proxy_url: Option<&str>,
 ) -> ApiOfficialI18nCatalogSource {
-    ApiOfficialI18nCatalogSource::new(ResolvedOfficialI18nCatalogSourceConfig {
-        latest_url: latest_url.to_owned(),
-        release_base_url: release_base_url.to_owned(),
-        github_proxy_url: github_proxy_url.map(str::to_owned),
-    })
+    ApiOfficialI18nCatalogSource::new(
+        ResolvedOfficialI18nCatalogSourceConfig {
+            latest_url: latest_url.to_owned(),
+            release_base_url: release_base_url.to_owned(),
+            github_proxy_url: github_proxy_url.map(str::to_owned),
+        },
+        crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+        uuid::Uuid::nil(),
+    )
 }
 
 #[test]

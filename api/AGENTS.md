@@ -69,3 +69,4 @@
 - `storage-ephemeral`、`cache-store`、`distributed-lock`、`event-bus`、`task-queue`、`rate-limit-store` 是宿主基础设施 contract；Redis、NATS、RabbitMQ 等实现是 HostExtension provider。
 - `API_EPHEMERAL_BACKEND=redis` 不是目标架构；Core 不通过 env 分支直接选择 Redis session store。
 - data-source runtime extension 负责配置校验、连接测试、catalog/schema 发现、预览读取和导入快照输出；权限、secret、preview session、import job 与落盘由宿主和 `data-source-platform` 编排。
+- API 宿主的外部 HTTP 请求必须从 Host-owned Network Egress 边界取得 client，并声明闭合消费者语义；业务模块不得直接构造 `reqwest::Client`。确需独立构造的协议安全边界必须进入 `repo-hygiene` 窄白名单并写明 owner 与原因。

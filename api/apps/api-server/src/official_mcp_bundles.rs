@@ -219,7 +219,8 @@ pub struct ApiOfficialMcpBundleRegistry {
     actor_user_id: Uuid,
     remote_catalog_cache: Arc<tokio::sync::RwLock<Option<McpCatalogDocument>>>,
     trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
-    client: Client,
+    network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: Uuid,
 }
 
 impl ApiOfficialMcpBundleRegistry {
@@ -279,6 +280,8 @@ impl ApiOfficialMcpBundleRegistry {
         node_id: String,
         actor_user_id: Uuid,
         trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
+        network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+        workspace_id: Uuid,
     ) -> Self {
         Self {
             source_kind: source.source_kind,
@@ -291,11 +294,8 @@ impl ApiOfficialMcpBundleRegistry {
             actor_user_id,
             remote_catalog_cache: Arc::new(tokio::sync::RwLock::new(None)),
             trusted_public_keys,
-            client: Client::builder()
-                .connect_timeout(SOURCE_CONNECT_TIMEOUT)
-                .timeout(SOURCE_REQUEST_TIMEOUT)
-                .build()
-                .expect("official MCP source HTTP client configuration must be valid"),
+            network_egress,
+            workspace_id,
         }
     }
 
@@ -307,9 +307,8 @@ impl ApiOfficialMcpBundleRegistry {
         }
     }
 
-    async fn download_once(&self, url: &str) -> Result<Vec<u8>> {
-        let bytes = self
-            .client
+    async fn download_once(client: &Client, url: &str) -> Result<Vec<u8>> {
+        let bytes = client
             .get(url)
             .send()
             .await
@@ -326,20 +325,37 @@ impl ApiOfficialMcpBundleRegistry {
     }
 
     async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        let direct_error = match self.download_once(url).await {
-            Ok(bytes) => return Ok(bytes),
-            Err(error) => error,
-        };
-        let proxy = rewrite_github_release_url(
-            &rewrite_github_raw_url(url, self.github_proxy_url.as_deref()),
-            self.github_proxy_url.as_deref(),
-        );
-        if proxy == url {
-            return Err(direct_error);
+        let request = self
+            .network_egress
+            .resolve_http_request_with_timeouts(
+                self.workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+                SOURCE_CONNECT_TIMEOUT,
+                SOURCE_REQUEST_TIMEOUT,
+            )
+            .await?;
+        let result = async {
+            let direct_error = match Self::download_once(request.http_client(), url).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => error,
+            };
+            let proxy = rewrite_github_release_url(
+                &rewrite_github_raw_url(url, self.github_proxy_url.as_deref()),
+                self.github_proxy_url.as_deref(),
+            );
+            if proxy == url {
+                return Err(direct_error);
+            }
+            Self::download_once(request.http_client(), &proxy)
+                .await
+                .with_context(|| {
+                    format!(
+                        "official MCP direct source failed before proxy fallback: {direct_error}"
+                    )
+                })
         }
-        self.download_once(&proxy).await.with_context(|| {
-            format!("official MCP direct source failed before proxy fallback: {direct_error}")
-        })
+        .await;
+        request.finish(result).await
     }
 
     async fn remote_catalog(&self) -> Result<McpCatalogDocument> {

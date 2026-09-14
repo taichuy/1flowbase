@@ -58,12 +58,15 @@ struct GitHubLatestReleaseResponse {
 
 static RELEASE_STATUS_CACHE: OnceLock<Mutex<Option<CachedReleaseStatus>>> = OnceLock::new();
 
-pub async fn fetch_console_release_status() -> ConsoleReleaseStatusResponse {
+pub async fn fetch_console_release_status(
+    network_egress: &crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
+) -> ConsoleReleaseStatusResponse {
     if let Some(cached_release_status) = fresh_cached_release_status().await {
         return cached_release_status;
     }
 
-    match fetch_github_latest_release().await {
+    match fetch_github_latest_release(network_egress, workspace_id).await {
         Ok(github_release) => {
             let release_status =
                 release_status_from_github_release(current_service_version(), github_release);
@@ -123,25 +126,39 @@ fn release_status_cache() -> &'static Mutex<Option<CachedReleaseStatus>> {
     RELEASE_STATUS_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-async fn fetch_github_latest_release() -> anyhow::Result<GitHubLatestReleaseResponse> {
-    let response = reqwest::Client::new()
-        .get(GITHUB_LATEST_RELEASE_URL)
-        .header(ACCEPT, "application/vnd.github+json")
-        .header(USER_AGENT, "1flowbase-release-status")
-        .send()
-        .await
-        .with_context(|| {
-            format!("failed to request GitHub latest release for {GITHUB_REPOSITORY}")
-        })?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(anyhow!("GitHub API returned {}", status.as_u16()));
-    }
+async fn fetch_github_latest_release(
+    network_egress: &crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
+) -> anyhow::Result<GitHubLatestReleaseResponse> {
+    let request = network_egress
+        .resolve_http_request(
+            workspace_id,
+            domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+        )
+        .await?;
+    let result = async {
+        let response = request
+            .http_client()
+            .get(GITHUB_LATEST_RELEASE_URL)
+            .header(ACCEPT, "application/vnd.github+json")
+            .header(USER_AGENT, "1flowbase-release-status")
+            .send()
+            .await
+            .with_context(|| {
+                format!("failed to request GitHub latest release for {GITHUB_REPOSITORY}")
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(anyhow!("GitHub API returned {}", status.as_u16()));
+        }
 
-    response
-        .json::<GitHubLatestReleaseResponse>()
-        .await
-        .context("failed to parse GitHub latest release")
+        response
+            .json::<GitHubLatestReleaseResponse>()
+            .await
+            .context("failed to parse GitHub latest release")
+    }
+    .await;
+    request.finish(result).await
 }
 
 fn release_status_from_github_release(

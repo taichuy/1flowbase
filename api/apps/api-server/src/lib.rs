@@ -715,6 +715,8 @@ async fn app_and_runtime_host_from_config(
             config.api_node_id.clone(),
             bootstrap_result.root_user_id,
             trusted_public_keys,
+            network_egress_http_clients.as_ref().clone(),
+            bootstrap_result.workspace_id,
         ));
     if let Err(error) = official_mcp_bundle_source
         .reconcile_local_installations()
@@ -725,8 +727,12 @@ async fn app_and_runtime_host_from_config(
             "MCP template installation reconciliation unavailable; core startup continues"
         );
     }
-    let official_i18n_catalog_update_service =
-        build_official_i18n_catalog_update_service(store.clone(), config);
+    let official_i18n_catalog_update_service = build_official_i18n_catalog_update_service(
+        store.clone(),
+        config,
+        network_egress_http_clients.as_ref().clone(),
+        bootstrap_result.workspace_id,
+    );
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
         store.clone(),
         ApiProviderRuntime::new(provider_runtime.clone()),
@@ -889,6 +895,8 @@ async fn app_and_runtime_host_from_config(
     spawn_default_ui_component_catalog_bootstrap(
         state.store.clone(),
         bootstrap_result.root_user_id,
+        state.network_egress_http_clients(),
+        bootstrap_result.workspace_id,
     );
 
     let external_openapi_document = openapi::dynamic_openapi_document(&state)
@@ -935,11 +943,16 @@ async fn app_and_runtime_host_from_config(
 fn spawn_default_ui_component_catalog_bootstrap(
     store: storage_durable_postgres::MainDurableStore,
     actor_user_id: uuid::Uuid,
+    network_egress: network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
 ) {
     tokio::spawn(async move {
         let service = control_plane::ui_component_catalog::UiComponentCatalogService::new(
             store,
-            ui_component_catalog_source::ApiUiComponentCatalogSource::default_taichuy(),
+            ui_component_catalog_source::ApiUiComponentCatalogSource::default_taichuy(
+                network_egress,
+                workspace_id,
+            ),
         );
         match service.bootstrap_empty_system(actor_user_id).await {
             Ok(control_plane::ui_component_catalog::UiComponentBootstrapOutcome::Imported {

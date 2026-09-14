@@ -631,6 +631,98 @@ async fn root_1805_github_catalog_matched_route_rejects_lease_failure_without_di
 }
 
 #[tokio::test]
+async fn root_1805_host_http_scope_routes_github_and_releases_the_exact_lease() {
+    let (proxy_url, proxy_requests) = spawn_request_proxy(3);
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, egress_package) = seed_network_egress_resolver(
+        &state,
+        &proxy_url,
+        domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+        base_runtime,
+    )
+    .await;
+
+    let request = resolver
+        .resolve_http_request(
+            state.bootstrap_workspace_id,
+            domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+        )
+        .await
+        .expect("the Host must resolve the persisted GitHub route");
+    let result: anyhow::Result<_> = async {
+        let index = request
+            .http_client()
+            .get("http://github-origin.invalid/index.json")
+            .send()
+            .await?;
+        let page = request
+            .http_client()
+            .get("http://github-origin.invalid/page-2.json")
+            .send()
+            .await?;
+        Ok((index, page))
+    }
+    .await;
+    let (index, page) = request
+        .finish(result)
+        .await
+        .expect("the routed request and lease release must succeed");
+
+    assert_eq!(index.status(), reqwest::StatusCode::OK);
+    assert_eq!(page.status(), reqwest::StatusCode::OK);
+    let requests = proxy_requests
+        .join()
+        .expect("the fake proxy must receive the Host probe and catalog request");
+    assert!(requests.iter().any(|request| {
+        request.starts_with("GET http://github-origin.invalid/index.json HTTP/1.1")
+    }));
+    assert!(requests.iter().any(|request| {
+        request.starts_with("GET http://github-origin.invalid/page-2.json HTTP/1.1")
+    }));
+    assert_eq!(
+        fs::read_to_string(egress_package.path().join("lease-lifecycle"))
+            .expect("the Host request must release its exact lease"),
+        "acquire\nrelease\n"
+    );
+}
+
+#[tokio::test]
+async fn root_1805_host_http_scope_uses_direct_transport_only_without_a_route() {
+    let (origin, origin_requests) = spawn_request_proxy(1);
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let resolver = crate::network_egress_client::NetworkEgressHttpClientResolver::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(network_egress_runtime_services()),
+        "test-master-key",
+        "test-node",
+    );
+    let request = resolver
+        .resolve_http_request(
+            state.bootstrap_workspace_id,
+            domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+        )
+        .await
+        .expect("an unmatched consumer must receive a direct Host client");
+    let result: anyhow::Result<_> = request
+        .http_client()
+        .get(format!("{origin}/direct-catalog.json"))
+        .send()
+        .await
+        .map_err(Into::into);
+    request
+        .finish(result)
+        .await
+        .expect("the direct request must succeed");
+
+    assert!(origin_requests
+        .join()
+        .expect("the direct origin must receive the request")
+        .iter()
+        .any(|request| request.starts_with("GET /direct-catalog.json HTTP/1.1")));
+}
+
+#[tokio::test]
 async fn root_1805_model_provider_no_route_keeps_direct_behavior_without_handoff() {
     let (origin, origin_request) = spawn_request_proxy(1);
     let package = TempProviderPackage::new();

@@ -82,9 +82,13 @@ use crate::{
 pub fn build_official_i18n_catalog_update_service(
     store: MainDurableStore,
     config: &ApiConfig,
+    network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    workspace_id: uuid::Uuid,
 ) -> Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>> {
     let source = Arc::new(ApiOfficialI18nCatalogSource::new(
         config.resolve_official_i18n_catalog_source(),
+        network_egress,
+        workspace_id,
     ));
     Arc::new(control_plane::i18n_catalog::OfficialI18nCatalogUpdateService::new(store, source))
 }
@@ -399,6 +403,19 @@ pub struct ApiState {
     pub session_ttl_days: i64,
     pub bootstrap_workspace_id: uuid::Uuid,
     pub bootstrap_workspace_name: String,
+}
+
+impl ApiState {
+    pub(crate) fn network_egress_http_clients(
+        &self,
+    ) -> crate::network_egress_client::NetworkEgressHttpClientResolver {
+        crate::network_egress_client::NetworkEgressHttpClientResolver::new(
+            self.store.clone(),
+            crate::provider_runtime::ApiProviderRuntime::new(Arc::clone(&self.provider_runtime)),
+            self.provider_secret_master_key.clone(),
+            self.api_node_id.clone(),
+        )
+    }
 }
 
 #[cfg(test)]

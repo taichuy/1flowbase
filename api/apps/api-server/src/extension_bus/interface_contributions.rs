@@ -308,6 +308,7 @@ pub(crate) fn production_interface_contributions(
             store: state.store.clone(),
             api_node_id: state.api_node_id.clone(),
             surfaces: state.console_surface_registry.clone(),
+            network_egress: state.network_egress_http_clients(),
         },
     );
     let console_billing = crate::routes::billing_interface::port(
@@ -315,6 +316,7 @@ pub(crate) fn production_interface_contributions(
             store: state.store.clone(),
             cache_store: state.infrastructure.cache_store(),
             catalog_index_url: state.official_model_pricing_catalog_index_url.clone(),
+            network_egress: state.network_egress_http_clients(),
         },
     );
     let console_application_orchestration =
@@ -1651,6 +1653,7 @@ pub(crate) fn production_interface_contributions(
                 api_node_id: state.api_node_id.clone(),
                 provider_install_root: state.provider_install_root.clone(),
                 host_extension_dropin_root: state.host_extension_dropin_root.clone(),
+                network_egress: state.network_egress_http_clients(),
             })?,
         ),
         InterfaceRegistryContribution::new(

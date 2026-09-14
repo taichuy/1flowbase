@@ -64,10 +64,19 @@ impl orchestration_runtime::execution_engine::HttpRequestClientLeaseReleaser
 /// only direct-path result: it means no enabled route matched the closed consumer selector.
 #[derive(Clone)]
 pub struct NetworkEgressHttpClientResolver {
-    store: MainDurableStore,
-    runtime: ApiProviderRuntime,
-    provider_secret_master_key: String,
-    node_id: String,
+    backend: NetworkEgressResolverBackend,
+}
+
+#[derive(Clone)]
+enum NetworkEgressResolverBackend {
+    Configured {
+        store: MainDurableStore,
+        runtime: ApiProviderRuntime,
+        provider_secret_master_key: String,
+        node_id: String,
+    },
+    #[cfg(test)]
+    Direct,
 }
 
 /// Owns one acquired lease until the host has completed its consumer operation.
@@ -79,7 +88,29 @@ pub struct NetworkEgressExecutionScope {
     release: Option<NetworkEgressScopeRelease>,
 }
 
+/// Owns the client selected for one Host HTTP operation and any matched proxy lease.
+/// A direct client is produced only when the configured consumer has no enabled route.
+pub struct NetworkEgressHttpRequestScope {
+    client: Client,
+    route_scope: Option<NetworkEgressExecutionScope>,
+}
+
 impl NetworkEgressHttpClientResolver {
+    fn configured_backend(
+        &self,
+    ) -> Option<(&MainDurableStore, &ApiProviderRuntime, &String, &String)> {
+        match &self.backend {
+            NetworkEgressResolverBackend::Configured {
+                store,
+                runtime,
+                provider_secret_master_key,
+                node_id,
+            } => Some((store, runtime, provider_secret_master_key, node_id)),
+            #[cfg(test)]
+            NetworkEgressResolverBackend::Direct => None,
+        }
+    }
+
     pub fn new(
         store: MainDurableStore,
         runtime: ApiProviderRuntime,
@@ -87,10 +118,19 @@ impl NetworkEgressHttpClientResolver {
         node_id: impl Into<String>,
     ) -> Self {
         Self {
-            store,
-            runtime,
-            provider_secret_master_key: provider_secret_master_key.into(),
-            node_id: node_id.into(),
+            backend: NetworkEgressResolverBackend::Configured {
+                store,
+                runtime,
+                provider_secret_master_key: provider_secret_master_key.into(),
+                node_id: node_id.into(),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn direct_for_tests() -> Self {
+        Self {
+            backend: NetworkEgressResolverBackend::Direct,
         }
     }
 
@@ -99,14 +139,17 @@ impl NetworkEgressHttpClientResolver {
         workspace_id: Uuid,
         selector: domain::NetworkEgressConsumerSelector,
     ) -> Result<Option<NetworkEgressExecutionScope>> {
-        let route = NetworkEgressRouteService::new(self.store.clone())
+        let Some((store, _, _, _)) = self.configured_backend() else {
+            return Ok(None);
+        };
+        let route = NetworkEgressRouteService::new(store.clone())
             .resolve_enabled(workspace_id, &selector)
             .await?;
         let Some(route) = route else {
             return Ok(None);
         };
 
-        let selected = NetworkEgressPoolService::new(self.store.clone())
+        let selected = NetworkEgressPoolService::new(store.clone())
             .select_healthy_first_from(route.pool_id, &route.pool_member_ids)
             .await
             .context("configured network egress pool has no usable member")?;
@@ -121,13 +164,16 @@ impl NetworkEgressHttpClientResolver {
         provider_id: Uuid,
         provider_egress_key: &str,
     ) -> Result<Option<NetworkEgressExecutionScope>> {
-        let provider =
-            NetworkEgressRepository::get_network_egress_provider(&self.store, provider_id)
-                .await?
-                .context("configured network egress provider is unavailable")?;
+        let Some((store, runtime, provider_secret_master_key, node_id)) = self.configured_backend()
+        else {
+            return Ok(None);
+        };
+        let provider = NetworkEgressRepository::get_network_egress_provider(store, provider_id)
+            .await?
+            .context("configured network egress provider is unavailable")?;
         let secret = ProviderRegistryNetworkEgressSecretResolver::new(
-            self.store.clone(),
-            self.provider_secret_master_key.clone(),
+            store.clone(),
+            provider_secret_master_key.clone(),
         )
         .resolve_for_runner(&provider)
         .await?
@@ -139,15 +185,11 @@ impl NetworkEgressHttpClientResolver {
             .extension_family
             .as_ref()
             .context("configured network egress provider is unavailable on this node")?;
-        let installation = PluginRepository::get_current_local_installation(
-            &self.store,
-            &self.node_id,
-            extension_family,
-        )
-        .await?
-        .context("configured network egress provider is unavailable on this node")?;
-        let forward_proxy = self
-            .runtime
+        let installation =
+            PluginRepository::get_current_local_installation(store, node_id, extension_family)
+                .await?
+                .context("configured network egress provider is unavailable on this node")?;
+        let forward_proxy = runtime
             .acquire_network_egress_http_forward_proxy(
                 provider_id,
                 &installation,
@@ -157,7 +199,7 @@ impl NetworkEgressHttpClientResolver {
             .await
             .context("configured network egress provider could not acquire a proxy lease")?;
         let release = NetworkEgressScopeRelease {
-            runtime: self.runtime.clone(),
+            runtime: runtime.clone(),
             provider_id,
             lease_id: forward_proxy.lease_id.clone(),
         };
@@ -186,6 +228,65 @@ impl NetworkEgressHttpClientResolver {
             expires_at: forward_proxy.expires_at,
             release: Some(release),
         }))
+    }
+
+    pub async fn resolve_http_request(
+        &self,
+        workspace_id: Uuid,
+        selector: domain::NetworkEgressConsumerSelector,
+    ) -> Result<NetworkEgressHttpRequestScope> {
+        let route_scope = self.acquire(workspace_id, selector).await?;
+        let client = route_scope
+            .as_ref()
+            .map(|scope| scope.http_client().clone())
+            .unwrap_or_default();
+        Ok(NetworkEgressHttpRequestScope {
+            client,
+            route_scope,
+        })
+    }
+
+    pub async fn resolve_http_request_with_timeouts(
+        &self,
+        workspace_id: Uuid,
+        selector: domain::NetworkEgressConsumerSelector,
+        connect_timeout: std::time::Duration,
+        request_timeout: std::time::Duration,
+    ) -> Result<NetworkEgressHttpRequestScope> {
+        let route_scope = self.acquire(workspace_id, selector).await?;
+        let client = match route_scope.as_ref() {
+            Some(scope) => scope.http_client_with_timeouts(connect_timeout, request_timeout)?,
+            None => Client::builder()
+                .connect_timeout(connect_timeout)
+                .timeout(request_timeout)
+                .build()
+                .context("failed to construct direct HTTP client")?,
+        };
+        Ok(NetworkEgressHttpRequestScope {
+            client,
+            route_scope,
+        })
+    }
+}
+
+impl NetworkEgressHttpRequestScope {
+    pub fn http_client(&self) -> &Client {
+        &self.client
+    }
+
+    pub async fn finish<T, E>(self, result: std::result::Result<T, E>) -> std::result::Result<T, E>
+    where
+        E: From<anyhow::Error>,
+    {
+        let release = match self.route_scope {
+            Some(scope) => scope.release().await,
+            None => Ok(()),
+        };
+        match (result, release) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(E::from(error)),
+        }
     }
 }
 

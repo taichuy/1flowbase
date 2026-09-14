@@ -1,6 +1,6 @@
 mod managed_projection;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use control_plane::{
     errors::ControlPlaneError,
@@ -89,6 +89,7 @@ pub(crate) struct BillingDependencies {
     pub(crate) store: MainDurableStore,
     pub(crate) cache_store: Arc<dyn CacheStore>,
     pub(crate) catalog_index_url: String,
+    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 
 struct BillingAdapter(BillingDependencies);
@@ -100,6 +101,25 @@ pub(crate) fn port(
 }
 
 impl BillingAdapter {
+    async fn fetch_pricing_catalog(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<crate::model_pricing_catalog::RemotePricingCatalog, ApiError> {
+        let request = self
+            .0
+            .network_egress
+            .resolve_http_request_with_timeouts(
+                workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+                Duration::from_secs(2),
+                Duration::from_secs(8),
+            )
+            .await?;
+        let result =
+            fetch_remote_pricing_catalog(request.http_client(), &self.0.catalog_index_url).await;
+        request.finish(result).await
+    }
+
     async fn execute_credit_command(
         &self,
         principal: &UserPrincipal,
@@ -194,7 +214,9 @@ impl BillingAdapter {
                 ))
             }
             BillingInput::GetPricingCatalog(query) => {
-                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
+                let catalog = self
+                    .fetch_pricing_catalog(actor.current_workspace_id)
+                    .await?;
                 let provider_filter = query
                     .provider_code
                     .as_deref()
@@ -239,7 +261,9 @@ impl BillingAdapter {
                 }))
             }
             BillingInput::SyncPricingCatalog => {
-                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
+                let catalog = self
+                    .fetch_pricing_catalog(actor.current_workspace_id)
+                    .await?;
                 let rules = catalog
                     .rules
                     .into_iter()
@@ -254,7 +278,9 @@ impl BillingAdapter {
                 Ok(BillingOutput::Imported(serde_json::to_value(summary)?))
             }
             BillingInput::ImportPricingCatalog(body) => {
-                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
+                let catalog = self
+                    .fetch_pricing_catalog(actor.current_workspace_id)
+                    .await?;
                 let selected = catalog
                     .rules
                     .into_iter()

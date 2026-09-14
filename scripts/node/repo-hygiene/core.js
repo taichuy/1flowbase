@@ -72,6 +72,26 @@ const JSX_KEY_MUTABLE_MEMBER_PATTERN =
   /\$\{\s*(?:entry|field|item|output|row|variable)\s*\.\s*(?:key|label|name|title|value)\b/u;
 const JSX_KEY_POSITION_PATTERN =
   /\$\{\s*(?:blockIndex|fieldIndex|index|itemIndex|pathLabel|rowIndex)\b/u;
+const REQWEST_CLIENT_CONSTRUCTOR_PATTERN =
+  /\b(?:reqwest::)?Client::(?:new|builder)\s*\(/u;
+const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
+  [
+    "api/apps/api-server/src/network_egress_client.rs",
+    "Host-owned route resolution, proxy construction, and direct fallback boundary",
+  ],
+  [
+    "api/apps/api-server/src/official_extension_catalog.rs",
+    "GitHub official-source implementation already resolves Network Center routes",
+  ],
+  [
+    "api/apps/api-server/src/official_plugin_registry.rs",
+    "Legacy registry source retained for compatibility tests; production uses the routed extension catalog",
+  ],
+  [
+    "api/apps/api-server/src/routes/settings/mcp_management/upstream_client.rs",
+    "Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection",
+  ],
+]);
 
 function getRepoRoot() {
   return path.resolve(__dirname, "..", "..", "..");
@@ -545,6 +565,25 @@ function scanSourceFile({ relativePath, content }) {
       );
     }
 
+    if (
+      !testPath &&
+      relativePath.startsWith("api/apps/api-server/src/") &&
+      REQWEST_CLIENT_CONSTRUCTOR_PATTERN.test(strippedLine) &&
+      !OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.has(relativePath)
+    ) {
+      findings.push(
+        createFinding({
+          severity: "error",
+          rule: "unowned-outbound-http-client",
+          file: relativePath,
+          line: lineNumber,
+          message:
+            "production modules must obtain HTTP clients from the Host-owned Network Egress boundary",
+          snippet: line,
+        }),
+      );
+    }
+
     if (!testPath) {
       return;
     }
@@ -924,6 +963,7 @@ async function main(argv = [], deps = {}) {
 }
 
 module.exports = {
+  OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST,
   collectDirectoryPressureFindings,
   collectDuplicateTestTitleFindings,
   collectRepoHygieneFindings,
