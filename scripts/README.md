@@ -109,7 +109,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置面向当前 16 GB / 4 vCPU 虚拟机：Rust MemoryHigh=9G、MemoryMax=11G、swap=1G、Cargo jobs=2、CPUQuota=300%。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
+- 仓库资源配置面向当前 16 GB / 6 vCPU 虚拟机：Rust MemoryHigh=9G、MemoryMax=11G、swap=1G、Cargo jobs=2、CPUQuota=500%。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
 ### `node scripts/node/reset-account-password.js [options]`
 

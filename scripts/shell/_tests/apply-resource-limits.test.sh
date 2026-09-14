@@ -54,12 +54,12 @@ grep -Fxq 'ManagedOOMMemoryPressureLimit=80%' \
 grep -Fxq 'MemoryHigh=9G' "$systemd_dir/rust-build.slice"
 grep -Fxq 'MemoryMax=11G' "$systemd_dir/rust-build.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'CPUQuota=300%' "$systemd_dir/rust-build.slice"
+grep -Fxq 'CPUQuota=500%' "$systemd_dir/rust-build.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/rust-build.slice"
 grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota=300% IOWeight=10' \
+grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota=500% IOWeight=10' \
   "$systemctl_log"
 
 env PATH="$mock_bin:$PATH" \
