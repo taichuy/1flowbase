@@ -11,10 +11,12 @@ const {
 const {
   ensureCommandSuccess,
   getMiddlewarePostgresPort,
-  runCommand,
   runMiddlewareCompose,
   writeCommandOutput,
 } = require('./middleware.js');
+
+const { runPhase } = require('./phases.js');
+const { prepareFrontend } = require('./dependencies.js');
 
 const LOCAL_POSTGRES_HOSTS = new Set(['127.0.0.1', 'localhost']);
 const ALLOW_DB_RESET_ENV = 'ONEFLOWBASE_DEV_UP_ALLOW_DB_RESET';
@@ -276,21 +278,27 @@ function tryRecoverApiServerPrestartFailure(
   return true;
 }
 
-function runServicePrestartCommands(
+async function runServicePrestartCommands(
   service,
   {
     sourceEnv = process.env,
-    runCommandImpl = runCommand,
+    runCommandImpl,
     runMiddlewareComposeImpl = runMiddlewareCompose,
     logImpl = log,
   } = {}
 ) {
+  if (service.key === 'web' && !runCommandImpl) return prepareFrontend(service, { logImpl });
+  const run = runCommandImpl || ((command, args, options) => runPhase(command, args, {
+    ...options, signal: service.signal, allowFailure: true,
+    logFile: path.join(path.dirname(service.logFile), 'api-server-prestart.log'),
+    label: 'api-server pre-start', logImpl,
+  }));
   for (const prestartCommand of getServicePrestartCommands(service, sourceEnv)) {
     logImpl(`${service.label} running pre-start step: ${prestartCommand.description}`);
     let recovered = false;
 
     while (true) {
-      const result = runCommandImpl(prestartCommand.command, prestartCommand.args, {
+      const result = await run(prestartCommand.command, prestartCommand.args, {
         cwd: prestartCommand.cwd,
         env: prestartCommand.env,
         captureOutput: prestartCommand.captureOutput !== false,

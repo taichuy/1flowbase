@@ -4,7 +4,7 @@ const SCOPES = new Set(['all', 'frontend', 'backend']);
 function usage() {
   process.stdout.write(`Usage: node scripts/node/dev-up.js [options] [start|ensure|stop|status|restart]
 
-Default action: start
+Default action: start (reuse healthy services; use restart to rebuild/restart)
 
 Options:
   --frontend-only  Manage the frontend process only

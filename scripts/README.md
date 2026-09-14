@@ -77,7 +77,7 @@ bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 
 ### `node scripts/node/dev-up.js [选项] [start|ensure|stop|status|restart]`
 
-统一管理本地开发进程。默认动作是 `start`。
+统一管理本地开发进程。默认动作是 `start`，与 `ensure` 一样复用通过健康检查的服务；修改后端源码后使用 `restart --backend-only` 重新构建并启动。健康检查失败会报告错误，不会静默复用错误服务。
 
 常用命令：
 
@@ -100,8 +100,13 @@ node scripts/node/dev-up.js stop
 - `--frontend-only` 只管理前端。
 - `--backend-only` 只管理 `api-server`。
 - 开发环境启动 API 前，使用 Node.js 脚本将 `.env` 中的 root 密码同步到已存在的开发数据库，不会为此编译 Rust。
-- 日志写入 `tmp/logs/`。
-- pid 记录写入 `tmp/dev-up/pids/`。
+- 前端依赖以 package manifests、lockfile、workspace 配置、patch 和安装状态生成本地凭据；未变化时跳过安装。首次启动或输入变化时执行 `pnpm install --frozen-lockfile`，失败不写凭据。手动修改依赖后先更新 lockfile。
+- 后端先执行 `cargo build`，成功后直接运行 Cargo 返回的 binary；复用 Cargo 增量缓存，不清理 target，也不在失败后运行旧产物。
+- 安装最多等待 3 分钟、后端构建 10 分钟、后端运行就绪 30 秒、前端就绪 60 秒。长阶段每 5 秒输出阶段、耗时或日志路径；构建与运行日志分别为 `tmp/logs/api-server-build.log` 和 `tmp/logs/api-server.log`。
+- 后端构建读取 `.1flowbase.verify.local.json` 的 Cargo 并发/增量设置，并保留更低的 `CARGO_BUILD_JOBS`。Linux 上已启用 `rust-build.slice` 时打印 systemd 实际限额，在独立 scope 构建；API 运行进程不进入该编译 scope。slice 不可用时明确报告未验证内存限制，继续使用 PATH 中 Cargo 的策略。
+- 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
+- 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
+- 仓库资源配置已对齐此受限环境：Rust MemoryHigh=5G、MemoryMax=6G、swap=2G、Cargo jobs=2。编辑配置不会自动修改 systemd，应用配置后仍应以启动输出的实际值核对。
 
 ### `node scripts/node/reset-account-password.js [options]`
 

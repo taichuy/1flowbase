@@ -39,15 +39,15 @@ env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.conf"
 
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
-grep -Fxq 'ManagedOOMMemoryPressureLimit=40%' \
+grep -Fxq 'ManagedOOMMemoryPressureLimit=80%' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-grep -Fxq 'MemoryHigh=6G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemoryMax=8G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemorySwapMax=3G' "$systemd_dir/rust-build.slice"
-grep -Fq 'memory_budget_cargo_jobs=6' "$bin_dir/cargo"
+grep -Fxq 'MemoryHigh=5G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemoryMax=6G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemorySwapMax=2G' "$systemd_dir/rust-build.slice"
+grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq '"cargoTestThreads": 4' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=6G MemoryMax=8G MemorySwapMax=3G' \
+grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=5G MemoryMax=6G MemorySwapMax=2G' \
   "$systemctl_log"
 
 env PATH="$mock_bin:$PATH" \
@@ -55,9 +55,9 @@ env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   CARGO_BUILD_JOBS=12 \
   "$bin_dir/cargo" test -j 12
-grep -Fxq 'CARGO_BUILD_JOBS=6' "$systemd_run_log"
+grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
 grep -Fq -- '--slice=rust-build.slice -- ' "$systemd_run_log"
-grep -Fq -- 'test -j 6' "$systemd_run_log"
+grep -Fq -- 'test -j 2' "$systemd_run_log"
 
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.unlimited.example.conf"

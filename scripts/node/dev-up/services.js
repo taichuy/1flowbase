@@ -113,11 +113,12 @@ function getServiceDefinitions(repoRoot) {
       repoRoot,
       cwd: path.join(repoRoot, 'api'),
       command: 'cargo',
-      args: ['run', '-p', 'api-server', '--bin', 'api-server'],
+      args: [],
+      buildBeforeStart: true,
       bindHost: apiServerAddress.bindHost,
       probeHost: '127.0.0.1',
       port: apiServerAddress.port,
-      startupTimeoutMs: null,
+      startupTimeoutMs: 30_000,
       readinessProbe: {
         path: '/health',
         expectedJson: {

@@ -12,6 +12,7 @@ const {
   requireCommand,
   resolveCommandPath,
 } = require('./env.js');
+const { buildBackend } = require('./build.js');
 const { runServicePrestartCommands } = require('./postgres-reset.js');
 const { DEFAULT_STARTUP_TIMEOUT_MS } = require('./services.js');
 
@@ -45,6 +46,11 @@ function getStartupTimeoutMs(service) {
   }
 
   return service.startupTimeoutMs;
+}
+
+function getRemainingStartupMs(service) {
+  if (Number.isFinite(service.startupDeadline)) return Math.max(0, service.startupDeadline - Date.now());
+  return getStartupTimeoutMs(service);
 }
 
 function writePidRecord(service, pid) {
@@ -144,14 +150,12 @@ function waitForServicePort(
   waitForPortImpl = waitForPort,
   isProcessAliveImpl = isProcessAlive
 ) {
-  const timeoutMs = getStartupTimeoutMs(service);
-  const shouldContinue =
-    timeoutMs === null
-      ? () => {
-          const pidRecord = readPidRecord(service.pidFile);
-          return Boolean(pidRecord && isProcessAliveImpl(pidRecord.pid));
-        }
-      : undefined;
+  const timeoutMs = getRemainingStartupMs(service);
+  const shouldContinue = () => {
+    if (service.signal?.aborted) return false;
+    const pidRecord = readPidRecord(service.pidFile);
+    return Boolean(pidRecord && isProcessAliveImpl(pidRecord.pid));
+  };
   return waitForPortImpl(getProbeHost(service), service.port, timeoutMs, shouldContinue);
 }
 
@@ -268,9 +272,10 @@ async function waitForServiceReadiness(
   }
 
   const startedAt = Date.now();
-  const timeoutMs = getStartupTimeoutMs(service);
+  const timeoutMs = getRemainingStartupMs(service);
   let latestFailure = null;
   while (timeoutMs === null || Date.now() - startedAt < timeoutMs) {
+    service.signal?.throwIfAborted();
     if (timeoutMs === null) {
       const pidRecord = readPidRecordImpl(service.pidFile);
       if (!pidRecord || !isProcessAliveImpl(pidRecord.pid)) {
@@ -564,16 +569,20 @@ async function startService(
     readServiceLogTailImpl = readServiceLogTail,
     logImpl = log,
     takeOverPortOwnership = false,
+    buildBackendImpl = buildBackend,
+    probeHttpReadinessImpl = probeHttpReadiness,
   } = {}
 ) {
+  service.signal?.throwIfAborted();
   ensureServiceEnvFileImpl(service);
-  requireCommandImpl(service.command);
 
   const pidRecord = readPidRecordImpl(service.pidFile);
   if (pidRecord && isProcessAliveImpl(pidRecord.pid)) {
     if (await isPortOpenImpl(getProbeHost(service), service.port)) {
       if (!takeOverPortOwnership) {
-        logImpl(`${service.label} is already running; skipping start`);
+        const health = await probeHttpReadinessImpl(service);
+        if (!health.ready) throw new Error(`${service.label} is running but unhealthy: ${health.reason}; inspect its log or explicitly restart`);
+        logImpl(`${service.label} is healthy; skipping start`);
         return;
       }
 
@@ -582,8 +591,6 @@ async function startService(
 
     await stopServiceImpl(service);
   }
-
-  runServicePrestartCommandsImpl(service);
 
   if (await isPortOpenImpl(getProbeHost(service), service.port) && takeOverPortOwnership) {
     await clearPortConflictsImpl(service.label, [service.port]);
@@ -594,8 +601,19 @@ async function startService(
     throw new Error(`${service.label} failed to start because port ${service.port} is occupied`);
   }
 
+  requireCommandImpl(service.command);
+  await service.beforeStart?.();
+  service.signal?.throwIfAborted();
+  await runServicePrestartCommandsImpl(service);
+  service.signal?.throwIfAborted();
+  const launch = service.buildBeforeStart ? await buildBackendImpl(service) : service;
+  service.signal?.throwIfAborted();
+  logImpl(`${service.label}: starting runtime; timeout=${getStartupTimeoutMs(service) / 1000}s; log=${service.logFile}`);
+  const startupTimeoutMs = getStartupTimeoutMs(service);
+  const runtimeStartedAt = Date.now();
+  if (startupTimeoutMs !== null) service.startupDeadline = runtimeStartedAt + startupTimeoutMs;
   const outputFd = fs.openSync(service.logFile, 'w');
-  const child = spawnImpl(resolveCommandPathImpl(service.command) || service.command, service.args, {
+  const child = spawnImpl(resolveCommandPathImpl(launch.command) || launch.command, launch.args, {
     cwd: service.cwd,
     env: buildServiceEnvImpl(service),
     detached: platform !== 'win32',
@@ -604,35 +622,49 @@ async function startService(
   });
 
   fs.closeSync(outputFd);
+  let spawnError;
+  child.once?.('error', (error) => { spawnError = error; });
   child.unref();
-  writePidRecordImpl(service, child.pid);
-
-  const ready = await waitForServicePortImpl(service);
-  if (!ready) {
-    await stopServiceImpl(service);
-    throw new Error(
-      startupFailureMessage(
-        service,
-        getStartupTimeoutMs(service) === null
-          ? `process exited before port ${service.port} accepted connections`
-          : `port ${service.port} did not accept connections before startup timeout`,
-        readServiceLogTailImpl(service.logFile)
-      )
-    );
+  if (!child.pid) {
+    await new Promise((resolve) => child.once('error', resolve));
+    throw spawnError || new Error(`${service.label}: could not spawn runtime`);
   }
+  service.startedPid = child.pid;
+  writePidRecordImpl({ ...service, command: launch.command, args: launch.args }, child.pid);
+  const progress = setInterval(() => logImpl(`${service.label}: waiting for readiness ${Math.round((Date.now() - runtimeStartedAt) / 1000)}s; log=${service.logFile}`), 5000);
+  try {
+    const ready = await waitForServicePortImpl(service);
+    service.signal?.throwIfAborted();
+    if (spawnError) throw spawnError;
+    if (!ready) {
+      await stopServiceImpl(service);
+      throw new Error(
+        startupFailureMessage(
+          service,
+          getStartupTimeoutMs(service) === null
+            ? `process exited before port ${service.port} accepted connections`
+            : `port ${service.port} did not accept connections before startup timeout`,
+          readServiceLogTailImpl(service.logFile)
+        )
+      );
+    }
 
-  const readiness = await waitForServiceReadinessImpl(service);
-  if (!readiness.ready) {
-    await stopServiceImpl(service);
-    throw new Error(startupFailureMessage(service, readiness.reason, readServiceLogTailImpl(service.logFile)));
+    const readiness = await waitForServiceReadinessImpl(service);
+    service.signal?.throwIfAborted();
+    if (!readiness.ready) {
+      await stopServiceImpl(service);
+      throw new Error(startupFailureMessage(service, readiness.reason, readServiceLogTailImpl(service.logFile)));
+    }
+
+    const listenerPids = listPortOccupantPidsImpl(service.port);
+    if (listenerPids.length > 0 && listenerPids[0] !== child.pid) {
+      writePidRecordImpl({ ...service, command: launch.command, args: launch.args }, listenerPids[0]);
+    }
+
+    logImpl(`${service.label} started; listening on ${getBindHost(service)}:${service.port}`);
+  } finally {
+    clearInterval(progress);
   }
-
-  const listenerPids = listPortOccupantPidsImpl(service.port);
-  if (listenerPids.length > 0 && listenerPids[0] !== child.pid) {
-    writePidRecordImpl(service, listenerPids[0]);
-  }
-
-  logImpl(`${service.label} started; listening on ${getBindHost(service)}:${service.port}`);
 }
 
 async function clearServicePortOccupants(
@@ -768,7 +800,7 @@ async function manageServices(
 
   for (const service of services) {
     await startServiceImpl(service, {
-      takeOverPortOwnership: action === 'start' || action === 'restart',
+      takeOverPortOwnership: action === 'restart',
     });
   }
 }

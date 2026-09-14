@@ -12,7 +12,7 @@ const {
   runServicePrestartCommands,
 } = require('../core.js');
 
-test('AC-001 resets the api root password through Node without compiling Rust', () => {
+test('AC-001 resets the api root password through Node without compiling Rust', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-prestart-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const envExamplePath = path.join(apiServerDir, '.env.example');
@@ -52,7 +52,7 @@ test('AC-001 resets the api root password through Node without compiling Rust', 
   assert.equal(commands[0].env.API_ENV, 'development');
 });
 
-test('getServicePrestartCommands checks frontend dependencies with visible pnpm prompts', () => {
+test('getServicePrestartCommands checks frontend dependencies with visible pnpm prompts', async () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);
   const commands = getServicePrestartCommands(services.web, { CI: 'false' });
@@ -80,7 +80,7 @@ test('getServicePrestartCommands checks frontend dependencies with visible pnpm 
   );
 });
 
-test('getServicePrestartCommands skips api root reset in production mode', () => {
+test('getServicePrestartCommands skips api root reset in production mode', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-prod-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const envExamplePath = path.join(apiServerDir, '.env.example');
@@ -98,7 +98,7 @@ test('getServicePrestartCommands skips api root reset in production mode', () =>
   assert.deepEqual(getServicePrestartCommands(apiService, {}), []);
 });
 
-test('AC-003 surfaces a failed api root password reset', () => {
+test('AC-003 surfaces a failed api root password reset', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-recover-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const dockerDir = path.join(tempRepoRoot, 'docker');
@@ -140,7 +140,7 @@ test('AC-003 surfaces a failed api root password reset', () => {
   };
 
   try {
-    assert.throws(
+    await assert.rejects(
       () =>
         runServicePrestartCommands(apiService, {
           logImpl() {},
@@ -178,7 +178,7 @@ test('AC-003 surfaces a failed api root password reset', () => {
   );
 });
 
-test('AC-001 repairs the known local migration checksum drift without rebuilding postgres', () => {
+test('AC-001 repairs the known local migration checksum drift without rebuilding postgres', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-repair-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const migrationDir = path.join(
@@ -227,7 +227,7 @@ test('AC-001 repairs the known local migration checksum drift without rebuilding
   const composeCalls = [];
   let attempt = 0;
 
-  runServicePrestartCommands(apiService, {
+  await runServicePrestartCommands(apiService, {
     runCommandImpl(command, args, options) {
       commandCalls.push({ command, args, options });
       attempt += 1;
@@ -288,7 +288,7 @@ test('AC-001 repairs the known local migration checksum drift without rebuilding
   assert.doesNotMatch(sql, /drop database/iu);
 });
 
-test('AC-002 refuses the known repair when the database checksum does not match', () => {
+test('AC-002 refuses the known repair when the database checksum does not match', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-refuse-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const migrationDir = path.join(
@@ -329,7 +329,7 @@ test('AC-002 refuses the known repair when the database checksum does not match'
   ensureServiceEnvFile(apiService);
   const composeCalls = [];
 
-  assert.throws(
+  await assert.rejects(
     () =>
       runServicePrestartCommands(apiService, {
         logImpl() {},
@@ -357,7 +357,7 @@ test('AC-002 refuses the known repair when the database checksum does not match'
   assert.doesNotMatch(composeCalls[0].args.at(-1), /drop database/iu);
 });
 
-test('runServicePrestartCommands rebuilds local postgres db only with explicit reset opt-in', () => {
+test('runServicePrestartCommands rebuilds local postgres db only with explicit reset opt-in', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-recover-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const dockerDir = path.join(tempRepoRoot, 'docker');
@@ -386,7 +386,7 @@ test('runServicePrestartCommands rebuilds local postgres db only with explicit r
   const composeCalls = [];
   let attempt = 0;
 
-  runServicePrestartCommands(apiService, {
+  await runServicePrestartCommands(apiService, {
     sourceEnv: { ONEFLOWBASE_DEV_UP_ALLOW_DB_RESET: '1' },
     runCommandImpl(command, args, options) {
       commandCalls.push({ command, args, options });
@@ -448,12 +448,12 @@ test('runServicePrestartCommands rebuilds local postgres db only with explicit r
   );
 });
 
-test('runServicePrestartCommands lets frontend pnpm prompts write to the terminal', () => {
+test('runServicePrestartCommands lets frontend pnpm prompts write to the terminal', async () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);
   const commandCalls = [];
 
-  runServicePrestartCommands(services.web, {
+  await runServicePrestartCommands(services.web, {
     sourceEnv: { CI: 'false' },
     runCommandImpl(command, args, options) {
       commandCalls.push({ command, args, options });
@@ -485,7 +485,7 @@ test('runServicePrestartCommands lets frontend pnpm prompts write to the termina
   );
 });
 
-test('runServicePrestartCommands rebuilds local postgres db after missing resolved migration drift', () => {
+test('runServicePrestartCommands rebuilds local postgres db after missing resolved migration drift', async () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-missing-migration-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const dockerDir = path.join(tempRepoRoot, 'docker');
@@ -514,7 +514,7 @@ test('runServicePrestartCommands rebuilds local postgres db after missing resolv
   const composeCalls = [];
   let attempt = 0;
 
-  runServicePrestartCommands(apiService, {
+  await runServicePrestartCommands(apiService, {
     sourceEnv: { ONEFLOWBASE_DEV_UP_ALLOW_DB_RESET: '1' },
     runCommandImpl(command, args, options) {
       commandCalls.push({ command, args, options });

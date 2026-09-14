@@ -155,7 +155,9 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
   assert.equal(services['api-server'].bindHost, '0.0.0.0');
   assert.equal(services['api-server'].probeHost, '127.0.0.1');
   assert.deepEqual(services.web.args, ['--filter', '@1flowbase/web', 'dev']);
-  assert.deepEqual(services['api-server'].args, ['run', '-p', 'api-server', '--bin', 'api-server']);
+  assert.deepEqual(services['api-server'].args, []);
+  assert.equal(services['api-server'].buildBeforeStart, true);
+  assert.equal(services['api-server'].startupTimeoutMs, 30_000);
   assert.deepEqual(services.web.readinessProbe, {
     path: '/__1flowbase_dev_ready',
     expectedJson: {
@@ -373,12 +375,12 @@ test('dev-up seeds a new web env from existing worktree port configuration', () 
   );
 });
 
-test('AC-001 api-server startup has no fixed compilation time window', () => {
+test('AC-001 api-server runtime readiness has a bounded window separate from compilation', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const services = getServiceDefinitions(repoRoot);
 
   assert.equal(services.web.startupTimeoutMs, 60_000);
-  assert.equal(services['api-server'].startupTimeoutMs, null);
+  assert.equal(services['api-server'].startupTimeoutMs, 30_000);
 });
 
 test('getServiceDefinitions leaves frontend pnpm startup interactive', () => {
@@ -1021,7 +1023,7 @@ test('startService restarts a running managed service when takeover is requested
   assert.equal(recordedPid, 4243);
 });
 
-test('manageServices treats start as a service takeover', async () => {
+test('manageServices makes default start reuse healthy services', async () => {
   const service = {
     key: 'web',
     label: 'frontend',
@@ -1040,7 +1042,7 @@ test('manageServices treats start as a service takeover', async () => {
   assert.deepEqual(calls, [
     {
       key: 'web',
-      takeOverPortOwnership: true,
+      takeOverPortOwnership: false,
     },
   ]);
 });

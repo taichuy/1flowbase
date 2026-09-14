@@ -1,3 +1,4 @@
+const { withStartupSession } = require('./phases.js');
 const { log, parseCliArgs, selectServiceKeys, shouldManageDocker, usage } = require('./cli.js');
 const {
   buildServiceEnv,
@@ -95,27 +96,30 @@ async function main(argv = process.argv.slice(2)) {
   const serviceKeys = selectServiceKeys(options.scope);
   const services = serviceKeys.map((key) => serviceDefinitions[key]);
 
-  if (shouldManageDocker(options)) {
-    await manageDocker(repoRoot, options.action);
-  } else if (options.skipDocker) {
-    log('Skipped Docker middleware management');
-  }
+  const operate = async () => {
+    if (shouldManageDocker(options)) {
+      await manageDocker(repoRoot, options.action);
+    } else if (options.skipDocker) {
+      log('Skipped Docker middleware management');
+    }
 
-  if (shouldShowDevDatabaseMaintenanceHint(options)) {
-    writeDevDatabaseMaintenanceHint();
-  }
+    if (shouldShowDevDatabaseMaintenanceHint(options)) {
+      writeDevDatabaseMaintenanceHint();
+    }
 
-  if (shouldResolveForAction(options.action, serviceKeys)) {
-    const apiService = serviceDefinitions['api-server'];
-    await configurePostgresToolchain({
-      repoRoot,
-      apiService,
-      logImpl: log,
-    });
-  }
+    if (shouldResolveForAction(options.action, serviceKeys)) {
+      const apiService = serviceDefinitions['api-server'];
+      apiService.beforeStart = () => configurePostgresToolchain({
+        repoRoot, apiService, logImpl: log,
+      });
+    }
 
-  await manageServices(options.action, services);
-  return 0;
+    services[0]?.signal?.throwIfAborted();
+    await manageServices(options.action, services);
+    return 0;
+  };
+  if (options.action === 'status') return operate();
+  return withStartupSession(services, runtimePaths.pidDir, operate);
 }
 
 module.exports = {
