@@ -1,99 +1,61 @@
 ---
 name: backend-development
-description: "Use for 1flowbase backend implementation in api/: building, fixing, refactoring, or code-reviewing Rust/Axum APIs, routes, services, repositories, storage adapters, migrations, domain models, state transitions, write paths, module boundaries, permissions, backend-registered console settings and their API scopes, HostExtension/RuntimeExtension boundaries, or core business logic. Use after non-trivial requirements have been aligned by problem-framing, or when the user explicitly asks for direct implementation; do not use for standalone requirement alignment, test design, or QA reports."
+description: 实现或审查 1flowbase api/ 的接口、业务、状态与模块边界。先理解后端架构并定位 AGENTS / 架构章节；需求决策用 problem-framing，正式验收用 qa-evaluation。
 ---
 
 # Backend Development
 
-## Overview
+## Outcome and Entry
 
-本 Skill 是 1flowbase 后端实现期的边界守门员，不负责替代需求对齐或 QA 验收。进入这里时，默认已经有清晰目标、范围、成功标准和用户拍板点；本 Skill 只负责把已确认的 backend / API / Rust 任务按项目规则落到 `api/`。
+把已确认目标落到正确的后端 owner，保持 contract、状态和调用边界。先读 [api/AGENTS.md](../../../api/AGENTS.md)；改 crate 前读 [crates/AGENTS.md](../../../api/crates/AGENTS.md)，再读改动目录的局部规则。复用用户已确认的目标、授权与 AC，不重复审批。
 
-## Entry Contract
+行为验证使用 `test-driven-development`；只有业务语义、权限、数据影响或范围尚未确定时回到 `problem-framing`，不把局部实现判断变成新的产品决策。
 
-- 需求仍有数据、contract、migration、权限、状态归属、架构方向或跨模块职责选择时，先回 `problem-framing`。
-- 涉及可测试行为变化时，先联动 `test-driven-development`；不能走 TDD 时，交付说明必须写明替代验证。
-- 用户要求自检、验收、回归、质量报告或证据结论时，切到 `qa-evaluation`。
-- 后端 API / 状态入口缺少已确认的接口预期、验收证据或测试设计时，不在实现期补需求；回到 `problem-framing` / `test-driven-development`。
-- 进入 `api/` 前先读 `api/AGENTS.md`；存在更近的 `AGENTS.md` 时按最近规则执行。
+## Backend Architecture Map
 
-## When to Use
+先理解 [请求架构与调用生命周期](../../../docs/architecture/interface-lifecycle.md) 的总体结构与维护边界，再按任务读主题，无需先遍历全项目架构。
 
-- 设计已确认后的接口、动作入口、模块边界、route / service / repository / adapter 实现。
-- 调整状态流转、关键领域对象、写路径、事务边界或一致性规则。
-- 实现 Rust / Axum API、storage adapter、migration、mapper、worker、runtime 后端逻辑。
-- 收口多个模块直接改同一关键状态的问题。
-- 处理 HostExtension / RuntimeExtension / CapabilityPlugin / Resource Action Kernel 的后端实现边界。
+```text
+api-server（唯一进程内 composition root）
+  Protocol Adapter → Canonical Interface / 冻结计划
+                   → typed Handler → Business / Execution
+                   → 结果与收尾 → 协议投影
+```
 
-**不要用于**
+- Protocol Adapter 负责协议解析、认证接入和响应投影；业务入口经注册 Binding / Plan 进入统一调用内核。
+- Canonical Interface 拥有调用身份、阶段与终态；业务 owner 拥有规则和事务，执行与存储模块承接稳定 ports。
+- 调用终态、业务 commit/rollback、协议 delivery/ack 各有 owner，不能互相推断；关闭连接不自动等于取消业务。
+- 这是调用关系，不是 Cargo 依赖图。crate owner 与允许依赖只维护在 `api/crates/AGENTS.md`；实际 mount 与 Catalog、声明与编译快照的关系由架构文档解释。
+- HostExtension 扩展宿主 contract；RuntimeExtension 实现 runtime slot；CapabilityPlugin 贡献用户选择的能力。具体生命周期和允许写入口按相关局部规则取证，不把三者混为同一插件类型。
 
-- 纯视觉、交互、信息架构设计。
-- 纯需求澄清、方案选择、issue shaping 或 ADR。
-- 纯 QA 报告、回归结论或质量门禁路由。
+## Truth and Task Routing
 
-## Core Invariants
+架构文档定义关系，AGENTS 定义执行约束，源码与运行态揭示实际行为。三者不一致时定位偏离；不自动扩大授权去改架构或业务语义。
 
-- 稳定核心决定“该不该做”；边界适配层负责“怎么做到”；关键状态只能从清晰唯一入口改变。
-- 核心业务规则不得直接依赖外部协议格式、存储细节、provider stdout / stderr 或临时 UI 形态。
-- 能力边界优先使用能力名，具体实现留在 adapter / repository / driver。
-- API 输入保持短、平、单动作；新接口、service、repository 方法必须命名具体。
-- 状态集合、流转规则、动作约束、幂等语义和错误边界必须显式。
-- Rust 实现要用类型表达核心不变量、显式传播错误、封装状态转换，并把阻塞 IO、锁、事务和外部副作用放在清晰边界内。
-- 系统内置数据模型、运行时读模型或 `model_definitions / model_fields / scope_data_model_grants` 改动必须区分 system-owned contract 与 user-owned metadata；不可用 migration / reconcile 覆盖用户或管理员 metadata。
-- 后台注册设置项是后端拥有的安全对象，不是前端页面权限；`feature_id` 标识注册归属；角色可配置 console operation 保持 `1 operation ↔ 1 method + route template`，不得将注册归属误作整组接口授权。
-- Settings API 在 Core 启动或 HostExtension 加载时绑定到唯一注册项；请求按编译后的单接口 operation policy 与领域数据约束校验，不按页面 URL 推断权限，也不在请求期扫描或动态拼装授权集合。
-- 未注册、重复归属或引用 inactive feature 的 Settings API 必须 fail closed；不得保留 allow-by-default、前端兜底或管理员可编辑的 route-to-permission 表。
-- 新抽象、公共接口、bool/flag 参数、helper/manager/utils、pass-through service 或重复 defensive check，先读 `../_shared/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
+| 当前任务 | 读取与定位 |
+| --- | --- |
+| 接口装配、认证、Binding、Kernel、stream / cancel / deadline | [interface-lifecycle](references/interface-lifecycle.md) → 架构对应主题 |
+| API 输入输出、错误模型 | [api-design](references/api-design.md) → route / DTO / typed Handler |
+| 状态转换、事务、幂等 | [state-and-consistency](references/state-and-consistency.md) → 状态写 owner |
+| 核心与适配器、外部依赖、HostExtension | [boundary-design](references/boundary-design.md) → 局部 AGENTS / ports |
+| 新资源或实现落点 | [implementation-rules](references/implementation-rules.md) |
+| Rust 类型、async、锁与实现自查 | [rust-backend-practices](references/rust-backend-practices.md) 的相关章节及 completion self-check |
+| 内置模型、metadata overlay、runtime read model | [builtin-data-model-contract](references/builtin-data-model-contract.md) |
+| Settings API、注册、角色 operation 授权 | [console-settings-registration](references/console-settings-registration.md) |
+| Agent Flow 节点输入、debug artifact、运行日志 | [agentflow-runtime-node-payload](references/agentflow-runtime-node-payload.md) |
+| 新抽象、公共参数、重复防御、转发层 | [design-rules](../_shared/design-rules.md)；具体坏味道查 [anti-patterns](references/anti-patterns.md) |
+| 判断规则例外 | [examples](references/examples.md) |
 
-## Implementation Routing
+## Implementation Decisions
 
-- Interface lifecycle: [references/interface-lifecycle.md](references/interface-lifecycle.md)，命中入口装配、认证、Binding、Kernel、Hook、stream、取消/超时或协议重构时读取；架构解释按其中本文目录按章节读取。
-- AI-friendly API rules: `references/api-design.md`。
-- State and consistency review: `references/state-and-consistency.md`。
-- Stable core vs adapter rules: `references/boundary-design.md`。
-- Local implementation rules: `references/implementation-rules.md`。
-- Rust backend practice rules: `references/rust-backend-practices.md`。
-- Builtin data model contract / metadata overlay rules: `references/builtin-data-model-contract.md`，命中系统内置表、runtime read models、数据建模定义 metadata、字段描述、scope grant 或 API exposure 时读取。
-- Console settings registration: `references/console-settings-registration.md`，命中后台设置注册、Settings API、角色设置授权、HostExtension console surface 或对应 CLI / inventory 时读取。
-- Anti-decay patterns: `references/anti-patterns.md`。
-- Pressure scenarios: `references/examples.md`。
-- Agent Flow runtime node payload contract: `references/agentflow-runtime-node-payload.md`，仅在调整运行日志、debug artifact、节点输入/数据处理/输出接口时读取。
+- 状态变更经唯一明确 owner；核心规则不依赖外部协议格式、存储细节或临时 UI 形态。
+- 公共接口表达具体对象和动作，Rust 类型表达不变量，错误显式传播；不为拆分而增加无职责包装层。
+- 前端缺业务字段、排序 / 筛选 / 聚合结果时补职责单一的后端 DTO / API / 查询；字段沿用 DTO / 领域原名。
+- 系统内置数据与用户 metadata、宿主与插件写集等专项边界，按上表加载对应真值；不因任何后端改动加载所有专项。
+- 新增或改变目标、source of truth、权限、历史数据处理或对外 contract 时回到需求对齐；已批准范围内的装配、fixture 与局部实现修正继续。
 
-## Interface Boundary
+## Evidence and Exit
 
-- 新增或修改业务协议入口必须进入冻结 Binding/Plan 与 typed Handler；实际 mount 和 Catalog 同源，不直接从协议适配器绕过 Kernel 调 service。
-- Canonical Interface 统一调用语义，不统一各协议包装；实现交付保留旧输入输出、权限及副作用的对照依据。
-- Kernel 收尾、业务事务、协议交付各有 owner；扩展实现前先确认这三者不会互相推断。细节只维护在本地架构文档及对应局部 AGENTS。
+完成开发后用 `qa-evaluation` 对照架构与行为验收。交付保留 route / service / domain / adapter 等改动 owner、关键决策与证据指针；已有 AC 标明已覆盖、未覆盖及延后项。
 
-## Host Extension Boundary
-
-- HostExtension 扩展核心业务时只走 `Resource Action Kernel`、声明式 hook、受控 route / worker / migration，不直接改 Core 真值表。
-- Redis、队列、锁、event bus 等基础设施只作为 HostExtension provider 实现 host contract，不进业务代码直连。
-- native HostExtension v1 是可信 in-process、restart-scoped；启停升级写 desired state，不设计 Rust 热卸载。
-
-## Bounce Back Conditions
-
-- 核心状态机、对外协议、权限策略、插件边界、核心对象定义尚未被确认，停止实现并回 `problem-framing`。
-- 需要兼容旧字段、迁移历史数据、改变 source of truth、扩大 contract 或改 issue 范围，停止并回 `problem-framing`。
-- 需要输出验收通过 / 失败、质量报告、回归矩阵或证据结论，切到 `qa-evaluation`。
-- 前端缺少后端真值字段或聚合结果时，用职责单一的 DTO / API / repository 查询补后端，不让前端推断。
-
-## Exit Handoff
-
-- 交付时写清修改的 route / service / repository / domain / adapter 边界。
-- 交付说明必须包含 context capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口；只写可检索指针，不复制代码或重述完整 diff。
-- 若 issue / handoff 有 `AC-001` 这类验收点，交付时标明已覆盖、未覆盖和延后到 QA / CI 的点。
-- Rust 后端实现完成前按 `references/rust-backend-practices.md` 的 completion self-check 自检；不能保证的项标为风险或待办。
-- 当前本地开发分支的验证命令按变更 blast radius 选择最小结果证据链；workspace 级 cargo / clippy / full test / coverage / repo gate 默认归 beta / CI / 专门质量工作区。
-- 需要正式 QA 结论、合并基线或全局质量门禁时移交 `qa-evaluation`，不要在实现期自动叠重门禁。
-
-## Common Mistakes
-
-- 业务规则直接依赖外部协议格式。
-- 多个入口同时写同一核心状态。
-- 一个接口塞进多个动作语义。
-- 为了“一次查全”造出深层嵌套结构。
-- 用隐式副作用完成状态变化。
-- 用 bool 参数、重复空值校验或 pass-through service 处理特殊 case。
-- 用 `handler/manager/process/utils/helper/do_*/*_impl` 命名隐藏真实职责。
-- 在实现期临时决定接口预期、测试设计或验收口径。
+执行成本、Cargo 并发、证据复用与资源失败转向沿用 `test-driven-development`。当前行为与直接风险证据充分即停止；编译或源码门禁不代替行为测试，未运行的重型验证不冒充通过。

@@ -48,6 +48,12 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 
 ## Evidence Reuse and Context
 
+```text
+Δ ∩ D(e) = ∅ ⇒ e 可复用
+```
+
+`Δ` 是本次代码、fixture、预期、工具或环境变化；`D(e)` 是证据 e 的相关依赖，前提是原证据有效且依赖已核实。不确定依赖时先定向核对，不能把未识别依赖当作空集。
+
 - 在已有交付记录或 artifact 中保留命令、代码状态（SHA 或 diff 标识）、覆盖范围、结果和日志路径；无需为小任务另建账本。
 - 代码、fixture、预期、依赖、工具或环境的相关变化才使证据失效。收尾、换 agent、上下文压缩或无关文件变化不自动触发重跑；排查不稳定性时可有目的地重复并说明要验证的假设。
 - 长输出完整落到 `tmp/test-governance/`，保留原命令退出码；完成后只回传耗时、结果摘要、新失败与日志路径，诊断时再读取有界错误上下文。不把运行命令直接接到 `head`，避免截断进程或误读管道退出码。

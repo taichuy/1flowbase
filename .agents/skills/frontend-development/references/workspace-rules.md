@@ -1,77 +1,28 @@
-# 1flowbase Product Surface Rules
+# Workspace Design Routing
 
-## Execution Order
+## Truth and Lookup
 
-前端涉及工作区时，按这个顺序判断：
+[DESIGN.md](../../../../DESIGN.md) 是页面设计真值。本文件只保存检索与应用方法，不复制 recipe、L1 模型、颜色或移动端参数。
 
-1. 任务域边界
-2. L1 详情模型
-3. 状态语义
-4. token / 视觉细节
-
-前三步没收敛前，不要先抛光样式。
-
-## Fixed Surface Recipes
-
-| 页面 / section | 主块 | 辅助块 |
+| 当前问题 | DESIGN.md 章节 | 实现取证 |
 | --- | --- | --- |
-| `home` | 应用目录、类型 / 标签 / 关键词筛选、创建入口 | 编辑、标签管理、导入入口 |
-| `application/orchestration` | AgentFlow 画布 stage + Inspector + draft/runtime 控制 | 节点选择、版本 / 历史、问题抽屉、移动端摘要 |
-| `application/api` | 当前发布契约摘要 + 接入方式 / 认证说明 + 请求 / 响应结构 | 版本信息、示例片段、变更提示 |
-| `application/logs` | 筛选区 + 运行列表 + Run Drawer / resume card | 时间范围、聚合计数、导出入口 |
-| `application/monitoring` | 健康摘要 + 关键指标卡 / 图 + 异常热点列表 | 时间范围切换、阈值说明、刷新时间 |
-| `settings` | `SectionPageLayout` + 当前设置 section body | `docs / system-runtime / files / model-providers / members / roles` |
+| 属于哪种视觉层 | §1 真值、§2 三种视觉表达层 | theme、app-shell、当前 feature |
+| 页面主任务与辅助区域 | §5 页面构造、§8 Recipe | 当前 route 与 section 定义 |
+| Drawer / Inspector / Modal 选择 | §5.3 详情模型、§7.6 浮层、§9 Editor UI | 同类对象入口、焦点与关闭行为 |
+| 状态、类型与选中颜色 | §3 语义颜色、§9 Editor UI | token、状态 DTO、共享组件 |
+| 控件与交互表达 | §6 组件选择、§7 组件规则 | shared/ui 与调用方 |
+| 小屏布局与键盘 / 触摸 | §10 响应式与可访问性 | 受影响页面运行态 |
+| 局部样式能否承接 | §11 样式边界 | token → 自有 wrapper → 显式 slot |
 
-规则：
+按标题定位当前章节，章节编号只帮助查找。先确定任务域、详情模型和状态语义，再处理视觉细节。
 
-- 一页或一个 section 只回答一个任务域
-- `home` 只承接应用目录、应用创建 / 导入和目录筛选，不承接具体应用的编排、日志、API 正文或运行监控
-- 应用详情 section 统一由 `features/applications/lib/application-sections.tsx` 定义
-- 设置页 section 统一由 `features/settings/lib/settings-sections.tsx` 定义，不重复造侧栏和权限路由真值层
+## Source Ownership
 
-## L1 Detail Models
+- 应用详情 section 查 `web/app/src/features/applications/lib/application-sections.tsx`。
+- 设置 section 查 `web/app/src/features/settings/lib/settings-sections.tsx`。
+- 核对当前定义及其消费者，不复制侧栏、路由或权限真值。
+- 已批准流程与 DESIGN.md / 当前实现不一致时，指出具体差异和影响；已有授权覆盖的实现修正直接继续，需要改变用户结果或设计约束时回到需求对齐。
 
-工作区只允许两种 L1 详情模型：
+## Evidence
 
-| 模型 | 场景 | 规则 |
-| --- | --- | --- |
-| `Drawer` | Shell 列表行，如 run row、日志行 | 模态；带焦点约束；关闭后焦点回退 |
-| `Inspector` | Canvas 对象，如节点、连线 | 非模态；原地更新；保留画布上下文 |
-
-禁止：
-
-- 同类对象有时 `Drawer`、有时 `Modal`、有时跳页
-- 节点详情走 `Drawer`
-- 日志行详情塞进 `Inspector`
-- 未经确认新增第三种 L1 模型
-
-## Status Semantics
-
-| 语义 | 用法 |
-| --- | --- |
-| `running` | 系统正在执行；唯一使用主色的运行态 |
-| `waiting` | 等待外部输入或排队中 |
-| `failed` | 失败、阻塞、需要排查 |
-| `success` / `healthy` | 执行成功或运行正常 |
-| `draft` | 尚未发布 |
-| `selected` | 用户当前选中态，不与运行态混用 |
-
-规则：
-
-- 状态色只表达系统状态，不表达类型和装饰
-- 类型标签一律中性
-- 同一状态在列表、节点、Inspector 三处必须一致
-
-## Button And Copy Discipline
-
-- 只有产生当前上下文可验证结果的控件，才使用 `<button>`
-- 导航项使用 `<a>`，不是 `<button>`
-- 未实现但要占位的入口，降级成链接或静态文本，不保留 primary CTA 视觉
-- UI 文案禁止出现 prompt-like、command-like、internal-instruction-like 表达
-
-## Mobile Downgrade
-
-- `390px` 首屏必须优先展示：状态、标题、当前域主动作
-- 移动端主内容优先，`sidebar` 排到主内容后面
-- `max-width: 768px` 下，编排页隐藏桌面画布，改成摘要块
-- 不要把必须横向滚动的半成品桌面画布塞进小屏
+按实际变化验证任务结构、详情行为、状态语义或小屏路径。合法反例：创建 / 确认可以使用 DESIGN.md 允许的 Modal，不把它误判为新增第三种常规详情模型。验收方式见 [review-checklist](review-checklist.md)。

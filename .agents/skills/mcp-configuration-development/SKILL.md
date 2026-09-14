@@ -16,15 +16,26 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - 从现有 MCP catalog 确认实例、Group、Tool、Binding 和 discovery policy 的真实状态。
 - 以当前源码为原始说明文档，不维护会随产品漂移的静态应用能力清单。
 
-开始设计前，必须完整读取：
+## Read by Change
 
-- [Virtual UI](references/virtual-ui.md)：目录投影、去重和探索原则。
-- [Source Routing](references/source-routing.md)：按问题选择证据源。
-- [Configuration Contract](references/configuration-contract.md)：字段职责与配置边界。
+| 任务 | 必要阅读 |
+| --- | --- |
+| 首次建立领域目录或重组任务路径 | [Virtual UI](references/virtual-ui.md) 与 [Source Routing](references/source-routing.md)；配置前读 [Configuration Contract](references/configuration-contract.md) 的相关对象 |
+| 已有 Tool / mapping / 描述的局部修复 | 先 `mcp_get` 与当前 interface / DTO，再读 Configuration Contract 对应字段；任务语义不明时才补 Source Routing |
+| Group / Binding / discovery 调整 | Virtual UI 的分组与复用规则，加 Configuration Contract 对应对象 |
+| 动态接口或不熟悉的组合契约 | 读 [Configuration Contract](references/configuration-contract.md) 的组合契约与 [Acceptance](references/acceptance.md) 的动态接口 / 缺口分类，不默认读取其他领域 |
+| 验收 | [Acceptance](references/acceptance.md) 的完成判定与命中变化的检查项；保留目标路径的 list/get/call 和关键失败边界 |
 
-应用变更前读取与任务最接近的示例。验收前完整读取 [Acceptance](references/acceptance.md)。
+```text
+本轮写集 ⊆ 已授权实例内的 MCP 配置对象
+阻断某 Tool ⇒ 暂停该 Tool 及依赖路径；独立路径可继续
+```
+
+范围缩小只减少无关阅读，不免除当前 contract、并发状态和写后回读核对。
 
 ## Workflow
+
+以下步骤按缺口应用：局部修复可复用已核实的 GUI 任务路径与 canonical 目录，只检查变化影响的 contract 和引用；不重新执行目录设计或创建批次。新领域建模才完整走任务还原与目录设计。批量写入先验证代表性 Tool，单项修改直接验证该项；两者都保留并发检查、写后回读与目标 list/get/call 证据。
 
 1. 确定一个边界清晰的用户任务范围，列出起点、目标结果和必要前置状态。
 2. 沿 GUI 源码还原人类完成该任务的路径，只提取用户目标和领域词，不复制纯展示组件树。

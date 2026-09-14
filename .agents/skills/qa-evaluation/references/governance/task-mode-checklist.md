@@ -10,10 +10,9 @@
 
 ## Evidence Gate
 
-- 能运行的回归脚本是否已经运行
-- 能执行的局部验证命令是否已经执行
+- 当前验收与直接风险是否已有有效证据；缺失或失效项是否已选择可承受的定向验证
 - 需要看界面时，是否提供了截图或真实交互证据
-- 若评估对象是单一路由或受保护页面，是否优先运行 `node scripts/node/page-debug.js snapshot|open ...` 获取运行态证据
+- 若评估对象是单一路由或受保护页面，是否优先运行 `node scripts/node/page-debug/cli.js snapshot|open ...` 获取运行态证据
 - 需要走用户路径时，是否按入口到完成走了一遍
 - 有 `AC-001` 这类验收点时，是否逐点收集证据并标记 `green / red / 未验证`
 - 页面存在规范化跳转时，是否记录请求路由、最终 URL，以及 `--wait-for-url` 的真实取值
@@ -31,7 +30,7 @@
 | 样式边界 | 是否仍守住 `theme token / first-party wrapper / explicit slot` 边界，是否出现无边界第三方递归覆盖 | CSS 选择器、wrapper class、computed style、blast radius 说明 |
 | 导航真值层 | 导航文案、`route id`、`path`、选中态和权限映射是否仍来自同一事实源 | 路由配置、导航配置、选中态逻辑、spec 对照 |
 | 目录与边界 | 目录是否对齐 spec，文件职责是否仍聚焦，测试目录规则是否仍被遵守 | 目录树、文件职责、`_tests`、行数与目录压力 |
-| Maintainability / Dead Abstraction | 是否存在过度抽象、无用代码、空转封装或无意义 helper / manager / utils；是否只能作为 warning，等待用户同意后再修 | 调用点、导出点、运行路径、边界职责、历史废弃标记、`repo-hygiene` |
+| Maintainability / Dead Abstraction | 是否存在过度抽象、无用代码、空转封装或无意义 helper / manager / utils；是否有影响证据，以及修正是否已在授权范围内 | 调用点、导出点、运行路径、边界职责、历史废弃标记、`repo-hygiene` |
 | 交互流 | 本次改动是否破坏入口、主路径、详情路径或反馈逻辑 | 手动流程、截图、录屏、页面行为 |
 | 变化传播 | 改共享组件、共享状态、公共协议后，其他消费者是否被带坏 | 受影响页面/模块回归、调用方检查 |
 | 前后端字段契约 | 前端消费字段是否沿用后端 DTO / 领域字段名，是否为了展示另起业务字段别名；旧字段兼容是否标记 `@field-contract-compat` 并带废弃计划和测试 | DTO / OpenAPI、api-client 类型、feature API 消费层、`repo-hygiene` warning、定向 contract 测试 |
@@ -46,7 +45,7 @@
 - service、repository、mapper、runtime-core、orchestration-runtime、runtime-profile、plugin-framework、storage-durable/postgres、storage-durable、storage-object 发生变化
 - 任务涉及 `HostExtension`、`RuntimeExtension`、`CapabilityPlugin`、动态建模、`Resource Action Kernel`、文件管理 / 对象存储、验证脚本
 
-执行顺序固定跟随 `../backend/backend-regression-steps.md`，但 Dev Acceptance Gate 必须按 `gate-lanes.md` 的最小证据预算裁剪；不要先看局部代码再回补验证，也不要把专项检查扩展成全量后端门禁。
+先核对后端架构与当前改动 owner，再按 `../backend/backend-regression-steps.md` 选择适用项；Dev Acceptance 遵循 `gate-lanes.md` 的资源边界，不把源码核对扩展为全量后端门禁。
 
 | 检查项 | 要回答的问题 | 常见证据 |
 | --- | --- | --- |
@@ -68,8 +67,8 @@
 - 公共状态改动必须检查其他写入口和读入口
 - 公共 API 改动必须检查调用方是否仍按同一契约工作
 - 前后端字段不一致且无 `@field-contract-compat` 标记时，默认按契约漂移报告；有标记时仍作为 warning 写入 QA 风险和 `tmp/test-governance/repo-hygiene.json`
-- 发现过度抽象、无用代码或空转封装时，只能基于证据输出 finding / warning；删除、合并或重构必须等待用户明确同意
-- 如果局部改动引入公共行为变化，默认至少报 `High`
+- 发现过度抽象、无用代码或空转封装时，只能基于证据输出 finding / warning；未授权的删除、合并或重构需用户确认；已有授权的修正由开发 skill 承接，不重复审批
+- 公共行为变化需核对已确认目标与直接消费者；只对有证据的偏离按影响分级，不把获批变化本身报告为缺陷
 - 后端公共路由改动必须抽查其他调用方、OpenAPI 和相关 `_tests`
 - session、auth、provider 或 callback 改动必须补查 `public` 与 `control` 平面的传播影响
 - `storage-durable/postgres`、`storage-durable`、`storage-object`、`runtime-core`、`orchestration-runtime`、`runtime-profile`、`plugin-framework` 这类基础层改动，默认按高 blast radius 看待

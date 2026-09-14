@@ -1,54 +1,23 @@
-# 1flowbase Visual Baseline
+# Visual Design Routing
 
 ## Authority
 
-- 唯一权威规则源：`DESIGN.md`
-- 外部视觉样本库只能作为灵感，不得与项目 `DESIGN.md` 并列
-- `awesome-design-md` 可局部借鉴技法，不可整份迁移或覆盖当前基线
-- 风格和 UI 质量是正式验收项，不是实现完成后的附属润色
+[DESIGN.md](../../../../DESIGN.md) 是唯一设计规范；本文件只提供定位和应用方式，不维护另一份颜色、圆角、视觉层或状态规范。精确实现值读取该文档 §1.2 指向的 token / theme 源码。
 
-## Product Direction
+| 视觉问题 | DESIGN.md 入口 |
+| --- | --- |
+| 品牌入口、后台工作区、编辑工具如何区分 | §2 三种视觉表达层 |
+| 品牌、状态、类型、选中颜色 | §3 语义颜色系统、§9 Editor UI |
+| 排版、密度、圆角、阴影 | §4 排版、密度、形状与高程 |
+| 选择共享组件与浮层 | §6–7 组件指南与规则 |
+| 页面结构和层次 | §5 页面构造、§8 Recipe |
+| 修改 token、wrapper 或第三方 slot | §11 样式实现边界 |
 
-1flowbase 默认是**工具型控制台**，不是营销页，不是消费型 App：
+## Application
 
-- 白底或浅底，高对比，近黑正文
-- 主色明确，但状态色语义唯一
-- 圆角锐利，主范围 `4px-8px`
-- 阴影克制，只保留卡片和浮层两档
-- 排版偏工具型，不做 hero 式情绪化标题
-- 顶部状态行、摘要行和轻量操作区优先紧凑透明；只承载一行状态文字和按钮时，不做高白卡，直接与页面背景融合
+- 先确认视觉层、对象角色和最近样式 owner，再选择 token / 共享组件 / 显式 slot；不要从一个页面的硬编码值推导全局规范。
+- 外部案例只用于具体技法参考，不与 DESIGN.md 并列为真值，也不整份迁移外部视觉体系。
+- 发现当前实现偏离规范时，指出具体章节、调用方与影响；已授权修正可继续，需要改变设计约束时回到需求对齐。
+- 视觉也是验收目标。按 [browser-verification](browser-verification.md) 取得受影响场景证据；源码符合样式边界不等于页面效果已验证。
 
-默认不接受以下偏移，除非先和人确认：
-
-- 大面积深底 + 白字仪表盘风格
-- `16px+` 大圆角
-- 与状态无关的装饰性彩色
-- 营销页式大标题和品牌化气氛
-- 把一行状态或轻量操作入口包装成高白色卡片
-
-## Two Expression Layers
-
-### Shell Layer
-
-- 面向导航、列表、表单、详情、抽屉、日志、API 页面
-- 基础设施优先复用 `Ant Design`
-- 不能直接裸用默认样式，需要回收到项目 token 和页面语法
-
-### Editor UI Layer
-
-- 面向画布、节点、端口、工具栏、Inspector
-- 比壳层更紧凑、更少装饰，但仍共享同一套 token
-- 只做薄封装，不扩成第二套全站组件库
-
-## Shared Invariants
-
-- 类型 badge 保持中性，不使用状态色
-- `running / waiting / failed / success / draft / selected` 只表达真实语义
-- `selected` 只用 outline 和轻高亮，不占用运行状态颜色
-- Shell 列表状态点、`NodeCard` 状态 badge、Inspector 状态字段必须引用同一组状态变量
-
-## Borrowing From External Inspiration
-
-- 可以吸收 `Vercel` 的边框、阴影和壳层克制感
-- 可以吸收 `Linear` 的密度控制和微交互精度
-- 不要把外部品牌色、深色气氛、营销 hero 直接带进 1flowbase 工作区
+合法反例：品牌登录页与后台工作区可以使用不同装饰强度；DESIGN.md 允许的 Surface / Page surface 圆角不因超过旧的 4–8px 范围而判错。

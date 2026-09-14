@@ -2,6 +2,8 @@
 
 ## Scope
 
+设计预期来自 [DESIGN.md](../../../../../DESIGN.md) 对应章节，精确值查其指向的 token / theme；本清单用于验收方法，不定义平行视觉规范。只检查本次变化与直接风险涉及的 gate，缺少相关运行态证据时限制结论，不自动扩展全站回归。
+
 前端评估命中以下任一条件时，必须追加本清单：
 
 - 导航、路由、壳层、共享布局、共享菜单、主题或样式 token 发生变化
@@ -13,7 +15,7 @@
 
 - 风格和 UI 质量本身就是验收项，不接受“功能可用但视觉先不管”
 - 不能只给代码结论，至少要有截图、真实页面或可复现交互证据
-- 若评估对象是单一路由或受保护页面，优先使用 `node scripts/node/page-debug.js snapshot|open ...` 产出运行态证据，而不是只靠人工口述
+- 若评估对象是单一路由或受保护页面，优先使用 `node scripts/node/page-debug/cli.js snapshot|open ...` 产出运行态证据，而不是只靠人工口述
 - 如果首屏层级、组件对齐、状态表达或浮层布局明显破坏，即使功能可点，也不能判通过
 
 ## Gate 2: Style Boundary
@@ -67,7 +69,7 @@
 
 - `web/app/src/style-boundary/scenario-manifest.json` 只维护三件事：页面场景、组件场景、文件影响面映射
 - manifest 中的 `propertyAssertions` 只用于样式边界断言，不用于泛 UI 质量主观判断
-- 前端 QA 只知道页面路由、需要自动登录、稳定等待、截图、控制台或 `html/css/js` 证据时，优先运行 `node scripts/node/page-debug.js snapshot <route> --wait-for-selector ...`
+- 前端 QA 只知道页面路由、需要自动登录、稳定等待、截图、控制台或 `html/css/js` 证据时，优先运行 `node scripts/node/page-debug/cli.js snapshot <route> --wait-for-selector ...`
 - 页面存在规范化跳转时，补 `--wait-for-url <final-url>`；报告里应写明请求路由与最终 URL，避免把旧路由口径当成当前事实
 - `page-debug` 成功后，报告应至少引用 `outputDir` 和其中的 `meta.json`、`page.png`、`console.ndjson`；若需要 DOM / 资源证据，再引用 `index.html`、`css/`、`js/`
 - 导航、共享壳层、全局样式、第三方 slot 覆写改动后，必须至少运行一次 `node scripts/node/tooling.js check-style-boundary component|page|file ...`

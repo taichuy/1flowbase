@@ -1,92 +1,51 @@
 ---
 name: frontend-development
-description: "Use for 1flowbase frontend implementation and code review in web/: pages, app shell, routes, schema/node UI, API and permission consumption, streaming state, i18n, styles, and charts. Apply after requirement alignment or an explicit request to implement directly; use problem-framing for product decisions and qa-evaluation for acceptance reports."
+description: 实现或审查 1flowbase web/ 页面、交互、schema UI、样式与接口消费。按 DESIGN.md 和当前源码定位 owner；需求决策用 problem-framing，正式验收用 qa-evaluation。
 ---
 
 # Frontend Development
 
-## Overview
+## Outcome and Entry
 
-本 Skill 是 1flowbase 前端实现期的边界守门员，不负责替代需求对齐或 QA 验收。进入这里时，默认已经有清晰目标、范围、成功标准和用户拍板点；本 Skill 只负责把已确认的 UI / frontend 任务按项目规则落到 `web/`。
+把已确认的用户流程落到现有前端结构，保留设计与业务真值。进入 `web/` 先读 [web/AGENTS.md](../../../web/AGENTS.md) 及改动目录的局部规则；复用已确认目标、授权和 AC，不重复对齐或另开 issue。
 
-## Entry Contract
+行为验证使用 `test-driven-development` 的风险策略；缺失业务语义或扩大目标、权限、contract 时回到 `problem-framing`，局部实现选择继续执行。
 
-- 需求仍有多方向选择、产品拍板、跨前后端边界、架构影响或非局部重构时，先回 `problem-framing`。
-- 已确认方向或用户明确要求直接实现时，复用现有目标、范围、主路径和成功标准，不重复需求模板或申请同一授权；用户明确跳过 issue 时不另开 issue。
-- 涉及可测试行为变化时，先联动 `test-driven-development`；不能走 TDD 时，交付说明必须写明替代验证。
-- 用户要求自检、验收、回归、质量报告或证据结论时，切到 `qa-evaluation`。
-- 进入 `web/` 前先读 `web/AGENTS.md`；存在更近的 `AGENTS.md` 时按最近规则执行。
+## Design Truth and Architecture
 
-## When to Use
+[DESIGN.md](../../../DESIGN.md) 是前端设计真值；先理解第 1–2 节的真值关系和视觉层，再按任务定位章节。精确 token 值和实际组件能力查它指向的源码，不从偶然页面样式反推全局设计。skill 只说明如何定位、应用和验证，不维护第二份 recipe / 状态色 / 断点规范。
 
-- 新增或修改 `home / applications / settings / embedded-apps / tools` 页面，或 `orchestration / api / logs / monitoring` 应用详情 section。
-- 改动壳层列表、抽屉、编排画布、`Inspector`、节点组件、schema renderer、overlay shell 或节点定义目录。
-- 调整页面级流程、交互流、视觉结构、响应式布局、前端状态边界或同类对象行为。
-- 新增或调整前端多语言资源、语言切换入口、UI copy key / value / unused-key 规则。
-- 新增或调整报表 / 图表 UI、`echarts` 宿主渲染、低代码 JS Block 图表 primitive / facade。
-- 判断实现落点、组件拆分、hooks 拆分、接口消费链或样式边界。
+```text
+设计约束：DESIGN.md → theme / token → shared UI → feature 局部实现
+业务真值：backend DTO → api-client → feature api → UI
+结构归属：app-shell / routes → features/* → shared/*（仅真实共享）
+```
 
-**不要用于**
+- Shell 复用 Ant Design 与现有共享组件；Canvas / Inspector 使用现有 Editor UI，不另建视觉体系。
+- 业务数据、权限、状态原因、排序 / 筛选 / 聚合由后端提供；前端拥有展示、交互与客户端草稿，不推断缺失业务真值。
+- 接口字段沿用后端 DTO 原名；导航与按钮可见性不构成 API 授权。
+- 单 feature 请求编排留在 feature api，跨 feature 真实复用才提到 shared/api；schema 关系为 `shared/schema-ui → feature schema → node definitions → renderer / consumer`。
 
-- 纯后端接口、状态机、核心业务规则设计。
-- 纯需求澄清、方案选择、issue shaping 或 ADR。
-- 纯 QA 报告、回归结论或质量门禁路由。
+## Read by Task
 
-## Core Invariants
+只读取命中任务与直接风险的行；设计与源码冲突时说明偏离，不能以同步为由修改产品语义。
 
-- `DESIGN.md` 是前端任务域、L1 模型、状态语义和页面 recipe 的主规则源。
-- `Ant Design` 负责 Shell Layer，`Editor UI` 只做薄封装，不另起一套视觉语言。
-- 前端展示和交互所需业务数据以后端接口为唯一真值来源；缺字段、排序、筛选、计数、权限、状态原因或聚合结果时，先补后端 DTO / API / 聚合查询。
-- 接口字段名沿用后端 DTO / 领域语义；UI 展示名可以本地化，但不得为展示文案另起接口字段别名。
-- 路由和菜单只拥有导航与展示配置；接口授权、operation 目录和业务终态消费后端 contract，不从页面路径、按钮可见性或连接状态推断。
-- 先定主路径、详情规则、反馈位置和模块协作，再拆组件、落结构、补样式。
-- 新抽象、公共 props、bool/flag 分支、helper/manager/utils、pass-through 组件或重复 defensive check，先读 `../_shared/design-rules.md`；命中则回到 `problem-framing` 做更小 redesign。
+| 任务信号 | 最短入口 |
+| --- | --- |
+| 工作区、页面 recipe、L1 详情、状态或响应式 | [workspace-rules](references/workspace-rules.md) → DESIGN.md 对应章节 |
+| 目录落点、API 编排、schema / node 分层 | [placement-rules](references/placement-rules.md) |
+| 入口层级、同类对象行为、反馈位置 | [interaction-architecture-gate](references/interaction-architecture-gate.md) |
+| DTO、权限消费、取消、流式状态 | [consumer-contracts](references/consumer-contracts.md) → 受影响源码 |
+| i18n key / value、owner、unused key | [i18n-rules](references/i18n-rules.md) |
+| 样式、第三方 slot、共享组件覆写 | [visual-baseline](references/visual-baseline.md)；运行态再读 [browser-verification](references/browser-verification.md) |
+| 报表、ECharts、JS Block chart | [chart-reporting](references/chart-reporting.md) |
+| 新公共 props、抽象、重复防御或转发层 | [design-rules](../_shared/design-rules.md)；具体坏味道查 [anti-patterns](references/anti-patterns.md) |
+| 实现完成、直接风险自查 | [review-checklist](references/review-checklist.md) |
+| 修改本 skill 或检查合法例外 | [pressure-scenarios](examples/pressure-scenarios.md) |
 
-## Implementation Routing
+## Execution and Handoff
 
-- 页面 recipe、工作区语法、详情模型：读 `references/workspace-rules.md`。
-- 目录落点、接口消费、schema UI 分层：读 `references/placement-rules.md`。
-- 入口、层级、L0 / L1 / L2 / L3、详情容器或同类对象行为：读 [references/interaction-architecture-gate.md](references/interaction-architecture-gate.md)，核对已确认交互；未决产品取舍交给 `problem-framing`。
-- 接口 / 权限目录消费、角色编辑、请求取消或流式状态：读 [references/consumer-contracts.md](references/consumer-contracts.md)，只加载命中的契约章节与源码。
-- 多语言资源归属、key / value 语义和 unused-key 规则：读 `references/i18n-rules.md`。
-- 视觉基线、第三方 slot、共享样式边界：读 `references/visual-baseline.md`；需要运行态证据时再读 `references/browser-verification.md`。
-- 报表 / 图表 / ECharts / JS Block chart primitive：读 `references/chart-reporting.md`。
-- 实现收尾自查：读 `references/review-checklist.md` 和 `references/anti-patterns.md`；需要正式 QA 结论时切到 `qa-evaluation`。
-- 修改本 Skill 或判断规则是否误伤局部任务时：读 [examples/pressure-scenarios.md](examples/pressure-scenarios.md)，用正反例检查决策边界。
-
-## Implementation Rules
-
-- Placement chain: `app-shell / routes / features/* / shared/*`；feature 内部可按 `api / components / hooks / lib / pages / schema / store` 拆分。
-- API consumption chain: `api-client -> features/*/api -> UI`；仅跨 feature 共享请求编排时提取到 `shared/api`，它不是每个请求的必经层。
-- Data truth chain: `database/domain/repository -> backend route response -> api-client DTO -> feature api -> UI`。
-- Schema UI chain: `shared/schema-ui -> features/*/schema -> features/*/lib/node-definitions`。
-- Node implementation chain: `node-definitions -> schema fragments/registry -> renderer -> consumer`。
-- I18n resource chain: UI 文案跟随最近 owner 的 `i18n/`，中央只负责发现、校验和加载。
-- Style chain: `theme token -> first-party wrapper -> explicit slot -> stop`。
-- Frontend test runtime chain: 测试入口继续走仓库脚本包装器；资源限制统一读取 `.1flowbase.verify.local.json`，不要把并发重新写死进 `package.json`。
-
-## Bounce Back Conditions
-
-- 发现产品目标、信息架构、contract、权限、状态归属或跨前后端职责未确认，停止实现并回 `problem-framing`。
-- 缺少后端真值字段、聚合接口或契约测试，联动 `backend-development`，不要在前端推断业务真值。
-- 需要输出验收通过 / 失败、质量报告、回归矩阵或证据结论，切到 `qa-evaluation`。
-- 任务超出已确认 issue 范围，停止并要求更新 issue 或重新对齐。
-
-## Exit Handoff
-
-- 交付时写清修改的页面、组件、API 消费链、状态边界和样式边界。
-- 交付说明必须包含 context capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口；只写可检索指针，不复制代码或重述完整 diff。
-- 若 issue / handoff 有 `AC-001` 这类验收点，交付时标明已覆盖、未覆盖和延后到 QA / CI 的点。
-- 当前本地开发分支优先跑与本次 UI / contract / state 改动直接相关的 `tsc`、定向 consumer test、局部 page-debug / screenshot 或单文件 lint。
-- 证据按 [review-checklist](references/review-checklist.md) 的风险路由选择并复用；验收点与直接风险已有充分证据时停止，不因进入自检重复跑同一门禁。规则文档变更验证引用、边界和反例，不冒充产品运行态验收。
-- 完整 frontend lint / build / full style-boundary / i18n hygiene / verify-repo 默认交给 beta / CI / 专门质量工作区；需要本地提前跑时，必须在对齐 / 已批准计划 / handoff 阶段先说明证据收益和成本。实现期临时发现时默认标为未验证，除非缺少该证据会影响继续实现安全性或当前任务完成判断。
-
-## Common Mistakes
-
-- 为了“统一”过早抽组件、hooks、bool prop、通用 helper、manager 或只转发 props 的组件层。
-- 把页面根组件堆满状态、请求、弹窗、协议转换和渲染逻辑。
-- 用 `finished_at ?? started_at`、字符串拼接、ID 拆解、前端枚举映射、mock 数据或局部缓存冒充后端没有返回的业务字段。
-- 把节点定义、schema contract、renderer registry、consumer UI 再次堆回同一文件。
-- 不同步 `route id / path / selected state` 真值层，只改导航文案。
-- 还没过交互架构 gate，就让列表、卡片、抽屉、按钮各自决定点击结果。
-- 把状态色拿去表达类型、装饰或品牌。
+- 先确认主路径、详情规则、反馈位置与 owner，再落组件与样式；缺后端 DTO / 聚合时联动 `backend-development`，不添加前端兼容推断。
+- 测试资源沿用仓库包装器与 `.1flowbase.verify.local.json`，不写死并发；执行成本、停止与证据复用见 `test-driven-development`。
+- 完成开发后使用 `qa-evaluation`；交付保留页面 / 组件 / API 消费链、关键决策与证据指针，已有 AC 逐点映射，不复制代码或重述 diff。
+- 当前结果与直接风险证据充分即停止；缺证据明确标为未验证，不自动升级全仓 lint / build / 浏览器回归。

@@ -1,167 +1,85 @@
 ---
 name: qa-evaluation
-description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project and AI code audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contracts, console settings registry and API-scope authorization, status/boundary/runtime checks, scope/error-handling acceptance, database/index/query-plan/ephemeral review, algorithm/data-structure/state/concurrency review, logs/observability, test-asset lifecycle, foundation contracts, hotspot/churn prevention, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
+description: 验收或审计 1flowbase 当前任务、PR 或项目质量。对照已确认目标、设计/架构约束和当前实现收集证据，识别开发偏离并报告已验证、失败与未验证；不默认扩展为全量测试或修复。
 ---
 
 # QA Evaluation
 
-## Overview
+## Outcome and Authority
 
-`qa-evaluation` 不是另一个开发 Skill，而是 1flowbase 的质量评估器。开发阶段默认不自动注入完整测试门禁；进入自检、验收、回归或交付阶段后，再由这个 Skill 负责选择脚本、收集证据并输出 QA 结论。它默认只产出问题报告与修正方向，不直接改代码。
+独立判断实现是否满足目标与架构边界，不能只复述开发者说明或测试绿灯。QA 负责取证与结论，默认不修改产品；已有修复授权可由对应开发 skill 承接，不重复申请同一授权，也不扩张到未授权清理。
 
-质量门禁先分 lane 再选证据：开发后验收优先快，PR 门禁优先合并信心，项目体检优先完整健康快照和维护者感知。当前本地开发分支专注结果验证和尽早发现直接问题；仓库级、线上级、重型质量门禁默认交给 beta / CI / 专门质量工作区。不要把三种资源边界混成一套重门禁。
+当前任务的目标 / AC、设计和架构约束、源码与行为证据分别承担不同职责。文档与实现冲突时定位偏离及影响，不把改文档、改测试或改产品视为自动获准。
 
-Project Health Gate 的顺序固定为：先确认 lane 和范围，再建立质量维度矩阵，再把脚本、artifact、日志、截图、代码证据归类到矩阵，最后输出 findings。当前失败脚本或错误报告只是证据来源，不得成为项目体检的完整范围或主线。
+## Architecture Baseline
 
-## When to Use
+先取得本次所需的架构认知，再检查实际调用与效果；不要求先读全局架构或所有专项。
 
-- 功能完成后，需要对当前任务做质量回归
-- 改了共享组件、共享状态或公共 API，需要检查变化传播
-- 用户明确要求“全量评估项目现状代码”
-- 需要输出结构化 QA 报告，而不是直接进入修复
-- 需要判断 UI、流程、响应式、API、状态和架构边界是否仍然成立
-- 需要评估后端接口、状态入口、插件消费边界、runtime 行为或工程质量门禁是否仍然符合最新规范
-- 需要检查多语言 key / value、未引用 key、locale 文件名、翻译资源归属或 `i18n-hygiene` 报告
-- 需要分析昨天/今天、近两天或近期代码热点、反复修改、churn 来源，并把问题转化为 AI 下次少犯错的 skills / AGENTS / 质量门禁 / 代码环境优化
+| 范围 | 规范真值与阅读路径 | 核对实际实现 |
+| --- | --- | --- |
+| 前端 | [DESIGN.md](../../../DESIGN.md) 的真值 / 视觉层及相关章节；[web/AGENTS.md](../../../web/AGENTS.md) 与最近局部规则 | 页面任务、详情模型、状态 / 权限消费、组件与样式 owner |
+| 后端 | [api/AGENTS.md](../../../api/AGENTS.md)；[调用架构](../../../docs/architecture/interface-lifecycle.md) 总览及相关主题；crate 变化查 [crates/AGENTS.md](../../../api/crates/AGENTS.md) | Protocol → Canonical Interface / 冻结计划 → typed Handler → Business / Execution；调用图不冒充 Cargo 依赖图 |
+| 跨前后端 | 后端 DTO / interface 与已确认用户流程 | 字段原名、授权与业务真值 owner、真实消费者，不以 UI 隐藏证明 API 权限 |
+| 规则 / tooling | 当前规则 owner、调用入口、历史失败及合法反例 | 能否识别目标失败且不误伤合法任务；不因文档改动启动产品门禁 |
 
-**不要用于**
-
-- 直接实现或修复功能
-- 纯代码风格讨论
-- 没有范围和验收场景的泛泛“看一眼”
-
-## The Iron Law
-
-没有直接证据，不得下 QA 结论。默认只报告和 warning，不直接修；任何修复、删除或重构都必须得到用户明确同意。
-
-用户可见文案是开发者已调好的产品内容，不是 QA 修复素材。除非用户在当前任务中明确要求改文案，否则 QA / i18n hygiene 不得修改任何展示给用户的字符串值；只能报告问题、复用既有 key、调整 key 引用、合并重复 key、删除确认失效 key，且必须保留原文案值。
+架构符合性与行为正确性分别结算：测试通过不能证明未绕过 Kernel / owner；源码符合架构也不能证明运行行为通过。源码可证明具体依赖或调用越界，运行后果若未取证则注明限制。
 
 ## Code Acceptance Checks
 
-Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定到证据：文件 / 函数 / 调用点 / 运行路径 / 测试 / 日志 / 截图 / artifact。只凭“看起来复杂”不能下 finding；证据不足时写 `未验证，不下确定结论`。
+```text
+C = 本次验收目标 ∪ 适用架构约束 ∪ 直接传播风险
+R = {规则 r | r 与 C 相关}
+结论(c) ∈ {通过, 失败, 未验证}，c ∈ C
+```
 
-- `Maintainability`: 检查是否为了拆分而拆分、把完整业务流程拆成多个只调用一次的微型私有方法、引入无领域责任的 helper / utils / manager / adapter，或让主业务路径需要频繁跳转才读懂。单个方法超过约 80 行只是调查信号，不是自动 blocker；业务流程连贯且可读时不要强行要求拆分。
-- `Error handling`: 检查静默 fallback、默认值兜底、吞错、泛化错误、绕过逻辑和无业务语义防御代码。只有错误路径真实存在且符合当前边界时才建议错误处理；不应该发生的状态优先暴露问题、收敛状态来源或修正数据流。
-- `Scope and boundary`: 检查实现是否只覆盖已确认范围，是否顺手重构无关逻辑，是否为了局部方便破坏领域模型、状态模型、权限模型、contract 或前后端职责边界，是否把复杂度扩散到多个调用点或隐式约定里。
-- `Test compatibility`: 失败测试必须先对照当前 spec / ADR / 已确认验收预期 / 后端 DTO contract / 用户任务边界。旧测试不是兼容要求本身；若旧断言与新确认行为冲突，报告为过期测试期望或测试债，要求更新 / 删除对应测试证据，不得为了让旧测试通过添加 legacy alias、fallback、回退路径或弱化状态 / contract。无法证明新行为已被确认时，只能写 `未验证，不下确定结论`。
-- `Acceptance point settlement`: issue / handoff 有 `AC-001` 这类验收点时，QA 必须逐点给 `green / red / 未验证`、证据和残余风险；机械门禁通过只能作为证据，不能替代验收点结论。
-- `Context capsule`: 交付后若验收点通过，输出压缩 capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口。capsule 只写指针，不复制代码；代码仓库仍是真值来源。
-- `Quality rule change`: 新增或调整 AGENTS / skills / repo hygiene / 质量门禁规则时，必须检查目标、验收证据、资源边界和停止条件；质量规则本身还要有反方样例、确定性 fixture 或历史证据、人工确认点。
+`C` 是本次应评估事项，`R` 是需读取的规则；项目体检的 `C` 来自完整质量维度矩阵，不能被局部 diff 限缩。逐项寻找证据，不因名字相似加载全部专项。
 
-## Code Audit Routing
+- finding 绑定规则来源、具体位置 / 调用链、证据与影响，并检查合法反例；命名、行数或主观复杂度仅是调查信号。
+- 维护性检查聚焦真实职责与复杂度传播；单调用方层承担事务、权限或错误映射时不算空转抽象。方法长不自动阻断。
+- 核对静默 fallback、吞错、泛化错误和重复防御是否违背当前 contract；不把新增兼容层当作默认修复。
+- 失败先归因产品回归、contract 破坏、fixture / 环境故障或过期预期。旧测试不自动构成兼容要求，不能为收绿弱化当前 contract。
+- `existing-codebase` 只把本次引入 / 触发或已纳入范围的问题作为 blocker；既有债默认 warning。证据不足写 `未验证，不下确定结论`。
+- QA / i18n 清理不得顺手改变用户可见文案值；用户明确授权的文案变更按任务处理。临时字段兼容沿用项目 `@field-contract-compat` 规则及 warning，不新增展示字段别名。
 
-代码审计先读 `references/audit/code-audit-model.md`，再只加载命中风险信号的专项卡；不得默认把全部审计 reference 注入上下文：
+## Lane and Evidence
 
-- 数据库、索引、query plan、capacity、JSONB、retention 或 ephemeral：`references/audit/database-query-ephemeral.md`
-- 算法、数据结构、状态机、并发、幂等或语义重复：`references/audit/algorithms-state-concurrency.md`
-- 日志、旁路、可观测性、correlation 或 live/durable seam：`references/audit/observability-log-pipeline.md`
-- 测试生命周期、短命测试、harness、测试资产合并/删除候选：`references/audit/test-asset-lifecycle.md`
-- AI Gateway、MCP Gateway、Application Backend、Native React / 低代码基座：`references/audit/foundation-audit-cards.md`
+默认 Dev Acceptance；按 [gate-lanes](references/governance/gate-lanes.md) 区分任务验收、PR 合并门禁与项目体检，遇到模式歧义再查 [modes](references/governance/modes.md)。
 
-完整审计只有在风险域可独立且并行能降低上下文污染时，才由 Root 启动 1～3 个只读专项 subagent；subagent 不修改、不嵌套调度，Root 统一去重、交叉验证和严重级别。
+- Dev Acceptance：当前目标与直接风险，复用有效证据，补缺口；不自动跑全仓门禁。
+- PR Merge：使用对应候选的 CI / artifact；本地通过不冒充远端门禁通过。
+- Project Health：先用 [project-evaluation-checklist](references/governance/project-evaluation-checklist.md) 建质量维度矩阵，再归类证据与风险；单个失败脚本不代表体检全范围。
+- Issue Tree：遵循 [long-running-work](../problem-framing/references/long-running-work.md)，全部产品与 fixture 装配冻结后由一个 fresh QA 集中验收，不做 per-packet QA。一次返回全部 blocker，修复后只补受影响证据；语义 / 范围变化或同根因第二次失败回到 Root 定界。
+- 执行成本、并发、资源失败转向、日志和证据失效条件统一使用 [test-driven-development](../test-driven-development/SKILL.md#execution-cost-and-stop-conditions)。换 agent 或进入收尾不自动使证据失效；编译、零用例与未完成链接不算行为测试通过。
+- 四基座需要对应 candidate-bound receipt，通用 tooling green 不替代；资源限制触发时停止该验证路径并列出缺口，不宣布验收通过。
 
-## Quick Reference
+## Read by Risk
 
-- 开发阶段默认不加载完整质量门禁；功能完成后再主动进入 `qa-evaluation`
-- Issue Tree 不做 per-packet / per-Delivery reviewer 或 QA；Root 下全部开发与 fixture Work Packet 进入冻结 assembly SHA 后，才启动一个 `fork_turns=none` 的全新 QA agent。
-- QA 一次性输出完整 blocker 集合。Root 转换为 fix Packet，全部修复装配后再启动新的单一 QA；同一根因第二次失败、验收语义变化或范围继续增长时回到 `problem-framing`，不无限循环。
-- 先按 `references/governance/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
-- 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
-- `Dev Acceptance Gate` 复用仍有效的开发证据，只补缺失或已失效的直接风险证据；资源边界触发时结束该验证路径并保留未验证项，不把停止执行等同验收通过。执行成本、失败转向、日志与证据失效条件统一遵循 [test-driven-development](../test-driven-development/SKILL.md#execution-cost-and-stop-conditions)。
-- 长计划的 Dev Acceptance Gate 只针对冻结 assembly candidate 执行一次；Work Packet commit、局部 compile 或自检只作为装配证据，不能触发独立 QA 或结算 AC。
-- `existing-codebase` 任务默认只把本次引入的问题作为 blocker；既有债务、旧覆盖率缺口或历史 warning 只有被当前 issue 明确纳入时才阻断当前验收
-- 有验收点账本时，QA 输出必须按点结算；没有账本时才按目标 / 风险维度组织结论
-- 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；重型验证默认延后到 beta / CI / 专门质量工作区；按实际范围、构建成本与运行态影响分类，当前规则的轻量 hygiene 扫描不因名称含 repo 而自动延后
-- `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
-- `Project Health Gate` 追求维护者感知：先按 `references/governance/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
-- `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
-- 通用 frontend/backend/tooling green 不能结算某个基座；命中 AI Gateway、MCP Gateway、Application Backend 或 Native React 时，必须读取 candidate-bound foundation receipt 或把该基座写为未验证
-- 失败测试必须分流为产品回归、contract 破坏、测试环境问题或旧测试期望过期；只有当前 spec / contract / 验收预期仍支持旧断言时，才把失败作为 blocker。旧测试与新 contract 不兼容时，QA 报告要求更新测试，不要求实现兼容旧断言
-- 评估前先读 `.memory/AGENTS.md`、`.memory/user-memory.md`、项目记忆、反馈记忆和相关 spec
-- 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/governance/repo-quality-gates.md`
-- 四大基座、组合缝隙、fast/full pack、receipt 与 warning 语义看 `references/governance/foundation-contract-gates.md`
-- 多语言 key / value hygiene、warning 解释和修复边界看 `references/frontend/i18n-hygiene-gate.md`
-- 需要处理周期性质量门禁值守、GitHub Issue / Actions 报告闭环或无权限贡献者本地门禁取证时，看 `references/governance/quality-gate-watch.md`
-- 评估范围命中容器镜像、Trivy、GHCR、Dockerfile、基础镜像或镜像漏洞报告时，再加载 `references/security/container-image-security.md`
-- 如果评估范围命中后端，必须先读 `api/AGENTS.md`，再对齐 `.memory/project-memory` 中最近的后端规范、计划和插件边界记忆，不能沿用旧口径
-- `task mode / Dev Acceptance Gate` 必查：验收场景、交互流、变化传播、状态 / API / 数据映射、关键回归；后端 API 任务必须把已确认验收预期与 TDD / 定向接口 evidence 对照，不能只凭编译、cargo 或代码阅读下结论
-- `project evaluation mode / Project Health Gate` 必查：UI 一致性、流程逻辑、响应式降级、API 契约、状态数据一致性、架构边界、测试缺口、风险热力图和维护建议；后端接口体检使用 mock / fixture / 受控数据跑质量门禁，检查状态是否正常、返回结构是否稳定、值是否正确、过期 / 禁用 / 缺失状态是否符合预期
-- 前后端字段契约必查：接口字段名必须沿用后端 DTO / 领域语义；展示文案可本地化，但不得为展示另起业务字段别名
-- 用户可见文案硬边界：不得改 locale value、按钮/菜单/标题/导航/placeholder/empty/error/help text、schema label、节点展示名或默认 alias 等任何用户能看到的字符串；发现错字、不一致或表达问题时只写 finding / warning，并要求产品或开发者确认新文案
-- i18n hygiene 修复边界：不得为了消除重复 value、未引用 key 或 common 抽取 warning 改文案值；只能复用既有 key、调整 key 引用、合并重复 key、删除确认失效 key，或保留相同文案值并说明原因
-- 临时兼容旧字段必须标记 `@field-contract-compat source=... alias=... remove_by=yyyy-mm-dd`，带废弃计划和测试；QA 报告和 `repo-hygiene` 必须把它作为 warning 暴露
-- 命中过度抽象、无用代码、空转封装、死代码或无意义 helper / manager / utils 时，加载 `references/governance/maintainability-dead-abstraction.md`；只能基于调用方、边界、运行路径或历史证据输出 finding / warning
-- 命中碎片化拆分、微型私有方法、业务流程连贯性下降、静默 fallback、默认值兜底、吞错、绕过逻辑或无语义防御代码时，必须使用本文件 `Code Acceptance Checks` 和 `references/governance/anti-patterns.md` 归类；未经用户确认不得直接修复
-- 热点修改复盘必查：高频文件、提交意图、反复修改原因、缺失的前置判断规则，以及应更新的 `skills / AGENTS / scripts/node` 门禁；报告重点是预防下一次 AI 返工，不是只列业务代码修复建议
-- 评估范围命中前端页面、导航、样式、共享壳层或第三方组件覆写时，必须加载 `references/frontend/frontend-quality-gates.md`
-- 评估范围命中前端页面运行态、受保护页面、路由跳转、浏览器截图或控制台证据时，优先运行 `node scripts/node/page-debug.js`
-- 评估范围命中前端样式边界时，优先读取 `node scripts/node/tooling.js check-style-boundary component|page|file|all-pages ...` 的运行结果；它只说明边界/扩散是否通过，不直接说明泛 UI 质量
-- 评估范围命中共享 console API DTO、`style-boundary` mock、settings / agent-flow 的 model provider consumer 时，必须检查 `node scripts/node/cli/test-contracts.js` 或等价四条定向 contract consumer vitest，并确认 `verify-repo` 已包含该 gate
-- 评估范围命中前端 `i18n/`、插件 `i18n/`、语言切换或 UI 文案抽取时，必须运行或读取 `node scripts/node/tooling.js i18n-hygiene`
-- 没有运行时证据时，前端样式结论默认降级为受限结论
-- 只要评估范围涉及后端 API、状态入口、插件边界、runtime、`Resource Action Kernel`、HostExtension registry 或 `route / service / repository / domain / mapper` 分层，就必须加载后端专项检查
-- 接口装配、认证、Kernel、流式收尾或协议等价验收：读取 [references/backend/interface-lifecycle-gate.md](references/backend/interface-lifecycle-gate.md)，按风险选择有限矩阵并引用本地架构主题；不将清单数量、零测试或直连 mock 当作真实接口证据。
-- 后端任务按当前变更和直接传播风险选取检查项，不适用项无需另行取证：已确认验收预期、入口分区与四个责任平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
-- 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/backend/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
-- 后端范围命中后台设置注册、Settings API、角色设置授权、HostExtension console surface、注册 CLI 或 route inventory 时，必须加载 `references/backend/console-settings-registration-gate.md`；不能用前端隐藏、源码 regex 或中间件已挂载替代 compiled route ownership 与授权正反例证据。
-- Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
-- Rust 变化按受影响行为检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await 或数据库约束；只执行当前风险所需的 Rust 门禁，不因语言相同扩展到无关子系统
-- Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
-- Cargo 并发、构建成本与日志遵循上述共享执行规则；测试过滤器不保证缩小链接单元，`cargo check --tests` 不能作为行为测试通过的证据。
-- 验证边界由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
-- 前端层级、入口、L0 / L1 / L2 / L3 问题：使用 `frontend-development` 的 `interaction-architecture-gate`
-- 后端契约、状态入口、边界污染问题：联动 `backend-development`
-- 项目体检发现非硬性维护问题时，联动 `problem-framing` 输出现状、方向、风险收益和建议；硬性门禁失败才进入质量回归修复
-- 无法验证时必须明确写：`未验证，不下确定结论`
+下表是检索路由，不是全量阅读清单。命中后只读相关章节；工具选择结合真实执行成本，已有有效 artifact 可复用。
 
-## Implementation
+| 风险 / 任务信号 | 证据与专项入口 |
+| --- | --- |
+| 当前任务的 AC、直接回归 | [task-mode-checklist](references/governance/task-mode-checklist.md) |
+| 选择命令或修改质量规则 | [repo-quality-gates](references/governance/repo-quality-gates.md)，规则变更检查目标、反例、证据、资源与授权 |
+| 页面 / 壳层 / 样式 / 第三方 slot | [frontend-quality-gates](references/frontend/frontend-quality-gates.md)，结合 DESIGN.md；`check-style-boundary` 只证明样式边界 |
+| 层级、入口、同类对象交互 | [interaction-architecture-gate](../frontend-development/references/interaction-architecture-gate.md) |
+| 页面运行态与认证浏览器 | [browser-verification](../frontend-development/references/browser-verification.md)，`page-debug`；无运行态证据则限制视觉结论 |
+| 共享 DTO / consumer / style-boundary mock | `node scripts/node/cli/test-contracts.js` 或等价定向 consumer 证据，并核对仓库 gate 接入 |
+| i18n 资源、语言切换、key 引用 | [i18n-hygiene-gate](references/frontend/i18n-hygiene-gate.md)，运行或读取有效 `i18n-hygiene`，保留动态 key 原因 |
+| 后端 API / 状态 / 插件 / 上游错误 contract | [backend-regression-steps](references/backend/backend-regression-steps.md)；认证运行态使用 `api-debug` session owner |
+| 入口装配、认证、Kernel、stream 或协议等价 | [interface-lifecycle-gate](references/backend/interface-lifecycle-gate.md) → 架构相关章节，取有限真实边界证据 |
+| Rust 类型、async、锁、事务、幂等 | [rust-backend-quality-gates](references/backend/rust-backend-quality-gates.md)；核对相关 completion self-check，不跑无关子系统 |
+| 系统内置模型与用户 metadata | [builtin-data-model-contract-gate](references/backend/builtin-data-model-contract-gate.md) |
+| Settings API / 注册 / operation 授权 | [console-settings-registration-gate](references/backend/console-settings-registration-gate.md)，不能用 UI 隐藏或 regex 代替 compiled ownership 与授权正反例 |
+| workspace / system / scope_id | [scope-id-routing](references/backend/scope-id-routing.md) |
+| 数据、算法、并发、日志、测试资产或完整代码审计 | [code-audit-model](references/audit/code-audit-model.md) → 只加载命中的专项卡 |
+| 四基座与组合缝隙 | [foundation-contract-gates](references/governance/foundation-contract-gates.md)；审计用 [foundation-audit-cards](references/audit/foundation-audit-cards.md) |
+| 过度抽象、死代码、错误兜底 | [maintainability-dead-abstraction](references/governance/maintainability-dead-abstraction.md)、[anti-patterns](references/governance/anti-patterns.md) |
+| 热点 / 反复修改 / churn 复盘 | [hotspot-prevention](references/governance/hotspot-prevention.md)，从实际任务提炼下一次可避免的返工 |
+| 容器 / 镜像 / Trivy / GHCR | [container-image-security](references/security/container-image-security.md) |
+| 周期性质量值守或 GitHub 闭环 | [quality-gate-watch](references/governance/quality-gate-watch.md)，外部操作沿用用户授权 |
 
-- Mode selection and session bias: `references/governance/modes.md`
-- Gate lane model and resource boundaries: `references/governance/gate-lanes.md`
-- Repository quality gate routing: `references/governance/repo-quality-gates.md`
-- I18n hygiene gate: `references/frontend/i18n-hygiene-gate.md`
-- Quality gate watch scenarios: `references/governance/quality-gate-watch.md`
-- Hotspot prevention review: `references/governance/hotspot-prevention.md`
-- Maintainability / dead abstraction checks: `references/governance/maintainability-dead-abstraction.md`
-- Task-scoped checks: `references/governance/task-mode-checklist.md`
-- Full-project checks: `references/governance/project-evaluation-checklist.md`
-- Frontend quality gates: `references/frontend/frontend-quality-gates.md`
-- Route-scoped runtime evidence: `node scripts/node/page-debug.js snapshot|open ...`
-- Interface lifecycle and equivalence: [references/backend/interface-lifecycle-gate.md](references/backend/interface-lifecycle-gate.md)
-- Backend regression and API evidence steps: `references/backend/backend-regression-steps.md`
-- Builtin data model contract QA gate: `references/backend/builtin-data-model-contract-gate.md`
-- Console settings registration QA gate: `references/backend/console-settings-registration-gate.md`
-- Scope_id routing semantics: `references/backend/scope-id-routing.md`
-- Authenticated backend API evidence: `node scripts/node/tooling.js api-debug [METHOD] <api-path-or-url> ...`
-- Rust backend quality checks: `references/backend/rust-backend-quality-gates.md`
-- Report output: `references/governance/report-template.md`
-- Severity rules: `references/governance/severity-rules.md`
-- Anti-patterns: `references/governance/anti-patterns.md`
-- Code audit model: `references/audit/code-audit-model.md`
-- Database/query/ephemeral audit: `references/audit/database-query-ephemeral.md`
-- Algorithms/state/concurrency audit: `references/audit/algorithms-state-concurrency.md`
-- Observability/log pipeline audit: `references/audit/observability-log-pipeline.md`
-- Test asset lifecycle audit: `references/audit/test-asset-lifecycle.md`
-- Foundation audit cards: `references/audit/foundation-audit-cards.md`
+## Report and Stop
 
-## Common Mistakes
+已有 AC 按点给结论、证据和残余风险；没有编号则按目标与风险表达。不把实现者声明作为独立验收，不把机械门禁作为完整业务结论。需要报告格式或分级时查 [report-template](references/governance/report-template.md)、[severity-rules](references/governance/severity-rules.md)。
 
-- 把 QA 当成修复流程
-- 把开发后验收、PR 门禁和项目体检混成同一套重门禁
-- 把机械质量门禁通过当成需求验收点已通过
-- 把既有旧债当成本次增量任务 blocker，导致 scope 膨胀
-- 项目体检被当前错误脚本、最新日志或单个 artifact 锚定，跳过质量维度矩阵
-- 没有证据就下结论
-- 把代码审查写成 QA 报告
-- 小任务也直接上全量审计
-- 把 beta / CI / 专门质量工作区应承接的全局门禁拉回当前本地开发分支
-- 只挑视觉问题，不看契约和状态
-- 只看当前改动点，不看被影响的其他消费者
-- 后端接口验收只报告 cargo / clippy 通过，没有对照预期 response、认证态、状态副作用或错误 shape 的证据
-- 把旧测试断言当成必须兼容的产品 contract，为了消除失败添加 legacy alias、fallback、回退路径或削弱状态一致性
-- 为了通过 QA、i18n hygiene 或视觉一致性检查而改用户可见文案值
-- 把 maintainability warning 当成已授权清理，未经用户同意就删除或重构
-- 把静默 fallback、默认值兜底、吞错或无语义防御代码当成稳定性改进
-- 把完整业务流程拆成多个只调用一次的小函数，导致 QA 只能靠跳转拼回主路径
-- 只检查功能是否跑通，不检查变更是否越过已确认范围或破坏整体边界
-- 后端评估仍沿用旧术语，忽略 `workspace/system`、`SYSTEM_SCOPE_ID`、runtime `scope_id`、`HostExtension / RuntimeExtension / CapabilityPlugin`、`Resource Action Kernel` 和新质量门禁
+交付用简短指针说明改动、owner、关键决策、有效证据与未验证项；warning / coverage / 日志产物写入 `tmp/test-governance/`。当前证据足够或继续取证突破资源边界时停止；需要改变产品目标、架构约束、权限或数据语义时交回需求决策，不自行修正真值。
