@@ -53,7 +53,7 @@
 
 以下Cargo命令按变更风险选择，重型Rust/PG验证在CI/beta执行；纯文档/skill变更使用源码、链接和语义核对，不因修改crate下文档自动跑Cargo。
 
-优先运行与当前风险直接对应的后端验证脚本；Dev Acceptance Gate 默认复用 TDD 红绿结果，只补一个主验证命令和必要 smoke。PR / Project Health Gate 才默认考虑仓库级后端验证。
+优先运行与当前风险直接对应的后端验证脚本；Dev Acceptance Gate 复用仍有效的开发证据，只补缺失的直接风险证据；入口成本与重试条件遵循 `test-driven-development`，不按命令数量限额。PR / Project Health Gate 才默认考虑仓库级后端验证。
 同一工作区内的 `cargo` 验证命令默认串行执行，不要并发启动多条 `cargo test / check / clippy`，否则容易卡在 `package cache` 或 `artifact directory` 锁上，拿不到稳定 QA 证据。
 
 PR / Project Health Gate 优先：

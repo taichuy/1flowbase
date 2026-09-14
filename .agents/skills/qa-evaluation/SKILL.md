@@ -67,11 +67,11 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - QA 一次性输出完整 blocker 集合。Root 转换为 fix Packet，全部修复装配后再启动新的单一 QA；同一根因第二次失败、验收语义变化或范围继续增长时回到 `problem-framing`，不无限循环。
 - 先按 `references/governance/gate-lanes.md` 选择门禁 lane：`Dev Acceptance Gate`、`PR Merge Gate`、`Project Health Gate`
 - 默认 `Dev Acceptance Gate / task mode`；用户明确要求 PR 校验、全量门禁、项目体检或完整 QA 审计时，才升级到对应 lane
-- `Dev Acceptance Gate` 追求快速反馈：复用 TDD / Batch Acceptance 结果，按风险向量选择最小证据链，证据足够或资源边界触发就停，不用仓库级门禁惩罚局部开发
+- `Dev Acceptance Gate` 复用仍有效的开发证据，只补缺失或已失效的直接风险证据；资源边界触发时结束该验证路径并保留未验证项，不把停止执行等同验收通过。执行成本、失败转向、日志与证据失效条件统一遵循 [test-driven-development](../test-driven-development/SKILL.md#execution-cost-and-stop-conditions)。
 - 长计划的 Dev Acceptance Gate 只针对冻结 assembly candidate 执行一次；Work Packet commit、局部 compile 或自检只作为装配证据，不能触发独立 QA 或结算 AC。
 - `existing-codebase` 任务默认只把本次引入的问题作为 blocker；既有债务、旧覆盖率缺口或历史 warning 只有被当前 issue 明确纳入时才阻断当前验收
 - 有验收点账本时，QA 输出必须按点结算；没有账本时才按目标 / 风险维度组织结论
-- 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；workspace 级 cargo / pnpm build / clippy / full test、coverage、verify-repo、repo hygiene、i18n hygiene 等重门禁默认延后到 beta / CI / 专门质量工作区
+- 本地开发分支只证明当前任务结果、直接相关 contract 和主路径风险；重型验证默认延后到 beta / CI / 专门质量工作区；按实际范围、构建成本与运行态影响分类，当前规则的轻量 hygiene 扫描不因名称含 repo 而自动延后
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
 - `Project Health Gate` 追求维护者感知：先按 `references/governance/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
 - `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
@@ -101,13 +101,13 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - 没有运行时证据时，前端样式结论默认降级为受限结论
 - 只要评估范围涉及后端 API、状态入口、插件边界、runtime、`Resource Action Kernel`、HostExtension registry 或 `route / service / repository / domain / mapper` 分层，就必须加载后端专项检查
 - 接口装配、认证、Kernel、流式收尾或协议等价验收：读取 [references/backend/interface-lifecycle-gate.md](references/backend/interface-lifecycle-gate.md)，按风险选择有限矩阵并引用本地架构主题；不将清单数量、零测试或直连 mock 当作真实接口证据。
-- 后端任务必查：已确认验收预期、入口分区与四个责任平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
+- 后端任务按当前变更和直接传播风险选取检查项，不适用项无需另行取证：已确认验收预期、入口分区与四个责任平面、接口包装、认证 / CSRF / ACL、状态写入口、接口返回结构和值正确性、过期 / 禁用 / 缺失状态、`HostExtension / RuntimeExtension / CapabilityPlugin` 边界、HostExtension manifest contribution、pre-state infra provider、route/worker/migration registry、`storage-durable/postgres` 内 `storage-postgres` 的 repository/mapper 拆分、`storage-durable / storage-object` 边界、`workspace/system` 命名面、`SYSTEM_SCOPE_ID`、runtime `scope_id`、无 legacy alias、验证命令、API evidence 与 blast radius
 - 后端范围命中系统内置数据模型、runtime read models、数据建模定义 metadata、字段描述、API exposure 或 scope grant 时，必须加载 `references/backend/builtin-data-model-contract-gate.md`；重点检查 system-owned contract 与 user-owned metadata overlay 是否被实现和 migration/reconcile 同时守住。
 - 后端范围命中后台设置注册、Settings API、角色设置授权、HostExtension console surface、注册 CLI 或 route inventory 时，必须加载 `references/backend/console-settings-registration-gate.md`；不能用前端隐藏、源码 regex 或中间件已挂载替代 compiled route ownership 与授权正反例证据。
 - Provider / 上游 runtime 错误属于透传 contract：QA 不得把 provider stdout / stderr / upstream error 原样进入 `RuntimeContract` / API response 误判为泄漏或要求脱敏；应检查宿主是否改写、截断、翻译、吞掉或泛化上游信息，导致 provider / 协议排障信息损失
-- 后端范围命中 Rust 代码时，必须额外检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await、数据库约束和 Rust 质量门禁
+- Rust 变化按受影响行为检查类型不变量、错误边界、状态方法、事务、幂等、async 阻塞、锁跨 await 或数据库约束；只执行当前风险所需的 Rust 门禁，不因语言相同扩展到无关子系统
 - Rust 后端验收必须核对 completion self-check；缺少证据时对应项只能写 `未验证`，不能下通过结论
-- 同一 worktree 内同时只执行一条后端 Cargo 验证命令，避免多进程争抢 package cache / artifact lock；单条命令内部默认使用机器全部逻辑 CPU 并行编译和测试，不写死 `CARGO_BUILD_JOBS=1/4` 或 `--test-threads=1`。仓库包装命令自动读取；直接定向命令使用 `CARGO_BUILD_JOBS="$(node scripts/node/testing/verify-runtime.js cargo-jobs)" cargo ...`，并让 Rust test harness 使用其默认并行度。
+- Cargo 并发、构建成本与日志遵循上述共享执行规则；测试过滤器不保证缩小链接单元，`cargo check --tests` 不能作为行为测试通过的证据。
 - 验证边界由 gate lane 决定：开发后验收用最小证据链和早停；PR 门禁用 CI / gate DAG / artifact；项目体检用全量维度覆盖、风险热力图和轮转深挖
 - 前端层级、入口、L0 / L1 / L2 / L3 问题：使用 `frontend-development` 的 `interaction-architecture-gate`
 - 后端契约、状态入口、边界污染问题：联动 `backend-development`

@@ -12,11 +12,11 @@
 `重型质量门禁` 不按命令名字一刀切，按目的、范围、成本和运行态影响判断。命中任一条时，默认不作为 Dev Acceptance 本地收尾动作，除非已批准计划 / handoff 已前置说明收益、成本和不可延后原因。
 
 - 目的：回答“仓库是否可合入 / CI 是否可过 / 项目健康度如何”，而不是“当前任务结果是否成立”。
-- 范围：跨 workspace、全仓、全前端、全后端、全 coverage、全 hygiene，或检查与当前改动无直接调用链的大量消费者。
-- 成本：会触发大范围编译、build、clippy、full test、coverage、security scan，或明显超过一个主验证命令和必要 smoke 的资源边界。
-- 运行态影响：需要重启服务、真实认证链、外部中间件、运行态接口取证、写 `tmp/test-governance/` 全局 artifact，或可能干扰开发反馈节奏。
+- 范围：跨 workspace 的构建 / 测试、全 coverage，或为全局健康结论检查大量无关消费者。为验证本次结构规则而快速遍历全仓源码，不单凭扫描范围判重。
+- 成本：会触发大范围编译、build、clippy、full test、coverage、security scan，或超出当前环境可承受的编译时间、内存和并发边界。
+- 运行态影响：需要重启共享服务、启动昂贵外部依赖，或可能干扰已有运行态。复用可用服务做隔离定向取证、写本地 artifact 不自动判重。
 
-常见重门禁：`cargo test --workspace`、`cargo clippy --workspace --all-targets`、workspace 级 `pnpm build` / full lint / full test、`verify-repo`、`verify-ci`、coverage、repo hygiene、i18n hygiene、container / security scan、服务重启后 `api-debug` 取证。定向 crate test、route integration test、单消费者 contract test、局部 `tsc`、单路由 screenshot/page-debug 通常不是重门禁。
+通常成本较高、仍需按实际入口判断的门禁：`cargo test --workspace`、`cargo clippy --workspace --all-targets`、workspace 级 `pnpm build` / full lint / full test、`verify-repo`、`verify-ci`、coverage、container / security scan、服务重启后 `api-debug` 取证。定向 Rust 测试仍可能链接完整服务；新增结构规则的 Node hygiene 扫描可能仅需数秒。测试名、命令名和过滤参数不能替代对实际构建单元与运行成本的判断。
 
 ## Repo-Level Gate Map
 
@@ -46,7 +46,7 @@
 ## Selection Defaults
 
 - 默认先按最近作用域选门禁，不要一上来就 `verify-ci`。
-- Dev Acceptance 只选能证明当前任务结果的最小门禁；完整 lint / build / clippy / workspace test / coverage / hygiene / verify-repo 默认不在本地开发分支自动运行。
+- Dev Acceptance 只选能证明当前任务结果的最小门禁；完整 lint / build / clippy / workspace test / coverage / verify-repo 默认不在本地开发分支自动运行。
 - 只改局部前端页面时，先满足 `web/AGENTS.md` 的局部验证，再决定是否升级到仓库级 `test-frontend` 或 `verify-repo`。
 - 只改后端局部实现时，先满足 `api/AGENTS.md` 的局部验证，再决定是否升级到 `test-backend` 或 `verify-repo`。
 - 命中共享契约、共享 DTO、共享样式场景注册、跨消费者协议时，优先补 `test-contracts`。
@@ -56,7 +56,7 @@
 - 需要讨论覆盖率缺口时，再补 `verify-coverage`；不要拿 coverage 结果替代功能结论。
 - 需要运行态页面证据时，优先 `runtime-gate` 或直接 `page-debug`，不要只靠静态阅读代码。
 - 证据已经足够支撑当前任务 QA 结论时停止；不要为了显得全面继续叠加无新增覆盖面的门禁。
-- 少于 3 个基座门禁反复失败时，先本地 `run-fast --foundation <id>`，再手动单基座 Actions，最后恢复 `auto/all`；单次 workflow 最长执行路径必须低于 60 分钟。
+- 基座失败先归因；已定位的产品 / fixture 问题且本地入口可承受时，可用 `run-fast --foundation <id>` 缩小反馈面。资源失败遵循共享停止规则，不机械重试；远端 Actions 沿用现有授权和资源边界。
 
 ## Quality Rule Changes
 
@@ -66,7 +66,7 @@
 - 反方样例：至少列出一个不应被拦的合法场景，避免规则过宽。
 - 确定性证据：使用 fixture、历史失败、脚本输出或可复现 diff 证明规则能稳定命中目标。
 - 资源边界和停止条件：说明本地执行成本、warning / blocker 归属、何时升级到 PR / Project Health lane。
-- 人工确认：规则会改变开发者行为、阻断合并或触碰用户内容时，必须等待用户确认后再进入 enforce。
+- 人工确认：规则会改变开发者行为、阻断合并或触碰用户内容时，须有用户确认后再进入 enforce；当前任务已有明确授权时直接沿用，不重复询问。
 
 ## Hard Stops
 

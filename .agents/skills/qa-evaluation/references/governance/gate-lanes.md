@@ -20,13 +20,13 @@
 
 - 目标是加快开发反馈，不用仓库级门禁惩罚局部开发。
 - Issue Tree 使用 batch mode：Root 下全部开发与 fixture Work Packet 装配到冻结 assembly SHA 后只执行一次；不为 Packet 或 Delivery 分别启动 reviewer、QA 或回归。
-- 优先复用 `test-driven-development` 的红绿结果；只补当前改动直接相关证据。
-- 默认最多选择一个主验证命令和必要 smoke；同一 contract 已被 targeted test 覆盖时，不再为同一结论叠加运行态取证。
+- 优先复用仍有效的开发证据；按 `test-driven-development` 的执行成本与证据失效规则，只补当前变更相关且缺失的证据。换 agent 或进入收尾不使结果自动失效。
+- 选择覆盖当前风险的最小证据组合，不按命令数量限额；同一 contract 已被 targeted test 覆盖时，仅在真实环境差异仍待确认时补运行态取证。
 - 验证重点是当前任务结果、直接相关 API / 状态 / UI contract 和主路径；重型质量门禁判断标准见 `repo-quality-gates.md#heavy-gate-criteria`，默认留给 PR / Project Health lane。
 - `existing-codebase` 默认按 introduced-only 判断 blocker：本次 diff 引入的问题、被本次触发的回归或已确认验收点失败才阻断；历史债务和旧 warning 进入残余风险或后续 issue。
 - 样式、文案、布局微调默认不跑完整前端门禁；优先 `git diff --check`、截图、局部 page-debug 或定向 smoke。
 - 共享组件、公共 API、状态入口、契约、migration、权限或高 blast radius 才升级门禁。
-- 需要启动服务、运行 `api-debug`、跑 workspace 级 cargo / pnpm build，或累计超过 3 条重验证命令时，收益和成本应在对齐 / 已批准计划 / handoff 阶段前置说明。实现期发现未预期重验证需求时，默认不打断开发，写 `未验证，不下确定结论` 并交给 beta / CI；只有缺少该证据会影响继续实现安全性或当前任务完成判断时才暂停。
+- 预计昂贵或会干扰运行态的验证，先说明证据收益、实际成本与停止条件，沿用已有授权和资源限制。发现未预期资源问题时切换验证路径，继续独立开发；无法取得关键行为证据时标明未验证，不能宣称任务验收通过。
 
 ## PR Merge Gate
 
