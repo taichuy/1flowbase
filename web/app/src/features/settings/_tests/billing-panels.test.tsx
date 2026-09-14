@@ -385,25 +385,61 @@ describe('billing settings panels', () => {
     );
   });
 
-  test('uses backend available balance and submits a credit command', async () => {
+  test('AC-001 submits and reports success when crypto.randomUUID is unavailable', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+    Object.defineProperty(crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined
+    });
+
+    try {
+      renderWithProviders(<CreditManagementPanel canManage />);
+      expect(await screen.findByText('$4.00')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
+      const dialog = await screen.findByRole('dialog');
+      const amount = within(dialog).getByLabelText('金额（USD）');
+      fireEvent.change(amount, { target: { value: '2.50' } });
+      fireEvent.change(within(dialog).getByLabelText('原因'), {
+        target: { value: 'test grant' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: /^(?:OK|确 定)$/ }));
+      await waitFor(() =>
+        expect(billingApi.executeSettingsCreditCommand).toHaveBeenCalledWith(
+          'user-1',
+          'grant',
+          expect.objectContaining({
+            amount: '2.50',
+            idempotency_key: expect.stringMatching(
+              /^console:grant:user-1:[0-9a-f-]{36}$/
+            )
+          }),
+          'csrf-123'
+        )
+      );
+      expect(await screen.findByText('额度操作已完成')).toBeInTheDocument();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(crypto, 'randomUUID', descriptor);
+      }
+    }
+  });
+
+  test('AC-002 keeps the form open and reports a failed credit command', async () => {
+    billingApi.executeSettingsCreditCommand.mockRejectedValueOnce(
+      new Error('backend rejected')
+    );
     renderWithProviders(<CreditManagementPanel canManage />);
     expect(await screen.findByText('$4.00')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
+    fireEvent.click(screen.getByRole('button', { name: '调整余额' }));
     const dialog = await screen.findByRole('dialog');
-    const amount = within(dialog).getByLabelText('金额（USD）');
-    fireEvent.change(amount, { target: { value: '2.50' } });
-    fireEvent.change(within(dialog).getByLabelText('原因'), {
-      target: { value: 'test grant' }
+    fireEvent.change(within(dialog).getByLabelText('金额（USD）'), {
+      target: { value: '9.75' }
     });
     fireEvent.click(screen.getByRole('button', { name: /^(?:OK|确 定)$/ }));
-    await waitFor(() =>
-      expect(billingApi.executeSettingsCreditCommand).toHaveBeenCalledWith(
-        'user-1',
-        'grant',
-        expect.objectContaining({ amount: '2.50' }),
-        'csrf-123'
-      )
-    );
+
+    expect(await screen.findByText('额度操作失败，请重试')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('金额（USD）')).toHaveValue('9.75');
   });
 
   test('syncs all official pricing independently of visible catalog filters and reports results', async () => {

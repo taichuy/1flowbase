@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Form,
   Input,
@@ -26,6 +27,15 @@ import { settingsMembersQueryKey } from '../../api/members';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 
 type MoneyCommand = 'grant' | 'charge' | 'adjust' | 'refund';
+
+function createCreditCommandRequestId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
 
 const formatUsd = (value: string | undefined) => {
   const [integer = '0', fraction = ''] = (value ?? '0').split('.');
@@ -97,7 +107,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
         {
           amount,
           reason,
-          idempotency_key: `console:${command}:${userId}:${crypto.randomUUID()}`
+          idempotency_key: `console:${command}:${userId}:${createCreditCommandRequestId()}`
         },
         csrfToken
       );
@@ -116,6 +126,26 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
   }));
   return (
     <SettingsSectionSurface heightMode="fill">
+      {mutate.isSuccess ? (
+        <Alert
+          showIcon
+          type="success"
+          message={i18nText(
+            'settings',
+            'auto.billing_credit_operation_completed'
+          )}
+        />
+      ) : null}
+      {mutate.isError ? (
+        <Alert
+          showIcon
+          type="error"
+          message={i18nText(
+            'settings',
+            'auto.billing_credit_operation_failed'
+          )}
+        />
+      ) : null}
       <Table
         rowKey={(row) => row.member.id}
         loading={members.isLoading || accounts.isLoading}
@@ -178,6 +208,7 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
                     size="small"
                     disabled={!canManage}
                     onClick={() => {
+                      mutate.reset();
                       setTarget({ userId: row.member.id, command });
                       form.setFieldsValue({ reason: `console_${command}` });
                     }}

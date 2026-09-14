@@ -359,6 +359,8 @@
     "settings_navigation_load_failed": "Settings navigation failed to load",
     "loading": "Loading...",
     "operation_failed_retry": "Operation failed, please try again",
+    "billing_credit_operation_completed": "Credit operation completed",
+    "billing_credit_operation_failed": "Credit operation failed. Please try again",
     "relationship_configuration_json": "Relationship configuration JSON",
     "edit_basic_information": "Edit basic information",
     "storage_required": "Please select a storage",

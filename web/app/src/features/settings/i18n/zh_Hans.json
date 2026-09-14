@@ -359,6 +359,8 @@
     "settings_navigation_load_failed": "设置导航加载失败",
     "loading": "加载中...",
     "operation_failed_retry": "操作失败，请重试",
+    "billing_credit_operation_completed": "额度操作已完成",
+    "billing_credit_operation_failed": "额度操作失败，请重试",
     "relationship_configuration_json": "关系配置 JSON",
     "edit_basic_information": "编辑基本信息",
     "storage_required": "请选择一个存储",
