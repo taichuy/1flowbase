@@ -79,5 +79,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 [profile.dev]
 debug = 1
 
+# The composition root is expensive to compile on constrained development VMs.
+# Preserve backtrace file/line information without module-level debug metadata.
+[profile.dev.package.api-server]
+debug = "line-tables-only"
+
 [profile.test]
 debug = 1

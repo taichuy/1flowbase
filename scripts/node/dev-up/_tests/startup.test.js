@@ -6,7 +6,7 @@ const test = require('node:test');
 const { startService, manageServices, waitForServicePort } = require('../process.js');
 const { runPhase, acquireStartupLock } = require('../phases.js');
 const { prepareFrontend, dependencyFingerprint } = require('../dependencies.js');
-const { buildBackend, resolveBuildScope } = require('../build.js');
+const { buildBackend } = require('../build.js');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-up-startup-'));
@@ -125,7 +125,7 @@ test('AC-002 dependency receipt reuses installs, invalidates changed inputs and 
   assert.equal(dependencyFingerprint(root), before);
 });
 
-test('AC-003 Cargo JSON selects the binary and limits apply only to the build phase', async (t) => {
+test('AC-003 build calls Cargo directly with no deadline and selects its reported binary', async (t) => {
   const root = fixture(t);
   const binary = path.join(root, 'custom-target/api-server');
   fs.mkdirSync(path.dirname(binary));
@@ -134,33 +134,24 @@ test('AC-003 Cargo JSON selects the binary and limits apply only to the build ph
   const s = service(root);
   let seen;
   const launch = await buildBackend(s, {
-    resolveBuildScopeImpl: () => 'fixture-build.scope', logImpl() {},
+    logImpl() {},
     async runPhaseImpl(command, args, options) {
       seen = { command, args, options };
       options.onLine(JSON.stringify({ reason: 'compiler-artifact', target: { name: 'api-server', kind: ['bin'] }, executable: binary }));
     },
   });
-  assert.equal(seen.command, 'systemd-run');
-  assert.ok(seen.args.includes('--unit=fixture-build.scope'));
+  assert.equal(path.basename(seen.command), process.platform === 'win32' ? 'cargo.exe' : 'cargo');
+  assert.equal(seen.options.timeoutMs, null);
   assert.ok(seen.args.includes('build'));
   assert.ok(!seen.args.includes('run'));
   assert.equal(seen.options.env.CARGO_BUILD_JOBS, '1');
-  assert.equal(seen.options.env.CARGO_MEMORY_BUDGET_ACTIVE, '1');
-  assert.equal(typeof seen.options.cleanup, 'function');
+  assert.equal(seen.options.env.CARGO_MEMORY_BUDGET_ACTIVE, process.env.CARGO_MEMORY_BUDGET_ACTIVE);
+  assert.equal(seen.options.cleanup, undefined);
   assert.deepEqual(launch, { command: binary, args: [] });
   assert.equal(s.envOverrides, undefined);
   await assert.rejects(buildBackend(s, {
-    resolveBuildScopeImpl: () => null, logImpl() {}, runPhaseImpl: async () => {},
+    logImpl() {}, runPhaseImpl: async () => {},
   }), /without an api-server executable/);
-});
-
-test('AC-006 resource reporting uses systemd effective values', () => {
-  const logs = [];
-  const unit = resolveBuildScope({}, { platform: 'linux', logImpl: (line) => logs.push(line),
-    query: () => ({ status: 0, stdout: 'ActiveState=active\nMemoryHigh=5368709120\nMemoryMax=6442450944\nMemorySwapMax=2147483648\n' }),
-  });
-  assert.match(unit, /^oneflowbase-build-.*\.scope$/);
-  assert.match(logs[0], /MemoryMax=6442450944/);
 });
 
 test('AC-004 phase reports progress, propagates failure, and times out a real lightweight child', async (t) => {
@@ -175,18 +166,15 @@ test('AC-004 phase reports progress, propagates failure, and times out a real li
   assert.match(result.stderr, /migration fixture/);
 });
 
-test('AC-005 cancellation kills this phase and its descendant, and invokes scope cleanup', async (t) => {
+test('AC-005 cancellation kills this phase and its descendant,', async (t) => {
   const root = fixture(t);
   const controller = new AbortController();
   let descendant;
-  let cleanupCount = 0;
   const source = `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}); console.log(child.pid); setInterval(()=>{},1000);`;
   await assert.rejects(runPhase(process.execPath, ['-e', source], {
-    cwd: root, logFile: path.join(root, 'cancel.log'), signal: controller.signal, logImpl() {}, timeoutMs: 3000,
+    cwd: root, logFile: path.join(root, 'cancel.log'), signal: controller.signal, logImpl() {}, timeoutMs: null,
     onLine(line) { descendant = Number(line); controller.abort(new Error('fixture cancelled')); },
-    cleanup: async () => { cleanupCount += 1; },
   }), /fixture cancelled/);
-  assert.equal(cleanupCount, 1);
   assert.ok(descendant > 0);
   // Linux may briefly retain a dead orphan as a zombie; it must not be running.
   if (process.platform === 'linux' && fs.existsSync(`/proc/${descendant}/stat`)) {
@@ -256,8 +244,22 @@ test('AC-005 successful session keeps its service; cleanup failure still attempt
   acquireStartupLock(root)();
 });
 
-test('AC-006 inactive resource slice still gets a named scope for cancellable builds', () => {
-  assert.match(resolveBuildScope({}, { platform: 'linux', logImpl() {},
-    query: () => ({ status: 0, stdout: 'ActiveState=inactive\nMemoryHigh=5368709120\nMemoryMax=6442450944\n' }),
-  }), /\.scope$/);
+test('AC-004 unbounded build phase emits progress until successful completion', async (t) => {
+  const root = fixture(t);
+  const logs = [];
+  const result = await runPhase(process.execPath, ['-e', 'setTimeout(() => console.log("finished"), 180)'], {
+    logFile: path.join(root, 'unbounded.log'), timeoutMs: null, heartbeatMs: 20,
+    logImpl: (line) => logs.push(line),
+  });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /finished/);
+  assert.ok(logs.some((line) => line.includes('timeout=none')));
+  assert.ok(logs.some((line) => line.includes('waiting')));
+  assert.ok(logs.every((line) => !line.includes('timed out')));
+});
+
+test('AC-006 Node startup has no Linux resource-manager dependency', () => {
+  for (const file of ['build.js', 'phases.js']) {
+    assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), /systemctl|systemd-run|rust-build\.slice/);
+  }
 });

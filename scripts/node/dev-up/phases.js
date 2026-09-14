@@ -25,16 +25,16 @@ async function stopOwnedProcess(pid) {
   await signalGroup(pid, 'SIGKILL');
 }
 
-// A phase owns its process group, optional systemd scope, timers and output.
+// A phase owns its process group, timers and output.
 // It never searches for or terminates unrelated port occupants.
 async function runPhase(command, args, {
   cwd, env = process.env, signal, logFile, label = command,
   timeoutMs = 120_000, heartbeatMs = 5_000, onLine,
-  cleanup, logImpl = log, inheritStdin = false, allowFailure = false,
+  logImpl = log, inheritStdin = false, allowFailure = false,
 } = {}) {
   signal?.throwIfAborted();
   const startedAt = Date.now();
-  logImpl(`${label}: starting; timeout=${Math.round(timeoutMs / 1000)}s; log=${logFile}`);
+  logImpl(`${label}: starting; timeout=${timeoutMs === null ? 'none' : `${Math.round(timeoutMs / 1000)}s`}; log=${logFile}`);
   const fd = fs.openSync(logFile, 'w');
   let child;
   try {
@@ -69,19 +69,15 @@ async function runPhase(command, args, {
   child.stderr.on('data', (chunk) => consume(chunk, true));
   const terminate = (error) => {
     phaseError ||= error;
-    termination ||= (async () => {
-      // The scope is needed because systemd can move Cargo outside our group.
-      let cleanupError;
-      try { await cleanup?.(); } catch (error) { cleanupError = error; }
-      await stopOwnedProcess(child.pid);
-      if (cleanupError) throw cleanupError;
-    })();
+    clearInterval(heartbeat);
+    logImpl(`${label}: stopping; ${error.message}`);
+    termination ||= stopOwnedProcess(child.pid);
     // Awaited below; attach immediately to avoid an unhandled rejection.
     termination.catch(() => {});
   };
   const onAbort = () => terminate(signal.reason || new Error(`${label}: cancelled`));
   signal?.addEventListener('abort', onAbort, { once: true });
-  const timer = setTimeout(() => terminate(new Error(`${label}: timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+  const timer = timeoutMs === null ? null : setTimeout(() => terminate(new Error(`${label}: timed out after ${timeoutMs / 1000}s`)), timeoutMs);
   const heartbeat = setInterval(() => {
     logImpl(`${label}: waiting ${Math.round((Date.now() - startedAt) / 1000)}s; log=${logFile}`);
   }, heartbeatMs);

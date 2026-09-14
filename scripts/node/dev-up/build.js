@@ -1,49 +1,24 @@
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFile, spawnSync } = require('node:child_process');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 const { buildServiceEnv, resolveCommandPath } = require('./env.js');
 const { runPhase } = require('./phases.js');
 const { log } = require('./cli.js');
 
-function resolveBuildScope(_env, { platform = process.platform, query = spawnSync, logImpl = log } = {}) {
-  if (platform !== 'linux') return null;
-  const result = query('systemctl', ['--user', 'show', 'rust-build.slice', '-p', 'ActiveState', '-p', 'MemoryHigh', '-p', 'MemoryMax', '-p', 'MemorySwapMax'], { encoding: 'utf8', timeout: 3000, maxBuffer: 4096 });
-  if (result.status !== 0) {
-    logImpl('Rust resource slice unavailable; using Cargo PATH policy (no verified memory limit)');
-    return null;
-  }
-  logImpl(`Rust effective limits: ${result.stdout.trim().split('\n').join(' | ')}`);
-  return `oneflowbase-build-${process.pid}-${crypto.randomUUID()}.scope`;
-}
-
-function stopScope(unit) {
-  return new Promise((resolve, reject) => {
-    execFile('systemctl', ['--user', 'stop', unit], { timeout: 5000, maxBuffer: 4096 }, (error, _stdout, stderr) => {
-      if (error && !/not loaded|not found/i.test(stderr)) reject(error);
-      else resolve();
-    });
-  });
-}
-
-async function buildBackend(service, { runPhaseImpl = runPhase, resolveBuildScopeImpl = resolveBuildScope, logImpl = log } = {}) {
+async function buildBackend(service, { runPhaseImpl = runPhase, logImpl = log } = {}) {
   const env = buildServiceEnv(service);
   const config = loadVerifyRuntimeConfig({ repoRoot: service.repoRoot, env }).backend;
   const requestedJobs = Number(env.CARGO_BUILD_JOBS);
   env.CARGO_BUILD_JOBS = String(Number.isInteger(requestedJobs) && requestedJobs > 0 ? Math.min(config.cargoJobs, requestedJobs) : config.cargoJobs);
   if (env.CARGO_INCREMENTAL === undefined && config.incremental !== undefined) env.CARGO_INCREMENTAL = config.incremental ? '1' : '0';
   const cargo = resolveCommandPath('cargo') || 'cargo';
-  const scope = resolveBuildScopeImpl(env, { logImpl });
   let executable;
   const args = ['build', '-p', 'api-server', '--bin', 'api-server', '--message-format=json-render-diagnostics'];
   logImpl(`Rust build: cargo=${cargo}; jobs<=${env.CARGO_BUILD_JOBS}; incremental=${env.CARGO_INCREMENTAL ?? 'Cargo default'}`);
-  if (scope) env.CARGO_MEMORY_BUDGET_ACTIVE = '1';
-  await runPhaseImpl(scope ? 'systemd-run' : cargo, scope ? ['--user', '--scope', '--quiet', '--collect', `--unit=${scope}`, '--slice=rust-build.slice', '--', cargo, ...args] : args, {
+  await runPhaseImpl(cargo, args, {
     cwd: service.cwd, env, signal: service.signal,
     logFile: path.join(path.dirname(service.logFile), 'api-server-build.log'),
-    label: 'api-server build', timeoutMs: 600_000, logImpl,
-    cleanup: scope ? () => stopScope(scope) : undefined,
+    label: 'api-server build', timeoutMs: null, logImpl,
     onLine(line) {
       let message;
       try { message = JSON.parse(line); } catch { return; }
@@ -54,4 +29,4 @@ async function buildBackend(service, { runPhaseImpl = runPhase, resolveBuildScop
   return { command: executable, args: [] };
 }
 
-module.exports = { buildBackend, resolveBuildScope };
+module.exports = { buildBackend };

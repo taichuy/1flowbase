@@ -57,8 +57,10 @@ bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 | `RUST_MEMORY_HIGH` | Rust 构建 slice 的软阈值；超过后内核开始加强回收和节流。 |
 | `RUST_MEMORY_MAX` | Rust 构建 slice 的内存硬上限。 |
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
+| `RUST_CPU_QUOTA` | Rust 编译总 CPU 配额；200% 表示最多两个逻辑核的 CPU 时间，不是构建时长限制。 |
+| `RUST_IO_WEIGHT` | Rust 构建 cgroup 的相对 I/O 权重，实际调度效果依赖设备和 cgroup 层级。 |
 | `CARGO_MAX_JOBS` | 全局 Cargo 包装器允许的最大编译 job 数；调用方显式设置更低值时保留低值。 |
-| `PROJECT_CARGO_JOBS` | 本仓库验证脚本使用的 Cargo 编译 job 数。 |
+| `PROJECT_CARGO_JOBS` | 本仓库启动、预热和验证脚本使用的 Cargo 编译 job 数。 |
 | `PROJECT_CARGO_TEST_THREADS` | 本仓库验证脚本传给 Rust test harness 的测试线程数。 |
 | `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
 
@@ -102,11 +104,12 @@ node scripts/node/dev-up.js stop
 - 开发环境启动 API 前，使用 Node.js 脚本将 `.env` 中的 root 密码同步到已存在的开发数据库，不会为此编译 Rust。
 - 前端依赖以 package manifests、lockfile、workspace 配置、patch 和安装状态生成本地凭据；未变化时跳过安装。首次启动或输入变化时执行 `pnpm install --frozen-lockfile`，失败不写凭据。手动修改依赖后先更新 lockfile。
 - 后端先执行 `cargo build`，成功后直接运行 Cargo 返回的 binary；复用 Cargo 增量缓存，不清理 target，也不在失败后运行旧产物。
-- 安装最多等待 3 分钟、后端构建 10 分钟、后端运行就绪 30 秒、前端就绪 60 秒。长阶段每 5 秒输出阶段、耗时或日志路径；构建与运行日志分别为 `tmp/logs/api-server-build.log` 和 `tmp/logs/api-server.log`。
-- 后端构建读取 `.1flowbase.verify.local.json` 的 Cargo 并发/增量设置，并保留更低的 `CARGO_BUILD_JOBS`。Linux 上已启用 `rust-build.slice` 时打印 systemd 实际限额，在独立 scope 构建；API 运行进程不进入该编译 scope。slice 不可用时明确报告未验证内存限制，继续使用 PATH 中 Cargo 的策略。
-- 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
+- 后端编译不设置固定超时，持续等待成功、失败或用户取消；安装最多等待 3 分钟、后端运行就绪 30 秒、前端就绪 60 秒。长阶段每 5 秒输出阶段、耗时或日志路径；构建与运行日志分别为 `tmp/logs/api-server-build.log` 和 `tmp/logs/api-server.log`。
+- 后端构建读取 `.1flowbase.verify.local.json` 的 Cargo 并发/增量设置，并保留更低的 `CARGO_BUILD_JOBS`。Node 直接调用 PATH 中的 Cargo，不依赖 systemd。Linux 资源限制由 `apply-resource-limits.sh` 安装的 Cargo 包装器负责；受限包装器找不到用户 systemd manager 时直接报错，不静默绕过限制。Windows/macOS 保留原生 Cargo 调用与项目并发配置，系统内存配额由对应平台管理。
+- `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
+- 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置已对齐此受限环境：Rust MemoryHigh=5G、MemoryMax=6G、swap=2G、Cargo jobs=2。编辑配置不会自动修改 systemd，应用配置后仍应以启动输出的实际值核对。
+- 仓库资源配置已对齐此受限环境：Rust MemoryHigh=4G、MemoryMax=5G、swap=512M、Cargo jobs=1、CPUQuota=200%。这些是这台虚拟机的本地资源策略；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
 ### `node scripts/node/reset-account-password.js [options]`
 

@@ -14,6 +14,9 @@ fi
 # shellcheck source=/dev/null
 source "$config_file"
 
+RUST_CPU_QUOTA=${RUST_CPU_QUOTA:-infinity}
+RUST_IO_WEIGHT=${RUST_IO_WEIGHT:-100}
+
 profile_mode=${PROFILE_MODE:-}
 if [[ $profile_mode != limited && $profile_mode != unlimited ]]; then
   printf 'PROFILE_MODE must be limited or unlimited\n' >&2
@@ -106,6 +109,8 @@ MemoryAccounting=yes
 MemoryHigh=$RUST_MEMORY_HIGH
 MemoryMax=$RUST_MEMORY_MAX
 MemorySwapMax=$RUST_MEMORY_SWAP_MAX
+CPUQuota=$RUST_CPU_QUOTA
+IOWeight=$RUST_IO_WEIGHT
 ManagedOOMPreference=avoid
 EOF
 
@@ -157,13 +162,29 @@ if [[ \${CARGO_MEMORY_BUDGET_ACTIVE:-} == 1 ]]; then
 fi
 
 if ! systemctl --user is-active default.target >/dev/null 2>&1; then
-  exec "\$real_cargo" "\$@"
+  printf 'Cargo resource limits unavailable: user systemd manager is not active.\n' >&2
+  exit 2
 fi
 
 export CARGO_MEMORY_BUDGET_ACTIVE=1
-exec systemd-run --user --scope --quiet --collect \
+# Keep the wrapper outside the scope so it owns cancellation even when the
+# platform launcher moves the compiler into another process group.
+readonly cargo_scope="rust-cargo-\$\$-\$RANDOM.scope"
+cleanup_cargo_scope() {
+  systemctl --user --no-block stop "\$cargo_scope" >/dev/null 2>&1 || true
+}
+trap 'cleanup_cargo_scope; exit 130' INT
+trap 'cleanup_cargo_scope; exit 143' TERM HUP
+systemd-run --user --scope --quiet --collect \
+  --unit="\$cargo_scope" --property=TimeoutStopSec=2s \
   --slice=rust-build.slice \
-  -- "\$real_cargo" "\$@"
+  -- "\$real_cargo" "\$@" <&0 &
+cargo_launcher_pid=\$!
+set +e
+wait "\$cargo_launcher_pid"
+cargo_status=\$?
+set -e
+exit "\$cargo_status"
 EOF
   chmod 0755 "$cargo_wrapper"
 
@@ -181,7 +202,9 @@ EOF
   "$systemctl_bin" --user set-property --runtime rust-build.slice \
     "MemoryHigh=$RUST_MEMORY_HIGH" \
     "MemoryMax=$RUST_MEMORY_MAX" \
-    "MemorySwapMax=$RUST_MEMORY_SWAP_MAX"
+    "MemorySwapMax=$RUST_MEMORY_SWAP_MAX" \
+    "CPUQuota=$RUST_CPU_QUOTA" \
+    "IOWeight=$RUST_IO_WEIGHT"
 }
 
 write_unlimited_profile() {
@@ -193,7 +216,7 @@ write_unlimited_profile() {
   "$systemctl_bin" --user daemon-reload
   if "$systemctl_bin" --user is-active --quiet rust-build.slice; then
     "$systemctl_bin" --user set-property --runtime rust-build.slice \
-      MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity
+      MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=infinity IOWeight=100
   fi
 }
 

@@ -16,6 +16,12 @@ mkdir -p "$systemd_dir" "$bin_dir" "$repo_dir" "$mock_bin"
 cat >"$mock_bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"${RESOURCE_LIMITS_SYSTEMCTL_LOG:?}"
+if [[ ${RESOURCE_LIMITS_BLOCKING_PID_FILE:-} && $* == *'--no-block stop rust-cargo-'* ]]; then
+  kill "$(cat "$RESOURCE_LIMITS_BLOCKING_PID_FILE")" 2>/dev/null || true
+fi
+if [[ ${RESOURCE_LIMITS_MANAGER_UNAVAILABLE:-} == 1 && $* == *'is-active default.target'* ]]; then
+  exit 1
+fi
 EOF
 chmod +x "$mock_bin/systemctl"
 
@@ -23,6 +29,10 @@ cat >"$mock_bin/systemd-run" <<'EOF'
 #!/usr/bin/env bash
 printf 'CARGO_BUILD_JOBS=%s\n' "${CARGO_BUILD_JOBS:-}" >>"${RESOURCE_LIMITS_SYSTEMD_RUN_LOG:?}"
 printf '%s\n' "$*" >>"${RESOURCE_LIMITS_SYSTEMD_RUN_LOG:?}"
+if [[ ${RESOURCE_LIMITS_BLOCKING_PID_FILE:-} ]]; then
+  printf '%s\n' "$$" >"$RESOURCE_LIMITS_BLOCKING_PID_FILE"
+  exec sleep 30
+fi
 EOF
 chmod +x "$mock_bin/systemd-run"
 
@@ -41,13 +51,15 @@ env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
 grep -Fxq 'ManagedOOMMemoryPressureLimit=80%' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-grep -Fxq 'MemoryHigh=5G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemoryMax=6G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemorySwapMax=2G' "$systemd_dir/rust-build.slice"
-grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
-grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fxq 'MemoryHigh=4G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemoryMax=5G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemorySwapMax=512M' "$systemd_dir/rust-build.slice"
+grep -Fxq 'CPUQuota=200%' "$systemd_dir/rust-build.slice"
+grep -Fxq 'IOWeight=10' "$systemd_dir/rust-build.slice"
+grep -Fq 'memory_budget_cargo_jobs=1' "$bin_dir/cargo"
+grep -Fq '"cargoJobs": 1' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=5G MemoryMax=6G MemorySwapMax=2G' \
+grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=4G MemoryMax=5G MemorySwapMax=512M CPUQuota=200% IOWeight=10' \
   "$systemctl_log"
 
 env PATH="$mock_bin:$PATH" \
@@ -55,9 +67,37 @@ env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   CARGO_BUILD_JOBS=12 \
   "$bin_dir/cargo" test -j 12
-grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
+grep -Fxq 'CARGO_BUILD_JOBS=1' "$systemd_run_log"
 grep -Fq -- '--slice=rust-build.slice -- ' "$systemd_run_log"
-grep -Fq -- 'test -j 2' "$systemd_run_log"
+grep -Fq -- 'test -j 1' "$systemd_run_log"
+
+# A missing manager must not silently start an unrestricted build.
+set +e
+env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_MANAGER_UNAVAILABLE=1 "$bin_dir/cargo" build >"$test_root/unavailable.log" 2>&1
+unavailable_status=$?
+set -e
+test "$unavailable_status" -eq 2
+grep -Fq 'resource limits unavailable' "$test_root/unavailable.log"
+
+# A cancelled wrapper requests shutdown of its own scope and returns promptly.
+blocking_pid_file="$test_root/blocking.pid"
+env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
+  RESOURCE_LIMITS_BLOCKING_PID_FILE="$blocking_pid_file" "$bin_dir/cargo" build &
+wrapper_pid=$!
+for ((attempt=0; attempt<40; attempt++)); do
+  [[ -s $blocking_pid_file ]] && break
+  sleep 0.05
+done
+test -s "$blocking_pid_file"
+kill -TERM "$wrapper_pid"
+set +e
+wait "$wrapper_pid"
+cancel_status=$?
+set -e
+test "$cancel_status" -eq 143
+grep -Fq -- '--no-block stop rust-cargo-' "$systemctl_log"
 
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.unlimited.example.conf"
@@ -68,7 +108,7 @@ test ! -e "$systemd_dir/dev.slice"
 test ! -e "$systemd_dir/rust-build.slice"
 test ! -e "$bin_dir/cargo"
 test ! -e "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity' \
+grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=infinity IOWeight=100' \
   "$systemctl_log"
 
 printf 'apply-resource-limits tests passed\n'
