@@ -51,15 +51,15 @@ env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
 grep -Fxq 'ManagedOOMMemoryPressureLimit=80%' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-grep -Fxq 'MemoryHigh=4G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemoryMax=5G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemorySwapMax=512M' "$systemd_dir/rust-build.slice"
-grep -Fxq 'CPUQuota=200%' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemoryHigh=9G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemoryMax=11G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/rust-build.slice"
+grep -Fxq 'CPUQuota=300%' "$systemd_dir/rust-build.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/rust-build.slice"
-grep -Fq 'memory_budget_cargo_jobs=1' "$bin_dir/cargo"
-grep -Fq '"cargoJobs": 1' "$repo_dir/.1flowbase.verify.local.json"
+grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
+grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=4G MemoryMax=5G MemorySwapMax=512M CPUQuota=200% IOWeight=10' \
+grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota=300% IOWeight=10' \
   "$systemctl_log"
 
 env PATH="$mock_bin:$PATH" \
@@ -67,9 +67,9 @@ env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   CARGO_BUILD_JOBS=12 \
   "$bin_dir/cargo" test -j 12
-grep -Fxq 'CARGO_BUILD_JOBS=1' "$systemd_run_log"
+grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
 grep -Fq -- '--slice=rust-build.slice -- ' "$systemd_run_log"
-grep -Fq -- 'test -j 1' "$systemd_run_log"
+grep -Fq -- 'test -j 2' "$systemd_run_log"
 
 # A missing manager must not silently start an unrestricted build.
 set +e
