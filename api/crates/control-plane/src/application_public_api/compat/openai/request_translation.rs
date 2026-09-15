@@ -303,9 +303,14 @@ fn translate_indexed_response_request(
     let operation = classify_response_operation(object, &context, &mut report)?;
     let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
+    // Operation and representation are independent decisions. Codex local-summary
+    // compaction is a Generate operation, but its full Responses history can still
+    // require provider-opaque transport (for example custom tool items).
+    let supports_native_input_representation = compaction_intent(operation)
+        .is_none_or(|intent| intent.profile() == CompactionProfile::LocalSummary);
     let uses_native_transport = transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
-        && compaction_intent(operation).is_none();
+        && supports_native_input_representation;
     let input_mapping = if is_v2_compaction {
         validate_responses_compaction_v2_input(input, &mut report)?;
         responses_compaction_v2_input_to_run_input()

@@ -1173,6 +1173,56 @@ fn issue_2039_v2_compaction_keeps_opaque_codex_history_out_of_native_state() {
 }
 
 #[test]
+fn issue_2049_local_summary_keeps_opaque_codex_history_in_provider_transport() {
+    let request = json!({
+        "model": "1flowbase",
+        "input": [
+            {"type":"message","role":"user","content":"inspect"},
+            {"type":"reasoning","id":"rs_1","encrypted_content":"opaque-reasoning"},
+            {"type":"custom_tool_call","id":"ct_1","call_id":"call_1","name":"exec","input":"{}"},
+            {"type":"custom_tool_call_output","call_id":"call_1","output":"private-output"},
+            {"type":"message","role":"assistant","phase":"commentary","content":"work complete"},
+            {"type":"message","role":"user","content":"summarize history"}
+        ]
+    });
+    let translated = translate_response_request_with_context(
+        request.clone(),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "thread_id":"thread-local-summary",
+            "turn_id":"turn-local-summary",
+            "request_kind":"compaction",
+            "compaction":{"implementation":"responses"}
+        })),
+    )
+    .expect("Codex local-summary history should use provider-opaque transport");
+
+    assert_eq!(
+        *translated.request.execution.execution_operation(),
+        domain::AiNativeOperation::Generate(domain::AiNativeGenerateProfile::LocalSummary)
+    );
+    assert!(translated.request.query.is_empty());
+    assert!(translated.request.history.is_empty());
+    assert!(translated.request.system.is_empty());
+    assert_eq!(
+        translated
+            .request
+            .metadata
+            .application_run_log_context()
+            .and_then(|context| context.call_kind.as_deref()),
+        Some("compact")
+    );
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("provider-opaque local summary must retain its exact wire body");
+    assert_eq!(payload.wire_body(), &request);
+    let debug = format!("{payload:?}");
+    assert!(!debug.contains("opaque-reasoning"));
+    assert!(!debug.contains("private-output"));
+}
+
+#[test]
 fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
     let cases = [
         (
