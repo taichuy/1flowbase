@@ -637,9 +637,10 @@ async fn dispatch_response_for_endpoint(
         } else {
             None
         };
+        let correlated_from_native_state = native_resume.is_some();
         let native_transport = responses_callback_provider_transport(
             &responses_envelope,
-            native_resume.is_some(),
+            correlated_from_native_state,
             encoded_resume.is_some(),
         )?;
         let resume = encoded_resume.or_else(|| {
@@ -658,7 +659,7 @@ async fn dispatch_response_for_endpoint(
                 resume.tool_results,
                 response_mode.clone(),
             );
-            let is_native_resume = native_transport.is_some();
+            let uses_native_transport = native_transport.is_some();
             command.native_transport = native_transport;
             match compat_sse::prepare_compatible_resume_for_actor(
                 state.clone(),
@@ -668,7 +669,9 @@ async fn dispatch_response_for_endpoint(
             .await
             {
                 Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                    if !is_native_resume {
+                    if responses_resume_requires_previous_response_match(
+                        correlated_from_native_state,
+                    ) {
                         ensure_openai_responses_resume_matches_previous_response(
                             state.as_ref(),
                             previous_response_id.as_deref(),
@@ -695,7 +698,7 @@ async fn dispatch_response_for_endpoint(
                                         model,
                                         previous_response_id,
                                         compat_sse::ResponsesProjectionMode::from_native_transport(
-                                            is_native_resume,
+                                            uses_native_transport,
                                         ),
                                     ),
                                 )
@@ -717,7 +720,7 @@ async fn dispatch_response_for_endpoint(
                                         previous_response_id,
                                         runtime,
                                         projection_mode: compat_sse::ResponsesProjectionMode::from_native_transport(
-                                            is_native_resume,
+                                            uses_native_transport,
                                         ),
                                     },
                                 )))
@@ -1086,6 +1089,10 @@ fn responses_callback_provider_transport(
             "Responses callback transport could not be restored",
         )
     })
+}
+
+fn responses_resume_requires_previous_response_match(correlated_from_native_state: bool) -> bool {
+    !correlated_from_native_state
 }
 
 fn attach_compact_provider_transport_payload(

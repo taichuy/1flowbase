@@ -115,6 +115,19 @@ fn issue_2052_encoded_callback_selects_restored_provider_transport() {
         transport.wire_body()["input"][1]["call_id"],
         "call_provider"
     );
+    assert!(
+        responses_resume_requires_previous_response_match(false),
+        "encoded correlation must still validate previous_response_id even with provider transport"
+    );
+    assert_eq!(
+        compat_sse::ResponsesProjectionMode::from_native_transport(true),
+        compat_sse::ResponsesProjectionMode::TransparentProviderResponses,
+        "transport representation remains independent from callback correlation"
+    );
+    assert!(
+        !responses_resume_requires_previous_response_match(true),
+        "native-state correlation already owns the callback-to-run relationship"
+    );
 }
 
 #[tokio::test]
