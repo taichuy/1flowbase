@@ -490,6 +490,8 @@ pub struct ApplicationRunLogSummary {
     #[serde(default)]
     pub final_output_run_id: Option<Uuid>,
     pub api_key_name_snapshot: Option<String>,
+    pub requested_model_id: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub run: ApplicationRunSummary,
     pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,

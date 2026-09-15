@@ -192,6 +192,22 @@ export function getApplicationRunsTableColumns(
       render: (value) => (value ? `${value}` : '-')
     },
     {
+      key: 'requested_model_id',
+      title: t('auto.requested_model'),
+      dataIndex: 'requested_model_id',
+      width: 180,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
+    },
+    {
+      key: 'reasoning_effort',
+      title: t('auto.reasoning_effort'),
+      dataIndex: 'reasoning_effort',
+      width: 130,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
+    },
+    {
       key: 'id',
       title: t('auto.run_id'),
       dataIndex: 'id',

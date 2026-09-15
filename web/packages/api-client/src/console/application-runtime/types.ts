@@ -83,6 +83,8 @@ export interface ConsoleApplicationRunSummary {
   title?: string;
   expand_id?: string | null;
   authorized_account?: string | null;
+  requested_model_id?: string | null;
+  reasoning_effort?: string | null;
   compatibility_mode?: string | null;
   subject?: ConsoleApplicationRunSubject;
   correlation?: ConsoleApplicationRunCorrelation;

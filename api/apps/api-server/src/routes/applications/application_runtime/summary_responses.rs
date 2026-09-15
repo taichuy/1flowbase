@@ -59,6 +59,8 @@ fn to_flow_run_summary_response(
         title: summary.title,
         expand_id: summary.user_id,
         authorized_account: summary.authorized_account,
+        requested_model_id: None,
+        reasoning_effort: None,
         execution_stage: invocation_context.execution_stage.as_str().to_string(),
         invocation_source: invocation_context.invocation_source.as_str().to_string(),
         compatibility_mode: summary.compatibility_mode,

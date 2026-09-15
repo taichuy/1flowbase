@@ -243,6 +243,8 @@ pub struct FlowRunSummaryResponse {
     pub title: String,
     pub expand_id: Option<String>,
     pub authorized_account: Option<String>,
+    pub requested_model_id: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub execution_stage: String,
     pub invocation_source: String,
     pub compatibility_mode: Option<String>,

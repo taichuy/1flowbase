@@ -529,6 +529,8 @@ pub(super) fn map_application_run_log_summary(
             log_conversation_id: row.get("log_conversation_id"),
             log_task_run_id: row.try_get("log_task_run_id").unwrap_or(None),
             api_key_name_snapshot: row.get("api_key_name_snapshot"),
+            requested_model_id: row.get("requested_model_id"),
+            reasoning_effort: row.get("reasoning_effort"),
             run: StoredApplicationRunSummaryRow {
                 id: row.get("id"),
                 run_mode: row.get("run_mode"),

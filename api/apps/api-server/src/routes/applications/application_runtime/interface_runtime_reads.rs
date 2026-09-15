@@ -290,6 +290,8 @@ impl ApplicationRuntimeReadsAdapter {
                 response.final_output = log_summary.final_output;
                 response.final_output_run_id =
                     log_summary.final_output_run_id.map(|id| id.to_string());
+                response.requested_model_id = log_summary.requested_model_id;
+                response.reasoning_effort = log_summary.reasoning_effort;
                 response
             })
             .collect();

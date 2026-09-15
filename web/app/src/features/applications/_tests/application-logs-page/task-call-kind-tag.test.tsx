@@ -37,6 +37,8 @@ function summary(
     status: 'succeeded',
     target_node_id: null,
     title: 'refactor login',
+    requested_model_id: 'gpt-5.6-sol',
+    reasoning_effort: 'high',
     total_tokens: 7600,
     input_tokens: null,
     output_tokens: null,
@@ -134,5 +136,13 @@ describe('task call kind tag', () => {
     renderColumn('authorized_account', summary({ authorized_account: 'root' }));
 
     expect(screen.getByText('root')).toBeInTheDocument();
+  });
+
+  test('shows the requested model and reasoning effort snapshots', () => {
+    renderColumn('requested_model_id', summary({}));
+    renderColumn('reasoning_effort', summary({}));
+
+    expect(screen.getByText('gpt-5.6-sol')).toBeInTheDocument();
+    expect(screen.getByText('high')).toBeInTheDocument();
   });
 });
