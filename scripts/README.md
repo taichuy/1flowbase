@@ -79,12 +79,13 @@ bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 
 ### `node scripts/node/dev-up.js [选项] [start|ensure|stop|status|restart]`
 
-统一管理本地开发进程。默认动作是 `start`，与 `ensure` 一样复用通过健康检查的服务；修改后端源码后使用 `restart --backend-only` 重新构建并启动。健康检查失败会报告错误，不会静默复用错误服务。
+统一管理本地开发进程。无参数时重新启动前后端，并重新构建后端以加载当前源码；Docker 中间件只执行 `up -d`，不会随默认动作停机。需要复用通过健康检查的现有服务时，显式使用 `start` 或 `ensure`。健康检查失败会报告错误，不会静默复用错误服务。
 
 常用命令：
 
 ```bash
 node scripts/node/dev-up.js
+node scripts/node/dev-up.js start
 node scripts/node/dev-up.js --skip-docker
 node scripts/node/dev-up.js restart --frontend-only
 node scripts/node/dev-up.js restart --backend-only
@@ -97,7 +98,7 @@ node scripts/node/dev-up.js stop
 
 说明：
 
-- 默认管理前端与唯一 Backend `api-server`，并在全量动作下管理 `docker/docker-compose.middleware.yaml`。
+- 默认重启前端与唯一 Backend `api-server`，并以 `up -d` 确保 `docker/docker-compose.middleware.yaml` 中间件可用；显式 `restart` 才会同时重启中间件。
 - `--skip-docker` 只跳过 Docker 中间件，不影响前后端本地进程。
 - `--frontend-only` 只管理前端。
 - `--backend-only` 只管理 `api-server`。

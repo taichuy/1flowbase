@@ -1,5 +1,12 @@
 const { withStartupSession } = require('./phases.js');
-const { log, parseCliArgs, selectServiceKeys, shouldManageDocker, usage } = require('./cli.js');
+const {
+  getMiddlewareAction,
+  log,
+  parseCliArgs,
+  selectServiceKeys,
+  shouldManageDocker,
+  usage,
+} = require('./cli.js');
 const {
   buildServiceEnv,
   ensureServiceEnvFile,
@@ -98,7 +105,7 @@ async function main(argv = process.argv.slice(2)) {
 
   const operate = async () => {
     if (shouldManageDocker(options)) {
-      await manageDocker(repoRoot, options.action);
+      await manageDocker(repoRoot, getMiddlewareAction(options));
     } else if (options.skipDocker) {
       log('Skipped Docker middleware management');
     }
@@ -129,6 +136,7 @@ module.exports = {
   configurePostgresToolchain,
   ensureServiceEnvFile,
   getRepoRoot,
+  getMiddlewareAction,
   getRuntimePaths,
   getServiceDefinitions,
   getServicePrestartCommands,

@@ -9,6 +9,7 @@ const {
   DEFAULT_STARTUP_TIMEOUT_MS,
   buildDevDatabaseMaintenanceHintLines,
   configurePostgresToolchain,
+  getMiddlewareAction,
   parseCliArgs,
   shouldManageDocker,
   shouldShowDevDatabaseMaintenanceHint,
@@ -48,9 +49,20 @@ test('AC-001 dev-up runtime messages remain ASCII-only for cross-platform termin
   }
 });
 
-test('parseCliArgs defaults to full start', () => {
+test('parseCliArgs defaults to full restart so current sources are loaded', () => {
   assert.deepEqual(parseCliArgs([]), {
+    action: 'restart',
+    actionSpecified: false,
+    scope: 'all',
+    skipDocker: false,
+    help: false,
+  });
+});
+
+test('parseCliArgs keeps explicit start as the healthy-service reuse action', () => {
+  assert.deepEqual(parseCliArgs(['start']), {
     action: 'start',
+    actionSpecified: true,
     scope: 'all',
     skipDocker: false,
     help: false,
@@ -60,10 +72,16 @@ test('parseCliArgs defaults to full start', () => {
 test('parseCliArgs supports backend restart without docker', () => {
   assert.deepEqual(parseCliArgs(['restart', '--backend-only', '--skip-docker']), {
     action: 'restart',
+    actionSpecified: true,
     scope: 'backend',
     skipDocker: true,
     help: false,
   });
+});
+
+test('implicit restart keeps Docker middleware up while explicit restart restarts it', () => {
+  assert.equal(getMiddlewareAction(parseCliArgs([])), 'start');
+  assert.equal(getMiddlewareAction(parseCliArgs(['restart'])), 'restart');
 });
 
 test('shouldManageDocker skips docker for frontend-only runs', () => {
@@ -1023,7 +1041,7 @@ test('startService restarts a running managed service when takeover is requested
   assert.equal(recordedPid, 4243);
 });
 
-test('manageServices makes default start reuse healthy services', async () => {
+test('manageServices makes explicit start reuse healthy services', async () => {
   const service = {
     key: 'web',
     label: 'frontend',

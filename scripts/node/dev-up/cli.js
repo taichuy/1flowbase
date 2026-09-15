@@ -4,7 +4,9 @@ const SCOPES = new Set(['all', 'frontend', 'backend']);
 function usage() {
   process.stdout.write(`Usage: node scripts/node/dev-up.js [options] [start|ensure|stop|status|restart]
 
-Default action: start (reuse healthy services; use restart to rebuild/restart)
+Default action: restart (rebuild and restart services from current sources)
+
+Use start or ensure explicitly to reuse healthy services.
 
 Options:
   --frontend-only  Manage the frontend process only
@@ -14,6 +16,7 @@ Options:
 
 Examples:
   node scripts/node/dev-up.js
+  node scripts/node/dev-up.js start
   node scripts/node/dev-up.js --skip-docker
   node scripts/node/dev-up.js restart --frontend-only
   node scripts/node/dev-up.js restart --backend-only
@@ -26,7 +29,7 @@ function log(message) {
 }
 
 function parseCliArgs(argv) {
-  let action = 'start';
+  let action = 'restart';
   let actionSpecified = false;
   let scope = 'all';
   let skipDocker = false;
@@ -81,10 +84,15 @@ function parseCliArgs(argv) {
 
   return {
     action,
+    actionSpecified,
     scope,
     skipDocker,
     help,
   };
+}
+
+function getMiddlewareAction(options) {
+  return options.action === 'restart' && !options.actionSpecified ? 'start' : options.action;
 }
 
 function shouldManageDocker(options) {
@@ -103,6 +111,7 @@ function selectServiceKeys(scope) {
 }
 
 module.exports = {
+  getMiddlewareAction,
   log,
   parseCliArgs,
   selectServiceKeys,
