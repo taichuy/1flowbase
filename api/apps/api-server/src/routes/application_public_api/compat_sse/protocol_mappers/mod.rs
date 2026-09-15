@@ -79,9 +79,9 @@ fn openai_response_runtime_event_to_sse(
     previous_response_id: Option<&str>,
     completed_output_items: &[Value],
     envelope: RuntimeEventEnvelope,
-) -> Vec<Result<Event, Infallible>> {
+) -> Vec<(&'static str, Value)> {
     match envelope.event_type.as_str() {
-        "flow_started" => vec![event_json_sse(
+        "flow_started" => vec![named_sse_payload(
             "response.created",
             json!({
                 "type": "response.created",
@@ -93,14 +93,14 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
-        "text_delta" if is_answer_presentation_delta(&envelope) => vec![event_json_sse(
+        "text_delta" if is_answer_presentation_delta(&envelope) => vec![named_sse_payload(
             "response.output_text.delta",
             openai_response_output_text_delta_payload(
                 initial_run,
                 envelope.text.unwrap_or_default(),
             ),
         )],
-        "reasoning_delta" if is_answer_presentation_delta(&envelope) => vec![event_json_sse(
+        "reasoning_delta" if is_answer_presentation_delta(&envelope) => vec![named_sse_payload(
             "response.reasoning_text.delta",
             json!({
                 "type": "response.reasoning_text.delta",
@@ -112,7 +112,7 @@ fn openai_response_runtime_event_to_sse(
             }),
         )],
         "text_delta" | "reasoning_delta" => Vec::new(),
-        "flow_finished" => vec![event_json_sse(
+        "flow_finished" => vec![named_sse_payload(
             "response.completed",
             json!({
                 "type": "response.completed",
@@ -124,7 +124,7 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
-        "flow_incomplete" => vec![event_json_sse(
+        "flow_incomplete" => vec![named_sse_payload(
             "response.incomplete",
             json!({
                 "type": "response.incomplete",
@@ -136,7 +136,7 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
-        "flow_failed" => vec![event_json_sse(
+        "flow_failed" => vec![named_sse_payload(
             "response.failed",
             json!({
                 "type": "response.failed",
@@ -150,7 +150,7 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
-        "flow_cancelled" => vec![event_json_sse(
+        "flow_cancelled" => vec![named_sse_payload(
             "response.failed",
             json!({
                 "type": "response.failed",
@@ -172,7 +172,7 @@ fn openai_response_runtime_event_to_sse(
                 )
             }) =>
         {
-            vec![event_json_sse(
+            vec![named_sse_payload(
                 "response.completed",
                 json!({
                     "type": "response.completed",
@@ -365,10 +365,10 @@ fn openai_response_function_call_sse(
     model: &str,
     previous_response_id: Option<&str>,
     output: Vec<Value>,
-) -> Vec<Result<Event, Infallible>> {
+) -> Vec<(&'static str, Value)> {
     let mut events = Vec::with_capacity(output.len() * 2 + 1);
     for (index, item) in output.iter().enumerate() {
-        events.push(event_json_sse(
+        events.push(named_sse_payload(
             "response.output_item.added",
             json!({
                 "type": "response.output_item.added",
@@ -377,7 +377,7 @@ fn openai_response_function_call_sse(
                 "item": item
             }),
         ));
-        events.push(event_json_sse(
+        events.push(named_sse_payload(
             "response.output_item.done",
             json!({
                 "type": "response.output_item.done",
@@ -387,7 +387,7 @@ fn openai_response_function_call_sse(
             }),
         ));
     }
-    events.push(event_json_sse(
+    events.push(named_sse_payload(
         "response.completed",
         json!({
             "type": "response.completed",
@@ -547,8 +547,8 @@ fn required_action_not_supported_openai_response_sse(
     initial_run: &NativeRunResult,
     model: &str,
     previous_response_id: Option<&str>,
-) -> Vec<Result<Event, Infallible>> {
-    vec![event_json_sse(
+) -> Vec<(&'static str, Value)> {
+    vec![named_sse_payload(
         "response.failed",
         json!({
             "type": "response.failed",
@@ -562,6 +562,10 @@ fn required_action_not_supported_openai_response_sse(
             )
         }),
     )]
+}
+
+fn named_sse_payload(event_name: &'static str, payload: Value) -> (&'static str, Value) {
+    (event_name, payload)
 }
 
 fn required_action_not_supported_anthropic_sse() -> Vec<Result<Event, Infallible>> {

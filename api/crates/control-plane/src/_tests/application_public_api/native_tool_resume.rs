@@ -181,15 +181,13 @@ async fn native_admission_rejects_partial_unknown_duplicate_and_changed_rounds()
         CallbackTaskStatus::Pending
     );
     repository.complete_callback_task_for_test(callback.id);
-    let error = correlate_native_responses_callback(&repository, &actor, &body)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        error.downcast_ref::<ControlPlaneError>(),
-        Some(&ControlPlaneError::Conflict(
-            "native_tool_output_round_not_pending"
-        ))
-    );
+    let (replayed, replay_payload) =
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .expect("completed round must reach the durable replay owner")
+            .expect("completed round must still correlate");
+    assert_eq!(replayed.id, callback.id);
+    assert_eq!(replay_payload["tool_results"].as_array().unwrap().len(), 2);
     assert!(repository.callback_resume_attempts().is_empty());
 }
 

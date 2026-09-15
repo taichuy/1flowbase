@@ -7,8 +7,8 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 use crate::routes::application_public_api::{
-    llm_tool_visibility::external_llm_tool_call_values, openai::native_response_id,
-    tool_callback_ids::encode_openai_callback_tool_call_id,
+    compat_sse::ResponsesProjectionMode, llm_tool_visibility::external_llm_tool_call_values,
+    openai::native_response_id, tool_callback_ids::encode_openai_callback_tool_call_id,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub(crate) struct ResponsesWebSocketProjector {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OutputItemKind>,
-    native_output: bool,
+    mode: ResponsesProjectionMode,
     active_output_item_text: String,
     completed_output_items: Vec<Value>,
     output_item_index: usize,
@@ -46,12 +46,25 @@ pub(crate) struct ResponsesWebSocketProjector {
 }
 
 impl ResponsesWebSocketProjector {
+    #[cfg(test)]
     pub(crate) fn new(model: String, previous_response_id: Option<String>) -> Self {
+        Self::with_mode(
+            model,
+            previous_response_id,
+            ResponsesProjectionMode::SemanticNativeResponses,
+        )
+    }
+
+    pub(crate) fn with_mode(
+        model: String,
+        previous_response_id: Option<String>,
+        mode: ResponsesProjectionMode,
+    ) -> Self {
         Self {
             model,
             previous_response_id,
             active_output_item: None,
-            native_output: false,
+            mode,
             active_output_item_text: String::new(),
             completed_output_items: Vec::new(),
             output_item_index: 0,
@@ -86,7 +99,10 @@ impl ResponsesWebSocketProjector {
                 }));
             }
             "flow_started" => {}
-            "reasoning_delta" if !self.native_output && is_answer_presentation_delta(&envelope) => {
+            "reasoning_delta"
+                if self.mode == ResponsesProjectionMode::SemanticNativeResponses
+                    && is_answer_presentation_delta(&envelope) =>
+            {
                 self.begin_streaming();
                 self.open_output_item(run, OutputItemKind::Reasoning, &mut events);
                 let delta = envelope.text.unwrap_or_default();
@@ -100,7 +116,10 @@ impl ResponsesWebSocketProjector {
                     "delta": delta
                 }));
             }
-            "text_delta" if !self.native_output && is_answer_presentation_delta(&envelope) => {
+            "text_delta"
+                if self.mode == ResponsesProjectionMode::SemanticNativeResponses
+                    && is_answer_presentation_delta(&envelope) =>
+            {
                 self.begin_streaming();
                 self.open_output_item(run, OutputItemKind::Message, &mut events);
                 let delta = envelope.text.unwrap_or_default();
@@ -116,7 +135,9 @@ impl ResponsesWebSocketProjector {
             }
             "text_delta" | "reasoning_delta" => {}
             "provider_responses_output_delta" => {
-                self.native_output = true;
+                if self.mode != ResponsesProjectionMode::TransparentProviderResponses {
+                    return Ok(Vec::new());
+                }
                 self.begin_streaming();
                 if let Some(mut event) = envelope.payload.get("event").cloned() {
                     event["response_id"] = json!(native_response_id(run));
@@ -124,6 +145,9 @@ impl ResponsesWebSocketProjector {
                 }
             }
             "provider_output_item_added" | "provider_output_item_done" => {
+                if self.mode != ResponsesProjectionMode::TransparentProviderResponses {
+                    return Ok(Vec::new());
+                }
                 self.begin_streaming();
                 self.project_provider_output_item(run, &envelope, &mut events);
             }
@@ -206,12 +230,6 @@ impl ResponsesWebSocketProjector {
             return;
         };
 
-        if matches!(
-            item.get("type").and_then(Value::as_str),
-            Some("message" | "reasoning" | "function_call" | "custom_tool_call")
-        ) {
-            self.native_output = true;
-        }
         self.close_output_item(run, events);
         let event_type = match envelope.event_type.as_str() {
             "provider_output_item_added" => "response.output_item.added",
@@ -291,7 +309,7 @@ impl ResponsesWebSocketProjector {
     }
 
     fn waiting_callback_events(&mut self, run: &NativeRunResult, payload: &Value) -> Vec<Value> {
-        if self.native_output {
+        if self.mode == ResponsesProjectionMode::TransparentProviderResponses {
             return vec![json!({
                 "type": "response.completed",
                 "response": completed_response_snapshot_with_output(

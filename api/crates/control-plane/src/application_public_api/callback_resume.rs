@@ -149,7 +149,9 @@ where
             .await?
         {
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
-            if callback_failure_allows_new_turn(&context.flow_run) {
+            if command.source != PublishedCallbackResumeSource::OpenAiResponses
+                && callback_failure_allows_new_turn(&context.flow_run)
+            {
                 return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
             }
         }
@@ -168,6 +170,28 @@ where
         let context = self
             .resolve_resume_context_for_actor(actor, command)
             .await?;
+        if let Some(existing) = self
+            .repository
+            .get_published_callback_resume_attempt(context.callback_task.id)
+            .await?
+        {
+            if existing.response_payload != command.response_payload {
+                return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
+            }
+            if existing.source != command.source.as_str() {
+                return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+            }
+            if matches!(
+                existing.status,
+                domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+                    | domain::FlowRunCallbackResumeAttemptStatus::Failed
+                    | domain::FlowRunCallbackResumeAttemptStatus::Cancelled
+            ) && context.callback_task.status == domain::CallbackTaskStatus::Completed
+            {
+                return Ok(existing.id);
+            }
+            return Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into());
+        }
         ensure_callback_is_consumable(
             &context.flow_run,
             &context.callback_task,
@@ -224,11 +248,16 @@ where
             ))?;
             if existing.id != reserved_id
                 || existing.response_payload != command.response_payload
-                || existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+                || existing.source != command.source.as_str()
             {
                 return Err(
                     ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into(),
                 );
+            }
+            if existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+                return self
+                    .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                    .await;
             }
             ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
             existing
@@ -468,7 +497,16 @@ fn ensure_existing_callback_resume_matches(
     if attempt.response_payload != command.response_payload {
         return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
     }
-    if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Succeeded {
+    if attempt.source != command.source.as_str() {
+        return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+    }
+    let replayable_terminal = matches!(
+        attempt.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+            | domain::FlowRunCallbackResumeAttemptStatus::Failed
+            | domain::FlowRunCallbackResumeAttemptStatus::Cancelled
+    );
+    if !replayable_terminal {
         return Err(ControlPlaneError::Conflict("callback_resume_not_completed").into());
     }
     if callback_task.status != domain::CallbackTaskStatus::Completed {

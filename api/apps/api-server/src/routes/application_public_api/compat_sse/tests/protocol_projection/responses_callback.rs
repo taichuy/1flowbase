@@ -125,8 +125,11 @@ async fn native_callback_completion_keeps_custom_call_and_response_round_identit
     let round = Uuid::now_v7();
     run.metadata["response_round_id"] = json!(round);
     let item = json!({"id":"item_original","type":"custom_tool_call","call_id":"call_original","name":"exec","input":"read file"});
-    let mut mapper =
-        OpenAiResponseStreamMapper::new("fixture".into(), Some("resp_previous".into()));
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        Some("resp_previous".into()),
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),

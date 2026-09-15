@@ -79,6 +79,7 @@ pub(crate) struct PreparedOpenAiResponseTurn {
     model: String,
     previous_response_id: Option<String>,
     runtime: compatibility_interface::CompatibilityTypedStreamInvocation,
+    projection_mode: compat_sse::ResponsesProjectionMode,
 }
 
 impl PreparedOpenAiResponseTurn {
@@ -88,8 +89,14 @@ impl PreparedOpenAiResponseTurn {
         String,
         Option<String>,
         compatibility_interface::CompatibilityTypedStreamInvocation,
+        compat_sse::ResponsesProjectionMode,
     ) {
-        (self.model, self.previous_response_id, self.runtime)
+        (
+            self.model,
+            self.previous_response_id,
+            self.runtime,
+            self.projection_mode,
+        )
     }
 }
 
@@ -612,21 +619,6 @@ async fn dispatch_response_for_endpoint(
         } else {
             None
         };
-        if let Some((task, _)) = &native_resume {
-            let continuation = state
-                .infrastructure
-                .provider_transport_store()
-                .get_continuation(ProviderContinuationSlotId::for_flow_run(task.flow_run_id))
-                .await
-                .map_err(native::service_error)?;
-            if continuation.is_none() {
-                return Err(OpenAiRouteError::Native(native::NativeApiError::new(
-                    StatusCode::CONFLICT,
-                    "ephemeral_continuation_missing",
-                    "the waiting Provider continuation is no longer available",
-                )));
-            }
-        }
         let native_transport = if native_resume.is_some() {
             Some(
                 ProviderTransportPayload::openai_responses(value.clone())
@@ -684,9 +676,12 @@ async fn dispatch_response_for_endpoint(
                                     authentication_binding_id,
                                     principal,
                                     input,
-                                    compat_sse::openai_responses_interface_projection(
+                                    compat_sse::openai_responses_interface_projection_with_mode(
                                         model,
                                         previous_response_id,
+                                        compat_sse::ResponsesProjectionMode::from_native_transport(
+                                            is_native_resume,
+                                        ),
                                     ),
                                 )
                                 .await
@@ -706,6 +701,9 @@ async fn dispatch_response_for_endpoint(
                                         model,
                                         previous_response_id,
                                         runtime,
+                                        projection_mode: compat_sse::ResponsesProjectionMode::from_native_transport(
+                                            is_native_resume,
+                                        ),
                                     },
                                 )))
                             }
@@ -850,6 +848,9 @@ async fn dispatch_response_for_endpoint(
     }
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
+    let projection_mode = compat_sse::ResponsesProjectionMode::from_native_transport(
+        provider_transport_payload.is_some(),
+    );
     let blocking_binding_id = match endpoint {
         OpenAiResponsesEndpoint::ResponsesCompact => {
             compatibility_interface::OPENAI_RESPONSES_COMPACT_BINDING_ID
@@ -904,8 +905,11 @@ async fn dispatch_response_for_endpoint(
                 } else {
                     compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
                 };
-                let projection =
-                    compat_sse::openai_responses_interface_projection(model, previous_response_id);
+                let projection = compat_sse::openai_responses_interface_projection_with_mode(
+                    model,
+                    previous_response_id,
+                    projection_mode,
+                );
                 let response = compatibility_interface::invoke_stream_with_principal(
                     state,
                     stream_binding_id,
@@ -951,6 +955,7 @@ async fn dispatch_response_for_endpoint(
                     model,
                     previous_response_id,
                     runtime,
+                    projection_mode,
                 },
             )))
         }

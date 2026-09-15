@@ -515,6 +515,79 @@ async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completi
 }
 
 #[tokio::test]
+async fn issue_2039_server_close_flushes_terminal_and_waits_for_peer_ack() {
+    use super::super::actor::run_connection_loop;
+    use axum::{extract::ws::WebSocketUpgrade, routing::get, Router};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{protocol::frame::coding::CloseCode, Message};
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (closed, mut closed_rx) = mpsc::unbounded_channel();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = Router::new().route(
+            "/ws",
+            get(move |upgrade: WebSocketUpgrade| {
+                let closed = closed.clone();
+                async move {
+                    upgrade.on_upgrade(move |socket| async move {
+                        run_connection_loop(socket, move |_, frames| async move {
+                            frames
+                                .send(
+                                    json!({
+                                        "type": "response.failed",
+                                        "response": {"id": "resp_failed", "status": "failed"}
+                                    })
+                                    .to_string(),
+                                )
+                                .await
+                                .unwrap();
+                            Err(ResponsesTurnBridgeError::MissingTerminal)
+                        })
+                        .await;
+                        closed.send(()).unwrap();
+                    })
+                }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws"))
+            .await
+            .unwrap();
+        socket
+            .send(Message::Text(
+                json!({"type":"response.create","model":"model","input":[]}).to_string(),
+            ))
+            .await
+            .unwrap();
+
+        let terminal: Value =
+            serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        assert_eq!(terminal["type"], "response.failed");
+        let close = socket.next().await.unwrap().unwrap();
+        let Message::Close(Some(frame)) = close else {
+            panic!("server must close with an RFC 6455 Close frame: {close:?}");
+        };
+        assert_eq!(frame.code, CloseCode::Error);
+        assert!(
+            closed_rx.try_recv().is_err(),
+            "server handler must remain alive until the peer Close ACK is flushed"
+        );
+
+        socket.flush().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), closed_rx.recv())
+            .await
+            .expect("server must finish promptly after the Close ACK")
+            .expect("server close observer must remain connected");
+        server.abort();
+    })
+    .await
+    .expect("terminal, Close, and peer ACK must complete within the bounded handshake window");
+}
+
+#[tokio::test]
 async fn issue_2028_sse_terminal_closes_delivery_without_waiting_for_producer_drop() {
     use crate::routes::application_public_api::{
         compat_sse::openai_responses_interface_projection,

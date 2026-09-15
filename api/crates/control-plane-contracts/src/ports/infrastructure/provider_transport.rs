@@ -51,6 +51,15 @@ impl ProviderContinuationSlotId {
     pub const fn belongs_to(self, flow_run_id: Uuid) -> bool {
         self.flow_run_id.as_u128() == flow_run_id.as_u128()
     }
+
+    pub const fn flow_run_id(self) -> Uuid {
+        self.flow_run_id
+    }
+
+    pub fn storage_key(self) -> String {
+        self.response_round_id
+            .map_or_else(|| "current".to_string(), |id| id.to_string())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,6 +100,13 @@ impl ProviderProtocolContextSlotId {
 
     pub const fn flow_run_id(self) -> Uuid {
         self.flow_run_id
+    }
+
+    pub fn storage_key(self) -> String {
+        match self.slot {
+            ProviderProtocolContextSlot::Original => "original".to_string(),
+            ProviderProtocolContextSlot::Derived(id) => id.to_string(),
+        }
     }
 }
 
@@ -149,6 +165,10 @@ impl ProviderProtocolContextValue {
 
     pub const fn size_bytes(&self) -> usize {
         self.size_bytes
+    }
+
+    pub fn digest(&self) -> &str {
+        &self.digest
     }
 
     pub fn matches_locator(&self, locator: &ProviderProtocolContextLocator) -> bool {
@@ -372,6 +392,65 @@ impl ProviderTransportAffinity {
             && self.protocol == protocol
             && self.model == model
     }
+
+    pub fn provider_instance_id(&self) -> &str {
+        &self.provider_instance_id
+    }
+
+    pub fn provider_code(&self) -> &str {
+        &self.provider_code
+    }
+
+    pub fn protocol(&self) -> &str {
+        &self.protocol
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+}
+
+/// Durable encrypted owner for protocol context and opaque Provider continuations.
+///
+/// AI Native receives only the typed opaque handles above. Implementations must encrypt values
+/// before persistence and enforce a bounded hard retention independently of socket lifetimes.
+#[async_trait]
+pub trait ProviderProtocolCapsuleStore: Send + Sync {
+    async fn put_protocol_context(
+        &self,
+        slot_id: ProviderProtocolContextSlotId,
+        value: ProviderProtocolContextValue,
+    ) -> anyhow::Result<()>;
+
+    async fn get_protocol_context(
+        &self,
+        slot_id: ProviderProtocolContextSlotId,
+    ) -> anyhow::Result<Option<ProviderProtocolContextValue>>;
+
+    async fn delete_flow_run_protocol_contexts(&self, flow_run_id: Uuid) -> anyhow::Result<usize>;
+
+    async fn put_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+        continuation: ProviderContinuation,
+    ) -> anyhow::Result<()>;
+
+    async fn get_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<Option<ProviderContinuation>>;
+
+    async fn consume_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<ProviderContinuation>;
+
+    async fn delete_continuation(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+    ) -> anyhow::Result<bool>;
+
+    async fn clear_expired(&self) -> anyhow::Result<usize>;
 }
 
 #[derive(Clone, PartialEq, Eq)]

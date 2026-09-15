@@ -13,6 +13,173 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::super::projector::ResponsesWebSocketProjector;
+use crate::routes::application_public_api::compat_sse::ResponsesProjectionMode;
+
+fn transparent_projector(
+    model: impl Into<String>,
+    previous: Option<String>,
+) -> ResponsesWebSocketProjector {
+    ResponsesWebSocketProjector::with_mode(
+        model.into(),
+        previous,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    )
+}
+
+#[test]
+fn frozen_projection_modes_never_mix_sources_and_preserve_utf8_text_identity() {
+    let fragments = ["中", "🙂", "\n```rust\n", "let x = 1;", "\n```"];
+
+    let mut semantic_run = native_run(0x20390000000000000000000000000001);
+    let mut semantic = ResponsesWebSocketProjector::new("model".into(), None);
+    let provider_node = Uuid::now_v7();
+    assert!(semantic
+        .project(
+            &semantic_run,
+            RuntimeEventEnvelope::new(
+                semantic_run.id,
+                1,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    provider_node,
+                    json!({"type":"response.output_text.delta","delta":"wrong-source"}),
+                ),
+            ),
+        )
+        .unwrap()
+        .is_empty());
+    let mut semantic_frames = Vec::new();
+    for (index, fragment) in fragments.iter().enumerate() {
+        semantic_frames.extend(
+            semantic
+                .project(
+                    &semantic_run,
+                    answer_text(&semantic_run, index as i64 + 2, fragment),
+                )
+                .unwrap(),
+        );
+    }
+    semantic_run.status = NativeRunStatus::Succeeded;
+    semantic_frames.extend(
+        semantic
+            .project(
+                &semantic_run,
+                RuntimeEventEnvelope::new(
+                    semantic_run.id,
+                    20,
+                    debug_stream_events::flow_finished(semantic_run.id, json!({})),
+                ),
+            )
+            .unwrap(),
+    );
+    assert_text_identity(decoded(semantic_frames), &fragments);
+
+    let mut transparent_run = native_run(0x20390000000000000000000000000002);
+    let mut transparent = transparent_projector("model", None);
+    assert!(transparent
+        .project(
+            &transparent_run,
+            answer_text(&transparent_run, 1, "wrong-source")
+        )
+        .unwrap()
+        .is_empty());
+    let message = json!({
+        "id": "msg_provider",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": fragments.concat()}]
+    });
+    let mut transparent_frames = transparent
+        .project(
+            &transparent_run,
+            RuntimeEventEnvelope::new(
+                transparent_run.id,
+                2,
+                debug_stream_events::provider_output_item_added(
+                    "llm",
+                    provider_node,
+                    0,
+                    message.clone(),
+                ),
+            ),
+        )
+        .unwrap();
+    for (index, fragment) in fragments.iter().enumerate() {
+        transparent_frames.extend(
+            transparent
+                .project(
+                    &transparent_run,
+                    RuntimeEventEnvelope::new(
+                        transparent_run.id,
+                        index as i64 + 3,
+                        debug_stream_events::provider_responses_output_delta(
+                            "llm",
+                            provider_node,
+                            json!({"type":"response.output_text.delta","delta":fragment}),
+                        ),
+                    ),
+                )
+                .unwrap(),
+        );
+    }
+    transparent_frames.extend(
+        transparent
+            .project(
+                &transparent_run,
+                RuntimeEventEnvelope::new(
+                    transparent_run.id,
+                    10,
+                    debug_stream_events::provider_output_item_done(
+                        "llm",
+                        provider_node,
+                        0,
+                        message,
+                    ),
+                ),
+            )
+            .unwrap(),
+    );
+    transparent_run.status = NativeRunStatus::Succeeded;
+    transparent_frames.extend(
+        transparent
+            .project(
+                &transparent_run,
+                RuntimeEventEnvelope::new(
+                    transparent_run.id,
+                    11,
+                    debug_stream_events::flow_finished(transparent_run.id, json!({})),
+                ),
+            )
+            .unwrap(),
+    );
+    assert_text_identity(decoded(transparent_frames), &fragments);
+}
+
+fn assert_text_identity(events: Vec<Value>, fragments: &[&str]) {
+    for (expected, event) in events.iter().enumerate() {
+        assert_eq!(event["sequence_number"], expected as u64);
+    }
+    let delta = events
+        .iter()
+        .filter(|event| event["type"] == "response.output_text.delta")
+        .filter_map(|event| event["delta"].as_str())
+        .collect::<String>();
+    let done = events
+        .iter()
+        .find(|event| event["type"] == "response.output_item.done")
+        .unwrap();
+    let completed = events
+        .iter()
+        .find(|event| event["type"] == "response.completed")
+        .unwrap();
+    let done_text = done["item"]["content"][0]["text"].as_str().unwrap();
+    let completed_text = completed["response"]["output"][0]["content"][0]["text"]
+        .as_str()
+        .unwrap();
+    assert_eq!(delta, fragments.concat());
+    assert_eq!(delta, done_text);
+    assert_eq!(delta, completed_text);
+}
 
 const PROVIDER_UPSTREAM_ERROR_BODY: &str =
     " {\"future_error\":{\"shape\":\"unknown\"},\"message\":\"keep complete body\"}\n ";
@@ -398,7 +565,7 @@ fn typed_mcp_approval_is_visible_and_done_joins_completed_output() {
         "type": "mcp_approval_request",
         "name": "delete_record"
     });
-    let mut projector = ResponsesWebSocketProjector::new("model".to_string(), None);
+    let mut projector = transparent_projector("model", None);
     let mut frames = projector
         .project(
             &run,
@@ -511,7 +678,7 @@ fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
         json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"read","arguments":"{\"path\":\"fixture\"}","status":"completed"}),
     ] {
         let run = native_run(2028);
-        let mut projector = ResponsesWebSocketProjector::new("model".into(), None);
+        let mut projector = transparent_projector("model", None);
         let node = Uuid::new_v4();
         let facts = [
             debug_stream_events::provider_output_item_added("llm", node, 0, item.clone()),
@@ -546,7 +713,7 @@ fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
 fn native_formal_output_preserves_phase_reasoning_and_order_without_text_duplicates() {
     let run = native_run(2030);
     let node = Uuid::new_v4();
-    let mut projector = ResponsesWebSocketProjector::new("fixture".into(), None);
+    let mut projector = transparent_projector("fixture", None);
     let items = [
         json!({"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"opaque"}),
         json!({"id":"msg_1","type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"reading"}]}),
@@ -623,8 +790,7 @@ fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
     let round = Uuid::from_u128(2037);
     run.metadata = json!({"response_round_id": round});
     let expected = response_id_from_run_id(round);
-    let mut projector =
-        ResponsesWebSocketProjector::new("model".into(), Some(response_id_from_run_id(run.id)));
+    let mut projector = transparent_projector("model", Some(response_id_from_run_id(run.id)));
     let item = json!({"id":"ct_native", "type":"custom_tool_call", "call_id":"call_original", "name":"exec", "input":"echo 2036"});
     let mut frames = decoded(
         projector

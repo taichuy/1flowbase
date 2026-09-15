@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio::time::{timeout, Duration};
 
 use super::{
     schema::{decode_client_message, ResponsesWebSocketClientRequest},
@@ -284,10 +285,10 @@ where
                     let completion = actor.complete_turn(turn);
                     if result.is_err() || matches!(result, Ok(Err(_))) {
                         actor.begin_close();
-                        let _ = sender.send(Message::Close(Some(CloseFrame {
+                        finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
                             reason: Cow::Borrowed("Responses turn failed"),
-                        }))).await;
+                        })).await;
                         break;
                     }
                     if completion == TurnCompletion::Closed {
@@ -348,7 +349,12 @@ where
                                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                                 let _ = actor.complete_turn(turn);
                                             }
-                                            let _ = sender.send(transition_close(error)).await;
+                                            finish_server_close(
+                                                &mut sender,
+                                                &mut receiver,
+                                                transition_close_frame(error),
+                                            )
+                                            .await;
                                             break;
                                         }
                                     }
@@ -360,10 +366,10 @@ where
                                     if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                         let _ = actor.complete_turn(turn);
                                     }
-                                    let _ = sender.send(Message::Close(Some(CloseFrame {
+                                    finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                                         code: error.close_code(),
                                         reason: Cow::Borrowed(error.close_reason()),
-                                    }))).await;
+                                    })).await;
                                     break;
                                 }
                             }
@@ -418,7 +424,12 @@ where
                         Ok(ConnectionAction::CancelTurn { .. } | ConnectionAction::Close) => {}
                         Err(error) => {
                             actor.begin_close();
-                            let _ = sender.send(transition_close(error)).await;
+                            finish_server_close(
+                                &mut sender,
+                                &mut receiver,
+                                transition_close_frame(error),
+                            )
+                            .await;
                             break;
                         }
                     }
@@ -426,12 +437,15 @@ where
                 Ok(None) => {}
                 Err(error) => {
                     actor.begin_close();
-                    let _ = sender
-                        .send(Message::Close(Some(CloseFrame {
+                    finish_server_close(
+                        &mut sender,
+                        &mut receiver,
+                        Some(CloseFrame {
                             code: error.close_code(),
                             reason: Cow::Borrowed(error.close_reason()),
-                        })))
-                        .await;
+                        }),
+                    )
+                    .await;
                     break;
                 }
             },
@@ -463,9 +477,35 @@ pub(crate) fn prewarm_completion_frames(response_id: &str) -> [String; 2] {
     ]
 }
 
-fn transition_close(error: ConnectionTransitionError) -> Message {
-    Message::Close(Some(CloseFrame {
+fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {
+    Some(CloseFrame {
         code: error.close_code(),
         reason: Cow::Borrowed(error.close_reason()),
-    }))
+    })
+}
+
+const CLOSE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// A server-initiated close is complete only after the peer acknowledges it or a bounded timeout
+/// expires. `SinkExt::send` flushes the Close frame before we continue polling the read half.
+async fn finish_server_close(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    receiver: &mut futures_util::stream::SplitStream<WebSocket>,
+    frame: Option<CloseFrame<'static>>,
+) {
+    if sender.send(Message::Close(frame)).await.is_err() {
+        return;
+    }
+    let _ = timeout(CLOSE_HANDSHAKE_TIMEOUT, async {
+        while let Some(message) = receiver.next().await {
+            match message {
+                Ok(Message::Close(_)) | Err(_) => break,
+                // Once Close is sent, no new application or control frame is written. Keep
+                // driving the peer side until its Close arrives; Tungstenite owns protocol I/O.
+                Ok(Message::Ping(_) | Message::Pong(_)) => {}
+                Ok(_) => {}
+            }
+        }
+    })
+    .await;
 }

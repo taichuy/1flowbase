@@ -812,13 +812,9 @@ mod tests {
             completed.attempt.status,
             domain::FlowRunCallbackResumeAttemptStatus::Succeeded
         );
-        let replay = service.resume_callback(command).await.unwrap_err();
-        assert_eq!(
-            replay.downcast_ref::<ControlPlaneError>(),
-            Some(&ControlPlaneError::Conflict(
-                "callback_resume_reservation_mismatch"
-            ))
-        );
+        let replay = service.resume_callback(command).await.unwrap();
+        assert_eq!(replay.attempt.id, completed.attempt.id);
+        assert_eq!(replay.run.status, completed.run.status);
         assert_eq!(consumer.call_count(), 1);
         assert_eq!(
             consumer.calls.lock().unwrap()[0]
@@ -894,6 +890,19 @@ mod tests {
                 "callback_resume_payload_conflict"
             ))
         ));
+        let mut changed_source =
+            resume_command(&token, run.id, callback.id, json!({ "answer": "yes" }));
+        changed_source.source = PublishedCallbackResumeSource::OpenAiResponses;
+        let error = service
+            .resume_callback(changed_source)
+            .await
+            .expect_err("another protocol source must not reuse the durable attempt identity");
+        assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::Conflict(
+                "callback_resume_source_conflict"
+            ))
+        ));
         assert_eq!(consumer.call_count(), 1);
     }
 
@@ -935,6 +944,69 @@ mod tests {
         );
         assert_eq!(consumer.call_count(), 1);
         assert_eq!(repository.callback_resume_attempts().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn responses_exact_retry_replays_failed_terminal_without_starting_a_new_turn() {
+        let (repository, mut consumer, token, run) = callback_fixture().await;
+        consumer.terminal_error = Some(json!({
+            "error_code": "provider_upstream_error",
+            "status_code": 429,
+            "failed_after_first_token": false,
+            "message": "upstream unavailable"
+        }));
+        let callback = repository.seed_pending_callback_task(run.id);
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let mut command = resume_command(&token, run.id, callback.id, json!({ "answer": "yes" }));
+        command.source = PublishedCallbackResumeSource::OpenAiResponses;
+        command.native_transport = Some(
+            control_plane_contracts::ports::ProviderTransportPayload::openai_responses(json!({
+                "model": "fixture",
+                "input": [{
+                    "type": "function_call_output",
+                    "call_id": "call_fixture",
+                    "output": "yes"
+                }]
+            }))
+            .unwrap(),
+        );
+
+        let first = service
+            .resume_callback(command.clone())
+            .await
+            .expect("first callback result must become a durable terminal");
+        assert_eq!(
+            first.run.status,
+            control_plane::application_public_api::native::NativeRunStatus::Failed
+        );
+
+        let admission = service
+            .prepare_callback_resume(&command)
+            .await
+            .expect("exact Responses retry must remain replayable");
+        assert!(matches!(
+            admission,
+            PreparedPublishedCallbackResume::Resume { .. }
+        ));
+        let actor = ApplicationApiKeyService::new(repository.clone())
+            .authenticate_bearer_token(&token)
+            .await
+            .unwrap();
+        let reserved_attempt_id = service
+            .reserve_native_callback_for_actor(actor, &command)
+            .await
+            .expect("the route reserve phase must recover the durable terminal attempt");
+        assert_eq!(reserved_attempt_id, first.attempt.id);
+        let mut command = command;
+        command.reserved_attempt_id = Some(reserved_attempt_id);
+        let replay = service
+            .resume_callback(command)
+            .await
+            .expect("exact Responses retry must return the original terminal");
+        assert_eq!(replay.attempt.id, first.attempt.id);
+        assert_eq!(replay.run.status, first.run.status);
+        assert_eq!(consumer.call_count(), 1);
     }
 
     #[tokio::test]

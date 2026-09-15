@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Default)]
 struct DecodedResponsesStream {
+    sequence_numbers: Vec<u64>,
     text_deltas: Vec<String>,
     completed_count: usize,
     error_messages: Vec<String>,
@@ -23,6 +24,11 @@ fn decode_responses_sse(body: &str) -> DecodedResponsesStream {
         };
         let payload: serde_json::Value =
             serde_json::from_str(data).expect("Responses SSE data must be valid JSON");
+        decoded.sequence_numbers.push(
+            payload["sequence_number"]
+                .as_u64()
+                .expect("every Responses SSE event must have a sequence number"),
+        );
         match event_name.take() {
             Some("response.output_text.delta") => decoded
                 .text_deltas
@@ -154,9 +160,118 @@ async fn ac_001_ac_002_responses_decoder_preserves_ordered_text_deltas_exactly()
     let decoded = decode_responses_sse(&body);
 
     assert_eq!(decoded.text_deltas, fixture.map(str::to_string));
+    assert_eq!(
+        decoded.sequence_numbers,
+        (0..decoded.sequence_numbers.len() as u64).collect::<Vec<_>>()
+    );
     assert_eq!(decoded.text_deltas.concat(), fixture.concat());
     assert_eq!(decoded.completed_count, 1);
+    let done = decoded
+        .output_item_events
+        .iter()
+        .find(|event| event["type"] == "response.output_item.done")
+        .unwrap();
+    assert_eq!(done["item"]["content"][0]["text"], fixture.concat());
+    assert_eq!(
+        decoded.completed_output[0]["content"][0]["text"],
+        fixture.concat()
+    );
     assert!(!body.contains("terminal answer must not be reconstructed"));
+}
+
+#[tokio::test]
+async fn transparent_sse_uses_only_provider_responses_and_preserves_utf8_text_identity() {
+    let mut run = native_run();
+    let node = Uuid::now_v7();
+    let fragments = ["中文", "🙂", "\n**bold**", "\n```\ncode\n```"];
+    let message = json!({
+        "id": "msg_provider",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": fragments.concat()}]
+    });
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
+    assert!(mapper
+        .runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                1,
+                debug_stream_events::answer_text_delta(
+                    "answer",
+                    "wrong-source".into(),
+                    0,
+                    Some("llm"),
+                    Some(node),
+                    Some("text"),
+                ),
+            )
+        )
+        .is_empty());
+    let mut events = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::provider_output_item_added("llm", node, 0, message.clone()),
+        ),
+    );
+    for (index, fragment) in fragments.iter().enumerate() {
+        events.extend(mapper.runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                index as i64 + 3,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node,
+                    json!({"type":"response.output_text.delta","delta":fragment}),
+                ),
+            ),
+        ));
+    }
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            10,
+            debug_stream_events::provider_output_item_done("llm", node, 0, message),
+        ),
+    ));
+    run.status = NativeRunStatus::Succeeded;
+    events.extend(mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            11,
+            debug_stream_events::flow_finished(run.id, json!({})),
+        ),
+    ));
+
+    let body = axum::body::to_bytes(
+        test_projected_events_response(events).into_body(),
+        usize::MAX,
+    )
+    .await
+    .unwrap();
+    let decoded = decode_responses_sse(std::str::from_utf8(&body).unwrap());
+    assert_eq!(
+        decoded.sequence_numbers,
+        (0..decoded.sequence_numbers.len() as u64).collect::<Vec<_>>()
+    );
+    let delta = decoded.text_deltas.concat();
+    let done = decoded
+        .output_item_events
+        .iter()
+        .find(|event| event["type"] == "response.output_item.done")
+        .unwrap();
+    assert_eq!(delta, fragments.concat());
+    assert_eq!(delta, done["item"]["content"][0]["text"]);
+    assert_eq!(delta, decoded.completed_output[0]["content"][0]["text"]);
 }
 
 #[test]
@@ -231,7 +346,11 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
         "type": "mcp_approval_request",
         "name": "delete_record"
     });
-    let mut mapper = OpenAiResponseStreamMapper::new("1flowbase".to_string(), None);
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "1flowbase".to_string(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
     let mut events = mapper.runtime_event_to_sse(
         &run,
         RuntimeEventEnvelope::new(
@@ -293,7 +412,7 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
         decoded.output_item_events[0]["type"],
         "response.output_item.added"
     );
-    assert_eq!(decoded.output_item_events[0]["sequence_number"], 7);
+    assert_eq!(decoded.output_item_events[0]["sequence_number"], 0);
     assert_eq!(
         decoded.output_item_events[1]["type"],
         "response.output_item.done"
@@ -308,7 +427,11 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
 async fn native_sse_keeps_phase_and_opaque_items_without_answer_mirrors() {
     let run = native_run();
     let node = Uuid::new_v4();
-    let mut mapper = OpenAiResponseStreamMapper::new("fixture".into(), None);
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
     let items = [
         json!({"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"opaque"}),
         json!({"id":"msg_1","type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"nonce"}]}),

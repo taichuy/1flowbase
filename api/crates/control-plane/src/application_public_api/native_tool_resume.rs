@@ -96,11 +96,6 @@ where
     {
         return Err(ControlPlaneError::PermissionDenied("native_tool_output_owner").into());
     }
-    if callback.status != CallbackTaskStatus::Pending
-        || flow_run.status != FlowRunStatus::WaitingCallback
-    {
-        return Err(ControlPlaneError::Conflict("native_tool_output_round_not_pending").into());
-    }
     let expected_calls = callback
         .request_payload
         .get("tool_calls")
@@ -158,6 +153,22 @@ where
         return Err(
             ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),
         );
+    }
+    // State admission belongs to the callback-resume owner. A completed callback can be an
+    // exact transport replay after the original terminal was lost; rejecting it here would hide
+    // the durable resume attempt behind `round_not_pending` before idempotency can identify it.
+    if !matches!(
+        callback.status,
+        CallbackTaskStatus::Pending | CallbackTaskStatus::Completed
+    ) || !matches!(
+        flow_run.status,
+        FlowRunStatus::WaitingCallback
+            | FlowRunStatus::Running
+            | FlowRunStatus::Succeeded
+            | FlowRunStatus::Failed
+            | FlowRunStatus::Cancelled
+    ) {
+        return Err(ControlPlaneError::Conflict("native_tool_output_round_not_pending").into());
     }
     Ok(Some((callback, json!({"tool_results": tool_results}))))
 }

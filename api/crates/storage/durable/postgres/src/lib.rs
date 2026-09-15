@@ -37,6 +37,7 @@ mod plugin_installation_commit_repository;
 pub mod plugin_repository;
 mod plugin_settings_template_repository;
 pub mod plugin_worker_repository;
+mod provider_protocol_capsule_store;
 pub mod repositories;
 pub mod role_repository;
 mod runtime;
@@ -52,6 +53,7 @@ pub use connection::{
 };
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
+pub use provider_protocol_capsule_store::PgProviderProtocolCapsuleStore;
 pub use repositories::PgControlPlaneStore;
 pub use runtime::{
     build_main_durable_postgres, build_main_durable_postgres_with_max_connections,

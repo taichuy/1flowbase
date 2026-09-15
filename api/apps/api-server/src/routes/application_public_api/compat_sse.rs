@@ -1,6 +1,4 @@
 use super::openai::native_response_id;
-#[cfg(test)]
-use control_plane::application_public_api::compat::openai::response_id_from_run_id;
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 #[cfg(test)]
@@ -65,6 +63,22 @@ use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compat
 #[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResponsesProjectionMode {
+    TransparentProviderResponses,
+    SemanticNativeResponses,
+}
+
+impl ResponsesProjectionMode {
+    pub(crate) fn from_native_transport(preserved: bool) -> Self {
+        if preserved {
+            Self::TransparentProviderResponses
+        } else {
+            Self::SemanticNativeResponses
+        }
+    }
+}
 
 pub(crate) struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
@@ -252,6 +266,7 @@ pub(crate) fn openai_chat_resume_interface_projection(
     CompatibleProtocolProjection::OpenAiChat(OpenAiChatStreamMapper::new(model, completion_id))
 }
 
+#[cfg(test)]
 pub(crate) fn openai_responses_interface_projection(
     model: String,
     previous_response_id: Option<String>,
@@ -259,6 +274,18 @@ pub(crate) fn openai_responses_interface_projection(
     CompatibleProtocolProjection::OpenAiResponses(OpenAiResponseStreamMapper::new(
         model,
         previous_response_id,
+    ))
+}
+
+pub(crate) fn openai_responses_interface_projection_with_mode(
+    model: String,
+    previous_response_id: Option<String>,
+    mode: ResponsesProjectionMode,
+) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::OpenAiResponses(OpenAiResponseStreamMapper::with_mode(
+        model,
+        previous_response_id,
+        mode,
     ))
 }
 

@@ -509,10 +509,23 @@ async fn app_and_runtime_host_from_config(
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &active_host_extensions,
         )?;
-    let infrastructure = Arc::new(build_local_host_infrastructure_from_host_extensions(
+    let mut infrastructure = build_local_host_infrastructure_from_host_extensions(
         &host_extension_registry,
         &extension_graph,
-    )?);
+    )?;
+    let capsule_store = storage_durable_postgres::PgProviderProtocolCapsuleStore::new(
+        store.pool().clone(),
+        config.provider_secret_master_key.clone(),
+        time::Duration::days(7),
+        2 * 1024 * 1024,
+    )?;
+    infrastructure.set_provider_transport_store(Arc::new(
+        host_infrastructure::LayeredProviderTransportStore::new(
+            infrastructure.provider_transport_store(),
+            Arc::new(capsule_store),
+        ),
+    ));
+    let infrastructure = Arc::new(infrastructure);
     let (lifecycle_delivery, lifecycle_publication_catalog) =
         host_extensions::lifecycle::ApiLifecycleFactDelivery::bind(
             &lifecycle_plan,

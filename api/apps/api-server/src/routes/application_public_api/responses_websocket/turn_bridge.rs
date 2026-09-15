@@ -86,12 +86,12 @@ impl ResponsesTurnBridge {
                 return Err(ResponsesTurnBridgeError::IngressRejected);
             }
         };
-        let (model, previous_response_id, runtime) = prepared.into_parts();
+        let (model, previous_response_id, runtime, projection_mode) = prepared.into_parts();
         let (events, completion) = runtime.into_parts();
         project_turn(
             events,
             completion,
-            ResponsesWebSocketProjector::new(model, previous_response_id),
+            ResponsesWebSocketProjector::with_mode(model, previous_response_id, projection_mode),
             frames,
         )
         .await

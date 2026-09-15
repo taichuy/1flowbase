@@ -2,6 +2,7 @@ mod cache_store_activation;
 mod contracts;
 mod local;
 mod local_runtime_event_stream;
+mod provider_transport_store;
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -20,6 +21,7 @@ pub use local::{
     build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,
 };
 pub use local_runtime_event_stream::LocalRuntimeEventStream;
+pub use provider_transport_store::LayeredProviderTransportStore;
 
 pub const SESSION_STORE_NAMESPACE: &str = "flowbase:console:session";
 

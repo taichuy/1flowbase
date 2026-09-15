@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
     XChaCha20Poly1305,
 };
 use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
@@ -11,6 +11,14 @@ const AEAD_ALGORITHM: &str = "aead_xchacha20poly1305_v1";
 const LEGACY_XOR_ALGORITHM: &str = "xor_v1";
 
 pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Result<Value> {
+    encrypt_secret_json_with_aad(secret_json, master_key, &[])
+}
+
+pub(crate) fn encrypt_secret_json_with_aad(
+    secret_json: &Value,
+    master_key: &str,
+    associated_data: &[u8],
+) -> Result<Value> {
     if master_key.is_empty() {
         bail!(ControlPlaneError::InvalidInput(
             "provider_secret_master_key"
@@ -21,7 +29,13 @@ pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Resu
     let cipher = XChaCha20Poly1305::new(&derive_aead_key(master_key));
     let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext.as_slice())
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext.as_slice(),
+                aad: associated_data,
+            },
+        )
         .map_err(|_| anyhow!("failed to encrypt secret"))?;
 
     Ok(json!({
@@ -35,6 +49,14 @@ pub(crate) fn decrypt_secret_json(
     encrypted_secret_json: &Value,
     master_key: &str,
 ) -> Result<Value> {
+    decrypt_secret_json_with_aad(encrypted_secret_json, master_key, &[])
+}
+
+pub(crate) fn decrypt_secret_json_with_aad(
+    encrypted_secret_json: &Value,
+    master_key: &str,
+    associated_data: &[u8],
+) -> Result<Value> {
     if master_key.is_empty() {
         bail!(ControlPlaneError::InvalidInput(
             "provider_secret_master_key"
@@ -46,6 +68,11 @@ pub(crate) fn decrypt_secret_json(
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("missing secret encryption algorithm"))?;
     if algorithm == LEGACY_XOR_ALGORITHM {
+        if !associated_data.is_empty() {
+            bail!(anyhow!(
+                "legacy secret encryption does not support associated data"
+            ));
+        }
         let ciphertext = encrypted_secret_json
             .get("ciphertext")
             .and_then(Value::as_str)
@@ -75,7 +102,13 @@ pub(crate) fn decrypt_secret_json(
     let ciphertext = hex_decode(ciphertext)?;
     let cipher = XChaCha20Poly1305::new(&derive_aead_key(master_key));
     let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_slice())
+        .decrypt(
+            nonce,
+            Payload {
+                msg: ciphertext.as_slice(),
+                aad: associated_data,
+            },
+        )
         .map_err(|_| anyhow!("invalid secret ciphertext"))?;
     Ok(serde_json::from_slice(&plaintext)?)
 }
