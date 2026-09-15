@@ -60,6 +60,12 @@ function renderIndicators(record: ApplicationRunSummary) {
   render(<>{column?.render?.(record.title, record, 0)}</>);
 }
 
+function renderColumn(key: string, record: ApplicationRunSummary) {
+  const column = getApplicationRunsTableColumns(t).find((item) => item.key === key);
+  const value = column?.dataIndex ? record[column.dataIndex] : undefined;
+  render(<>{column?.render?.(value, record, 0)}</>);
+}
+
 describe('task call kind tag', () => {
   test('keeps task indicators out of the title column', () => {
     const record = summary({ invocation_count: 4, outcome: 'no_final_answer' });
@@ -91,5 +97,27 @@ describe('task call kind tag', () => {
     renderIndicators(summary({}));
     expect(screen.queryByText(/auto\.task_invocation_count/)).not.toBeInTheDocument();
     expect(screen.queryByText(/auto\.task_compaction_count/)).not.toBeInTheDocument();
+  });
+
+  test('shows the API key snapshot as the invocation principal', () => {
+    renderColumn(
+      'principal',
+      summary({
+        principal: {
+          kind: 'application_api_key',
+          id: 'key-1',
+          display_name: 'Support Agent public key'
+        }
+      })
+    );
+
+    expect(screen.getByText('Support Agent public key')).toBeInTheDocument();
+    expect(screen.queryByText(/key-1/)).not.toBeInTheDocument();
+  });
+
+  test('shows the recorded authorized account in its own column', () => {
+    renderColumn('authorized_account', summary({ authorized_account: 'root' }));
+
+    expect(screen.getByText('root')).toBeInTheDocument();
   });
 });

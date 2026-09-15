@@ -174,8 +174,16 @@ export function getApplicationRunsTableColumns(
       render: (_value, run) => {
         const identity = run.principal.display_name ?? run.principal.id;
         const kind = principalKindLabel(run.principal.kind, t);
-        return identity ? `${kind} · ${identity}` : kind;
+        return identity ?? kind;
       }
+    },
+    {
+      key: 'authorized_account',
+      title: t('auto.creator_account'),
+      dataIndex: 'authorized_account',
+      width: 160,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
     },
     {
       key: 'id',

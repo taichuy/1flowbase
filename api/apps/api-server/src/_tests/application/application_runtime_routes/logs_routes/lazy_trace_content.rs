@@ -256,6 +256,10 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         Some("root")
     );
     assert_eq!(
+        list_payload["data"]["items"][0]["principal"]["display_name"].as_str(),
+        Some("Support Agent public key")
+    );
+    assert_eq!(
         list_payload["data"]["items"][0]["execution_stage"].as_str(),
         Some("published")
     );

@@ -271,6 +271,7 @@ impl ApplicationRuntimeReadsAdapter {
                 };
                 let mut response =
                     to_flow_run_summary_response(&application, log_summary.run, statistics);
+                response.principal.display_name = log_summary.api_key_name_snapshot;
                 response.parent_run_id = log_summary.parent_run_id.map(|id| id.to_string());
                 response.caused_by_run_id = log_summary.caused_by_run_id.map(|id| id.to_string());
                 response.log_conversation_id =

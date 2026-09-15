@@ -528,6 +528,7 @@ pub(super) fn map_application_run_log_summary(
             compaction_count: row.get("compaction_count"),
             log_conversation_id: row.get("log_conversation_id"),
             log_task_run_id: row.try_get("log_task_run_id").unwrap_or(None),
+            api_key_name_snapshot: row.get("api_key_name_snapshot"),
             run: StoredApplicationRunSummaryRow {
                 id: row.get("id"),
                 run_mode: row.get("run_mode"),

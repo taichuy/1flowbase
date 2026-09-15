@@ -184,6 +184,7 @@
     "keyword_search": "关键字搜索",
     "application_list_load_failed": "应用列表加载失败",
     "authorized_account": "授权账号",
+    "creator_account": "创建账号",
     "more_actions_named": "更多操作-{{value1}}",
     "callback_backfill": "Callback 回填",
     "enable": "启用",
