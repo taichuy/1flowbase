@@ -9,7 +9,7 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
-use super::compat::openai::responses_index::ResponsesInputIndex;
+use super::compat::openai::responses_index::ResponsesRequestIndex;
 use crate::errors::ControlPlaneError;
 
 /// Correlates a Responses tool-result segment with one owned callback round.
@@ -22,14 +22,13 @@ pub async fn correlate_native_responses_callback<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
-    let Some(input_value) = request.get("input") else {
-        return Ok(None);
-    };
     // Structural protocol errors remain owned by the Responses translator. Correlation runs
     // before translation and must only claim a request when a bounded index can be built.
-    let Ok(index) = ResponsesInputIndex::build(input_value) else {
+    let Ok(request_index) = ResponsesRequestIndex::build(request) else {
         return Ok(None);
     };
+    let input_value = &request["input"];
+    let index = request_index.input();
     let Some(input) = input_value.as_array() else {
         return Ok(None);
     };
@@ -63,13 +62,7 @@ where
             .get(call_id)
             .is_some_and(|positions| !positions.is_empty())
     }));
-    let previous_response_id = match request.get("previous_response_id") {
-        Some(Value::String(value)) if !value.is_empty() => Some(value.as_str()),
-        Some(_) => {
-            return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into())
-        }
-        None => None,
-    };
+    let previous_response_id = request_index.previous_response_id();
     let call_id_list = call_ids.iter().cloned().collect::<Vec<_>>();
     let candidates = if let Some(response_id) = previous_response_id {
         let response_candidates = repository

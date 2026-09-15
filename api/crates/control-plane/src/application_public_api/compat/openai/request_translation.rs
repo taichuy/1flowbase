@@ -271,6 +271,10 @@ pub fn translate_response_request_with_context_and_previous(
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
+    let request_index =
+        super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
+            OpenAiCompatError::invalid(error.param(), error.message()).with_report(report.clone())
+        })?;
     let operation = classify_response_operation(object, &context, &mut report)?;
     let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
@@ -282,7 +286,7 @@ pub fn translate_response_request_with_context_and_previous(
         responses_compaction_v2_input_to_run_input()
     } else if uses_native_transport {
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
-        validate_native_responses_input(input, &mut report)?;
+        validate_native_responses_input(input, request_index.input(), &mut report)?;
         responses_native_input_to_run_input(input)
     } else {
         validate_responses_input(input, is_v2_compaction, &mut report)?;

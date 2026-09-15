@@ -1,6 +1,8 @@
 use serde_json::json;
 
-use super::responses_index::{ResponsesInputIndex, ResponsesInputIndexError};
+use super::responses_index::{
+    ResponsesInputIndex, ResponsesInputIndexError, ResponsesRequestIndex,
+};
 use super::*;
 use crate::application_public_api::model_catalog::{AgentModelCapabilities, AgentModelReasoning};
 
@@ -1306,5 +1308,22 @@ fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
     assert_eq!(
         ResponsesInputIndex::build(&Value::Array(vec![json!({}); 4_097])),
         Err(ResponsesInputIndexError::TooManyItems)
+    );
+}
+
+#[test]
+fn issue_2046_request_index_owns_the_continuation_identity() {
+    let request = json!({
+        "model":"fixture",
+        "previous_response_id":"resp_round",
+        "input":[{"type":"future_item","opaque":"private-body"}]
+    });
+    let index = ResponsesRequestIndex::build(&request).expect("request is indexable");
+    assert_eq!(index.previous_response_id(), Some("resp_round"));
+    assert_eq!(index.input().item_count(), 1);
+    assert!(!format!("{index:?}").contains("private-body"));
+    assert_eq!(
+        ResponsesRequestIndex::build(&json!({"input":[],"previous_response_id":42})),
+        Err(ResponsesInputIndexError::PreviousResponseId)
     );
 }

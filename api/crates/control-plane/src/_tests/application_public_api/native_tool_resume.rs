@@ -158,6 +158,24 @@ async fn native_admission_leaves_history_before_new_user_turn_alone() {
 }
 
 #[tokio::test]
+async fn native_admission_rejects_a_user_boundary_between_expected_outputs() {
+    let (repository, actor, run) = fixture().await;
+    let mut body = request();
+    seed_round(&repository, run, &body);
+    body["input"].as_array_mut().unwrap().insert(
+        1,
+        json!({"role":"user","content":"do not attach this turn to the old callback"}),
+    );
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
+}
+
+#[tokio::test]
 async fn native_admission_rejects_partial_unknown_duplicate_and_changed_rounds() {
     let (repository, actor, run) = fixture().await;
     let body = request();

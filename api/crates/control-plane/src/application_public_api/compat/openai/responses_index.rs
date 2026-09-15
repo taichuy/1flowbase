@@ -6,20 +6,69 @@ pub(crate) const MAX_NATIVE_RESPONSES_INPUT_ITEMS: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResponsesInputIndexError {
+    RequestKind,
     InputKind,
+    PreviousResponseId,
     TooManyItems,
     ItemKind,
     ItemType,
 }
 
 impl ResponsesInputIndexError {
+    pub(crate) const fn param(self) -> &'static str {
+        match self {
+            Self::RequestKind => "request",
+            Self::PreviousResponseId => "previous_response_id",
+            Self::InputKind | Self::TooManyItems | Self::ItemKind | Self::ItemType => "input",
+        }
+    }
+
     pub(crate) const fn message(self) -> &'static str {
         match self {
+            Self::RequestKind => "Responses request must be an object",
             Self::InputKind => "input must be text or an array",
+            Self::PreviousResponseId => "previous_response_id must be non-empty text",
             Self::TooManyItems => "Responses input has too many items",
             Self::ItemKind => "input items must be objects",
             Self::ItemType => "input item type must be text",
         }
+    }
+}
+
+/// Request-level protocol index shared by ingress correlation and translation.
+/// The opaque body itself remains in the request/`ProviderTransportPayload`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResponsesRequestIndex {
+    previous_response_id: Option<String>,
+    input: ResponsesInputIndex,
+}
+
+impl ResponsesRequestIndex {
+    pub(crate) fn build(request: &Value) -> Result<Self, ResponsesInputIndexError> {
+        let object = request
+            .as_object()
+            .ok_or(ResponsesInputIndexError::RequestKind)?;
+        let previous_response_id = match object.get("previous_response_id") {
+            Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+            Some(_) => return Err(ResponsesInputIndexError::PreviousResponseId),
+            None => None,
+        };
+        let input = object
+            .get("input")
+            .ok_or(ResponsesInputIndexError::InputKind)
+            .and_then(ResponsesInputIndex::build)?;
+        Ok(Self {
+            previous_response_id,
+            input,
+        })
+    }
+
+    pub(crate) fn previous_response_id(&self) -> Option<&str> {
+        self.previous_response_id.as_deref()
+    }
+
+    pub(crate) const fn input(&self) -> &ResponsesInputIndex {
+        &self.input
     }
 }
 
@@ -125,13 +174,13 @@ impl ResponsesInputIndex {
             .copied()
             .filter(|position| *position >= start)
             .collect::<Vec<_>>();
-        let Some(last_output) = positions.last().copied() else {
+        let Some(first_output) = positions.first().copied() else {
             return positions;
         };
         if self
             .user_message_positions
             .iter()
-            .any(|position| *position > last_output)
+            .any(|position| *position > first_output)
         {
             return Vec::new();
         }

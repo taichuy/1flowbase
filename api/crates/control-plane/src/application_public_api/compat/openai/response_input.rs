@@ -24,6 +24,7 @@ pub(super) fn validate_responses_input(
 
 pub(super) fn validate_native_responses_input(
     input: &Value,
+    index: &ResponsesInputIndex,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
@@ -36,9 +37,6 @@ pub(super) fn validate_native_responses_input(
         );
         return Ok(());
     }
-    let index = ResponsesInputIndex::build(input).map_err(|error| {
-        OpenAiCompatError::invalid("input", error.message()).with_report(report.clone())
-    })?;
     let items = input
         .as_array()
         .expect("indexed non-text Responses input must be an array");
