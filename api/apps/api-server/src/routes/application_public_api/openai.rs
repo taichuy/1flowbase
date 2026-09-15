@@ -45,7 +45,10 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     routes::application_public_api::{
-        callback_adapter::{correlate_openai_chat_callback, correlate_openai_responses_callback},
+        callback_adapter::{
+            correlate_openai_chat_callback, correlate_openai_responses_callback,
+            restore_openai_responses_provider_call_ids,
+        },
         compat_sse, compatibility_interface,
         llm_tool_visibility::external_llm_tool_calls,
         native,
@@ -636,6 +639,18 @@ async fn dispatch_response_for_endpoint(
         };
         let native_transport = if native_resume.is_some() {
             Some(responses_envelope.provider_transport_payload())
+        } else if encoded_resume.is_some() {
+            Some(
+                ProviderTransportPayload::openai_responses(
+                    restore_openai_responses_provider_call_ids(responses_envelope.raw_body()),
+                )
+                .map_err(|_| {
+                    openai_invalid_request(
+                        "input",
+                        "Responses callback transport could not be restored",
+                    )
+                })?,
+            )
         } else {
             None
         };

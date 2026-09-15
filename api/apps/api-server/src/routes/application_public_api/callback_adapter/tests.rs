@@ -94,6 +94,53 @@ fn responses_previous_response_preserves_only_current_parallel_results() {
 }
 
 #[test]
+fn responses_encoded_callback_restores_provider_ids_without_changing_wire_policy() {
+    let task = callback(19);
+    let original_id = "call_provider";
+    let external_id = encode_openai_callback_tool_call_id(task, original_id);
+    let request = json!({
+        "model": "gpt-test",
+        "store": false,
+        "input": [
+            {"type": "message", "role": "user", "content": "inspect"},
+            {"type": "function_call", "call_id": external_id, "name": "exec", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": external_id, "output": "done"}
+        ]
+    });
+
+    let restored = restore_openai_responses_provider_call_ids(&request);
+
+    assert_eq!(restored["store"], false);
+    assert_eq!(restored["input"][0], request["input"][0]);
+    assert_eq!(restored["input"][1]["call_id"], original_id);
+    assert_eq!(restored["input"][2]["call_id"], original_id);
+    assert_eq!(request["input"][1]["call_id"], external_id);
+}
+
+#[test]
+fn responses_provider_id_restore_ignores_stale_history_and_native_custom_tools() {
+    let task = callback(20);
+    let external_id = encode_openai_callback_tool_call_id(task, "call_old");
+    let request = json!({"input": [
+        {"type": "function_call_output", "call_id": external_id, "output": "old"},
+        {"type": "custom_tool_call", "call_id": "call_custom", "name": "exec", "input": "pwd"},
+        {"type": "custom_tool_call_output", "call_id": "call_custom", "output": "workspace"},
+        {"type": "message", "role": "user", "content": "continue"}
+    ]});
+
+    let restored = restore_openai_responses_provider_call_ids(&request);
+
+    assert_eq!(restored["input"][0]["call_id"], "call_old");
+    assert_eq!(restored["input"][1], request["input"][1]);
+    assert_eq!(restored["input"][2], request["input"][2]);
+    assert!(
+        correlate_openai_responses_callback(&request, Some("resp_old"))
+            .expect("stale history should remain valid input")
+            .is_none()
+    );
+}
+
+#[test]
 fn responses_complete_history_without_previous_response_correlates_parallel_results() {
     let task = callback(9);
     let first = encode_openai_callback_tool_call_id(task, "call_a");

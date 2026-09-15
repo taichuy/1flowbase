@@ -135,6 +135,35 @@ pub(crate) fn correlate_openai_responses_callback(
     correlate_openai_results(results, "input", paired_ids.as_ref())
 }
 
+/// Restores Provider-owned call IDs before an encoded Responses callback is
+/// handed back to the native Provider transport. The public projection adds a
+/// callback-task prefix so the next request can be correlated without exposing
+/// durable callback state; that adapter-only identity must not cross the
+/// Provider boundary on resume.
+pub(crate) fn restore_openai_responses_provider_call_ids(request: &Value) -> Value {
+    let mut restored = request.clone();
+    let Some(items) = restored.get_mut("input").and_then(Value::as_array_mut) else {
+        return restored;
+    };
+    for item in items {
+        if !matches!(
+            item.get("type").and_then(Value::as_str),
+            Some("function_call" | "function_call_output")
+        ) {
+            continue;
+        }
+        let Some((_, original_id)) = item
+            .get("call_id")
+            .and_then(Value::as_str)
+            .and_then(decode_openai_callback_tool_call_id)
+        else {
+            continue;
+        };
+        item["call_id"] = Value::String(original_id);
+    }
+    restored
+}
+
 pub(crate) fn correlate_anthropic_callback(
     request: &Value,
 ) -> Result<Option<CorrelatedToolCallback>, CallbackCorrelationError> {
