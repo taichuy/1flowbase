@@ -1449,6 +1449,40 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         rows.into_iter().map(map_callback_task_record).collect()
     }
 
+    async fn find_native_responses_callbacks_by_response_id(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
+                   c.request_payload, c.response_payload, c.external_ref_payload,
+                   c.created_at, c.completed_at
+            from flow_run_callback_tasks c
+            join flow_runs f on f.id = c.flow_run_id
+            join applications a on a.id = f.application_id
+            where a.workspace_id = $1 and f.application_id = $2
+              and f.api_key_id = $3 and f.created_by = $4
+              and f.run_mode = 'published_api_run'
+              and c.callback_kind = 'llm_tool_calls'
+              and c.request_payload #>> '{provider_metadata,native_response,response_id}' = $5
+            order by c.created_at, c.id
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(actor_user_id)
+        .bind(provider_response_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_callback_task_record).collect()
+    }
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,

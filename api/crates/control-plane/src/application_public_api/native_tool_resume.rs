@@ -9,9 +9,10 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
+use super::compat::openai::responses_index::ResponsesInputIndex;
 use crate::errors::ControlPlaneError;
 
-/// Correlates a Responses tool-result suffix with one owned, still-waiting round.
+/// Correlates a Responses tool-result segment with one owned callback round.
 /// Admission does not consume the callback; the resume owner claims it atomically.
 pub async fn correlate_native_responses_callback<R>(
     repository: &R,
@@ -21,40 +22,26 @@ pub async fn correlate_native_responses_callback<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
-    let Some(input) = request.get("input").and_then(Value::as_array) else {
+    let Some(input_value) = request.get("input") else {
         return Ok(None);
     };
-    let suffix_start = input
-        .iter()
-        .rposition(|item| {
-            !matches!(
-                item.get("type").and_then(Value::as_str),
-                Some("function_call_output" | "custom_tool_call_output")
-            )
-        })
-        .map_or(0, |index| index + 1);
-    let outputs = &input[suffix_start..];
-    if outputs.is_empty() {
-        let last_output = input.iter().rposition(|item| {
-            matches!(
-                item.get("type").and_then(Value::as_str),
-                Some("function_call_output" | "custom_tool_call_output")
-            )
-        });
-        if let Some(index) = last_output {
-            if !input[index + 1..]
-                .iter()
-                .any(|item| item.get("role").and_then(Value::as_str) == Some("user"))
-            {
-                return Err(ControlPlaneError::Conflict("native_tool_output_not_tail").into());
-            }
-        }
+    // Structural protocol errors remain owned by the Responses translator. Correlation runs
+    // before translation and must only claim a request when a bounded index can be built.
+    let Ok(index) = ResponsesInputIndex::build(input_value) else {
+        return Ok(None);
+    };
+    let Some(input) = input_value.as_array() else {
+        return Ok(None);
+    };
+    let output_positions = index.current_tool_output_positions();
+    if output_positions.is_empty() {
         return Ok(None);
     }
 
     let mut call_ids = BTreeSet::new();
-    let mut tool_results = Vec::with_capacity(outputs.len());
-    for output in outputs {
+    let mut tool_results = Vec::with_capacity(output_positions.len());
+    for position in output_positions {
+        let output = &input[position];
         let call_id = output
             .get("call_id")
             .and_then(Value::as_str)
@@ -70,15 +57,56 @@ where
         }
         tool_results.push(json!({"tool_call_id": call_id, "content": content}));
     }
-    let candidates = repository
-        .find_native_responses_callbacks_by_call_ids(
-            actor.workspace_id,
-            actor.application_id,
-            actor.api_key_id,
-            actor.creator_user_id,
-            &call_ids.iter().cloned().collect::<Vec<_>>(),
-        )
-        .await?;
+    debug_assert!(call_ids.iter().all(|call_id| {
+        index
+            .outputs_by_call_id()
+            .get(call_id)
+            .is_some_and(|positions| !positions.is_empty())
+    }));
+    let previous_response_id = match request.get("previous_response_id") {
+        Some(Value::String(value)) if !value.is_empty() => Some(value.as_str()),
+        Some(_) => {
+            return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into())
+        }
+        None => None,
+    };
+    let call_id_list = call_ids.iter().cloned().collect::<Vec<_>>();
+    let candidates = if let Some(response_id) = previous_response_id {
+        let response_candidates = repository
+            .find_native_responses_callbacks_by_response_id(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                response_id,
+            )
+            .await?;
+        if response_candidates.is_empty() {
+            // Preserve a precise mismatch result when the call set identifies an owned round;
+            // this diagnostic fallback never overrides a response-id match.
+            repository
+                .find_native_responses_callbacks_by_call_ids(
+                    actor.workspace_id,
+                    actor.application_id,
+                    actor.api_key_id,
+                    actor.creator_user_id,
+                    &call_id_list,
+                )
+                .await?
+        } else {
+            response_candidates
+        }
+    } else {
+        repository
+            .find_native_responses_callbacks_by_call_ids(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                &call_id_list,
+            )
+            .await?
+    };
     let mut candidates = candidates.into_iter();
     let callback = candidates
         .next()
@@ -133,8 +161,8 @@ where
         .ok_or(ControlPlaneError::Conflict(
             "native_tool_output_round_invalid",
         ))?;
-    if let Some(previous) = request.get("previous_response_id") {
-        if previous.as_str() != Some(response_id) {
+    if let Some(previous) = previous_response_id {
+        if previous != response_id {
             return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into());
         }
     }

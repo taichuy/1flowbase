@@ -434,6 +434,44 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             .collect())
     }
 
+    async fn find_native_responses_callbacks_by_response_id(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        Ok(inner
+            .callback_tasks
+            .values()
+            .filter(|task| {
+                let owned = inner.flow_runs.get(&task.flow_run_id).is_some_and(|run| {
+                    run.application_id == application_id
+                        && run.api_key_id == Some(api_key_id)
+                        && run.created_by == actor_user_id
+                        && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                        && inner
+                            .applications
+                            .get(&application_id)
+                            .is_some_and(|app| app.workspace_id == workspace_id)
+                });
+                owned
+                    && task.callback_kind == "llm_tool_calls"
+                    && task
+                        .request_payload
+                        .pointer("/provider_metadata/native_response/response_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(provider_response_id)
+            })
+            .cloned()
+            .collect())
+    }
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,

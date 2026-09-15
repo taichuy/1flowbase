@@ -88,6 +88,22 @@ fn seed_round(
     }))
 }
 
+fn seed_round_with_response(
+    repository: &ApplicationPublicApiTestRepository,
+    run: Uuid,
+    body: &Value,
+    response_id: &str,
+) -> CallbackTaskRecord {
+    repository.seed_pending_llm_tool_callback_task(run, json!({
+        "tool_calls":[{"id":"function","name":"read"},{"id":"custom","name":"exec"}],
+        "provider_metadata":{"native_response":{
+            "response_id":response_id,
+            "configuration_digest":ProviderTransportPayload::openai_responses(body.clone()).unwrap().configuration_digest().unwrap(),
+            "user_messages_digest":ProviderTransportPayload::openai_responses(body.clone()).unwrap().user_messages_digest().unwrap()
+        }}
+    }))
+}
+
 // #2036: HTTP full histories and WS deltas resume the same round without
 // replaying older outputs; multimodal/custom output stays a structured value.
 #[tokio::test]
@@ -299,24 +315,54 @@ async fn native_admission_vetoes_old_outputs_after_a_new_user_message() {
     assert_eq!(repository.flow_run_count(), 1);
 }
 
-// AC-006/008: malformed continuation and cancelled waits cannot become Start.
+// #2045 AC-003: asynchronous Codex context items after the expected output are
+// not callback identity. They must remain in the opaque provider body.
 #[tokio::test]
-async fn native_admission_rejects_non_tail_outputs_and_cancelled_waits() {
+async fn native_admission_accepts_expected_outputs_before_agent_context_items() {
+    let (repository, actor, run) = fixture().await;
+    let body = request();
+    let callback = seed_round(&repository, run, &body);
+    let mut request_with_agent_message = body.clone();
+    request_with_agent_message["input"]
+        .as_array_mut()
+        .unwrap()
+        .extend([
+            json!({"role":"assistant","phase":"commentary","content":"Sub-agent failed"}),
+            json!({"type":"reasoning","summary":[]}),
+            json!({"type":"future_context_boundary","opaque":true}),
+        ]);
+    let (actual, result) =
+        correlate_native_responses_callback(&repository, &actor, &request_with_agent_message)
+            .await
+            .expect("context items after outputs are valid Responses history")
+            .expect("the pending native callback must correlate");
+    assert_eq!(actual.id, callback.id);
+    assert_eq!(result["tool_results"].as_array().unwrap().len(), 2);
+}
+
+// #2045 AC-004: previous_response_id is the primary causal key. Reused call
+// IDs in another round must not make the intended callback ambiguous.
+#[tokio::test]
+async fn native_admission_uses_previous_response_id_before_call_id_fallback() {
+    let (repository, actor, run) = fixture().await;
+    let mut body = request();
+    let expected = seed_round_with_response(&repository, run, &body, "resp_expected");
+    seed_round_with_response(&repository, run, &body, "resp_other");
+    body["previous_response_id"] = json!("resp_expected");
+
+    let (actual, _) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .expect("response identity should disambiguate reused call IDs")
+        .expect("the expected callback must correlate");
+    assert_eq!(actual.id, expected.id);
+}
+
+// AC-006/008: cancelled waits cannot become Start.
+#[tokio::test]
+async fn native_admission_rejects_cancelled_waits() {
     let (repository, actor, run) = fixture().await;
     let body = request();
     seed_round(&repository, run, &body);
-    let mut malformed = body.clone();
-    malformed["input"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"role":"assistant","content":"stale answer"}));
-    let error = correlate_native_responses_callback(&repository, &actor, &malformed)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        error.downcast_ref::<ControlPlaneError>(),
-        Some(&ControlPlaneError::Conflict("native_tool_output_not_tail"))
-    );
     repository
         .cancel_published_pending_callback_tasks_for_run(run, OffsetDateTime::now_utc())
         .await
