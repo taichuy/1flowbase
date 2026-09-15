@@ -234,7 +234,36 @@ pub fn translate_response_request_with_context_and_previous(
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let request_index =
+        super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
+            OpenAiCompatError::invalid(error.param(), error.message()).with_report(report.clone())
+        })?;
+    translate_indexed_response_request(request, request_index, context, previous_response, report)
+}
+
+pub fn translate_response_envelope_with_context_and_previous(
+    envelope: super::responses_index::OpenAiResponsesEnvelope,
+    context: OpenAiResponsesRequestContext,
+    previous_response: Option<OpenAiPreviousResponseContext>,
+) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
+    let (request, request_index) = envelope.into_parts();
+    translate_indexed_response_request(
+        request,
+        request_index,
+        context,
+        previous_response,
+        TranslationReport::new(TranslationProtocol::OpenAiResponses),
+    )
+}
+
+fn translate_indexed_response_request(
+    request: Value,
+    request_index: super::responses_index::ResponsesRequestIndex,
+    context: OpenAiResponsesRequestContext,
+    previous_response: Option<OpenAiPreviousResponseContext>,
+    mut report: TranslationReport,
+) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let object = openai_request_object(&request, &mut report)?;
     let mut protocol_context = capture_client_protocol_body(
         ClientProtocolIngressPolicy::OpenAiResponses,
@@ -271,10 +300,6 @@ pub fn translate_response_request_with_context_and_previous(
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
-    let request_index =
-        super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
-            OpenAiCompatError::invalid(error.param(), error.message()).with_report(report.clone())
-        })?;
     let operation = classify_response_operation(object, &context, &mut report)?;
     let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);

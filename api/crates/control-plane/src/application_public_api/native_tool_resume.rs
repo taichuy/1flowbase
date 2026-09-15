@@ -9,7 +9,7 @@ use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
 use super::api_keys::ApplicationApiKeyActor;
-use super::compat::openai::responses_index::ResponsesRequestIndex;
+use super::compat::openai::OpenAiResponsesEnvelope;
 use crate::errors::ControlPlaneError;
 
 /// Correlates a Responses tool-result segment with one owned callback round.
@@ -22,11 +22,24 @@ pub async fn correlate_native_responses_callback<R>(
 where
     R: ApplicationPublishedRunControlRepository,
 {
-    // Structural protocol errors remain owned by the Responses translator. Correlation runs
-    // before translation and must only claim a request when a bounded index can be built.
-    let Ok(request_index) = ResponsesRequestIndex::build(request) else {
+    let Ok(envelope) = OpenAiResponsesEnvelope::capture(request.clone()) else {
         return Ok(None);
     };
+    correlate_native_responses_callback_from_envelope(repository, actor, &envelope).await
+}
+
+pub async fn correlate_native_responses_callback_from_envelope<R>(
+    repository: &R,
+    actor: &ApplicationApiKeyActor,
+    envelope: &OpenAiResponsesEnvelope,
+) -> Result<Option<(CallbackTaskRecord, Value)>>
+where
+    R: ApplicationPublishedRunControlRepository,
+{
+    // Structural protocol errors remain owned by the Responses translator. Correlation runs
+    // before translation and must only claim a request when a bounded index can be built.
+    let request = envelope.raw_body();
+    let request_index = envelope.index();
     let input_value = &request["input"];
     let index = request_index.input();
     let Some(input) = input_value.as_array() else {

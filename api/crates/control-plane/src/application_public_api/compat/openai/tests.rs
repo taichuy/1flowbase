@@ -1326,4 +1326,40 @@ fn issue_2046_request_index_owns_the_continuation_identity() {
         ResponsesRequestIndex::build(&json!({"input":[],"previous_response_id":42})),
         Err(ResponsesInputIndexError::PreviousResponseId)
     );
+
+    let envelope = OpenAiResponsesEnvelope::capture(request.clone()).expect("envelope captured");
+    assert_eq!(envelope.previous_response_id(), Some("resp_round"));
+    assert_eq!(envelope.raw_body(), &request);
+    assert_eq!(envelope.provider_transport_payload().wire_body(), &request);
+    assert!(!format!("{envelope:?}").contains("private-body"));
+
+    let mut translated = translate_response_envelope_with_context_and_previous(
+        envelope,
+        OpenAiResponsesRequestContext::responses(),
+        Some(OpenAiPreviousResponseContext {
+            provider_continuation: Some(
+                crate::ports::ProviderContinuation::new(
+                    "resp_round",
+                    crate::ports::ProviderTransportAffinity::new(
+                        "instance", "provider", "model", "route",
+                    ),
+                )
+                .unwrap(),
+            ),
+            response_id: "resp_round".into(),
+            external_user: None,
+            external_conversation_id: None,
+            answer: None,
+        }),
+    )
+    .expect("the same envelope should reach native translation");
+    assert_eq!(
+        translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .unwrap()
+            .wire_body(),
+        &request
+    );
 }

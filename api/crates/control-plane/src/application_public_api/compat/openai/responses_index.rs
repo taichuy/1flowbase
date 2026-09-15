@@ -2,6 +2,10 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+use super::OpenAiCompatError;
+use crate::application_public_api::protocol_translation::{TranslationProtocol, TranslationReport};
+use crate::ports::ProviderTransportPayload;
+
 pub(crate) const MAX_NATIVE_RESPONSES_INPUT_ITEMS: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +73,59 @@ impl ResponsesRequestIndex {
 
     pub(crate) const fn input(&self) -> &ResponsesInputIndex {
         &self.input
+    }
+}
+
+/// Ephemeral protocol envelope shared by ingress, correlation, translation,
+/// and native Provider staging. Its debug view never renders the opaque body.
+#[derive(Clone)]
+pub struct OpenAiResponsesEnvelope {
+    transport: ProviderTransportPayload,
+    index: ResponsesRequestIndex,
+}
+
+impl std::fmt::Debug for OpenAiResponsesEnvelope {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OpenAiResponsesEnvelope")
+            .field("transport_digest", &self.transport.digest())
+            .field("transport_size_bytes", &self.transport.size_bytes())
+            .field("index", &self.index)
+            .finish()
+    }
+}
+
+impl OpenAiResponsesEnvelope {
+    pub fn capture(raw_body: Value) -> Result<Self, OpenAiCompatError> {
+        let index = ResponsesRequestIndex::build(&raw_body).map_err(|error| {
+            OpenAiCompatError::invalid(error.param(), error.message())
+                .with_report(TranslationReport::new(TranslationProtocol::OpenAiResponses))
+        })?;
+        let transport = ProviderTransportPayload::openai_responses(raw_body).map_err(|_| {
+            OpenAiCompatError::invalid("request", "Responses request must be an object")
+                .with_report(TranslationReport::new(TranslationProtocol::OpenAiResponses))
+        })?;
+        Ok(Self { transport, index })
+    }
+
+    pub fn previous_response_id(&self) -> Option<&str> {
+        self.index.previous_response_id()
+    }
+
+    pub fn raw_body(&self) -> &Value {
+        self.transport.wire_body()
+    }
+
+    pub fn provider_transport_payload(&self) -> ProviderTransportPayload {
+        self.transport.clone()
+    }
+
+    pub(crate) const fn index(&self) -> &ResponsesRequestIndex {
+        &self.index
+    }
+
+    pub(crate) fn into_parts(self) -> (Value, ResponsesRequestIndex) {
+        (self.transport.into_wire_body(), self.index)
     }
 }
 

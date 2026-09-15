@@ -18,8 +18,9 @@ use control_plane::application_public_api::{
     },
     compat::openai::{
         response_id_from_run_id, run_id_from_response_id, translate_chat_completion_request,
-        translate_response_request_with_context_and_previous, OpenAiCompatError,
+        translate_response_envelope_with_context_and_previous, OpenAiCompatError,
         OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
+        OpenAiResponsesEnvelope,
     },
     native::{
         ApplicationNativeRunService, NativeRunRequest, NativeRunResult, NativeRunStatus,
@@ -549,13 +550,24 @@ async fn dispatch_response_for_endpoint(
             .ok_or_else(|| openai_invalid_request("response", "response must be an object"))?
             .insert("stream".to_string(), Value::Bool(true));
     }
-    let previous_response_id = optional_string_field(&value, "previous_response_id")?;
-    let response_mode = value
+    let responses_envelope = OpenAiResponsesEnvelope::capture(value).map_err(|error| {
+        let route_error = OpenAiRouteError::from(error);
+        warn_openai_route_error(
+            route,
+            &route_error,
+            "openai responses protocol envelope validation failed",
+        );
+        route_error
+    })?;
+    let previous_response_id = responses_envelope.previous_response_id().map(str::to_owned);
+    let response_mode = responses_envelope
+        .raw_body()
         .get("stream")
         .and_then(Value::as_bool)
         .filter(|value| *value)
         .map(|_| "streaming".to_string());
-    let model = value
+    let model = responses_envelope
+        .raw_body()
         .get("model")
         .and_then(Value::as_str)
         .unwrap_or_default()
@@ -610,21 +622,20 @@ async fn dispatch_response_for_endpoint(
         .map(|previous| previous.flow_run_id);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
     if endpoint == OpenAiResponsesEndpoint::Responses {
-        let encoded_resume =
-            correlate_openai_responses_callback(&value, previous_response_id.as_deref())
-                .map_err(|error| openai_invalid_request(error.param, error.message))?;
+        let encoded_resume = correlate_openai_responses_callback(
+            responses_envelope.raw_body(),
+            previous_response_id.as_deref(),
+        )
+        .map_err(|error| openai_invalid_request(error.param, error.message))?;
         let native_resume = if encoded_resume.is_none() {
-            control_plane::application_public_api::native_tool_resume::correlate_native_responses_callback(
-                &state.store, &application_actor, &value,
+            control_plane::application_public_api::native_tool_resume::correlate_native_responses_callback_from_envelope(
+                &state.store, &application_actor, &responses_envelope,
             ).await.map_err(native::service_error)?
         } else {
             None
         };
         let native_transport = if native_resume.is_some() {
-            Some(
-                ProviderTransportPayload::openai_responses(value.clone())
-                    .map_err(native::service_error)?,
-            )
+            Some(responses_envelope.provider_transport_payload())
         } else {
             None
         };
@@ -747,9 +758,9 @@ async fn dispatch_response_for_endpoint(
             }
         }
     }
-    let provider_transport_wire_body = value.clone();
-    let translated = match translate_response_request_with_context_and_previous(
-        value,
+    let provider_transport_wire_body = responses_envelope.raw_body().clone();
+    let translated = match translate_response_envelope_with_context_and_previous(
+        responses_envelope,
         request_context,
         previous_translation_context,
     ) {
@@ -1327,20 +1338,6 @@ fn string_value(value: &Value, field: &str) -> Option<String> {
         .get(field)
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
-}
-
-fn optional_string_field(
-    value: &Value,
-    field: &'static str,
-) -> Result<Option<String>, OpenAiRouteError> {
-    match value.get(field) {
-        Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(openai_invalid_request(
-            field,
-            format!("{field} must be a string"),
-        )),
-        None => Ok(None),
-    }
 }
 
 fn openai_invalid_request(param: &'static str, message: impl Into<String>) -> OpenAiRouteError {

@@ -138,9 +138,11 @@ mod request_translation;
 use compaction::classify_response_operation;
 pub use compaction::{OpenAiResponsesEndpoint, OpenAiResponsesRequestContext};
 pub use request_translation::{
-    translate_chat_completion_request, translate_response_request,
-    translate_response_request_with_context, translate_response_request_with_context_and_previous,
+    translate_chat_completion_request, translate_response_envelope_with_context_and_previous,
+    translate_response_request, translate_response_request_with_context,
+    translate_response_request_with_context_and_previous,
 };
+pub use responses_index::OpenAiResponsesEnvelope;
 
 pub fn map_chat_completion_request(request: Value) -> Result<NativeRunRequest, OpenAiCompatError> {
     translate_chat_completion_request(request).map(|translated| translated.request)
