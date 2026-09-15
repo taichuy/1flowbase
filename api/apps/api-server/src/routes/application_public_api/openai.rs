@@ -637,23 +637,11 @@ async fn dispatch_response_for_endpoint(
         } else {
             None
         };
-        let native_transport = if native_resume.is_some() {
-            Some(responses_envelope.provider_transport_payload())
-        } else if encoded_resume.is_some() {
-            Some(
-                ProviderTransportPayload::openai_responses(
-                    restore_openai_responses_provider_call_ids(responses_envelope.raw_body()),
-                )
-                .map_err(|_| {
-                    openai_invalid_request(
-                        "input",
-                        "Responses callback transport could not be restored",
-                    )
-                })?,
-            )
-        } else {
-            None
-        };
+        let native_transport = responses_callback_provider_transport(
+            &responses_envelope,
+            native_resume.is_some(),
+            encoded_resume.is_some(),
+        )?;
         let resume = encoded_resume.or_else(|| {
             native_resume.map(|(task, tool_results)| {
                 super::callback_adapter::CorrelatedToolCallback {
@@ -1075,6 +1063,29 @@ async fn dispatch_response_for_endpoint(
             }
         }
     }
+}
+
+fn responses_callback_provider_transport(
+    envelope: &OpenAiResponsesEnvelope,
+    native_resume: bool,
+    encoded_resume: bool,
+) -> Result<Option<ProviderTransportPayload>, OpenAiRouteError> {
+    if native_resume {
+        return Ok(Some(envelope.provider_transport_payload()));
+    }
+    if !encoded_resume {
+        return Ok(None);
+    }
+    ProviderTransportPayload::openai_responses(restore_openai_responses_provider_call_ids(
+        envelope.raw_body(),
+    ))
+    .map(Some)
+    .map_err(|_| {
+        openai_invalid_request(
+            "input",
+            "Responses callback transport could not be restored",
+        )
+    })
 }
 
 fn attach_compact_provider_transport_payload(

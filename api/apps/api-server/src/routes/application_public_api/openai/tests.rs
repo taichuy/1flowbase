@@ -88,6 +88,35 @@ fn issue_2048_low_budget_local_summary_keeps_one_opaque_responses_ingress_plan()
     );
 }
 
+#[test]
+fn issue_2052_encoded_callback_selects_restored_provider_transport() {
+    let callback_task_id = Uuid::now_v7();
+    let external_call_id = encode_openai_callback_tool_call_id(callback_task_id, "call_provider");
+    let envelope = OpenAiResponsesEnvelope::capture(json!({
+        "model": "gpt-test",
+        "store": false,
+        "input": [
+            {"type": "function_call", "call_id": external_call_id, "name": "exec", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": external_call_id, "output": "done"}
+        ]
+    }))
+    .expect("Responses callback envelope should be valid");
+
+    let transport = responses_callback_provider_transport(&envelope, false, true)
+        .expect("encoded callback should prepare transport")
+        .expect("encoded callback must not fall back to semantic rendering");
+
+    assert_eq!(transport.wire_body()["store"], false);
+    assert_eq!(
+        transport.wire_body()["input"][0]["call_id"],
+        "call_provider"
+    );
+    assert_eq!(
+        transport.wire_body()["input"][1]["call_id"],
+        "call_provider"
+    );
+}
+
 #[tokio::test]
 async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
     const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";
