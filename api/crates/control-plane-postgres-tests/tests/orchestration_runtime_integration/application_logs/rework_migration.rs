@@ -2,6 +2,62 @@ use super::*;
 use sqlx::migrate::Migrator;
 use std::borrow::Cow;
 
+// A populated pre-snapshot database must retain the caller's original model
+// selection on both read projections after the forward-only migration.
+#[tokio::test]
+async fn requested_model_snapshot_migration_backfills_summary_and_task() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    let prior = Migrator {
+        migrations: Cow::Owned(
+            sqlx::migrate!("../storage/durable/postgres/migrations")
+                .iter()
+                .filter(|migration| migration.version < 20260915170000)
+                .cloned()
+                .collect(),
+        ),
+        ..Migrator::DEFAULT
+    };
+    prior.run(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let run = Uuid::now_v7();
+    let input_payload = json!({
+        "node-start": {"model": "gpt-5.6-terra"},
+        "sys": {
+            "requested_model_id": "routed-model-id",
+            "model_parameters": {"reasoning": {"effort": "medium"}}
+        }
+    });
+    sqlx::query("insert into flow_runs(id,application_id,flow_id,flow_draft_id,compiled_plan_id,run_mode,status,input_payload,created_by,api_key_id,finished_at) values($1,$2,$3,$4,$5,'published_api_run','succeeded',$6,$7,$8,now())")
+        .bind(run).bind(seeded.application_id).bind(seeded.flow_id).bind(seeded.draft_id).bind(compiled.id).bind(input_payload).bind(seeded.actor_user_id).bind(key).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into application_run_log_summaries(flow_run_id,scope_id,application_id,run_mode,status,title,input_payload,api_key_id,started_at,finished_at,created_at,updated_at) select id,scope_id,application_id,run_mode,status,'snapshot migration fixture',input_payload,api_key_id,started_at,finished_at,created_at,updated_at from flow_runs where id=$1")
+        .bind(run).execute(store.pool()).await.unwrap();
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(run)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    run_migrations(store.pool()).await.unwrap();
+
+    let snapshot_rows: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
+        "select requested_model_id,reasoning_effort from application_run_log_summaries where flow_run_id=$1 union all select requested_model_id,reasoning_effort from application_run_log_tasks where id=$1",
+    )
+    .bind(run)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        snapshot_rows,
+        vec![
+            (Some("gpt-5.6-terra".into()), Some("medium".into())),
+            (Some("gpt-5.6-terra".into()), Some("medium".into())),
+        ]
+    );
+}
+
 // AC-012/013: populated old schema, exact facts, forward migration, original
 // read/rebuild, and retirement. Fresh installation is covered by rework.rs.
 #[tokio::test]

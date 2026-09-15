@@ -174,8 +174,38 @@ export function getApplicationRunsTableColumns(
       render: (_value, run) => {
         const identity = run.principal.display_name ?? run.principal.id;
         const kind = principalKindLabel(run.principal.kind, t);
+        const isApiKey =
+          run.principal.kind === 'application_api_key' ||
+          run.principal.kind === 'user_api_key';
+        if (isApiKey && run.principal.display_name) {
+          return run.principal.display_name;
+        }
         return identity ? `${kind} · ${identity}` : kind;
       }
+    },
+    {
+      key: 'authorized_account',
+      title: t('auto.creator_account'),
+      dataIndex: 'authorized_account',
+      width: 160,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
+    },
+    {
+      key: 'requested_model_id',
+      title: t('auto.requested_model'),
+      dataIndex: 'requested_model_id',
+      width: 180,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
+    },
+    {
+      key: 'reasoning_effort',
+      title: t('auto.reasoning_effort'),
+      dataIndex: 'reasoning_effort',
+      width: 130,
+      ellipsis: true,
+      render: (value) => (value ? `${value}` : '-')
     },
     {
       key: 'id',

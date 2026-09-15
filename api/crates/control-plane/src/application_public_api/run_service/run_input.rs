@@ -11,6 +11,7 @@ pub(super) fn generate_external_conversation_id() -> String {
 pub(crate) fn freeze_run_input_environment(
     input_payload: Value,
     variables: &[domain::ApplicationEnvironmentVariable],
+    requested_model_id: Option<&str>,
     external_model_parameters: Option<&NativeExecutionModelParameters>,
 ) -> Value {
     let mut payload = input_payload.as_object().cloned().unwrap_or_default();
@@ -18,15 +19,23 @@ pub(crate) fn freeze_run_input_environment(
         "env".to_string(),
         Value::Object(application_environment_variable_payload(variables)),
     );
-    if let Some(model_parameters) = external_model_parameters {
+    if requested_model_id.is_some() || external_model_parameters.is_some() {
         let mut sys = payload
             .remove("sys")
             .and_then(|value| value.as_object().cloned())
             .unwrap_or_default();
-        sys.insert(
-            "model_parameters".to_string(),
-            model_parameters.canonical_value(),
-        );
+        if let Some(requested_model_id) = requested_model_id {
+            sys.insert(
+                "requested_model_id".to_string(),
+                Value::String(requested_model_id.to_owned()),
+            );
+        }
+        if let Some(model_parameters) = external_model_parameters {
+            sys.insert(
+                "model_parameters".to_string(),
+                model_parameters.canonical_value(),
+            );
+        }
         payload.insert("sys".to_string(), Value::Object(sys));
     }
     Value::Object(payload)

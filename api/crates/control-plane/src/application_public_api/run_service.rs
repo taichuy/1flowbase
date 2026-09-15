@@ -160,6 +160,7 @@ where
         command.request.query = user_message
             .model_content()
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let requested_model_id = command.request.model.clone();
         let mapped = NativeInputMapper::map(&command.request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let environment_variables = self
@@ -171,6 +172,7 @@ where
         let mut input_payload = freeze_run_input_environment(
             mapped.node_input_payload,
             &environment_variables,
+            requested_model_id.as_deref(),
             command.request.execution.model_parameters(),
         );
         input_payload
@@ -245,6 +247,7 @@ where
         // The request model is workflow input. Only the LLM node selected by the
         // graph owns provider/model capability validation.
         let external_model_parameters = client_request.execution.model_parameters().cloned();
+        let requested_model_id = client_request.model.clone();
         let idempotency_key = client_request
             .execution
             .idempotency_key()
@@ -310,6 +313,7 @@ where
         let input_payload = freeze_run_input_environment(
             mapped.node_input_payload,
             &environment_variables,
+            requested_model_id.as_deref(),
             external_model_parameters.as_ref(),
         );
         let input_payload = with_public_run_idempotency_fingerprint(

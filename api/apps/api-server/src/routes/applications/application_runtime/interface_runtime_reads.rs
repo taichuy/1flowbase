@@ -271,6 +271,7 @@ impl ApplicationRuntimeReadsAdapter {
                 };
                 let mut response =
                     to_flow_run_summary_response(&application, log_summary.run, statistics);
+                response.principal.display_name = log_summary.api_key_name_snapshot;
                 response.parent_run_id = log_summary.parent_run_id.map(|id| id.to_string());
                 response.caused_by_run_id = log_summary.caused_by_run_id.map(|id| id.to_string());
                 response.log_conversation_id =
@@ -289,6 +290,8 @@ impl ApplicationRuntimeReadsAdapter {
                 response.final_output = log_summary.final_output;
                 response.final_output_run_id =
                     log_summary.final_output_run_id.map(|id| id.to_string());
+                response.requested_model_id = log_summary.requested_model_id;
+                response.reasoning_effort = log_summary.reasoning_effort;
                 response
             })
             .collect();

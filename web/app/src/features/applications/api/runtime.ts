@@ -81,6 +81,8 @@ export type ApplicationRunSummary = {
   authorized_account?: string | null;
   api_key_id?: string | null;
   api_key_name_snapshot?: string | null;
+  requested_model_id: string | null;
+  reasoning_effort: string | null;
   publication_version_id?: string | null;
   external_conversation_id?: string | null;
   external_trace_id?: string | null;
@@ -1124,6 +1126,8 @@ function toApplicationRunSummary(
     authorized_account: optionalStringField(record, 'authorized_account'),
     api_key_id: optionalStringField(record, 'api_key_id'),
     api_key_name_snapshot: optionalStringField(record, 'api_key_name_snapshot'),
+    requested_model_id: optionalStringField(record, 'requested_model_id'),
+    reasoning_effort: optionalStringField(record, 'reasoning_effort'),
     publication_version_id: optionalStringField(
       record,
       'publication_version_id'

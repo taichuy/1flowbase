@@ -82,6 +82,23 @@ impl PgControlPlaneStore {
         flow_run: &domain::FlowRunRecord,
         display_title: &str,
     ) -> Result<()> {
+        let requested_model_id = flow_run
+            .input_payload
+            // `node-start.model` is the model selected by the external caller.
+            // `sys.requested_model_id` is retained only for older runs that did
+            // not persist the start-node input.
+            .pointer("/node-start/model")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| {
+                flow_run
+                    .input_payload
+                    .pointer("/sys/requested_model_id")
+                    .and_then(serde_json::Value::as_str)
+            });
+        let reasoning_effort = flow_run
+            .input_payload
+            .pointer("/sys/model_parameters/reasoning/effort")
+            .and_then(serde_json::Value::as_str);
         sqlx::query(
             r#"
             insert into application_run_log_summaries (
@@ -98,6 +115,8 @@ impl PgControlPlaneStore {
                 authorized_account,
                 api_key_id,
                 api_key_name_snapshot,
+                requested_model_id,
+                reasoning_effort,
                 publication_version_id,
                 external_conversation_id,
                 external_trace_id,
@@ -117,7 +136,7 @@ impl PgControlPlaneStore {
                 $1, (select workspace_id from applications where id = $2), $2, $3, $4,
                 $5, $6, $7, $8, $20,
                 coalesce($9, (select users.account from users where users.id = $20)),
-                $10, (select name from api_keys where id = $10),
+                $10, (select name from api_keys where id = $10), $21, $22,
                 $11, $12, $13, $14, $15,
                 coalesce(
                     (
@@ -312,6 +331,8 @@ impl PgControlPlaneStore {
                     excluded.api_key_name_snapshot,
                     application_run_log_summaries.api_key_name_snapshot
                 ),
+                requested_model_id = excluded.requested_model_id,
+                reasoning_effort = excluded.reasoning_effort,
                 publication_version_id = excluded.publication_version_id,
                 external_conversation_id = excluded.external_conversation_id,
                 external_trace_id = excluded.external_trace_id,
@@ -350,6 +371,8 @@ impl PgControlPlaneStore {
         .bind(flow_run.created_at)
         .bind(flow_run.updated_at)
         .bind(flow_run.created_by)
+        .bind(requested_model_id)
+        .bind(reasoning_effort)
         .execute(&mut **tx)
         .await?;
 

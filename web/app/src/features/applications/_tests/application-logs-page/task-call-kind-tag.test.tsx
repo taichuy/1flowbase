@@ -37,6 +37,8 @@ function summary(
     status: 'succeeded',
     target_node_id: null,
     title: 'refactor login',
+    requested_model_id: 'gpt-5.6-sol',
+    reasoning_effort: 'high',
     total_tokens: 7600,
     input_tokens: null,
     output_tokens: null,
@@ -58,6 +60,12 @@ function renderIndicators(record: ApplicationRunSummary) {
     (c) => c.key === 'task_summary'
   );
   render(<>{column?.render?.(record.title, record, 0)}</>);
+}
+
+function renderColumn(key: string, record: ApplicationRunSummary) {
+  const column = getApplicationRunsTableColumns(t).find((item) => item.key === key);
+  const value = column?.dataIndex ? record[column.dataIndex] : undefined;
+  render(<>{column?.render?.(value, record, 0)}</>);
 }
 
 describe('task call kind tag', () => {
@@ -91,5 +99,50 @@ describe('task call kind tag', () => {
     renderIndicators(summary({}));
     expect(screen.queryByText(/auto\.task_invocation_count/)).not.toBeInTheDocument();
     expect(screen.queryByText(/auto\.task_compaction_count/)).not.toBeInTheDocument();
+  });
+
+  test('shows the API key snapshot as the invocation principal', () => {
+    renderColumn(
+      'principal',
+      summary({
+        principal: {
+          kind: 'application_api_key',
+          id: 'key-1',
+          display_name: 'Support Agent public key'
+        }
+      })
+    );
+
+    expect(screen.getByText('Support Agent public key')).toBeInTheDocument();
+    expect(screen.queryByText(/key-1/)).not.toBeInTheDocument();
+  });
+
+  test('keeps the principal kind for non-key callers', () => {
+    renderColumn(
+      'principal',
+      summary({
+        principal: {
+          kind: 'user',
+          id: 'user-1',
+          display_name: 'root'
+        }
+      })
+    );
+
+    expect(screen.getByText('auto.principal_user · root')).toBeInTheDocument();
+  });
+
+  test('shows the recorded authorized account in its own column', () => {
+    renderColumn('authorized_account', summary({ authorized_account: 'root' }));
+
+    expect(screen.getByText('root')).toBeInTheDocument();
+  });
+
+  test('shows the requested model and reasoning effort snapshots', () => {
+    renderColumn('requested_model_id', summary({}));
+    renderColumn('reasoning_effort', summary({}));
+
+    expect(screen.getByText('gpt-5.6-sol')).toBeInTheDocument();
+    expect(screen.getByText('high')).toBeInTheDocument();
   });
 });

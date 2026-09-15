@@ -198,8 +198,14 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
                 .body(Body::from(
                     json!({
                         "query": "请总结退款政策",
+                        "model": "gpt-5.6-sol",
                         "title": "公开 API 退款总结",
                         "expand_id": "customer-42",
+                        "execution": {
+                            "model_parameters": {
+                                "reasoning": { "effort": "high" }
+                            }
+                        },
                         "response_mode": "queued"
                     })
                     .to_string(),
@@ -254,6 +260,18 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
     assert_eq!(
         list_payload["data"]["items"][0]["authorized_account"].as_str(),
         Some("root")
+    );
+    assert_eq!(
+        list_payload["data"]["items"][0]["requested_model_id"].as_str(),
+        Some("gpt-5.6-sol")
+    );
+    assert_eq!(
+        list_payload["data"]["items"][0]["reasoning_effort"].as_str(),
+        Some("high")
+    );
+    assert_eq!(
+        list_payload["data"]["items"][0]["principal"]["display_name"].as_str(),
+        Some("Support Agent public key")
     );
     assert_eq!(
         list_payload["data"]["items"][0]["execution_stage"].as_str(),
