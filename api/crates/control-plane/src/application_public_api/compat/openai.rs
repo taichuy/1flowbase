@@ -171,6 +171,7 @@ pub fn run_id_from_response_id(response_id: &str) -> Result<Uuid, OpenAiCompatEr
 mod chat_validation;
 mod request_mapping;
 mod response_input;
+pub(crate) mod responses_index;
 
 use chat_validation::*;
 use request_mapping::*;

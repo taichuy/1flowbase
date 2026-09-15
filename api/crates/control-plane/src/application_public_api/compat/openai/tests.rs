@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use super::responses_index::{ResponsesInputIndex, ResponsesInputIndexError};
 use super::*;
 use crate::application_public_api::model_catalog::{AgentModelCapabilities, AgentModelReasoning};
 
@@ -1269,4 +1270,41 @@ fn issue_2034_ingress_envelope_headers_reconcile_with_body_identity() {
     reconcile_client_log_headers(&mut context, &envelope.headers);
     assert_eq!(context.identity_status, "identified", "{context:?}");
     assert_eq!(context.session_id.as_deref(), Some(thread));
+}
+
+#[test]
+fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
+    let input = json!([
+        {"role":"user","content":"private-marker"},
+        {"type":"custom_tool_call","call_id":"call_1","name":"exec","input":"{}"},
+        {"type":"custom_tool_call_output","call_id":"call_1","output":"private-output"},
+        {"role":"assistant","phase":"commentary","content":"private-agent-message"},
+        {"type":"future_context_boundary","future":"private-extension"}
+    ]);
+    let index = ResponsesInputIndex::build(&input).expect("bounded opaque items are indexable");
+    assert_eq!(index.item_count(), 5);
+    assert_eq!(index.current_tool_output_positions(), vec![2]);
+    assert_eq!(index.outputs_by_call_id()["call_1"], vec![2]);
+    let debug = format!("{index:?}");
+    for private_value in [
+        "private-marker",
+        "private-output",
+        "private-agent-message",
+        "private-extension",
+    ] {
+        assert!(!debug.contains(private_value));
+    }
+
+    assert_eq!(
+        ResponsesInputIndex::build(&json!(["invalid"])),
+        Err(ResponsesInputIndexError::ItemKind)
+    );
+    assert_eq!(
+        ResponsesInputIndex::build(&json!([{"type":42}])),
+        Err(ResponsesInputIndexError::ItemType)
+    );
+    assert_eq!(
+        ResponsesInputIndex::build(&Value::Array(vec![json!({}); 4_097])),
+        Err(ResponsesInputIndexError::TooManyItems)
+    );
 }

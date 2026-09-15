@@ -1,3 +1,4 @@
+use super::responses_index::ResponsesInputIndex;
 use super::*;
 
 const MAX_RESPONSES_COMPACTION_V2_INPUT_ITEMS: usize = 4_096;
@@ -35,22 +36,19 @@ pub(super) fn validate_native_responses_input(
         );
         return Ok(());
     }
-    let items = input.as_array().ok_or_else(|| {
-        OpenAiCompatError::invalid("input", "input must be text or an array")
-            .with_report(report.clone())
+    let index = ResponsesInputIndex::build(input).map_err(|error| {
+        OpenAiCompatError::invalid("input", error.message()).with_report(report.clone())
     })?;
+    let items = input
+        .as_array()
+        .expect("indexed non-text Responses input must be an array");
+    debug_assert_eq!(index.item_count(), items.len());
+    debug_assert_eq!(index.item_types().len(), items.len());
     for (index, item) in items.iter().enumerate() {
         let item_path = format!("$.input[{index}]");
-        let object = item.as_object().ok_or_else(|| {
-            OpenAiCompatError::invalid("input", "input items must be objects")
-                .with_report(report.clone())
-        })?;
-        if object.get("type").is_some_and(|value| !value.is_string()) {
-            return Err(
-                OpenAiCompatError::invalid("input", "input item type must be text")
-                    .with_report(report.clone()),
-            );
-        }
+        let _object = item
+            .as_object()
+            .expect("ResponsesInputIndex validated every item as an object");
         report.record(
             &item_path,
             None,
