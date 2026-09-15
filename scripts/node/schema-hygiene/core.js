@@ -665,6 +665,9 @@ function parseAlterTableAlterColumn(table, action) {
     column.default = false;
     return true;
   }
+  if (/^drop\s+expression$/iu.test(operation)) {
+    return true;
+  }
 
   return false;
 }

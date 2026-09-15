@@ -63,9 +63,16 @@
     "ui_component_contract_revisions"
   ],
   "systemScopeTables": [
+    "console_permission_catalog_groups",
+    "console_permission_catalog_operations",
+    "console_permission_catalog_sync",
     "model_pricing_rules",
+    "native_plugin_application_requests",
+    "native_plugin_targets",
     "network_egress_pools",
     "network_egress_providers",
+    "plugin_settings_template_applications",
+    "plugin_settings_template_defaults",
     "retained_frontend_module_assets",
     "ui_code_template_defaults",
     "ui_code_template_revisions",
@@ -124,6 +131,12 @@
     },
     "application_run_log_summaries": {
       "scopeGenerationSource": "existing runtime summary write path stores scope_id from flow run context"
+    },
+    "application_run_log_tasks": {
+      "category": "runtime_task_projection",
+      "scopeGenerationSource": "application_run_log_summaries.scope_id copied by the task projection refresh",
+      "backfillSource": "application_run_log_summaries.scope_id",
+      "writePathSource": "task projection refresh writes the anchor summary scope_id and retains task identity"
     },
     "application_run_trace_node_contents": {
       "category": "join_or_child",
@@ -617,15 +630,115 @@
       "scopeGenerationSource": "workspace_id",
       "backfillSource": "workspace_id",
       "writePathSource": "network egress route repository writes workspace-owned consumer selector policy rows"
+    },
+    "console_permission_catalog_sync": {
+      "category": "system_permission_catalog",
+      "scopeGenerationSource": "global console permission catalog synchronization is not workspace routed",
+      "writePathSource": "console permission registry writes one global synchronization singleton"
+    },
+    "console_permission_catalog_groups": {
+      "category": "system_permission_catalog",
+      "scopeGenerationSource": "global console permission catalog groups are not workspace routed",
+      "writePathSource": "console permission registry retains first-seen global group identities"
+    },
+    "console_permission_catalog_operations": {
+      "category": "system_permission_catalog",
+      "scopeGenerationSource": "global console permission catalog operations are not workspace routed",
+      "writePathSource": "console permission registry retains first-seen global operation identities"
+    },
+    "native_plugin_application_requests": {
+      "category": "system_native_extension_lifecycle",
+      "scopeGenerationSource": "SYSTEM_SCOPE_ID check constrains native host extension application requests",
+      "backfillSource": "SYSTEM_SCOPE_ID",
+      "writePathSource": "native plugin target repository writes the fixed host extension scope"
+    },
+    "native_plugin_targets": {
+      "category": "system_native_extension_lifecycle",
+      "scopeGenerationSource": "SYSTEM_SCOPE_ID check constrains native host extension target selection",
+      "backfillSource": "SYSTEM_SCOPE_ID",
+      "writePathSource": "native plugin target repository writes the fixed host extension scope"
+    },
+    "plugin_settings_template_applications": {
+      "category": "system_native_extension_lifecycle",
+      "scopeGenerationSource": "native plugin application request fixes the host extension scope to SYSTEM_SCOPE_ID",
+      "backfillSource": "native_plugin_application_requests.scope_id",
+      "writePathSource": "settings template repository applies verified native host extension templates"
+    },
+    "plugin_settings_template_defaults": {
+      "category": "system_native_extension_lifecycle",
+      "scopeGenerationSource": "native host extension installation owns verified template defaults outside workspace routing",
+      "writePathSource": "settings template repository replaces defaults only for native host installations"
     }
   },
-  "needsOwnerReviewTables": {},
+  "needsOwnerReviewTables": {
+    "plugin_contribution_authorization_revisions": "workspace-owned composite revision state lacks physical scope_id; a backfill and write-path migration needs separate authorization review",
+    "plugin_contribution_authorizations": "workspace-owned authorization history lacks physical scope_id; a backfill and write-path migration needs separate authorization review",
+    "provider_protocol_capsules": "flow-run-owned encrypted protocol capsules lack physical scope_id; a backfill and write-path migration needs separate protocol retention review"
+  },
   "reasonPolicy": {
     "minLength": 12,
     "minWords": 3,
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "console_permission_catalog_sync": {
+      "kind": "system_permission_catalog_state",
+      "reason": "one global singleton records catalog initialization with singleton identity and no workspace lifecycle columns",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "console_permission_catalog_groups": {
+      "kind": "system_permission_catalog",
+      "reason": "global catalog groups use group-kind plus group-id identity and retain their first observed timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "console_permission_catalog_operations": {
+      "kind": "system_permission_catalog",
+      "reason": "global catalog operations use stable operation-id identity and retain their first observed timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "native_plugin_application_requests": {
+      "kind": "system_native_extension_request",
+      "reason": "host extension application requests use composite generation identity and immutable created-at audit facts",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "native_plugin_targets": {
+      "kind": "system_native_extension_target",
+      "reason": "host extension target selection uses composite installation identity while retaining explicit update lifecycle fields",
+      "skip": ["managed-table-id"]
+    },
+    "plugin_settings_template_applications": {
+      "kind": "system_native_template_application",
+      "reason": "verified native template application uses composite generation identity with applied-at as immutable completion time",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
+    "plugin_settings_template_defaults": {
+      "kind": "system_native_template_default",
+      "reason": "verified native template defaults use installation and contribution composite identity without lifecycle history columns",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only"
+      ]
+    },
     "lifecycle_outbox": {
       "kind": "delivery_outbox",
       "reason": "lifecycle events use event_id as identity and mutate explicit delivery state while remaining globally bounded by pending and transaction indexes",

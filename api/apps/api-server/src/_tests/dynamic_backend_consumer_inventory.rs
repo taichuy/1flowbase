@@ -97,7 +97,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         // must remain visible verbatim until that catalog publishes matching translations.
         let backend_owned_extension_uninstall = interface.summary
             == "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data";
-        // Login-entry metadata was renamed after the pinned 2.0.9 catalog release.
+        // Login-entry metadata and contribution authorization summaries were added after the
+        // pinned 2.0.9 catalog release.
         // Keep the current backend contract; new translations require an official release,
         // not edits to the immutable embedded artifact. Template deletion likewise awaits
         // an official translation release; its current backend description remains visible.
@@ -115,6 +116,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "model_providers.instances.usage.view"
                     | "model_providers.instances.reset_credits.consume"
                     | "system_backups.status"
+                    | "extension_center.contribution_authorizations.view"
                     | "ui_management.components.create"
                     | "ui_management.components.delete"
                     | "ui_management.components.update"
