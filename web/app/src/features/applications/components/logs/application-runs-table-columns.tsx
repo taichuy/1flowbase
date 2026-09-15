@@ -174,7 +174,13 @@ export function getApplicationRunsTableColumns(
       render: (_value, run) => {
         const identity = run.principal.display_name ?? run.principal.id;
         const kind = principalKindLabel(run.principal.kind, t);
-        return identity ?? kind;
+        const isApiKey =
+          run.principal.kind === 'application_api_key' ||
+          run.principal.kind === 'user_api_key';
+        if (isApiKey && run.principal.display_name) {
+          return run.principal.display_name;
+        }
+        return identity ? `${kind} · ${identity}` : kind;
       }
     },
     {

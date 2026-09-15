@@ -115,6 +115,21 @@ describe('task call kind tag', () => {
     expect(screen.queryByText(/key-1/)).not.toBeInTheDocument();
   });
 
+  test('keeps the principal kind for non-key callers', () => {
+    renderColumn(
+      'principal',
+      summary({
+        principal: {
+          kind: 'user',
+          id: 'user-1',
+          display_name: 'root'
+        }
+      })
+    );
+
+    expect(screen.getByText('auto.principal_user · root')).toBeInTheDocument();
+  });
+
   test('shows the recorded authorized account in its own column', () => {
     renderColumn('authorized_account', summary({ authorized_account: 'root' }));
 
