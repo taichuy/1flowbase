@@ -22,7 +22,8 @@ use control_plane::application_public_api::{
         OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
     },
     native::{
-        ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
+        ApplicationNativeRunService, NativeRunRequest, NativeRunResult, NativeRunStatus,
+        NativeRunValidationError,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
