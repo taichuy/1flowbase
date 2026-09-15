@@ -22,7 +22,17 @@ fn task_fixture_input(
         target_node_id: None,
         title: title.into(),
         status: FlowRunStatus::Running,
-        input_payload: json!({"query":title,"history":[]}),
+        // The snapshot must expose the caller's selection from node-start, not
+        // the internal sys value that a later routing stage may carry.
+        input_payload: json!({
+            "query": title,
+            "history": [],
+            "node-start": {"model": "gpt-5.6-sol"},
+            "sys": {
+                "requested_model_id": "routed-model-id",
+                "model_parameters": {"reasoning": {"effort": "medium"}}
+            }
+        }),
         started_at: OffsetDateTime::now_utc(),
         api_key_id: Some(key),
         publication_version_id: None,
@@ -224,6 +234,23 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
     assert_eq!(listed.final_output.as_deref(), Some("login refactored"));
     assert_eq!((listed.invocation_count, listed.compaction_count), (2, 1));
     assert_eq!(listed.total_tokens, Some(6000));
+    assert_eq!(listed.requested_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(listed.reasoning_effort.as_deref(), Some("medium"));
+    let snapshot_rows: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
+        "select requested_model_id,reasoning_effort from application_run_log_summaries where flow_run_id=$1 union all select requested_model_id,reasoning_effort from application_run_log_tasks where id=$1",
+    )
+    .bind(members[0])
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        snapshot_rows,
+        vec![
+            (Some("gpt-5.6-sol".into()), Some("medium".into())),
+            (Some("gpt-5.6-sol".into()), Some("medium".into())),
+        ],
+        "the task list reads its snapshot without provider-log joins"
+    );
     let metadata = store.list_runtime_model_metadata().await.unwrap();
     let list_records = |code: &str| {
         let metadata = metadata

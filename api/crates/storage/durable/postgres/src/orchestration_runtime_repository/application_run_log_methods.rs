@@ -84,12 +84,15 @@ impl PgControlPlaneStore {
     ) -> Result<()> {
         let requested_model_id = flow_run
             .input_payload
-            .pointer("/sys/requested_model_id")
+            // `node-start.model` is the model selected by the external caller.
+            // `sys.requested_model_id` is retained only for older runs that did
+            // not persist the start-node input.
+            .pointer("/node-start/model")
             .and_then(serde_json::Value::as_str)
             .or_else(|| {
                 flow_run
                     .input_payload
-                    .pointer("/node-start/model")
+                    .pointer("/sys/requested_model_id")
                     .and_then(serde_json::Value::as_str)
             });
         let reasoning_effort = flow_run
