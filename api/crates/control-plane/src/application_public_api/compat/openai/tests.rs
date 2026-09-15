@@ -1172,20 +1172,35 @@ fn issue_2039_v2_compaction_keeps_opaque_codex_history_out_of_native_state() {
 #[test]
 fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
     let cases = [
-        json!([{"type":"message","role":"user","content":"missing"}]),
-        json!([
-            {"type":"compaction_trigger"},
-            {"type":"compaction_trigger"}
-        ]),
-        json!([
-            {"type":"compaction_trigger"},
-            {"type":"message","role":"user","content":"not tail"}
-        ]),
-        json!([{"type":"compaction_trigger","unexpected":true}]),
-        json!([{"type":""}, {"type":"compaction_trigger"}]),
-        json!(["not-an-object", {"type":"compaction_trigger"}]),
+        (
+            json!([{"type":"message","role":"user","content":"missing"}]),
+            "compaction",
+        ),
+        (
+            json!([
+                {"type":"compaction_trigger"},
+                {"type":"compaction_trigger"}
+            ]),
+            "input",
+        ),
+        (
+            json!([
+                {"type":"compaction_trigger"},
+                {"type":"message","role":"user","content":"not tail"}
+            ]),
+            "input",
+        ),
+        (
+            json!([{"type":"compaction_trigger","unexpected":true}]),
+            "input",
+        ),
+        (json!([{"type":""}, {"type":"compaction_trigger"}]), "input"),
+        (
+            json!(["not-an-object", {"type":"compaction_trigger"}]),
+            "input",
+        ),
     ];
-    for input in cases {
+    for (input, expected_param) in cases {
         let error = translate_response_request_with_context(
             json!({"model":"1flowbase","input":input}),
             OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
@@ -1195,7 +1210,7 @@ fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
         )
         .expect_err("invalid V2 compaction trigger shape must fail closed");
         assert_eq!(error.code, "invalid_request");
-        assert_eq!(error.param.as_deref(), Some("input"));
+        assert_eq!(error.param.as_deref(), Some(expected_param));
     }
 }
 
