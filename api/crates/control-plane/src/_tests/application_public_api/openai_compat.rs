@@ -1215,7 +1215,7 @@ fn k1_codex_compaction_profiles_select_closed_operations_and_result_requirements
 
     let v2 = translate_response_request_with_context(
         responses_request(json!([
-            {"role": "user", "content": "retained user turn"},
+            {"type": "message", "role": "user", "content": "retained user turn"},
             {"type": "compaction_trigger"}
         ])),
         OpenAiResponsesRequestContext::new(OpenAiResponsesEndpoint::Responses)

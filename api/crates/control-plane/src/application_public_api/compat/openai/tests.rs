@@ -1094,7 +1094,7 @@ fn issue_2034_mapping_layer_reconciles_header_only_identity_and_subagent() {
 #[test]
 fn issue_2034_call_kind_derives_from_native_operation_not_request_kind() {
     let compaction = translate_response_request_with_context(
-        json!({"model":"1flowbase","input":[{"role":"user","content":"compact"},{"type":"compaction_trigger"}]}),
+        json!({"model":"1flowbase","input":[{"type":"message","role":"user","content":"compact"},{"type":"compaction_trigger"}]}),
         OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
             "thread_id":"thread-C","turn_id":"turn-C","request_kind":"compaction",
             "compaction":{"implementation":"responses_compaction_v2"}
@@ -1140,6 +1140,75 @@ fn issue_2034_call_kind_derives_from_native_operation_not_request_kind() {
     assert_eq!(context.identity_status, "missing_identity");
     assert_eq!(context.request_kind.as_deref(), Some("memory"));
     assert_eq!(context.call_kind.as_deref(), Some("generate"));
+}
+
+#[test]
+fn issue_2039_v2_compaction_preserves_opaque_codex_history_for_provider_transport() {
+    let request = json!({
+        "model": "1flowbase",
+        "input": [
+            {"type":"message","role":"user","content":"inspect"},
+            {"type":"reasoning","id":"rs_1","encrypted_content":"opaque"},
+            {"type":"custom_tool_call","id":"ct_1","call_id":"call_1","name":"exec","input":"{}"},
+            {"type":"custom_tool_call_output","call_id":"call_1","output":"done"},
+            {"type":"compaction_trigger"}
+        ]
+    });
+    let translated = translate_response_request_with_context(
+        request,
+        OpenAiResponsesRequestContext::responses(),
+    )
+    .expect("Codex V2 compaction history should be accepted as provider-opaque input");
+
+    assert_eq!(
+        *translated.request.execution.execution_operation(),
+        domain::AiNativeOperation::Compact(domain::AiNativeCompactProfile::ResponsesCompactionV2)
+    );
+    assert!(translated.request.query.is_empty());
+    assert!(translated.request.history.is_empty());
+    assert!(translated.request.system.is_empty());
+}
+
+#[test]
+fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
+    let cases = [
+        json!([{"type":"message","role":"user","content":"missing"}]),
+        json!([
+            {"type":"compaction_trigger"},
+            {"type":"compaction_trigger"}
+        ]),
+        json!([
+            {"type":"compaction_trigger"},
+            {"type":"message","role":"user","content":"not tail"}
+        ]),
+        json!([{"type":"compaction_trigger","unexpected":true}]),
+        json!([{"type":""}, {"type":"compaction_trigger"}]),
+        json!(["not-an-object", {"type":"compaction_trigger"}]),
+    ];
+    for input in cases {
+        let error = translate_response_request_with_context(
+            json!({"model":"1flowbase","input":input}),
+            OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+                "compaction":{"implementation":"responses_compaction_v2"}
+            })),
+        )
+        .expect_err("invalid V2 compaction trigger shape must fail closed");
+        assert_eq!(error.code, "invalid_request");
+        assert_eq!(error.param.as_deref(), Some("input"));
+    }
+}
+
+#[test]
+fn issue_2039_v2_compaction_rejects_unbounded_item_count() {
+    let mut input = vec![json!({"type":"reasoning"}); 4_096];
+    input.push(json!({"type":"compaction_trigger"}));
+    let error = translate_response_request_with_context(
+        json!({"model":"1flowbase","input":input}),
+        OpenAiResponsesRequestContext::responses(),
+    )
+    .expect_err("V2 compaction input item count must be bounded");
+    assert_eq!(error.code, "invalid_request");
+    assert_eq!(error.param.as_deref(), Some("input"));
 }
 
 // #2034 AC-002 diagnostic: the real HTTP ingress envelope must reconcile with

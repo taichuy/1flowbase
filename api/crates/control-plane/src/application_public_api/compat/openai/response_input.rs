@@ -1,5 +1,7 @@
 use super::*;
 
+const MAX_RESPONSES_COMPACTION_V2_INPUT_ITEMS: usize = 4_096;
+
 pub(super) fn validate_responses_input(
     input: &Value,
     is_v2_compaction: bool,
@@ -62,6 +64,89 @@ pub(super) fn validate_native_responses_input(
         None,
         TranslationDecisionKind::Exact,
         Some("preserved only in native Responses provider transport"),
+        TranslationSafeRepresentation::Redacted,
+    );
+    Ok(())
+}
+
+pub(super) fn validate_responses_compaction_v2_input(
+    input: &Value,
+    report: &mut TranslationReport,
+) -> Result<(), OpenAiCompatError> {
+    let items = input.as_array().ok_or_else(|| {
+        OpenAiCompatError::invalid("input", "V2 compaction input must be an array")
+            .with_report(report.clone())
+    })?;
+    if items.len() > MAX_RESPONSES_COMPACTION_V2_INPUT_ITEMS {
+        return Err(
+            OpenAiCompatError::invalid("input", "V2 compaction input has too many items")
+                .with_report(report.clone()),
+        );
+    }
+    let mut trigger_index = None;
+    for (index, item) in items.iter().enumerate() {
+        let item_path = format!("$.input[{index}]");
+        let object = item.as_object().ok_or_else(|| {
+            OpenAiCompatError::invalid("input", "V2 compaction input items must be objects")
+                .with_report(report.clone())
+        })?;
+        let item_type = object
+            .get("type")
+            .and_then(Value::as_str)
+            .filter(|item_type| !item_type.trim().is_empty())
+            .ok_or_else(|| {
+                OpenAiCompatError::invalid(
+                    "input",
+                    "V2 compaction input item type must be non-empty text",
+                )
+                .with_report(report.clone())
+            })?;
+        if item_type == "compaction_trigger" {
+            if trigger_index.replace(index).is_some() {
+                return Err(OpenAiCompatError::invalid(
+                    "input",
+                    "V2 compaction input must contain exactly one compaction_trigger",
+                )
+                .with_report(report.clone()));
+            }
+            if object.len() != 1 {
+                return Err(OpenAiCompatError::invalid(
+                    "input",
+                    "unknown V2 compaction trigger field",
+                )
+                .with_report(report.clone()));
+            }
+        }
+        report.record(
+            &item_path,
+            None,
+            TranslationDecisionKind::Exact,
+            Some("preserved only in V2 compaction provider transport"),
+            TranslationSafeRepresentation::Redacted,
+        );
+    }
+    match trigger_index {
+        Some(index) if index + 1 == items.len() => {}
+        Some(_) => {
+            return Err(OpenAiCompatError::invalid(
+                "input",
+                "V2 compaction compaction_trigger must be the final input item",
+            )
+            .with_report(report.clone()));
+        }
+        None => {
+            return Err(OpenAiCompatError::invalid(
+                "input",
+                "V2 compaction input must contain exactly one compaction_trigger",
+            )
+            .with_report(report.clone()));
+        }
+    }
+    report.record(
+        "$.input",
+        None,
+        TranslationDecisionKind::Exact,
+        Some("preserved only in V2 compaction provider transport"),
         TranslationSafeRepresentation::Redacted,
     );
     Ok(())
@@ -1037,6 +1122,14 @@ pub(super) fn responses_native_input_to_run_input(input: &Value) -> ResponsesInp
         query,
         history,
         system_parts,
+    }
+}
+
+pub(super) fn responses_compaction_v2_input_to_run_input() -> ResponsesInputMapping {
+    ResponsesInputMapping {
+        query: String::new(),
+        history: Vec::new(),
+        system_parts: Vec::new(),
     }
 }
 

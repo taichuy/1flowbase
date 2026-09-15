@@ -7,12 +7,14 @@ use serde_json::{Map, Value};
 use super::{
     chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
     openai_reasoning, response_max_output_tokens, response_stream_mode,
-    responses_input_to_native_run_input, responses_native_input_to_run_input,
-    responses_omitted_optional_tools, responses_previous_history, responses_transport_requirement,
-    system_from_parts, validate_chat_message_fields, validate_chat_root_fields,
+    responses_compaction_v2_input_to_run_input, responses_input_to_native_run_input,
+    responses_native_input_to_run_input, responses_omitted_optional_tools,
+    responses_previous_history, responses_transport_requirement, system_from_parts,
+    validate_chat_message_fields, validate_chat_root_fields,
     validate_native_mcp_approval_continuation, validate_native_responses_input,
-    validate_response_transport_fields, validate_responses_input, OpenAiCompatError,
-    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    validate_response_transport_fields, validate_responses_compaction_v2_input,
+    validate_responses_input, OpenAiCompatError, OpenAiPreviousResponseContext,
+    OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
     OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD, OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
@@ -275,7 +277,10 @@ pub fn translate_response_request_with_context_and_previous(
     let uses_native_transport = transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
         && compaction_intent(operation).is_none();
-    let input_mapping = if uses_native_transport {
+    let input_mapping = if is_v2_compaction {
+        validate_responses_compaction_v2_input(input, &mut report)?;
+        responses_compaction_v2_input_to_run_input()
+    } else if uses_native_transport {
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
         validate_native_responses_input(input, &mut report)?;
         responses_native_input_to_run_input(input)
