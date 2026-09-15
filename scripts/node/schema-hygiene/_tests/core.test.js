@@ -528,7 +528,7 @@ test('collectSchemaInventory reports unsupported table elements and alter action
   );
 });
 
-test('collectSchemaInventory applies supported alter column nullability and default actions', () => {
+test('collectSchemaInventory applies supported alter column nullability, default, and expression actions', () => {
   const repoRoot = createRepoWithMigration(`
     create table editable_table (
       id uuid primary key,
@@ -537,6 +537,7 @@ test('collectSchemaInventory applies supported alter column nullability and defa
     alter table editable_table
       alter column label set not null,
       alter column label set default 'untitled';
+    alter table editable_table alter column label drop expression;
   `);
 
   const inventory = collectSchemaInventory({ repoRoot });
@@ -829,6 +830,46 @@ test('default schema hygiene config exempts bounded projection and release table
     assert.equal(table.findings.some((finding) => finding.rule === 'managed-table-needs-owner-review'), false);
     assert.equal(table.platformReadiness.recommendedActions.includes('needs_owner_review'), false);
     assert.deepEqual(table.platformReadiness.recommendedActions, [expectedAction]);
+  }
+
+  assert.equal(report.summary.errors, 0);
+});
+
+test('default schema hygiene config distinguishes bounded system catalog state from deferred scope migrations', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({
+    inventory,
+    config: loadConfig(repoRoot),
+  });
+
+  for (const [tableName, expectedCategory, expectedAction] of [
+    ['console_permission_catalog_sync', 'system_permission_catalog_state', 'system_permission_catalog_state_declared'],
+    ['console_permission_catalog_groups', 'system_permission_catalog', 'system_permission_catalog_declared'],
+    ['console_permission_catalog_operations', 'system_permission_catalog', 'system_permission_catalog_declared'],
+    ['native_plugin_application_requests', 'system_native_extension_request', 'system_native_extension_request_declared'],
+    ['native_plugin_targets', 'system_native_extension_target', 'system_native_extension_target_declared'],
+    ['plugin_settings_template_applications', 'system_native_template_application', 'system_native_template_application_declared'],
+    ['plugin_settings_template_defaults', 'system_native_template_default', 'system_native_template_default_declared'],
+    ['application_run_log_tasks', 'runtime_task_projection', 'declare_generation_rule'],
+  ]) {
+    const table = report.tables.find((candidate) => candidate.name === tableName);
+    assert.deepEqual(table.findings, [], `${tableName} should have no schema hygiene findings`);
+    assert.equal(table.platformReadiness.category, expectedCategory);
+    assert.deepEqual(table.platformReadiness.recommendedActions, [expectedAction]);
+  }
+
+  for (const tableName of [
+    'plugin_contribution_authorization_revisions',
+    'plugin_contribution_authorizations',
+    'provider_protocol_capsules',
+  ]) {
+    const table = report.tables.find((candidate) => candidate.name === tableName);
+    assert.deepEqual(
+      table.findings.map((finding) => finding.rule),
+      ['managed-table-needs-owner-review'],
+    );
+    assert.deepEqual(table.platformReadiness.recommendedActions, ['needs_owner_review']);
   }
 
   assert.equal(report.summary.errors, 0);

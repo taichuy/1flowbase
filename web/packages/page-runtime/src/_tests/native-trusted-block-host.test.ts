@@ -48,11 +48,11 @@ describe('native trusted block portal surface', () => {
       )
     ).toBeNull();
     expect(surface.mountElement.parentNode).toBe(surface.shadowRoot);
-    expect(surface.mountElement.style.padding).toBe('');
     expect(
       surface.mountElement.dataset.flowbaseNativeTrustedBlockAllocationMode
     ).toBeUndefined();
     expect(surface.mountElement).toHaveStyle({
+      padding: '',
       width: '100%',
       maxWidth: '100%',
       minWidth: '0',
