@@ -189,11 +189,95 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                 inner.run_conversations.insert(record.id, conversation_id);
             }
         }
+        if let Some(context) = input.application_run_log_context.clone() {
+            inner.flow_run_log_contexts.insert(record.id, context);
+        }
         inner.flow_runs.insert(record.id, record.clone());
         Ok(run_service::CreatePublishedFlowRunResult {
             flow_run: record,
             created: true,
         })
+    }
+
+    async fn create_published_flow_run_superseding_callback_predecessors(
+        &self,
+        input: &CreateFlowRunInput,
+    ) -> Result<run_service::CreatePublishedFlowRunResult> {
+        let created = self.create_published_flow_run(input).await?;
+        if !created.created {
+            return Ok(created);
+        }
+        let Some(successor_context) = input
+            .application_run_log_context
+            .as_ref()
+            .filter(|context| context.identity_status == "identified")
+        else {
+            return Ok(created);
+        };
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let predecessor_ids = inner
+            .flow_runs
+            .values()
+            .filter(|run| {
+                run.id != created.flow_run.id
+                    && run.status == domain::FlowRunStatus::WaitingCallback
+                    && run.application_id == created.flow_run.application_id
+                    && run.api_key_id == created.flow_run.api_key_id
+                    && run.created_by == created.flow_run.created_by
+                    && run.external_user == created.flow_run.external_user
+                    && run.compatibility_mode.as_deref() == Some("openai-responses-v1")
+                    && inner
+                        .flow_run_log_contexts
+                        .get(&run.id)
+                        .is_some_and(|context| {
+                            context.protocol == successor_context.protocol
+                                && context.thread_id == successor_context.thread_id
+                                && context.turn_id == successor_context.turn_id
+                        })
+            })
+            .map(|run| run.id)
+            .collect::<Vec<_>>();
+        for predecessor_id in predecessor_ids {
+            if let Some(run) = inner.flow_runs.get_mut(&predecessor_id) {
+                run.status = domain::FlowRunStatus::Cancelled;
+                run.error_payload = Some(json!({
+                    "code":"cancelled",
+                    "reason":"local_summary_superseded",
+                    "successor_flow_run_id":created.flow_run.id,
+                }));
+                run.finished_at = Some(input.started_at);
+                run.updated_at = input.started_at;
+            }
+            for task in inner.callback_tasks.values_mut() {
+                if task.flow_run_id == predecessor_id
+                    && task.status == domain::CallbackTaskStatus::Pending
+                {
+                    task.status = domain::CallbackTaskStatus::Cancelled;
+                    task.completed_at = Some(input.started_at);
+                }
+            }
+            for attempt in inner.callback_resume_attempts.values_mut() {
+                if attempt.flow_run_id == predecessor_id
+                    && matches!(
+                        attempt.status,
+                        domain::FlowRunCallbackResumeAttemptStatus::Received
+                            | domain::FlowRunCallbackResumeAttemptStatus::Processing
+                    )
+                {
+                    attempt.status = domain::FlowRunCallbackResumeAttemptStatus::Cancelled;
+                    attempt.error_payload = Some(json!({
+                        "reason":"local_summary_superseded",
+                        "successor_flow_run_id":created.flow_run.id,
+                    }));
+                    attempt.completed_at = Some(input.started_at);
+                    attempt.updated_at = input.started_at;
+                }
+            }
+        }
+        Ok(created)
     }
 
     async fn find_published_flow_run_by_idempotency_key(

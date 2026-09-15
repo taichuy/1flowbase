@@ -1063,6 +1063,16 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         PgControlPlaneStore::create_published_flow_run(self, input).await
     }
 
+    async fn create_published_flow_run_superseding_callback_predecessors(
+        &self,
+        input: &CreateFlowRunInput,
+    ) -> Result<CreatePublishedFlowRunResult> {
+        PgControlPlaneStore::create_published_flow_run_superseding_callback_predecessors(
+            self, input,
+        )
+        .await
+    }
+
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,

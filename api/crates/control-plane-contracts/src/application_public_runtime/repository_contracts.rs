@@ -114,6 +114,13 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
         input: &CreateFlowRunInput,
     ) -> Result<CreatePublishedFlowRunResult>;
 
+    /// Creates a Local Summary successor and atomically retires WaitingCallback
+    /// predecessors in the same authenticated client task lineage.
+    async fn create_published_flow_run_superseding_callback_predecessors(
+        &self,
+        input: &CreateFlowRunInput,
+    ) -> Result<CreatePublishedFlowRunResult>;
+
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,

@@ -189,6 +189,21 @@ impl PgControlPlaneStore {
         &self,
         input: &CreateFlowRunInput,
     ) -> Result<CreatePublishedFlowRunResult> {
+        self.create_published_flow_run_inner(input, false).await
+    }
+
+    async fn create_published_flow_run_superseding_callback_predecessors(
+        &self,
+        input: &CreateFlowRunInput,
+    ) -> Result<CreatePublishedFlowRunResult> {
+        self.create_published_flow_run_inner(input, true).await
+    }
+
+    async fn create_published_flow_run_inner(
+        &self,
+        input: &CreateFlowRunInput,
+        supersede_callback_predecessors: bool,
+    ) -> Result<CreatePublishedFlowRunResult> {
         let conflict_target = match input.run_mode {
             domain::FlowRunMode::WorkflowScheduleRun => {
                 "(application_id, idempotency_key)\n                where run_mode = 'workflow_schedule_run'\n                  and idempotency_key is not null"
@@ -295,6 +310,15 @@ impl PgControlPlaneStore {
                 let run = map_flow_run_record(row)?;
                 if let Some(context) = &input.application_run_log_context {
                     Self::bind_application_run_log_context(&mut tx, &run, context).await?;
+                    if supersede_callback_predecessors {
+                        Self::supersede_callback_predecessors_in_transaction(
+                            &mut tx,
+                            &run,
+                            context,
+                            input.started_at,
+                        )
+                        .await?;
+                    }
                 }
                 tx.commit().await?;
                 (run, true)

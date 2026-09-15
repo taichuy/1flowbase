@@ -49,6 +49,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     application_api_enabled: HashMap<Uuid, bool>,
     native_runs: HashMap<Uuid, native::NativeRunResult>,
     flow_runs: HashMap<Uuid, domain::FlowRunRecord>,
+    flow_run_log_contexts: HashMap<Uuid, control_plane_contracts::ports::ApplicationRunLogContext>,
     node_runs: HashMap<Uuid, domain::NodeRunRecord>,
     callback_tasks: HashMap<Uuid, domain::CallbackTaskRecord>,
     callback_resume_attempts: HashMap<String, domain::FlowRunCallbackResumeAttemptRecord>,

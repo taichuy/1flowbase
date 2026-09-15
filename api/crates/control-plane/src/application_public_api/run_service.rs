@@ -257,6 +257,10 @@ where
             .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
             .transpose()?;
         let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
+        let supersedes_callback_predecessors = matches!(
+            client_request.execution.execution_operation(),
+            domain::AiNativeOperation::Generate(domain::AiNativeGenerateProfile::LocalSummary)
+        );
         let mut application_run_log_context = client_request
             .metadata
             .application_run_log_context()
@@ -322,44 +326,50 @@ where
         );
         let input_payload =
             with_public_provider_transport_summary(input_payload, provider_transport_summary);
-        let created = self
-            .repository
-            .create_published_flow_run(&CreateFlowRunInput {
-                application_run_log_context,
-                actor_user_id: actor.creator_user_id,
-                application_id: actor.application_id,
-                flow_id: publication.flow_id,
-                flow_draft_id: compiled_plan.draft_id,
-                compiled_plan_id: publication.compiled_plan_id,
-                debug_session_id: String::new(),
-                flow_schema_version: publication.flow_schema_version.clone(),
-                document_hash: publication.document_hash.clone(),
-                run_mode: domain::FlowRunMode::PublishedApiRun,
-                target_node_id: None,
-                title: build_flow_run_title(request.title.as_deref(), &request.query),
-                status: domain::FlowRunStatus::Queued,
-                input_payload,
-                started_at,
-                api_key_id: Some(actor.api_key_id),
-                publication_version_id: Some(publication.id),
-                assistant_conversation_id: None,
-                external_user: metadata
-                    .get("external_user")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
-                external_conversation_id: metadata
-                    .get("external_conversation_id")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
-                external_trace_id: metadata
-                    .get("external_trace_id")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
-                compatibility_mode: Some(protocol.compatibility_mode().to_string()),
-                idempotency_key,
-            })
-            .await
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let create_input = CreateFlowRunInput {
+            application_run_log_context,
+            actor_user_id: actor.creator_user_id,
+            application_id: actor.application_id,
+            flow_id: publication.flow_id,
+            flow_draft_id: compiled_plan.draft_id,
+            compiled_plan_id: publication.compiled_plan_id,
+            debug_session_id: String::new(),
+            flow_schema_version: publication.flow_schema_version.clone(),
+            document_hash: publication.document_hash.clone(),
+            run_mode: domain::FlowRunMode::PublishedApiRun,
+            target_node_id: None,
+            title: build_flow_run_title(request.title.as_deref(), &request.query),
+            status: domain::FlowRunStatus::Queued,
+            input_payload,
+            started_at,
+            api_key_id: Some(actor.api_key_id),
+            publication_version_id: Some(publication.id),
+            assistant_conversation_id: None,
+            external_user: metadata
+                .get("external_user")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            external_conversation_id: metadata
+                .get("external_conversation_id")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            external_trace_id: metadata
+                .get("external_trace_id")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            compatibility_mode: Some(protocol.compatibility_mode().to_string()),
+            idempotency_key,
+        };
+        let created = if supersedes_callback_predecessors {
+            self.repository
+                .create_published_flow_run_superseding_callback_predecessors(&create_input)
+                .await
+        } else {
+            self.repository
+                .create_published_flow_run(&create_input)
+                .await
+        }
+        .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let flow_run = created.flow_run;
         if !created.created {
             ensure_idempotency_fingerprint_matches(&flow_run, idempotency_fingerprint.as_deref())?;

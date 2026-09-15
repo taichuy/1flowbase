@@ -1,4 +1,161 @@
 impl PgControlPlaneStore {
+    async fn supersede_callback_predecessors_in_transaction(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        successor: &domain::FlowRunRecord,
+        context: &control_plane_contracts::ports::ApplicationRunLogContext,
+        completed_at: OffsetDateTime,
+    ) -> Result<Vec<Uuid>> {
+        if context.identity_status != "identified" {
+            return Ok(Vec::new());
+        }
+        let (Some(protocol), Some(thread_id), Some(turn_id), Some(api_key_id)) = (
+            context.protocol.as_deref(),
+            context.thread_id.as_deref(),
+            context.turn_id.as_deref(),
+            successor.api_key_id,
+        ) else {
+            return Ok(Vec::new());
+        };
+        let task_run_id: Option<String> = sqlx::query_scalar(
+            "select log_context->>'log_task_run_id' from flow_runs where id=$1",
+        )
+        .bind(successor.id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .flatten();
+        let Some(task_run_id) = task_run_id else {
+            return Ok(Vec::new());
+        };
+        let error_payload = json!({
+            "code": "cancelled",
+            "message": "published run superseded by local summary compaction",
+            "reason": "local_summary_superseded",
+            "successor_flow_run_id": successor.id,
+        });
+        let rows = sqlx::query(
+            r#"
+            update flow_runs
+            set status='cancelled', error_payload=$9, finished_at=$8, updated_at=$8
+            where id<>$1
+              and application_id=$2
+              and api_key_id=$3
+              and created_by=$4
+              and coalesce(external_user,'')=coalesce($5::text,'')
+              and compatibility_mode='openai-responses-v1'
+              and status='waiting_callback'
+              and log_context->>'protocol'=$6
+              and log_context->>'thread_id'=$7
+              and log_context->>'turn_id'=$10
+              and log_context->>'log_task_run_id'=$11
+            returning id,application_id,flow_id,flow_draft_id,compiled_plan_id,
+              debug_session_id,flow_schema_version,document_hash,run_mode,target_node_id,
+              title,status,input_payload,output_payload,error_payload,created_by,
+              null::text as authorized_account,api_key_id,publication_version_id,
+              external_user,external_conversation_id,external_trace_id,compatibility_mode,
+              idempotency_key,started_at,finished_at,created_at,updated_at
+            "#,
+        )
+        .bind(successor.id)
+        .bind(successor.application_id)
+        .bind(api_key_id)
+        .bind(successor.created_by)
+        .bind(successor.external_user.as_deref())
+        .bind(protocol)
+        .bind(thread_id)
+        .bind(completed_at)
+        .bind(&error_payload)
+        .bind(turn_id)
+        .bind(&task_run_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let mut superseded_ids = Vec::with_capacity(rows.len());
+        for row in rows {
+            let predecessor = map_flow_run_record(row)?;
+            superseded_ids.push(predecessor.id);
+            sqlx::query(
+                "update node_runs set status='cancelled', finished_at=coalesce(finished_at,$2) where flow_run_id=$1 and status not in ('succeeded','failed','cancelled','skipped')",
+            )
+            .bind(predecessor.id)
+            .bind(completed_at)
+            .execute(&mut **tx)
+            .await?;
+            let callbacks = sqlx::query(
+                "update flow_run_callback_tasks set status='cancelled', completed_at=$2 where flow_run_id=$1 and status='pending' returning id,node_run_id,callback_kind",
+            )
+            .bind(predecessor.id)
+            .bind(completed_at)
+            .fetch_all(&mut **tx)
+            .await?;
+            sqlx::query(
+                "update flow_run_callback_resume_attempts set status='cancelled', completed_at=$2, updated_at=$2, error_payload=$3 where flow_run_id=$1 and status in ('received','processing')",
+            )
+            .bind(predecessor.id)
+            .bind(completed_at)
+            .bind(&error_payload)
+            .execute(&mut **tx)
+            .await?;
+
+            Self::upsert_application_run_log_summary_projection_for_flow_run(
+                tx,
+                &predecessor,
+            )
+            .await?;
+            Self::replace_application_run_conversation_message_items_projection(
+                tx,
+                &predecessor,
+            )
+            .await?;
+            let scope_id = flow_run_scope_id_for_update(tx, predecessor.id).await?;
+            let sequence = next_event_sequence(tx, predecessor.id).await?;
+            sqlx::query(
+                "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected) values($1,$2,$3,null,$4,'flow_run_cancelled',$5,null,true)",
+            )
+            .bind(Uuid::now_v7())
+            .bind(scope_id)
+            .bind(predecessor.id)
+            .bind(sequence)
+            .bind(&error_payload)
+            .execute(&mut **tx)
+            .await?;
+            for callback in callbacks {
+                let callback_id: Uuid = callback.get("id");
+                let node_run_id: Uuid = callback.get("node_run_id");
+                let callback_kind: String = callback.get("callback_kind");
+                let sequence = next_event_sequence(tx, predecessor.id).await?;
+                sqlx::query(
+                    "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected) values($1,$2,$3,$4,$5,'public_run_callback_cancelled',$6,null,true)",
+                )
+                .bind(Uuid::now_v7())
+                .bind(scope_id)
+                .bind(predecessor.id)
+                .bind(node_run_id)
+                .bind(sequence)
+                .bind(json!({
+                    "callback_task_id": callback_id,
+                    "callback_kind": callback_kind,
+                    "reason": "local_summary_superseded",
+                    "successor_flow_run_id": successor.id,
+                }))
+                .execute(&mut **tx)
+                .await?;
+            }
+            let runtime_sequence = next_runtime_event_sequence(tx, predecessor.id).await?;
+            sqlx::query(
+                "insert into runtime_events(id,flow_run_id,node_run_id,span_id,parent_span_id,sequence,event_type,layer,source,trust_level,item_id,ledger_ref,payload,visibility,durability) values($1,$2,null,null,null,$3,'flow_cancelled','agent_transition','host','host_fact',null,null,$4,'workspace','durable')",
+            )
+            .bind(Uuid::now_v7())
+            .bind(predecessor.id)
+            .bind(runtime_sequence)
+            .bind(&error_payload)
+            .execute(&mut **tx)
+            .await?;
+            append_flow_run_recovery_state_in_transaction(tx, &predecessor).await?;
+            Self::refresh_application_run_log_task_for_flow_run(tx, predecessor.id).await?;
+        }
+        Ok(superseded_ids)
+    }
+
     async fn bind_application_run_log_context(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         run: &domain::FlowRunRecord,
@@ -103,4 +260,3 @@ impl PgControlPlaneStore {
         "#).bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await.map_err(Into::into)
     }
 }
-

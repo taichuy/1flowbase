@@ -1185,7 +1185,7 @@ fn issue_2049_local_summary_keeps_opaque_codex_history_in_provider_transport() {
             {"type":"message","role":"user","content":"summarize history"}
         ]
     });
-    let translated = translate_response_request_with_context(
+    let mut translated = translate_response_request_with_context(
         request.clone(),
         OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
             "thread_id":"thread-local-summary",

@@ -1,7 +1,212 @@
 use super::*;
 use control_plane::application_public_api::{
-    compat::anthropic::translate_messages_request, protocol_translation::TranslationDecisionKind,
+    callback_resume::ApplicationPublishedCallbackAttemptRepository,
+    compat::{
+        anthropic::translate_messages_request,
+        openai::{translate_response_request_with_context, OpenAiResponsesRequestContext},
+    },
+    protocol_translation::TranslationDecisionKind,
 };
+use control_plane::ports::RecordFlowRunCallbackResumeAttemptInput;
+
+fn responses_request_for_turn(
+    thread_id: &str,
+    turn_id: &str,
+    request_kind: &str,
+    input: serde_json::Value,
+) -> NativeRunRequest {
+    translate_response_request_with_context(
+        json!({
+            "model": "public-model/pass-through",
+            "input": input,
+            "user": "codex-user",
+            "client_metadata": {
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "request_kind": request_kind,
+            }
+        }),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "request_kind": request_kind,
+            "compaction": (request_kind == "compaction").then(|| json!({"implementation":"responses"})),
+        })),
+    )
+    .expect("Responses fixture should translate")
+    .request
+}
+
+#[tokio::test]
+async fn issue_2050_local_summary_retires_only_exact_waiting_callback_lineage() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Local Summary Successor App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let predecessor = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token.clone(),
+            request: responses_request_for_turn(
+                "thread-2050",
+                "turn-2050",
+                "turn",
+                json!([{"type":"message","role":"user","content":"run a tool"}]),
+            ),
+        })
+        .await
+        .expect("predecessor should start");
+    let callback = repository.seed_pending_callback_task(predecessor.id);
+    let attempt = repository
+        .record_published_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+            flow_run_id: predecessor.id,
+            callback_task_id: callback.id,
+            source: "responses".into(),
+            response_payload: json!({"output":"late"}),
+            idempotency_key: "issue-2050-processing-attempt".into(),
+        })
+        .await
+        .expect("processing attempt should be seeded")
+        .attempt;
+
+    let foreign = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token.clone(),
+            request: responses_request_for_turn(
+                "thread-2050",
+                "other-turn",
+                "turn",
+                json!([{"type":"message","role":"user","content":"unrelated"}]),
+            ),
+        })
+        .await
+        .expect("foreign turn should start");
+    let foreign_callback = repository.seed_pending_callback_task(foreign.id);
+
+    let successor = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token,
+            request: responses_request_for_turn(
+                "thread-2050",
+                "turn-2050",
+                "compaction",
+                json!([
+                    {"type":"message","role":"user","content":"run a tool"},
+                    {"type":"custom_tool_call","call_id":"call-2050","name":"exec","input":"{}"},
+                    {"type":"custom_tool_call_output","call_id":"call-2050","output":"private"},
+                    {"type":"message","role":"user","content":"summarize history"}
+                ]),
+            ),
+        })
+        .await
+        .expect("local summary successor should start");
+
+    let predecessor = repository
+        .get_flow_run(application.id, predecessor.id)
+        .await
+        .unwrap()
+        .expect("predecessor should remain durable");
+    let callback = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .expect("callback should remain durable");
+    let attempts = repository.callback_resume_attempts();
+    let attempt = attempts
+        .iter()
+        .find(|candidate| candidate.id == attempt.id)
+        .expect("attempt should remain durable");
+    let foreign = repository
+        .get_flow_run(application.id, foreign.id)
+        .await
+        .unwrap()
+        .expect("foreign run should remain durable");
+    let foreign_callback = repository
+        .get_published_callback_task(foreign_callback.id)
+        .await
+        .unwrap()
+        .expect("foreign callback should remain durable");
+
+    assert_eq!(predecessor.status, domain::FlowRunStatus::Cancelled);
+    assert_eq!(
+        predecessor
+            .error_payload
+            .as_ref()
+            .and_then(|v| v.get("reason")),
+        Some(&json!("local_summary_superseded"))
+    );
+    assert_eq!(callback.status, domain::CallbackTaskStatus::Cancelled);
+    assert_eq!(
+        attempt.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Cancelled
+    );
+    assert_eq!(foreign.status, domain::FlowRunStatus::WaitingCallback);
+    assert_eq!(foreign_callback.status, domain::CallbackTaskStatus::Pending);
+    assert_ne!(successor.id, predecessor.id);
+}
+
+#[tokio::test]
+async fn issue_2050_standard_generate_does_not_supersede_waiting_callback() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Standard Generate Boundary App");
+    let token = issue_key(&harness, application.id).await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    let predecessor = service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token.clone(),
+            request: responses_request_for_turn(
+                "thread-standard",
+                "turn-standard",
+                "turn",
+                json!([{"type":"message","role":"user","content":"first"}]),
+            ),
+        })
+        .await
+        .unwrap();
+    let callback = repository.seed_pending_callback_task(predecessor.id);
+
+    service
+        .start_native_run(CreateNativeRunCommand {
+            protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::OpenAiResponses,
+            bearer_token: token,
+            request: responses_request_for_turn(
+                "thread-standard",
+                "turn-standard",
+                "turn",
+                json!([{"type":"message","role":"user","content":"real next input"}]),
+            ),
+        })
+        .await
+        .expect("ordinary generate should start");
+
+    assert_eq!(
+        repository
+            .get_flow_run(application.id, predecessor.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        domain::CallbackTaskStatus::Pending
+    );
+}
 
 #[tokio::test]
 async fn start_native_run_creates_published_api_flow_run_from_frozen_publication() {
