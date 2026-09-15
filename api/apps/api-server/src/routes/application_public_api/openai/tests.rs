@@ -191,6 +191,38 @@ fn openai_responses_ingress_subtracts_typed_codex_header_and_body_semantics() {
 }
 
 #[test]
+fn issue_2039_compact_route_attaches_the_exact_opaque_provider_body() {
+    let wire_body = json!({
+        "model":"gpt-compatible",
+        "input":[
+            {"type":"message","role":"user","content":"inspect"},
+            {"type":"reasoning","encrypted_content":"opaque"},
+            {"type":"custom_tool_call","call_id":"call_1","name":"exec","input":"{}"},
+            {"type":"custom_tool_call_output","call_id":"call_1","output":"done"},
+            {"type":"compaction_trigger"}
+        ]
+    });
+    let translated = translate_response_request_with_context_and_previous(
+        wire_body.clone(),
+        OpenAiResponsesRequestContext::responses(),
+        None,
+    )
+    .expect("V2 compaction should translate");
+    let mut request = translated.request;
+    let operation = *request.execution.execution_operation();
+
+    attach_compact_provider_transport_payload(&mut request, operation, wire_body.clone())
+        .expect("Compact route should attach provider transport");
+
+    let payload = request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("Compact provider transport must be present");
+    assert_eq!(payload.wire_body(), &wire_body);
+    assert!(!payload.digest().is_empty());
+}
+
+#[test]
 fn openai_response_projects_native_tool_calls() {
     let callback_task_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
     let run = NativeRunResult {

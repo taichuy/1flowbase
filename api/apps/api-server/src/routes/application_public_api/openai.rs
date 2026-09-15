@@ -779,17 +779,11 @@ async fn dispatch_response_for_endpoint(
         )?;
     }
     let operation = *request.execution.execution_operation();
-    if matches!(operation, AiNativeOperation::Compact(_)) {
-        let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)
-            .map_err(|_| {
-                OpenAiRouteError::Native(native::NativeApiError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "provider_transport_payload_invalid",
-                    "could not stage the provider transport payload",
-                ))
-            })?;
-        request.metadata.set_provider_transport_payload(payload);
-    }
+    attach_compact_provider_transport_payload(
+        &mut request,
+        operation,
+        provider_transport_wire_body,
+    )?;
     let mut provider_transport_payload = request.metadata.take_provider_transport_payload();
     if let Some(previous_flow_run_id) = previous_flow_run_id {
         if let Some(payload) = provider_transport_payload.take() {
@@ -1054,6 +1048,25 @@ async fn dispatch_response_for_endpoint(
             }
         }
     }
+}
+
+fn attach_compact_provider_transport_payload(
+    request: &mut NativeRunRequest,
+    operation: AiNativeOperation,
+    provider_transport_wire_body: Value,
+) -> Result<(), OpenAiRouteError> {
+    if matches!(operation, AiNativeOperation::Compact(_)) {
+        let payload = ProviderTransportPayload::openai_responses(provider_transport_wire_body)
+            .map_err(|_| {
+                OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "provider_transport_payload_invalid",
+                    "could not stage the provider transport payload",
+                ))
+            })?;
+        request.metadata.set_provider_transport_payload(payload);
+    }
+    Ok(())
 }
 
 #[utoipa::path(

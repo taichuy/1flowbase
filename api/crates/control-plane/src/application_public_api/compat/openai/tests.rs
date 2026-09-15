@@ -1143,7 +1143,7 @@ fn issue_2034_call_kind_derives_from_native_operation_not_request_kind() {
 }
 
 #[test]
-fn issue_2039_v2_compaction_preserves_opaque_codex_history_for_provider_transport() {
+fn issue_2039_v2_compaction_keeps_opaque_codex_history_out_of_native_state() {
     let request = json!({
         "model": "1flowbase",
         "input": [
@@ -1189,6 +1189,7 @@ fn issue_2039_v2_compaction_rejects_invalid_trigger_shapes() {
         let error = translate_response_request_with_context(
             json!({"model":"1flowbase","input":input}),
             OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+                "request_kind":"compaction",
                 "compaction":{"implementation":"responses_compaction_v2"}
             })),
         )
