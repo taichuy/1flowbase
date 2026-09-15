@@ -1121,12 +1121,16 @@ pub(super) fn responses_native_input_to_run_input(input: &Value) -> ResponsesInp
     }
 }
 
-pub(super) fn responses_compaction_v2_input_to_run_input() -> ResponsesInputMapping {
+pub(super) fn responses_opaque_input_to_run_input() -> ResponsesInputMapping {
     ResponsesInputMapping {
         query: String::new(),
         history: Vec::new(),
         system_parts: Vec::new(),
     }
+}
+
+pub(super) fn responses_compaction_v2_input_to_run_input() -> ResponsesInputMapping {
+    responses_opaque_input_to_run_input()
 }
 
 pub(super) fn responses_end_with_reconstructable_tool_output(

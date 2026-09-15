@@ -106,6 +106,17 @@ impl ProviderTransportStore for LayeredProviderTransportStore {
         self.capsules.delete_continuation(slot_id).await
     }
 
+    async fn clear_flow_run(&self, flow_run_id: uuid::Uuid) -> anyhow::Result<()> {
+        self.transient.clear_flow_run(flow_run_id).await?;
+        self.capsules
+            .delete_flow_run_protocol_contexts(flow_run_id)
+            .await?;
+        self.capsules
+            .delete_flow_run_continuations(flow_run_id)
+            .await?;
+        Ok(())
+    }
+
     async fn clear_expired(&self) -> anyhow::Result<usize> {
         let transient = self.transient.clear_expired().await?;
         let capsules = self.capsules.clear_expired().await?;

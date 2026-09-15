@@ -17,6 +17,7 @@ use control_plane::{
         RuntimeEventEnvelope,
     },
 };
+use control_plane_contracts::application_public_runtime::ApplicationPublishedFlowRunRepository;
 use domain::AiNativeOperation;
 use interface_runtime::{
     ApplicationPrincipal, AuthenticationAdapterReference, AuthorizationAdapterReference,
@@ -31,6 +32,7 @@ use interface_runtime::{
     InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, ProtocolBinding,
     ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
 };
+use tracing::warn;
 
 mod models;
 pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
@@ -282,12 +284,16 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 }
             };
             let protocol_context = request.client_protocol_envelope.clone();
+            let operation = provider_transport
+                .as_ref()
+                .map(|transport| transport.operation);
             let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
                 .with_last_used_cache(dependencies.native.cache_store.clone())
                 .create_native_run_for_actor(actor.clone(), request, protocol)
                 .await
                 .map_err(native::native_error)
                 .map_err(CompatibilityBlockingTargetError)?;
+            clear_local_summary_predecessor_provider_state(&dependencies, run.id, operation).await;
             native::stage_client_protocol_context(
                 dependencies.provider_transport_store.as_ref(),
                 &run,
@@ -347,12 +353,21 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     provider_transport,
                 } => {
                     let protocol_context = request.client_protocol_envelope.clone();
+                    let operation = provider_transport
+                        .as_ref()
+                        .map(|transport| transport.operation);
                     let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
                         .with_last_used_cache(dependencies.native.cache_store.clone())
                         .create_native_run_for_actor(actor.clone(), request, protocol)
                         .await
                         .map_err(native::native_error)
                         .map_err(CompatibilityBlockingTargetError)?;
+                    clear_local_summary_predecessor_provider_state(
+                        &dependencies,
+                        run.id,
+                        operation,
+                    )
+                    .await;
                     native::stage_client_protocol_context(
                         dependencies.provider_transport_store.as_ref(),
                         &run,
@@ -1112,6 +1127,52 @@ async fn stage_provider_transport(
         )
     })?;
     Ok(Some(slot))
+}
+
+async fn clear_local_summary_predecessor_provider_state(
+    dependencies: &CompatibilityExecutionDependencies,
+    successor_flow_run_id: uuid::Uuid,
+    operation: Option<AiNativeOperation>,
+) {
+    if !matches!(
+        operation,
+        Some(AiNativeOperation::Generate(
+            domain::AiNativeGenerateProfile::LocalSummary
+        ))
+    ) {
+        return;
+    }
+    let predecessor_ids =
+        match ApplicationPublishedFlowRunRepository::list_local_summary_superseded_flow_run_ids(
+            &dependencies.native.store,
+            successor_flow_run_id,
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                warn!(
+                    %successor_flow_run_id,
+                    %error,
+                    "local summary predecessor provider cleanup lookup failed after durable supersession"
+                );
+                return;
+            }
+        };
+    for predecessor_flow_run_id in predecessor_ids {
+        if let Err(error) = dependencies
+            .provider_transport_store
+            .clear_flow_run(predecessor_flow_run_id)
+            .await
+        {
+            warn!(
+                %successor_flow_run_id,
+                %predecessor_flow_run_id,
+                %error,
+                "local summary predecessor provider cleanup failed after durable supersession"
+            );
+        }
+    }
 }
 
 pub(crate) fn application_actor(principal: &ApplicationPrincipal) -> ApplicationApiKeyActor {

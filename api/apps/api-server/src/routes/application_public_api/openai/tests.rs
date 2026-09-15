@@ -37,6 +37,57 @@ fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
     }
 }
 
+#[test]
+fn issue_2048_cancelled_previous_response_status_is_not_continuable() {
+    let error = ensure_previous_response_is_usable(&blocking_run(NativeRunStatus::Cancelled))
+        .expect_err("a superseded response must fail before capsule lookup");
+    let response = error.into_response();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(ensure_previous_response_is_usable(&blocking_run(NativeRunStatus::Succeeded)).is_ok());
+}
+
+#[test]
+fn issue_2048_low_budget_local_summary_keeps_one_opaque_responses_ingress_plan() {
+    let wire_body = json!({
+        "model":"1flowbase",
+        "input":[
+            {"type":"message","role":"user","content":"inspect"},
+            {"type":"custom_tool_call","call_id":"call-1","name":"exec","input":"{}"},
+            {"type":"custom_tool_call_output","call_id":"call-1","output":"private"},
+            {"type":"message","role":"user","content":"summarize"}
+        ]
+    });
+    let mut translated = control_plane::application_public_api::compat::openai::translate_response_request_with_context(
+        wire_body.clone(),
+        OpenAiResponsesRequestContext::responses().with_captured_codex_turn_metadata(json!({
+            "thread_id":"thread-low-budget",
+            "turn_id":"turn-low-budget",
+            "request_kind":"compaction",
+            "compaction":{"implementation":"responses"}
+        })),
+    )
+    .expect("the same bounded Local Summary request used by HTTP/SSE/WebSocket should translate");
+
+    assert_eq!(
+        *translated.request.execution.execution_operation(),
+        AiNativeOperation::Generate(domain::AiNativeGenerateProfile::LocalSummary)
+    );
+    assert!(translated.request.query.is_empty());
+    assert!(translated.request.history.is_empty());
+    assert!(translated.request.system.is_empty());
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("Local Summary ingress must carry provider-opaque transport");
+    assert_eq!(payload.wire_body(), &wire_body);
+    assert_eq!(
+        compat_sse::ResponsesProjectionMode::from_native_transport(true),
+        compat_sse::ResponsesProjectionMode::TransparentProviderResponses
+    );
+}
+
 #[tokio::test]
 async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
     const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";

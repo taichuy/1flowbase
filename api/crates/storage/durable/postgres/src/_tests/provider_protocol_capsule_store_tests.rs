@@ -116,6 +116,39 @@ fn capsule_store(pool: sqlx::PgPool) -> PgProviderProtocolCapsuleStore {
 }
 
 #[tokio::test]
+async fn issue_2048_bulk_deletes_all_response_round_continuations_for_one_flow() {
+    let (pool, flow_run_id) = seeded_flow_run().await;
+    let store = capsule_store(pool);
+    let affinity = ProviderTransportAffinity::new(
+        Uuid::now_v7().to_string(),
+        "openai",
+        "openai_responses",
+        "model",
+    );
+    let current = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    let round = ProviderContinuationSlotId::for_response_round(flow_run_id, Uuid::now_v7());
+    for (slot, response_id) in [(current, "current"), (round, "round")] {
+        store
+            .put_continuation(
+                slot,
+                ProviderContinuation::new(response_id, affinity.clone()).unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(
+        store
+            .delete_flow_run_continuations(flow_run_id)
+            .await
+            .unwrap(),
+        2
+    );
+    assert!(store.get_continuation(current).await.unwrap().is_none());
+    assert!(store.get_continuation(round).await.unwrap().is_none());
+}
+
+#[tokio::test]
 async fn capsules_survive_adapter_restart_without_the_old_fifteen_minute_ttl() {
     let (pool, flow_run_id) = seeded_flow_run().await;
     let slot = ProviderProtocolContextSlotId::for_original_flow_run(flow_run_id);

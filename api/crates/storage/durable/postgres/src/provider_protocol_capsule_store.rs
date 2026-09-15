@@ -320,6 +320,17 @@ impl ProviderProtocolCapsuleStore for PgProviderProtocolCapsuleStore {
             .await
     }
 
+    async fn delete_flow_run_continuations(&self, flow_run_id: Uuid) -> anyhow::Result<usize> {
+        let affected = sqlx::query(
+            "delete from provider_protocol_capsules where flow_run_id = $1 and capsule_kind = 'continuation'",
+        )
+        .bind(flow_run_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(usize::try_from(affected)?)
+    }
+
     async fn clear_expired(&self) -> anyhow::Result<usize> {
         let affected =
             sqlx::query("delete from provider_protocol_capsules where hard_expires_at <= now()")

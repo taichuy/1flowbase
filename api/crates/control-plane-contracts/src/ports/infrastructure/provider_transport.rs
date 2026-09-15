@@ -450,6 +450,8 @@ pub trait ProviderProtocolCapsuleStore: Send + Sync {
         slot_id: ProviderContinuationSlotId,
     ) -> anyhow::Result<bool>;
 
+    async fn delete_flow_run_continuations(&self, flow_run_id: Uuid) -> anyhow::Result<usize>;
+
     async fn clear_expired(&self) -> anyhow::Result<usize>;
 }
 

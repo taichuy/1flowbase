@@ -1073,6 +1073,14 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn list_local_summary_superseded_flow_run_ids(
+        &self,
+        successor_flow_run_id: Uuid,
+    ) -> Result<Vec<Uuid>> {
+        PgControlPlaneStore::list_local_summary_superseded_flow_run_ids(self, successor_flow_run_id)
+            .await
+    }
+
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,

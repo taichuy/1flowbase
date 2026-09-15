@@ -280,6 +280,28 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
         Ok(created)
     }
 
+    async fn list_local_summary_superseded_flow_run_ids(
+        &self,
+        successor_flow_run_id: Uuid,
+    ) -> Result<Vec<Uuid>> {
+        Ok(self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .flow_runs
+            .values()
+            .filter(|run| {
+                run.status == domain::FlowRunStatus::Cancelled
+                    && run.error_payload.as_ref().is_some_and(|payload| {
+                        payload.get("reason") == Some(&json!("local_summary_superseded"))
+                            && payload.get("successor_flow_run_id")
+                                == Some(&json!(successor_flow_run_id))
+                    })
+            })
+            .map(|run| run.id)
+            .collect())
+    }
+
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,

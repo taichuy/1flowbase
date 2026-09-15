@@ -357,6 +357,26 @@ impl PgControlPlaneStore {
         Ok(CreatePublishedFlowRunResult { flow_run, created })
     }
 
+    async fn list_local_summary_superseded_flow_run_ids(
+        &self,
+        successor_flow_run_id: Uuid,
+    ) -> Result<Vec<Uuid>> {
+        sqlx::query_scalar(
+            r#"
+            select id
+            from flow_runs
+            where status='cancelled'
+              and error_payload->>'reason'='local_summary_superseded'
+              and error_payload->>'successor_flow_run_id'=$1
+            order by id
+            "#,
+        )
+        .bind(successor_flow_run_id.to_string())
+        .fetch_all(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     async fn create_flow_run_shell(
         &self,
         input: &CreateFlowRunShellInput,

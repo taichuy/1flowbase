@@ -9,12 +9,12 @@ use super::{
     openai_reasoning, response_max_output_tokens, response_stream_mode,
     responses_compaction_v2_input_to_run_input, responses_input_to_native_run_input,
     responses_native_input_to_run_input, responses_omitted_optional_tools,
-    responses_previous_history, responses_transport_requirement, system_from_parts,
-    validate_chat_message_fields, validate_chat_root_fields,
-    validate_native_mcp_approval_continuation, validate_native_responses_input,
-    validate_response_transport_fields, validate_responses_compaction_v2_input,
-    validate_responses_input, OpenAiCompatError, OpenAiPreviousResponseContext,
-    OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    responses_opaque_input_to_run_input, responses_previous_history,
+    responses_transport_requirement, system_from_parts, validate_chat_message_fields,
+    validate_chat_root_fields, validate_native_mcp_approval_continuation,
+    validate_native_responses_input, validate_response_transport_fields,
+    validate_responses_compaction_v2_input, validate_responses_input, OpenAiCompatError,
+    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
     OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD, OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
@@ -311,20 +311,33 @@ fn translate_indexed_response_request(
     let uses_native_transport = transport_requirement
         == crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
         && supports_native_input_representation;
+    let uses_opaque_local_summary = uses_native_transport
+        && matches!(
+            operation,
+            domain::AiNativeOperation::Generate(domain::AiNativeGenerateProfile::LocalSummary)
+        );
     let input_mapping = if is_v2_compaction {
         validate_responses_compaction_v2_input(input, &mut report)?;
         responses_compaction_v2_input_to_run_input()
     } else if uses_native_transport {
         validate_native_mcp_approval_continuation(input, previous_response.as_ref(), &mut report)?;
         validate_native_responses_input(input, request_index.input(), &mut report)?;
-        responses_native_input_to_run_input(input)
+        if uses_opaque_local_summary {
+            responses_opaque_input_to_run_input()
+        } else {
+            responses_native_input_to_run_input(input)
+        }
     } else {
         validate_responses_input(input, is_v2_compaction, &mut report)?;
         responses_input_to_native_run_input(input, is_v2_compaction)
             .map_err(|error| error.with_report(report.clone()))?
     };
     let query = input_mapping.query;
-    let mut history = responses_previous_history(previous_response.as_ref());
+    let mut history = if uses_opaque_local_summary {
+        Vec::new()
+    } else {
+        responses_previous_history(previous_response.as_ref())
+    };
     history.extend(input_mapping.history);
     let instructions = match object.get("instructions") {
         Some(Value::String(value)) if !value.trim().is_empty() => {
@@ -361,12 +374,16 @@ fn translate_indexed_response_request(
             );
         }
     };
-    let system = system_from_parts(
-        instructions
-            .into_iter()
-            .chain(input_mapping.system_parts)
-            .collect(),
-    );
+    let system = (!uses_opaque_local_summary)
+        .then(|| {
+            system_from_parts(
+                instructions
+                    .into_iter()
+                    .chain(input_mapping.system_parts)
+                    .collect(),
+            )
+        })
+        .flatten();
 
     let response_mode = response_stream_mode(object, &mut report)?;
     let mut conversation = openai_conversation(object, &mut report)?;

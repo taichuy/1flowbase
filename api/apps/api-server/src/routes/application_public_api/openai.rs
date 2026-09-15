@@ -1302,6 +1302,7 @@ async fn load_previous_response_context_for_actor(
             .await
             .map_err(native::native_error)?,
     };
+    ensure_previous_response_is_usable(&run)?;
     Ok(Some(LoadedOpenAiPreviousResponseContext {
         flow_run_id: run.id,
         translation: OpenAiPreviousResponseContext {
@@ -1326,6 +1327,17 @@ async fn load_previous_response_context_for_actor(
             answer: run.answer,
         },
     }))
+}
+
+fn ensure_previous_response_is_usable(run: &NativeRunResult) -> Result<(), OpenAiRouteError> {
+    if run.status == NativeRunStatus::Cancelled {
+        return Err(OpenAiRouteError::Native(native::NativeApiError::new(
+            StatusCode::CONFLICT,
+            "previous_response_not_usable",
+            "the previous response was cancelled or superseded",
+        )));
+    }
+    Ok(())
 }
 
 struct LoadedOpenAiPreviousResponseContext {

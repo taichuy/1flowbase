@@ -168,6 +168,13 @@ async fn issue_2050_local_summary_atomically_supersedes_exact_callback_lineage()
     )
     .await
     .unwrap();
+    let superseded =
+        ApplicationPublishedFlowRunRepository::list_local_summary_superseded_flow_run_ids(
+            &store,
+            successor.flow_run.id,
+        )
+        .await
+        .unwrap();
 
     let statuses: (String, String, String, String, String) = sqlx::query_as(
         r#"
@@ -223,6 +230,7 @@ async fn issue_2050_local_summary_atomically_supersedes_exact_callback_lineage()
     assert!(successor.created);
     assert!(!replay.created);
     assert_eq!(successor.flow_run.id, replay.flow_run.id);
+    assert_eq!(superseded, vec![predecessor.id]);
 
     foreign_input.idempotency_key = Some("issue-2050-standard-generate".into());
     let standard =

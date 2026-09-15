@@ -121,6 +121,14 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
         input: &CreateFlowRunInput,
     ) -> Result<CreatePublishedFlowRunResult>;
 
+    /// Returns the durable predecessors retired by a Local Summary successor.
+    /// Protocol adapters use this bounded identity projection only to clear
+    /// provider-owned ephemeral/capsule state after the database commit.
+    async fn list_local_summary_superseded_flow_run_ids(
+        &self,
+        successor_flow_run_id: Uuid,
+    ) -> Result<Vec<Uuid>>;
+
     async fn find_published_flow_run_by_idempotency_key(
         &self,
         application_id: Uuid,
