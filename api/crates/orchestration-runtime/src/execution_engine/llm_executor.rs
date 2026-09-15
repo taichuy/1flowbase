@@ -1,6 +1,69 @@
 use super::visible_internal_llm_tools::payloads::{output_tool_calls, tool_call_id};
 use super::*;
 
+const AUTOMATIC_TRANSPORT_RETRY_LIMIT: usize = 1;
+const AUTOMATIC_TRANSPORT_RETRY_BASE_MS: u64 = 200;
+const AUTOMATIC_TRANSPORT_RETRY_CAP_MS: u64 = 1_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LlmRetryClass {
+    AutomaticTransport,
+    Configured,
+}
+
+fn select_llm_retry(
+    provider_error: Option<&ProviderRuntimeError>,
+    provider_output_started: bool,
+    automatic_transport_retries_used: usize,
+    configured_retry_allowed: bool,
+) -> Option<LlmRetryClass> {
+    if !provider_output_started
+        && automatic_transport_retries_used < AUTOMATIC_TRANSPORT_RETRY_LIMIT
+        && provider_error
+            .is_some_and(|error| error.kind == ProviderRuntimeErrorKind::EndpointUnreachable)
+    {
+        Some(LlmRetryClass::AutomaticTransport)
+    } else if configured_retry_allowed {
+        Some(LlmRetryClass::Configured)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn full_jitter_delay_ms(retry_ordinal: usize, random_sample: u64) -> u64 {
+    let exponent = u32::try_from(retry_ordinal).unwrap_or(u32::MAX).min(62);
+    let upper_bound = AUTOMATIC_TRANSPORT_RETRY_BASE_MS
+        .saturating_mul(1_u64 << exponent)
+        .min(AUTOMATIC_TRANSPORT_RETRY_CAP_MS);
+    random_sample % (upper_bound + 1)
+}
+
+#[cfg(not(test))]
+fn automatic_transport_retry_delay_ms(retry_ordinal: usize) -> u64 {
+    full_jitter_delay_ms(retry_ordinal, rand::random())
+}
+
+#[cfg(test)]
+fn automatic_transport_retry_delay_ms(_retry_ordinal: usize) -> u64 {
+    0
+}
+
+async fn wait_before_llm_retry(
+    retry_class: LlmRetryClass,
+    automatic_transport_retry_ordinal: usize,
+    configured_retry_interval_ms: u64,
+) {
+    let delay_ms = match retry_class {
+        LlmRetryClass::AutomaticTransport => {
+            automatic_transport_retry_delay_ms(automatic_transport_retry_ordinal)
+        }
+        LlmRetryClass::Configured => configured_retry_interval_ms,
+    };
+    if delay_ms > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+    }
+}
+
 // The execution boundary keeps plan, node, variable, runtime, invoker, and lifecycle ownership explicit.
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_llm_node<I>(
@@ -321,7 +384,8 @@ where
         }
     };
     let required_capabilities = routing_probe.input.required_capabilities.clone();
-    let request_count = llm_request_count(node);
+    let configured_request_count = llm_request_count(node);
+    let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -336,6 +400,8 @@ where
     let mut failed_attempts = Vec::new();
     let mut retry_reason: Option<String> = None;
     let mut retry_feedback: Option<String> = None;
+    let mut configured_retries_used = 0_usize;
+    let mut automatic_transport_retries_used = 0_usize;
 
     for attempt_index in 0..request_count {
         let resolved_attempt = match resolve_llm_request_runtime(
@@ -344,7 +410,7 @@ where
             invoker,
             &required_capabilities,
             Some(&routing_probe.input),
-            attempt_index,
+            configured_retries_used,
         )
         .await
         {
@@ -412,16 +478,19 @@ where
                 failed_attempts.push(attempt);
                 if retry_enabled
                     && provider_error_allows_retry(&provider_error)
-                    && attempt_index + 1 < request_count
+                    && configured_retries_used + 1 < configured_request_count
                 {
+                    configured_retries_used += 1;
                     retry_reason = error_payload
                         .get("error_code")
                         .and_then(Value::as_str)
                         .map(str::to_string);
-                    if retry_interval_ms > 0 {
-                        tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms))
-                            .await;
-                    }
+                    wait_before_llm_retry(
+                        LlmRetryClass::Configured,
+                        automatic_transport_retries_used,
+                        retry_interval_ms,
+                    )
+                    .await;
                     continue;
                 }
                 return build_failed_llm_execution(
@@ -637,22 +706,36 @@ where
                 }
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
-                if retry_enabled
-                    && fee_details
-                        .and_then(|details| details.pointer("/_1flowbase_billing/billing_status"))
-                        .and_then(Value::as_str)
-                        != Some("reconciliation_failed")
-                    && provider_error_allows_retry(&provider_error)
-                    && attempt_index + 1 < request_count
-                {
+                let billing_allows_retry = fee_details
+                    .and_then(|details| details.pointer("/_1flowbase_billing/billing_status"))
+                    .and_then(Value::as_str)
+                    != Some("reconciliation_failed");
+                let retry_class = billing_allows_retry
+                    .then(|| {
+                        select_llm_retry(
+                            Some(&provider_error),
+                            false,
+                            automatic_transport_retries_used,
+                            retry_enabled
+                                && provider_error_allows_retry(&provider_error)
+                                && configured_retries_used + 1 < configured_request_count,
+                        )
+                    })
+                    .flatten();
+                if let Some(retry_class) = retry_class {
+                    let automatic_retry_ordinal = automatic_transport_retries_used;
+                    match retry_class {
+                        LlmRetryClass::AutomaticTransport => {
+                            automatic_transport_retries_used += 1;
+                        }
+                        LlmRetryClass::Configured => configured_retries_used += 1,
+                    }
                     retry_reason = error_payload
                         .get("error_code")
                         .and_then(Value::as_str)
                         .map(str::to_string);
-                    if retry_interval_ms > 0 {
-                        tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms))
-                            .await;
-                    }
+                    wait_before_llm_retry(retry_class, automatic_retry_ordinal, retry_interval_ms)
+                        .await;
                     continue;
                 }
 
@@ -832,7 +915,7 @@ where
 
         if let Some(error_payload) = &error_payload {
             failed_attempts.push(attempt);
-            if retry_enabled
+            let configured_retry_allowed = retry_enabled
                 && (output_protocol_failure.is_some()
                     || retryable_invalid_finish_reason
                     || retryable_reasoning_only_output
@@ -840,8 +923,18 @@ where
                 && provider_error
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
-                && attempt_index + 1 < request_count
-            {
+                && configured_retries_used + 1 < configured_request_count;
+            if let Some(retry_class) = select_llm_retry(
+                provider_error.as_ref(),
+                output.first_token_at.is_some() || failed_after_first_token,
+                automatic_transport_retries_used,
+                configured_retry_allowed,
+            ) {
+                let automatic_retry_ordinal = automatic_transport_retries_used;
+                match retry_class {
+                    LlmRetryClass::AutomaticTransport => automatic_transport_retries_used += 1,
+                    LlmRetryClass::Configured => configured_retries_used += 1,
+                }
                 retry_reason = error_payload
                     .get("error_code")
                     .and_then(Value::as_str)
@@ -849,9 +942,8 @@ where
                 if let Some(failure) = output_protocol_failure.as_ref() {
                     retry_feedback = Some(failure.retry_feedback.clone());
                 }
-                if retry_interval_ms > 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms)).await;
-                }
+                wait_before_llm_retry(retry_class, automatic_retry_ordinal, retry_interval_ms)
+                    .await;
                 continue;
             }
             return build_failed_llm_execution(

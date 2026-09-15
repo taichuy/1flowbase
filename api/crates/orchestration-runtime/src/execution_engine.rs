@@ -1508,6 +1508,8 @@ fn successful_flow_stop_reason(node_traces: &[NodeExecutionTrace]) -> ExecutionS
 mod llm_executor;
 pub use llm_executor::execute_llm_node;
 pub(super) use llm_executor::execute_llm_node_provider_round;
+#[cfg(test)]
+pub(crate) use llm_executor::full_jitter_delay_ms;
 
 pub async fn execute_capability_plugin_node<I>(
     node: &CompiledNode,

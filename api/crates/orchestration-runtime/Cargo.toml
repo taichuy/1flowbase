@@ -13,6 +13,7 @@ futures-util.workspace = true
 jsonschema.workspace = true
 extension-contracts = { path = "../extension-contracts" }
 regex.workspace = true
+rand.workspace = true
 reqwest = { workspace = true, features = ["multipart", "stream"] }
 rquickjs.workspace = true
 runtime-core = { path = "../runtime-core" }

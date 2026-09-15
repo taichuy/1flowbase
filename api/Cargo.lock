@@ -2616,6 +2616,7 @@ dependencies = [
  "extension-contracts",
  "futures-util",
  "jsonschema",
+ "rand 0.10.2",
  "regex",
  "reqwest 0.12.28",
  "rquickjs",

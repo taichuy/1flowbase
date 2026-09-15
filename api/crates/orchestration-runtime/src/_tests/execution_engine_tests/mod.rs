@@ -1263,6 +1263,7 @@ mod llm_context;
 mod llm_output;
 mod plugin_nodes;
 mod sql;
+mod transport_retry;
 mod variable_aggregator;
 mod variable_updates;
 mod workflow;
