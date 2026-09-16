@@ -647,7 +647,7 @@ async fn llm_turn_records_context_projection_and_usage_ledger() {
     );
     assert_eq!(usage.len(), 1);
     assert_eq!(usage[0].input_tokens, Some(5));
-    assert_eq!(usage[0].cache_read_tokens, None);
+    assert_eq!(usage[0].cache_read_tokens, Some(3));
     assert_eq!(usage[0].usage_status, domain::UsageLedgerStatus::Recorded);
 }
 

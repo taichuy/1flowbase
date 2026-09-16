@@ -1349,11 +1349,11 @@ fn issue_2046_responses_index_is_bounded_and_does_not_copy_opaque_content() {
 
     assert_eq!(
         ResponsesInputIndex::build(&json!(["invalid"])),
-        Err(ResponsesInputIndexError::ItemKind)
+        Err(ResponsesInputIndexError::ItemKind { index: 0 })
     );
     assert_eq!(
         ResponsesInputIndex::build(&json!([{"type":42}])),
-        Err(ResponsesInputIndexError::ItemType)
+        Err(ResponsesInputIndexError::ItemType { index: 0 })
     );
     assert_eq!(
         ResponsesInputIndex::build(&Value::Array(vec![json!({}); 4_097])),

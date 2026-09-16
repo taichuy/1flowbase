@@ -237,12 +237,12 @@ pub fn translate_response_request_with_context_and_previous(
     let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let request_index =
         super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
-            if error.param() == "input" {
+            if let Some(source_path) = error.receipt_source_path() {
                 report.record(
-                    "$.input",
+                    &source_path,
                     None,
                     TranslationDecisionKind::Rejected,
-                    Some("Responses input contains invalid items"),
+                    Some(error.message()),
                     TranslationSafeRepresentation::Present,
                 );
             }

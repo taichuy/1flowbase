@@ -14,8 +14,8 @@ pub(crate) enum ResponsesInputIndexError {
     InputKind,
     PreviousResponseId,
     TooManyItems,
-    ItemKind,
-    ItemType,
+    ItemKind { index: usize },
+    ItemType { index: usize },
 }
 
 impl ResponsesInputIndexError {
@@ -23,7 +23,10 @@ impl ResponsesInputIndexError {
         match self {
             Self::RequestKind => "request",
             Self::PreviousResponseId => "previous_response_id",
-            Self::InputKind | Self::TooManyItems | Self::ItemKind | Self::ItemType => "input",
+            Self::InputKind
+            | Self::TooManyItems
+            | Self::ItemKind { .. }
+            | Self::ItemType { .. } => "input",
         }
     }
 
@@ -33,8 +36,17 @@ impl ResponsesInputIndexError {
             Self::InputKind => "input must be text or an array",
             Self::PreviousResponseId => "previous_response_id must be non-empty text",
             Self::TooManyItems => "Responses input has too many items",
-            Self::ItemKind => "input items must be objects",
-            Self::ItemType => "input item type must be text",
+            Self::ItemKind { .. } => "input items must be objects",
+            Self::ItemType { .. } => "input item type must be text",
+        }
+    }
+
+    pub(crate) fn receipt_source_path(self) -> Option<String> {
+        match self {
+            Self::InputKind | Self::TooManyItems => Some("$.input".to_string()),
+            Self::ItemKind { index } => Some(format!("$.input[{index}]")),
+            Self::ItemType { index } => Some(format!("$.input[{index}].type")),
+            Self::RequestKind | Self::PreviousResponseId => None,
         }
     }
 }
@@ -172,10 +184,12 @@ impl ResponsesInputIndex {
             last_tool_call_position: None,
         };
         for (position, item) in items.iter().enumerate() {
-            let object = item.as_object().ok_or(ResponsesInputIndexError::ItemKind)?;
+            let object = item
+                .as_object()
+                .ok_or(ResponsesInputIndexError::ItemKind { index: position })?;
             let item_type = match object.get("type") {
                 Some(Value::String(value)) => Some(value.clone()),
-                Some(_) => return Err(ResponsesInputIndexError::ItemType),
+                Some(_) => return Err(ResponsesInputIndexError::ItemType { index: position }),
                 None => None,
             };
             if object.get("role").and_then(Value::as_str) == Some("user") {
