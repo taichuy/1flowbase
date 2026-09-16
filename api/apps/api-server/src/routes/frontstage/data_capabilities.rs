@@ -584,11 +584,13 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
             "0",
             mp::object_value(&[
                 ("queries", {
-                    if (&(&(self).0).queries).len() > 32 {
+                    if (self).0.queries.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).queries)
+                        (self)
+                            .0
+                            .queries
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -602,11 +604,13 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                     )
                 }),
                 ("actions", {
-                    if (&(&(self).0).actions).len() > 32 {
+                    if (self).0.actions.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).actions)
+                        (self)
+                            .0
+                            .actions
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -620,11 +624,13 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                     )
                 }),
                 ("models", {
-                    if (&(&(self).0).models).len() > 32 {
+                    if (self).0.models.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).models)
+                        (self)
+                            .0
+                            .models
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -633,14 +639,14 @@ impl InterfaceContract for FrontstageDataCapabilitiesOutput {
                                         "scope_kind",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).scope_kind).len()),
+                                            serde_json::json!((item).scope_kind.len()),
                                         )]),
                                     ),
                                     (
                                         "fields",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).fields).len()),
+                                            serde_json::json!((item).fields.len()),
                                         )]),
                                     ),
                                 ]))

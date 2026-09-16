@@ -214,38 +214,32 @@ impl InterfaceContract for McpInvocationInput {
                             mp::object_value(&[
                                 (
                                     "id",
-                                    serde_json::Value::String(
-                                        (&(&(_field_context).user).id).to_string(),
-                                    ),
+                                    serde_json::Value::String((_field_context).user.id.to_string()),
                                 ),
                                 (
                                     "name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_context).user).name).len()),
+                                        serde_json::json!((_field_context).user.name.len()),
                                     )]),
                                 ),
                                 (
                                     "nickname",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).user).nickname).len()
-                                        ),
+                                        serde_json::json!((_field_context).user.nickname.len()),
                                     )]),
                                 ),
                                 (
                                     "introduction",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).user).introduction).len()
-                                        ),
+                                        serde_json::json!((_field_context).user.introduction.len()),
                                     )]),
                                 ),
                                 (
                                     "preferred_locale",
-                                    match (&(&(_field_context).user).preferred_locale).as_ref() {
+                                    match (_field_context).user.preferred_locale.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -253,11 +247,10 @@ impl InterfaceContract for McpInvocationInput {
                                         None => serde_json::Value::Null,
                                     },
                                 ),
-                                ("meta", mp::json_summary(&(&(_field_context).user).meta)),
+                                ("meta", mp::json_summary(&(_field_context).user.meta)),
                                 (
                                     "default_display_role",
-                                    match (&(&(_field_context).user).default_display_role).as_ref()
-                                    {
+                                    match (_field_context).user.default_display_role.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -267,7 +260,7 @@ impl InterfaceContract for McpInvocationInput {
                                 ),
                                 (
                                     "status",
-                                    match &(&(_field_context).user).status {
+                                    match &(_field_context).user.status {
                                         domain::auth::UserStatus::Active => mp::object_value(&[(
                                             "variant",
                                             serde_json::Value::String("Active".to_owned()),
@@ -284,7 +277,7 @@ impl InterfaceContract for McpInvocationInput {
                                     "roles",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_context).user).roles).len()),
+                                        serde_json::json!((_field_context).user.roles.len()),
                                     )]),
                                 ),
                             ]),
@@ -295,42 +288,40 @@ impl InterfaceContract for McpInvocationInput {
                                 (
                                     "user_id",
                                     serde_json::Value::String(
-                                        (&(&(_field_context).actor).user_id).to_string(),
+                                        (_field_context).actor.user_id.to_string(),
                                     ),
                                 ),
                                 (
                                     "tenant_id",
                                     serde_json::Value::String(
-                                        (&(&(_field_context).actor).tenant_id).to_string(),
+                                        (_field_context).actor.tenant_id.to_string(),
                                     ),
                                 ),
                                 (
                                     "current_workspace_id",
                                     serde_json::Value::String(
-                                        (&(&(_field_context).actor).current_workspace_id)
-                                            .to_string(),
+                                        (_field_context).actor.current_workspace_id.to_string(),
                                     ),
                                 ),
                                 (
                                     "effective_display_role",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_context).actor)
-                                            .effective_display_role)
+                                        serde_json::json!((_field_context)
+                                            .actor
+                                            .effective_display_role
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "is_root",
-                                    serde_json::Value::Bool(*(&(&(_field_context).actor).is_root)),
+                                    serde_json::Value::Bool((_field_context).actor.is_root),
                                 ),
                                 (
                                     "permissions",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).actor).permissions).len()
-                                        ),
+                                        serde_json::json!((_field_context).actor.permissions.len()),
                                     )]),
                                 ),
                             ]),
@@ -342,44 +333,37 @@ impl InterfaceContract for McpInvocationInput {
                                     "instances",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).catalog).instances).len()
-                                        ),
+                                        serde_json::json!((_field_context).catalog.instances.len()),
                                     )]),
                                 ),
                                 (
                                     "groups",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).catalog).groups).len()
-                                        ),
+                                        serde_json::json!((_field_context).catalog.groups.len()),
                                     )]),
                                 ),
                                 (
                                     "tools",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).catalog).tools).len()
-                                        ),
+                                        serde_json::json!((_field_context).catalog.tools.len()),
                                     )]),
                                 ),
                                 (
                                     "bindings",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_context).catalog).bindings).len()
-                                        ),
+                                        serde_json::json!((_field_context).catalog.bindings.len()),
                                     )]),
                                 ),
                                 (
                                     "discovery_policies",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_context).catalog)
-                                            .discovery_policies)
+                                        serde_json::json!((_field_context)
+                                            .catalog
+                                            .discovery_policies
                                             .len()),
                                     )]),
                                 ),

@@ -1537,6 +1537,7 @@ pub(super) fn native_response_id(run: &NativeRunResult) -> String {
         .unwrap_or_else(|| response_id_from_run_id(run.id))
 }
 
+#[cfg(test)]
 fn to_openai_responses_response(
     run: NativeRunResult,
     model: String,

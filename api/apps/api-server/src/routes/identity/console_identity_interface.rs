@@ -182,21 +182,21 @@ impl InterfaceContract for ConsoleIdentityInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).nickname).len()),
+                                serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                         (
@@ -259,12 +259,12 @@ impl InterfaceContract for ConsoleIdentityInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "role_code",
-                            match (&(_field_0).role_code).as_ref() {
+                            match (_field_0).role_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -273,7 +273,7 @@ impl InterfaceContract for ConsoleIdentityInput {
                             "expiration_policy",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).expiration_policy).len()),
+                                serde_json::json!((_field_0).expiration_policy.len()),
                             )]),
                         ),
                     ]),
@@ -438,11 +438,12 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     mp::object_value(&[
                         ("actor", mp::json_summary(&(_field_0).actor)),
                         ("available_roles", {
-                            if (&(_field_0).available_roles).len() > 32 {
+                            if (_field_0).available_roles.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).available_roles)
+                                (_field_0)
+                                    .available_roles
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -451,14 +452,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "scope_kind",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).scope_kind).len()),
+                                                    serde_json::json!((item).scope_kind.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -470,7 +471,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             "active_role_permissions",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).active_role_permissions).len()),
+                                serde_json::json!((_field_0).active_role_permissions.len()),
                             )]),
                         ),
                     ]),
@@ -486,26 +487,26 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             "nickname",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).nickname).len()),
+                                serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                         (
                             "preferred_locale",
-                            match (&(_field_0).preferred_locale).as_ref() {
+                            match (_field_0).preferred_locale.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -518,14 +519,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             "effective_display_role",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).effective_display_role).len()),
+                                serde_json::json!((_field_0).effective_display_role.len()),
                             )]),
                         ),
                         (
                             "permissions",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).permissions).len()),
+                                serde_json::json!((_field_0).permissions.len()),
                             )]),
                         ),
                     ]),
@@ -539,32 +540,33 @@ impl InterfaceContract for ConsoleIdentityOutput {
                 (
                     "0",
                     mp::object_value(&[("items", {
-                        if (&(_field_0).items).len() > 32 {
+                        if (_field_0).items.len() > 32 {
                             return None;
                         }
                         serde_json::Value::Array(
-                            (&(_field_0).items)
+                            (_field_0)
+                                .items
                                 .iter()
                                 .map(|item| {
                                     Some(mp::object_value(&[
-                                        ("id", serde_json::Value::String((&(item).id).to_string())),
+                                        ("id", serde_json::Value::String((item).id.to_string())),
                                         (
                                             "name",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).name).len()),
+                                                serde_json::json!((item).name.len()),
                                             )]),
                                         ),
                                         (
                                             "key_kind",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).key_kind).len()),
+                                                serde_json::json!((item).key_kind.len()),
                                             )]),
                                         ),
                                         (
                                             "role_code",
-                                            match (&(item).role_code).as_ref() {
+                                            match (item).role_code.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
@@ -572,40 +574,36 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                         (
                                             "creator_user_id",
                                             serde_json::Value::String(
-                                                (&(item).creator_user_id).to_string(),
+                                                (item).creator_user_id.to_string(),
                                             ),
                                         ),
                                         (
                                             "tenant_id",
-                                            serde_json::Value::String(
-                                                (&(item).tenant_id).to_string(),
-                                            ),
+                                            serde_json::Value::String((item).tenant_id.to_string()),
                                         ),
                                         (
                                             "scope_kind",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).scope_kind).len()),
+                                                serde_json::json!((item).scope_kind.len()),
                                             )]),
                                         ),
                                         (
                                             "scope_id",
-                                            serde_json::Value::String(
-                                                (&(item).scope_id).to_string(),
-                                            ),
+                                            serde_json::Value::String((item).scope_id.to_string()),
                                         ),
-                                        ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
-                                        ("revoked", serde_json::Value::Bool(*(&(item).revoked))),
+                                        ("enabled", serde_json::Value::Bool((item).enabled)),
+                                        ("revoked", serde_json::Value::Bool((item).revoked)),
                                         (
                                             "expires_at",
-                                            match (&(item).expires_at).as_ref() {
+                                            match (item).expires_at.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
                                         ),
                                         (
                                             "last_used_at",
-                                            match (&(item).last_used_at).as_ref() {
+                                            match (item).last_used_at.as_ref() {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
@@ -630,11 +628,12 @@ impl InterfaceContract for ConsoleIdentityOutput {
                 (
                     "0",
                     mp::object_value(&[("items", {
-                        if (&(_field_0).items).len() > 32 {
+                        if (_field_0).items.len() > 32 {
                             return None;
                         }
                         serde_json::Value::Array(
-                            (&(_field_0).items)
+                            (_field_0)
+                                .items
                                 .iter()
                                 .map(|item| {
                                     Some(mp::object_value(&[
@@ -643,14 +642,14 @@ impl InterfaceContract for ConsoleIdentityOutput {
                                             "name",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).name).len()),
+                                                serde_json::json!((item).name.len()),
                                             )]),
                                         ),
                                         (
                                             "scope_kind",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).scope_kind).len()),
+                                                serde_json::json!((item).scope_kind.len()),
                                             )]),
                                         ),
                                     ]))
@@ -668,62 +667,59 @@ impl InterfaceContract for ConsoleIdentityOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        (
-                            "id",
-                            serde_json::Value::String((&(_field_0).id).to_string()),
-                        ),
+                        ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "key_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key_kind).len()),
+                                serde_json::json!((_field_0).key_kind.len()),
                             )]),
                         ),
                         (
                             "role_code",
-                            match (&(_field_0).role_code).as_ref() {
+                            match (_field_0).role_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "creator_user_id",
-                            serde_json::Value::String((&(_field_0).creator_user_id).to_string()),
+                            serde_json::Value::String((_field_0).creator_user_id.to_string()),
                         ),
                         (
                             "tenant_id",
-                            serde_json::Value::String((&(_field_0).tenant_id).to_string()),
+                            serde_json::Value::String((_field_0).tenant_id.to_string()),
                         ),
                         (
                             "scope_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).scope_kind).len()),
+                                serde_json::json!((_field_0).scope_kind.len()),
                             )]),
                         ),
                         (
                             "scope_id",
-                            serde_json::Value::String((&(_field_0).scope_id).to_string()),
+                            serde_json::Value::String((_field_0).scope_id.to_string()),
                         ),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        ("revoked", serde_json::Value::Bool(*(&(_field_0).revoked))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
+                        ("revoked", serde_json::Value::Bool((_field_0).revoked)),
                         (
                             "expires_at",
-                            match (&(_field_0).expires_at).as_ref() {
+                            match (_field_0).expires_at.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "last_used_at",
-                            match (&(_field_0).last_used_at).as_ref() {
+                            match (_field_0).last_used_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -745,7 +741,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                     "0",
                     mp::object_value(&[(
                         "id",
-                        serde_json::Value::String((&(_field_0).id).to_string()),
+                        serde_json::Value::String((_field_0).id.to_string()),
                     )]),
                 ),
             ]),

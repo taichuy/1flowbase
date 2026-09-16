@@ -3,7 +3,6 @@ import {
   render,
   screen,
   waitFor,
-  cleanup,
   fireEvent,
   within
 } from '@testing-library/react';
@@ -163,7 +162,6 @@ describe('AC-009/012 plugin settings published page', () => {
     });
   });
   afterEach(() => {
-    cleanup();
     resetAuthStore();
   });
   test('retains the registered route identity rather than deriving plugin ownership from the URL', () => {
@@ -267,8 +265,10 @@ describe('AC-009/012 plugin settings published page', () => {
     });
     renderPage();
     await screen.findByRole('alert');
-    expect(screen.queryByTestId('plugin-settings-page')).toBeNull();
-    expect(screen.queryByText('export default function broken({')).toBeNull();
+    expect(screen.queryByTestId('plugin-settings-page')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('export default function broken({')
+    ).not.toBeInTheDocument();
   });
   test.each([403, 404, 409])(
     'does not render a template when the page read rejects with %s',
@@ -276,7 +276,9 @@ describe('AC-009/012 plugin settings published page', () => {
       api.fetchConsolePluginSettingsPage.mockRejectedValue({ status });
       renderPage();
       await screen.findByRole('alert');
-      expect(screen.queryByTestId('plugin-settings-page')).toBeNull();
+      expect(
+        screen.queryByTestId('plugin-settings-page')
+      ).not.toBeInTheDocument();
     }
   );
 });
@@ -298,7 +300,6 @@ describe('AC-012/014 template editor and formal activation entry', () => {
     });
   });
   afterEach(() => {
-    cleanup();
     resetAuthStore();
   });
 
@@ -346,14 +347,14 @@ describe('AC-012/014 template editor and formal activation entry', () => {
       const warning = await screen.findByTestId(
         'plugin-settings-overwrite-warning'
       );
-      expect(warning.textContent).toContain(
+      expect(warning).toHaveTextContent(
         locale === 'en_US' ? 'overwriting your edits' : '覆盖您的修改'
       );
-      expect(warning.textContent).toContain(
+      expect(warning).toHaveTextContent(
         locale === 'en_US' ? 're-enabling the same version' : '同版本重新启用'
       );
-      expect(warning.textContent).toContain('acme.preferences');
-      expect(warning.textContent).toContain('1.0.0');
+      expect(warning).toHaveTextContent('acme.preferences');
+      expect(warning).toHaveTextContent('1.0.0');
       fireEvent.change(
         screen.getByRole('textbox', { name: 'Template source' }),
         { target: { value: 'export default () => <p>My edit</p>' } }
@@ -478,7 +479,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         'data-runtime-status',
         'inactive'
       );
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      );
     }
   );
 
@@ -522,9 +525,9 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         next_cursor: null
       });
       renderSurface(<SettingsExtensionCenterSection category="installed" />);
-      expect(
-        (await screen.findByTestId('plugin-runtime-status')).textContent
-      ).toBe(label);
+      expect(await screen.findByTestId('plugin-runtime-status')).toHaveTextContent(
+        label
+      );
     }
   );
 
@@ -577,8 +580,8 @@ describe('AC-012/014 template editor and formal activation entry', () => {
     const warning = await screen.findByTestId(
       'plugin-settings-upgrade-warning'
     );
-    expect(warning.textContent).toContain('at restart');
-    expect(warning.textContent).toContain('overwrite your edits');
+    expect(warning).toHaveTextContent('at restart');
+    expect(warning).toHaveTextContent('overwrite your edits');
     const control = await screen.findByRole('switch');
     fireEvent.click(control);
     await waitFor(() =>
@@ -593,10 +596,10 @@ describe('AC-012/014 template editor and formal activation entry', () => {
         'pending_restart'
       )
     );
-    expect(screen.getByTestId('plugin-availability-status').textContent).toBe(
+    expect(screen.getByTestId('plugin-availability-status')).toHaveTextContent(
       'Pending restart'
     );
-    expect(screen.getByTestId('plugin-runtime-status').textContent).toBe(
+    expect(screen.getByTestId('plugin-runtime-status')).toHaveTextContent(
       'Inactive'
     );
   });

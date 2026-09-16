@@ -223,6 +223,16 @@ pub struct ApiOfficialMcpBundleRegistry {
     workspace_id: Uuid,
 }
 
+pub(crate) struct OfficialMcpBundleRegistryDependencies {
+    pub(crate) root: PathBuf,
+    pub(crate) installation_repository: Arc<dyn ExtensionInstallationRepository>,
+    pub(crate) node_id: String,
+    pub(crate) actor_user_id: Uuid,
+    pub(crate) trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
+    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    pub(crate) workspace_id: Uuid,
+}
+
 impl ApiOfficialMcpBundleRegistry {
     pub(crate) fn bundled_frontstage_assistant_package() -> Result<domain::McpBundlePackage> {
         let package: domain::McpBundlePackage =
@@ -273,29 +283,23 @@ impl ApiOfficialMcpBundleRegistry {
         }
         Ok(())
     }
-    pub fn new(
+    pub(crate) fn new(
         source: ResolvedOfficialMcpBundleSourceConfig,
-        root: PathBuf,
-        installation_repository: Arc<dyn ExtensionInstallationRepository>,
-        node_id: String,
-        actor_user_id: Uuid,
-        trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
-        network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
-        workspace_id: Uuid,
+        dependencies: OfficialMcpBundleRegistryDependencies,
     ) -> Self {
         Self {
             source_kind: source.source_kind,
             source_label: source.source_label,
             catalog_url: source.catalog_url,
             github_proxy_url: source.github_proxy_url,
-            root,
-            installation_repository,
-            node_id,
-            actor_user_id,
+            root: dependencies.root,
+            installation_repository: dependencies.installation_repository,
+            node_id: dependencies.node_id,
+            actor_user_id: dependencies.actor_user_id,
             remote_catalog_cache: Arc::new(tokio::sync::RwLock::new(None)),
-            trusted_public_keys,
-            network_egress,
-            workspace_id,
+            trusted_public_keys: dependencies.trusted_public_keys,
+            network_egress: dependencies.network_egress,
+            workspace_id: dependencies.workspace_id,
         }
     }
 

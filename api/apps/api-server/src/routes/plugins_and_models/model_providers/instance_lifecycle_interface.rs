@@ -105,26 +105,24 @@ impl InterfaceContract for ProviderInstanceLifecycleInput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         ("configured_models", {
-                            if (&(_field_0).configured_models).len() > 32 {
+                            if (_field_0).configured_models.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).configured_models)
+                                (_field_0)
+                                    .configured_models
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             ("model_id", mp::text(&(item).model_id)?),
-                                            (
-                                                "enabled",
-                                                serde_json::Value::Bool(*(&(item).enabled)),
-                                            ),
+                                            ("enabled", serde_json::Value::Bool((item).enabled)),
                                             (
                                                 "supports_multimodal",
-                                                match (&(item).supports_multimodal).as_ref() {
+                                                match (item).supports_multimodal.as_ref() {
                                                     Some(item) => serde_json::Value::Bool(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -143,19 +141,20 @@ impl InterfaceContract for ProviderInstanceLifecycleInput {
                             )
                         }),
                         ("enabled_model_ids", {
-                            if (&(_field_0).enabled_model_ids).len() > 32 {
+                            if (_field_0).enabled_model_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).enabled_model_ids)
+                                (_field_0)
+                                    .enabled_model_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         (
                             "included_in_main",
-                            match (&(_field_0).included_in_main).as_ref() {
+                            match (_field_0).included_in_main.as_ref() {
                                 Some(item) => serde_json::Value::Bool(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -178,26 +177,24 @@ impl InterfaceContract for ProviderInstanceLifecycleInput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).display_name).len()),
+                                serde_json::json!((_field_body).display_name.len()),
                             )]),
                         ),
                         ("configured_models", {
-                            if (&(_field_body).configured_models).len() > 32 {
+                            if (_field_body).configured_models.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_body).configured_models)
+                                (_field_body)
+                                    .configured_models
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             ("model_id", mp::text(&(item).model_id)?),
-                                            (
-                                                "enabled",
-                                                serde_json::Value::Bool(*(&(item).enabled)),
-                                            ),
+                                            ("enabled", serde_json::Value::Bool((item).enabled)),
                                             (
                                                 "supports_multimodal",
-                                                match (&(item).supports_multimodal).as_ref() {
+                                                match (item).supports_multimodal.as_ref() {
                                                     Some(item) => serde_json::Value::Bool(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -216,19 +213,20 @@ impl InterfaceContract for ProviderInstanceLifecycleInput {
                             )
                         }),
                         ("enabled_model_ids", {
-                            if (&(_field_body).enabled_model_ids).len() > 32 {
+                            if (_field_body).enabled_model_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_body).enabled_model_ids)
+                                (_field_body)
+                                    .enabled_model_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         (
                             "included_in_main",
-                            serde_json::Value::Bool(*(&(_field_body).included_in_main)),
+                            serde_json::Value::Bool((_field_body).included_in_main),
                         ),
                         ("config", mp::json_summary(&(_field_body).config)),
                     ]),
@@ -384,34 +382,34 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                         "display_name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).display_name).len()),
+                                            serde_json::json!((item).display_name.len()),
                                         )]),
                                     ),
                                     ("status", mp::text(&(item).status)?),
                                     (
                                         "included_in_main",
-                                        serde_json::Value::Bool(*(&(item).included_in_main)),
+                                        serde_json::Value::Bool((item).included_in_main),
                                     ),
                                     ("config_json", mp::json_summary(&(item).config_json)),
                                     ("configured_models", {
-                                        if (&(item).configured_models).len() > 32 {
+                                        if (item).configured_models.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).configured_models)
+                                            (item)
+                                                .configured_models
                                                 .iter()
                                                 .map(|item| {
                                                     Some(mp::object_value(&[
                                                         ("model_id", mp::text(&(item).model_id)?),
                                                         (
                                                             "enabled",
-                                                            serde_json::Value::Bool(
-                                                                *(&(item).enabled),
-                                                            ),
+                                                            serde_json::Value::Bool((item).enabled),
                                                         ),
                                                         (
                                                             "supports_multimodal",
-                                                            match (&(item).supports_multimodal)
+                                                            match (item)
+                                                                .supports_multimodal
                                                                 .as_ref()
                                                             {
                                                                 Some(item) => {
@@ -436,19 +434,20 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                         )
                                     }),
                                     ("enabled_model_ids", {
-                                        if (&(item).enabled_model_ids).len() > 32 {
+                                        if (item).enabled_model_ids.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).enabled_model_ids)
+                                            (item)
+                                                .enabled_model_ids
                                                 .iter()
-                                                .map(|item| Some(mp::text(item)?))
+                                                .map(|item| mp::text(item))
                                                 .collect::<Option<Vec<_>>>()?,
                                         )
                                     }),
                                     (
                                         "catalog_refresh_status",
-                                        match (&(item).catalog_refresh_status).as_ref() {
+                                        match (item).catalog_refresh_status.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -458,7 +457,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                     ),
                                     (
                                         "catalog_last_error_message",
-                                        match (&(item).catalog_last_error_message).as_ref() {
+                                        match (item).catalog_last_error_message.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -468,7 +467,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                     ),
                                     (
                                         "catalog_refreshed_at",
-                                        match (&(item).catalog_refreshed_at).as_ref() {
+                                        match (item).catalog_refreshed_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -476,7 +475,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                             None => serde_json::Value::Null,
                                         },
                                     ),
-                                    ("model_count", serde_json::json!(*(&(item).model_count))),
+                                    ("model_count", serde_json::json!((item).model_count)),
                                 ]))
                             })
                             .collect::<Option<Vec<_>>>()?,
@@ -496,32 +495,30 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "included_in_main",
-                            serde_json::Value::Bool(*(&(_field_0).included_in_main)),
+                            serde_json::Value::Bool((_field_0).included_in_main),
                         ),
                         ("config_json", mp::json_summary(&(_field_0).config_json)),
                         ("configured_models", {
-                            if (&(_field_0).configured_models).len() > 32 {
+                            if (_field_0).configured_models.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).configured_models)
+                                (_field_0)
+                                    .configured_models
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             ("model_id", mp::text(&(item).model_id)?),
-                                            (
-                                                "enabled",
-                                                serde_json::Value::Bool(*(&(item).enabled)),
-                                            ),
+                                            ("enabled", serde_json::Value::Bool((item).enabled)),
                                             (
                                                 "supports_multimodal",
-                                                match (&(item).supports_multimodal).as_ref() {
+                                                match (item).supports_multimodal.as_ref() {
                                                     Some(item) => serde_json::Value::Bool(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -540,19 +537,20 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                             )
                         }),
                         ("enabled_model_ids", {
-                            if (&(_field_0).enabled_model_ids).len() > 32 {
+                            if (_field_0).enabled_model_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).enabled_model_ids)
+                                (_field_0)
+                                    .enabled_model_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         (
                             "catalog_refresh_status",
-                            match (&(_field_0).catalog_refresh_status).as_ref() {
+                            match (_field_0).catalog_refresh_status.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -562,7 +560,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                         ),
                         (
                             "catalog_last_error_message",
-                            match (&(_field_0).catalog_last_error_message).as_ref() {
+                            match (_field_0).catalog_last_error_message.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -572,7 +570,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                         ),
                         (
                             "catalog_refreshed_at",
-                            match (&(_field_0).catalog_refreshed_at).as_ref() {
+                            match (_field_0).catalog_refreshed_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -580,7 +578,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("model_count", serde_json::json!(*(&(_field_0).model_count))),
+                        ("model_count", serde_json::json!((_field_0).model_count)),
                     ]),
                 ),
             ]),
@@ -595,60 +593,58 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                         (
                             "instance",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).instance).id)?),
+                                ("id", mp::text(&(_field_0).instance.id)?),
                                 (
                                     "installation_id",
-                                    mp::text(&(&(_field_0).instance).installation_id)?,
+                                    mp::text(&(_field_0).instance.installation_id)?,
                                 ),
                                 (
                                     "provider_code",
-                                    mp::text(&(&(_field_0).instance).provider_code)?,
+                                    mp::text(&(_field_0).instance.provider_code)?,
                                 ),
-                                ("protocol", mp::text(&(&(_field_0).instance).protocol)?),
+                                ("protocol", mp::text(&(_field_0).instance.protocol)?),
                                 (
                                     "display_name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).instance).display_name).len()
-                                        ),
+                                        serde_json::json!((_field_0).instance.display_name.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).instance).status)?),
+                                ("status", mp::text(&(_field_0).instance.status)?),
                                 (
                                     "included_in_main",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).instance).included_in_main),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).instance.included_in_main),
                                 ),
                                 (
                                     "config_json",
-                                    mp::json_summary(&(&(_field_0).instance).config_json),
+                                    mp::json_summary(&(_field_0).instance.config_json),
                                 ),
                                 (
                                     "configured_models",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).instance)
-                                            .configured_models)
+                                        serde_json::json!((_field_0)
+                                            .instance
+                                            .configured_models
                                             .len()),
                                     )]),
                                 ),
                                 ("enabled_model_ids", {
-                                    if (&(&(_field_0).instance).enabled_model_ids).len() > 32 {
+                                    if (_field_0).instance.enabled_model_ids.len() > 32 {
                                         return None;
                                     }
                                     serde_json::Value::Array(
-                                        (&(&(_field_0).instance).enabled_model_ids)
+                                        (_field_0)
+                                            .instance
+                                            .enabled_model_ids
                                             .iter()
-                                            .map(|item| Some(mp::text(item)?))
+                                            .map(|item| mp::text(item))
                                             .collect::<Option<Vec<_>>>()?,
                                     )
                                 }),
                                 (
                                     "catalog_refresh_status",
-                                    match (&(&(_field_0).instance).catalog_refresh_status).as_ref()
-                                    {
+                                    match (_field_0).instance.catalog_refresh_status.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -658,9 +654,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                 ),
                                 (
                                     "catalog_last_error_message",
-                                    match (&(&(_field_0).instance).catalog_last_error_message)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).instance.catalog_last_error_message.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -670,7 +664,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                 ),
                                 (
                                     "catalog_refreshed_at",
-                                    match (&(&(_field_0).instance).catalog_refreshed_at).as_ref() {
+                                    match (_field_0).instance.catalog_refreshed_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -680,7 +674,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                                 ),
                                 (
                                     "model_count",
-                                    serde_json::json!(*(&(&(_field_0).instance).model_count)),
+                                    serde_json::json!((_field_0).instance.model_count),
                                 ),
                             ]),
                         ),
@@ -692,10 +686,7 @@ impl InterfaceContract for ProviderInstanceLifecycleOutput {
                 ("variant", serde_json::Value::String("Deleted".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[(
-                        "deleted",
-                        serde_json::Value::Bool(*(&(_field_0).deleted)),
-                    )]),
+                    mp::object_value(&[("deleted", serde_json::Value::Bool((_field_0).deleted))]),
                 ),
             ]),
         })

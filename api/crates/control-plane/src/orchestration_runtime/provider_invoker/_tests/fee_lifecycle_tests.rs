@@ -211,8 +211,8 @@ async fn required_fee_outcome_releases_invalid_usage_and_finalize_failure() {
         let mut error = None;
         let failure = lifecycle
             .dispatch(ProviderFeeEvent::AfterUsage {
-                reservation: Some(guard),
-                outcome: ProviderFeeOutcome {
+                reservation: Box::new(Some(guard)),
+                outcome: Box::new(ProviderFeeOutcome {
                     upstream_model_id: "model",
                     provider_instance_id: Uuid::nil(),
                     actual_provider_code: "fixture",
@@ -220,7 +220,7 @@ async fn required_fee_outcome_releases_invalid_usage_and_finalize_failure() {
                     invocation_error: &mut error,
                     canonical_stream_state: None,
                     native_responses_passthrough: false,
-                },
+                }),
             })
             .await
             .err()

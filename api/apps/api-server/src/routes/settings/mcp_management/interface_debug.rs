@@ -60,7 +60,7 @@ impl InterfaceContract for McpDebugInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value(&[("body",mp::object_value(&[("interface_id",mp::text(&(&(self).body).interface_id)?), ("debug_response_mode",match &(&(self).body).debug_response_mode {crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::ToolResult => mp::object_value(&[("variant",serde_json::Value::String("ToolResult".to_owned()))]), crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::DebugDetails => mp::object_value(&[("variant",serde_json::Value::String("DebugDetails".to_owned()))])}), ("mcp_arguments",mp::json_summary(&(&(self).body).mcp_arguments)), ("input_mapping",mp::json_summary(&(&(self).body).input_mapping)), ("output_mapping",mp::json_summary(&(&(self).body).output_mapping))]))]))
+        Some(mp::object_value(&[("body",mp::object_value(&[("interface_id",mp::text(&(self).body.interface_id)?), ("debug_response_mode",match &(self).body.debug_response_mode {crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::ToolResult => mp::object_value(&[("variant",serde_json::Value::String("ToolResult".to_owned()))]), crate::routes::settings_group::mcp_management::debug_execute::McpDebugResponseMode::DebugDetails => mp::object_value(&[("variant",serde_json::Value::String("DebugDetails".to_owned()))])}), ("mcp_arguments",mp::json_summary(&(self).body.mcp_arguments)), ("input_mapping",mp::json_summary(&(self).body.input_mapping)), ("output_mapping",mp::json_summary(&(self).body.output_mapping))]))]))
     }
 
     const CONTRACT_ID: &'static str = "console-mcp-debug-input";
@@ -107,12 +107,12 @@ impl InterfaceContract for McpDebugOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        ("status", serde_json::json!((_field_0).status)),
                         (
                             "body",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).body).len()),
+                                serde_json::json!((_field_0).body.len()),
                             )]),
                         ),
                     ]),

@@ -17,60 +17,51 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                         (
                             "run",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).run).id)?),
-                                (
-                                    "application_id",
-                                    mp::text(&(&(_field_0).run).application_id)?,
-                                ),
+                                ("id", mp::text(&(_field_0).run.id)?),
+                                ("application_id", mp::text(&(_field_0).run.application_id)?),
                                 (
                                     "application_type",
-                                    mp::text(&(&(_field_0).run).application_type)?,
+                                    mp::text(&(_field_0).run.application_type)?,
                                 ),
                                 (
                                     "run_object_kind",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).run).run_object_kind).len()
-                                        ),
+                                        serde_json::json!((_field_0).run.run_object_kind.len()),
                                     )]),
                                 ),
                                 (
                                     "run_kind",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).run).run_kind).len()),
+                                        serde_json::json!((_field_0).run.run_kind.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).run).status)?),
+                                ("status", mp::text(&(_field_0).run.status)?),
                                 (
                                     "title",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).run).title).len()),
+                                        serde_json::json!((_field_0).run.title.len()),
                                     )]),
                                 ),
                                 (
                                     "execution_stage",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).run).execution_stage).len()
-                                        ),
+                                        serde_json::json!((_field_0).run.execution_stage.len()),
                                     )]),
                                 ),
                                 (
                                     "invocation_source",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).run).invocation_source).len()
-                                        ),
+                                        serde_json::json!((_field_0).run.invocation_source.len()),
                                     )]),
                                 ),
                                 (
                                     "compatibility_mode",
-                                    match (&(&(_field_0).run).compatibility_mode).as_ref() {
+                                    match (_field_0).run.compatibility_mode.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -81,27 +72,24 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 (
                                     "subject",
                                     mp::object_value(&[
-                                        ("kind", mp::text(&(&(&(_field_0).run).subject).kind)?),
+                                        ("kind", mp::text(&(_field_0).run.subject.kind)?),
                                         (
                                             "id",
-                                            match (&(&(&(_field_0).run).subject).id).as_ref() {
+                                            match (_field_0).run.subject.id.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
                                         ),
                                         (
                                             "draft_id",
-                                            match (&(&(&(_field_0).run).subject).draft_id).as_ref()
-                                            {
+                                            match (_field_0).run.subject.draft_id.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
                                         ),
                                         (
                                             "target_node_id",
-                                            match (&(&(&(_field_0).run).subject).target_node_id)
-                                                .as_ref()
-                                            {
+                                            match (_field_0).run.subject.target_node_id.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
@@ -111,19 +99,17 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 (
                                     "principal",
                                     mp::object_value(&[
-                                        ("kind", mp::text(&(&(&(_field_0).run).principal).kind)?),
+                                        ("kind", mp::text(&(_field_0).run.principal.kind)?),
                                         (
                                             "id",
-                                            match (&(&(&(_field_0).run).principal).id).as_ref() {
+                                            match (_field_0).run.principal.id.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
                                         ),
                                         (
                                             "display_name",
-                                            match (&(&(&(_field_0).run).principal).display_name)
-                                                .as_ref()
-                                            {
+                                            match (_field_0).run.principal.display_name.as_ref() {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
@@ -138,8 +124,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     mp::object_value(&[
                                         (
                                             "publication_version_id",
-                                            match (&(&(&(_field_0).run).correlation)
-                                                .publication_version_id)
+                                            match (_field_0)
+                                                .run
+                                                .correlation
+                                                .publication_version_id
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
@@ -148,8 +136,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "external_user",
-                                            match (&(&(&(_field_0).run).correlation).external_user)
-                                                .as_ref()
+                                            match (_field_0).run.correlation.external_user.as_ref()
                                             {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
@@ -160,8 +147,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "external_conversation_id",
-                                            match (&(&(&(_field_0).run).correlation)
-                                                .external_conversation_id)
+                                            match (_field_0)
+                                                .run
+                                                .correlation
+                                                .external_conversation_id
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
@@ -170,8 +159,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "external_trace_id",
-                                            match (&(&(&(_field_0).run).correlation)
-                                                .external_trace_id)
+                                            match (_field_0)
+                                                .run
+                                                .correlation
+                                                .external_trace_id
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
@@ -180,8 +171,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "compatibility_mode",
-                                            match (&(&(&(_field_0).run).correlation)
-                                                .compatibility_mode)
+                                            match (_field_0)
+                                                .run
+                                                .correlation
+                                                .compatibility_mode
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::object_value(&[(
@@ -193,8 +186,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "idempotency_key",
-                                            match (&(&(&(_field_0).run).correlation)
-                                                .idempotency_key)
+                                            match (_field_0)
+                                                .run
+                                                .correlation
+                                                .idempotency_key
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::object_value(&[(
@@ -210,12 +205,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "started_at",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).run).started_at).len()),
+                                        serde_json::json!((_field_0).run.started_at.len()),
                                     )]),
                                 ),
                                 (
                                     "finished_at",
-                                    match (&(&(_field_0).run).finished_at).as_ref() {
+                                    match (_field_0).run.finished_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -223,8 +218,8 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         None => serde_json::Value::Null,
                                     },
                                 ),
-                                ("created_at", mp::text(&(&(_field_0).run).created_at)?),
-                                ("updated_at", mp::text(&(&(_field_0).run).updated_at)?),
+                                ("created_at", mp::text(&(_field_0).run.created_at)?),
+                                ("updated_at", mp::text(&(_field_0).run.updated_at)?),
                             ]),
                         ),
                         (
@@ -232,52 +227,44 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             mp::object_value(&[
                                 (
                                     "input_cache_hit_rate",
-                                    match (&(&(_field_0).statistics).input_cache_hit_rate).as_ref()
-                                    {
+                                    match (_field_0).statistics.input_cache_hit_rate.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "unique_node_count",
-                                    serde_json::json!(
-                                        *(&(&(_field_0).statistics).unique_node_count)
-                                    ),
+                                    serde_json::json!((_field_0).statistics.unique_node_count),
                                 ),
                                 (
                                     "tool_callback_count",
-                                    serde_json::json!(
-                                        *(&(&(_field_0).statistics).tool_callback_count)
-                                    ),
+                                    serde_json::json!((_field_0).statistics.tool_callback_count),
                                 ),
                             ]),
                         ),
                         (
                             "detail",
                             mp::object_value(&[
-                                ("kind", mp::text(&(&(_field_0).detail).kind)?),
+                                ("kind", mp::text(&(_field_0).detail.kind)?),
                                 (
                                     "flow_run",
                                     mp::object_value(&[
-                                        ("id", mp::text(&(&(&(_field_0).detail).flow_run).id)?),
+                                        ("id", mp::text(&(_field_0).detail.flow_run.id)?),
                                         (
                                             "application_id",
-                                            mp::text(
-                                                &(&(&(_field_0).detail).flow_run).application_id,
-                                            )?,
+                                            mp::text(&(_field_0).detail.flow_run.application_id)?,
                                         ),
-                                        (
-                                            "flow_id",
-                                            mp::text(&(&(&(_field_0).detail).flow_run).flow_id)?,
-                                        ),
+                                        ("flow_id", mp::text(&(_field_0).detail.flow_run.flow_id)?),
                                         (
                                             "draft_id",
-                                            mp::text(&(&(&(_field_0).detail).flow_run).draft_id)?,
+                                            mp::text(&(_field_0).detail.flow_run.draft_id)?,
                                         ),
                                         (
                                             "compiled_plan_id",
-                                            match (&(&(&(_field_0).detail).flow_run)
-                                                .compiled_plan_id)
+                                            match (_field_0)
+                                                .detail
+                                                .flow_run
+                                                .compiled_plan_id
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
@@ -288,20 +275,17 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             "run_mode",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(&(&(_field_0).detail)
-                                                    .flow_run)
-                                                    .run_mode)
+                                                serde_json::json!((_field_0)
+                                                    .detail
+                                                    .flow_run
+                                                    .run_mode
                                                     .len()),
                                             )]),
                                         ),
-                                        (
-                                            "status",
-                                            mp::text(&(&(&(_field_0).detail).flow_run).status)?,
-                                        ),
+                                        ("status", mp::text(&(_field_0).detail.flow_run.status)?),
                                         (
                                             "target_node_id",
-                                            match (&(&(&(_field_0).detail).flow_run).target_node_id)
-                                                .as_ref()
+                                            match (_field_0).detail.flow_run.target_node_id.as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
@@ -311,25 +295,26 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             "title",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(&(&(_field_0).detail)
-                                                    .flow_run)
-                                                    .title)
+                                                serde_json::json!((_field_0)
+                                                    .detail
+                                                    .flow_run
+                                                    .title
                                                     .len()),
                                             )]),
                                         ),
                                         (
                                             "expand_id",
-                                            match (&(&(&(_field_0).detail).flow_run).expand_id)
-                                                .as_ref()
-                                            {
+                                            match (_field_0).detail.flow_run.expand_id.as_ref() {
                                                 Some(item) => mp::text(item)?,
                                                 None => serde_json::Value::Null,
                                             },
                                         ),
                                         (
                                             "external_conversation_id",
-                                            match (&(&(&(_field_0).detail).flow_run)
-                                                .external_conversation_id)
+                                            match (_field_0)
+                                                .detail
+                                                .flow_run
+                                                .external_conversation_id
                                                 .as_ref()
                                             {
                                                 Some(item) => mp::text(item)?,
@@ -338,8 +323,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "query",
-                                            match (&(&(&(_field_0).detail).flow_run).query).as_ref()
-                                            {
+                                            match (_field_0).detail.flow_run.query.as_ref() {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
@@ -349,8 +333,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "model",
-                                            match (&(&(&(_field_0).detail).flow_run).model).as_ref()
-                                            {
+                                            match (_field_0).detail.flow_run.model.as_ref() {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
@@ -361,19 +344,18 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         (
                                             "input_payload",
                                             mp::json_summary(
-                                                &(&(&(_field_0).detail).flow_run).input_payload,
+                                                &(_field_0).detail.flow_run.input_payload,
                                             ),
                                         ),
                                         (
                                             "output_payload",
                                             mp::json_summary(
-                                                &(&(&(_field_0).detail).flow_run).output_payload,
+                                                &(_field_0).detail.flow_run.output_payload,
                                             ),
                                         ),
                                         (
                                             "error_payload",
-                                            match (&(&(&(_field_0).detail).flow_run).error_payload)
-                                                .as_ref()
+                                            match (_field_0).detail.flow_run.error_payload.as_ref()
                                             {
                                                 Some(item) => mp::json_summary(item),
                                                 None => serde_json::Value::Null,
@@ -383,9 +365,10 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             "created_by",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(&(&(_field_0).detail)
-                                                    .flow_run)
-                                                    .created_by)
+                                                serde_json::json!((_field_0)
+                                                    .detail
+                                                    .flow_run
+                                                    .created_by
                                                     .len()),
                                             )]),
                                         ),
@@ -393,17 +376,16 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             "started_at",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(&(&(_field_0).detail)
-                                                    .flow_run)
-                                                    .started_at)
+                                                serde_json::json!((_field_0)
+                                                    .detail
+                                                    .flow_run
+                                                    .started_at
                                                     .len()),
                                             )]),
                                         ),
                                         (
                                             "finished_at",
-                                            match (&(&(&(_field_0).detail).flow_run).finished_at)
-                                                .as_ref()
-                                            {
+                                            match (_field_0).detail.flow_run.finished_at.as_ref() {
                                                 Some(item) => mp::object_value(&[(
                                                     "byte_count",
                                                     serde_json::json!((item).len()),
@@ -413,67 +395,64 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         ),
                                         (
                                             "created_at",
-                                            mp::text(&(&(&(_field_0).detail).flow_run).created_at)?,
+                                            mp::text(&(_field_0).detail.flow_run.created_at)?,
                                         ),
                                         (
                                             "updated_at",
-                                            mp::text(&(&(&(_field_0).detail).flow_run).updated_at)?,
+                                            mp::text(&(_field_0).detail.flow_run.updated_at)?,
                                         ),
                                     ]),
                                 ),
                                 (
                                     "answer_snapshot",
-                                    match (&(&(_field_0).detail).answer_snapshot).as_ref() {
+                                    match (_field_0).detail.answer_snapshot.as_ref() {
                                         Some(item) => mp::object_value(&[
                                             ("kind", mp::text(&(item).kind)?),
                                             (
                                                 "text",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).text).len()),
+                                                    serde_json::json!((item).text.len()),
                                                 )]),
                                             ),
                                             (
                                                 "output_payload",
                                                 mp::json_summary(&(item).output_payload),
                                             ),
-                                            (
-                                                "complete",
-                                                serde_json::Value::Bool(*(&(item).complete)),
-                                            ),
+                                            ("complete", serde_json::Value::Bool((item).complete)),
                                             (
                                                 "materialized_from",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).materialized_from).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .materialized_from
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "answer_node_id",
-                                                match (&(item).answer_node_id).as_ref() {
+                                                match (item).answer_node_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "answer_node_run_id",
-                                                match (&(item).answer_node_run_id).as_ref() {
+                                                match (item).answer_node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "waiting_node_id",
-                                                match (&(item).waiting_node_id).as_ref() {
+                                                match (item).waiting_node_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "waiting_node_run_id",
-                                                match (&(item).waiting_node_run_id).as_ref() {
+                                                match (item).waiting_node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -486,39 +465,35 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "node_runs",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).detail).node_runs).len()),
+                                        serde_json::json!((_field_0).detail.node_runs.len()),
                                     )]),
                                 ),
                                 (
                                     "checkpoints",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).detail).checkpoints).len()),
+                                        serde_json::json!((_field_0).detail.checkpoints.len()),
                                     )]),
                                 ),
                                 (
                                     "callback_tasks",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).detail).callback_tasks).len()
-                                        ),
+                                        serde_json::json!((_field_0).detail.callback_tasks.len()),
                                     )]),
                                 ),
                                 (
                                     "events",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).detail).events).len()),
+                                        serde_json::json!((_field_0).detail.events.len()),
                                     )]),
                                 ),
                                 (
                                     "stitched_trace",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).detail).stitched_trace).len()
-                                        ),
+                                        serde_json::json!((_field_0).detail.stitched_trace.len()),
                                     )]),
                                 ),
                             ]),
@@ -526,16 +501,16 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                         (
                             "flow_run",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).flow_run).id)?),
+                                ("id", mp::text(&(_field_0).flow_run.id)?),
                                 (
                                     "application_id",
-                                    mp::text(&(&(_field_0).flow_run).application_id)?,
+                                    mp::text(&(_field_0).flow_run.application_id)?,
                                 ),
-                                ("flow_id", mp::text(&(&(_field_0).flow_run).flow_id)?),
-                                ("draft_id", mp::text(&(&(_field_0).flow_run).draft_id)?),
+                                ("flow_id", mp::text(&(_field_0).flow_run.flow_id)?),
+                                ("draft_id", mp::text(&(_field_0).flow_run.draft_id)?),
                                 (
                                     "compiled_plan_id",
-                                    match (&(&(_field_0).flow_run).compiled_plan_id).as_ref() {
+                                    match (_field_0).flow_run.compiled_plan_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
@@ -544,13 +519,13 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "run_mode",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).flow_run).run_mode).len()),
+                                        serde_json::json!((_field_0).flow_run.run_mode.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).flow_run).status)?),
+                                ("status", mp::text(&(_field_0).flow_run.status)?),
                                 (
                                     "target_node_id",
-                                    match (&(&(_field_0).flow_run).target_node_id).as_ref() {
+                                    match (_field_0).flow_run.target_node_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
@@ -559,28 +534,26 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "title",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).flow_run).title).len()),
+                                        serde_json::json!((_field_0).flow_run.title.len()),
                                     )]),
                                 ),
                                 (
                                     "expand_id",
-                                    match (&(&(_field_0).flow_run).expand_id).as_ref() {
+                                    match (_field_0).flow_run.expand_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "external_conversation_id",
-                                    match (&(&(_field_0).flow_run).external_conversation_id)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).flow_run.external_conversation_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "query",
-                                    match (&(&(_field_0).flow_run).query).as_ref() {
+                                    match (_field_0).flow_run.query.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -590,7 +563,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 ),
                                 (
                                     "model",
-                                    match (&(&(_field_0).flow_run).model).as_ref() {
+                                    match (_field_0).flow_run.model.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -600,15 +573,15 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 ),
                                 (
                                     "input_payload",
-                                    mp::json_summary(&(&(_field_0).flow_run).input_payload),
+                                    mp::json_summary(&(_field_0).flow_run.input_payload),
                                 ),
                                 (
                                     "output_payload",
-                                    mp::json_summary(&(&(_field_0).flow_run).output_payload),
+                                    mp::json_summary(&(_field_0).flow_run.output_payload),
                                 ),
                                 (
                                     "error_payload",
-                                    match (&(&(_field_0).flow_run).error_payload).as_ref() {
+                                    match (_field_0).flow_run.error_payload.as_ref() {
                                         Some(item) => mp::json_summary(item),
                                         None => serde_json::Value::Null,
                                     },
@@ -617,23 +590,19 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "created_by",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).flow_run).created_by).len()
-                                        ),
+                                        serde_json::json!((_field_0).flow_run.created_by.len()),
                                     )]),
                                 ),
                                 (
                                     "started_at",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).flow_run).started_at).len()
-                                        ),
+                                        serde_json::json!((_field_0).flow_run.started_at.len()),
                                     )]),
                                 ),
                                 (
                                     "finished_at",
-                                    match (&(&(_field_0).flow_run).finished_at).as_ref() {
+                                    match (_field_0).flow_run.finished_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -641,55 +610,55 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         None => serde_json::Value::Null,
                                     },
                                 ),
-                                ("created_at", mp::text(&(&(_field_0).flow_run).created_at)?),
-                                ("updated_at", mp::text(&(&(_field_0).flow_run).updated_at)?),
+                                ("created_at", mp::text(&(_field_0).flow_run.created_at)?),
+                                ("updated_at", mp::text(&(_field_0).flow_run.updated_at)?),
                             ]),
                         ),
                         (
                             "answer_snapshot",
-                            match (&(_field_0).answer_snapshot).as_ref() {
+                            match (_field_0).answer_snapshot.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     ("kind", mp::text(&(item).kind)?),
                                     (
                                         "text",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).text).len()),
+                                            serde_json::json!((item).text.len()),
                                         )]),
                                     ),
                                     ("output_payload", mp::json_summary(&(item).output_payload)),
-                                    ("complete", serde_json::Value::Bool(*(&(item).complete))),
+                                    ("complete", serde_json::Value::Bool((item).complete)),
                                     (
                                         "materialized_from",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).materialized_from).len()),
+                                            serde_json::json!((item).materialized_from.len()),
                                         )]),
                                     ),
                                     (
                                         "answer_node_id",
-                                        match (&(item).answer_node_id).as_ref() {
+                                        match (item).answer_node_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "answer_node_run_id",
-                                        match (&(item).answer_node_run_id).as_ref() {
+                                        match (item).answer_node_run_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "waiting_node_id",
-                                        match (&(item).waiting_node_id).as_ref() {
+                                        match (item).waiting_node_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "waiting_node_run_id",
-                                        match (&(item).waiting_node_run_id).as_ref() {
+                                        match (item).waiting_node_run_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
@@ -700,23 +669,23 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                         ),
                         (
                             "context_snapshot",
-                            match (&(_field_0).context_snapshot).as_ref() {
+                            match (_field_0).context_snapshot.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     ("event_type", mp::text(&(item).event_type)?),
                                     ("event_id", mp::text(&(item).event_id)?),
                                     ("run_id", mp::text(&(item).run_id)?),
                                     (
                                         "node_run_id",
-                                        match (&(item).node_run_id).as_ref() {
+                                        match (item).node_run_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     ("node_id", mp::text(&(item).node_id)?),
-                                    ("sequence", serde_json::json!(*(&(item).sequence))),
+                                    ("sequence", serde_json::json!((item).sequence)),
                                     (
                                         "effective_context_window",
-                                        match (&(item).effective_context_window).as_ref() {
+                                        match (item).effective_context_window.as_ref() {
                                             Some(item) => serde_json::json!(*(item)),
                                             None => serde_json::Value::Null,
                                         },
@@ -724,13 +693,14 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     (
                                         "measurement",
                                         mp::object_value(&[
-                                            ("method", mp::text(&(&(item).measurement).method)?),
+                                            ("method", mp::text(&(item).measurement.method)?),
                                             (
                                                 "accuracy",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(item).measurement)
-                                                        .accuracy)
+                                                    serde_json::json!((item)
+                                                        .measurement
+                                                        .accuracy
                                                         .len()),
                                                 )]),
                                             ),
@@ -738,15 +708,16 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "coverage",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(item).measurement)
-                                                        .coverage)
+                                                    serde_json::json!((item)
+                                                        .measurement
+                                                        .coverage
                                                         .len()),
                                                 )]),
                                             ),
                                             (
                                                 "unknown_block_count",
                                                 serde_json::json!(
-                                                    *(&(&(item).measurement).unknown_block_count)
+                                                    (item).measurement.unknown_block_count
                                                 ),
                                             ),
                                         ]),
@@ -757,11 +728,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             },
                         ),
                         ("node_runs", {
-                            if (&(_field_0).node_runs).len() > 32 {
+                            if (_field_0).node_runs.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).node_runs)
+                                (_field_0)
+                                    .node_runs
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -773,7 +745,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "node_alias",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).node_alias).len()),
+                                                    serde_json::json!((item).node_alias.len()),
                                                 )]),
                                             ),
                                             ("status", mp::text(&(item).status)?),
@@ -791,7 +763,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ),
                                             (
                                                 "error_payload",
-                                                match (&(item).error_payload).as_ref() {
+                                                match (item).error_payload.as_ref() {
                                                     Some(item) => mp::json_summary(item),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -808,12 +780,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "started_at",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).started_at).len()),
+                                                    serde_json::json!((item).started_at.len()),
                                                 )]),
                                             ),
                                             (
                                                 "finished_at",
-                                                match (&(item).finished_at).as_ref() {
+                                                match (item).finished_at.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -827,11 +799,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             )
                         }),
                         ("checkpoints", {
-                            if (&(_field_0).checkpoints).len() > 32 {
+                            if (_field_0).checkpoints.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).checkpoints)
+                                (_field_0)
+                                    .checkpoints
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -839,7 +812,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                             (
                                                 "node_run_id",
-                                                match (&(item).node_run_id).as_ref() {
+                                                match (item).node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -849,7 +822,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "reason",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).reason).len()),
+                                                    serde_json::json!((item).reason.len()),
                                                 )]),
                                             ),
                                             (
@@ -862,7 +835,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ),
                                             (
                                                 "external_ref_payload",
-                                                match (&(item).external_ref_payload).as_ref() {
+                                                match (item).external_ref_payload.as_ref() {
                                                     Some(item) => mp::json_summary(item),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -874,11 +847,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             )
                         }),
                         ("callback_tasks", {
-                            if (&(_field_0).callback_tasks).len() > 32 {
+                            if (_field_0).callback_tasks.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).callback_tasks)
+                                (_field_0)
+                                    .callback_tasks
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -889,9 +863,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "callback_kind",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).callback_kind).len()
-                                                    ),
+                                                    serde_json::json!((item).callback_kind.len()),
                                                 )]),
                                             ),
                                             ("status", mp::text(&(item).status)?),
@@ -901,14 +873,14 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ),
                                             (
                                                 "response_payload",
-                                                match (&(item).response_payload).as_ref() {
+                                                match (item).response_payload.as_ref() {
                                                     Some(item) => mp::json_summary(item),
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "external_ref_payload",
-                                                match (&(item).external_ref_payload).as_ref() {
+                                                match (item).external_ref_payload.as_ref() {
                                                     Some(item) => mp::json_summary(item),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -916,7 +888,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ("created_at", mp::text(&(item).created_at)?),
                                             (
                                                 "completed_at",
-                                                match (&(item).completed_at).as_ref() {
+                                                match (item).completed_at.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -930,11 +902,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             )
                         }),
                         ("events", {
-                            if (&(_field_0).events).len() > 32 {
+                            if (_field_0).events.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).events)
+                                (_field_0)
+                                    .events
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -942,12 +915,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                             (
                                                 "node_run_id",
-                                                match (&(item).node_run_id).as_ref() {
+                                                match (item).node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            ("sequence", serde_json::json!(*(&(item).sequence))),
+                                            ("sequence", serde_json::json!((item).sequence)),
                                             ("event_type", mp::text(&(item).event_type)?),
                                             ("payload", mp::json_summary(&(item).payload)),
                                             ("created_at", mp::text(&(item).created_at)?),
@@ -957,44 +930,38 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             )
                         }),
                         ("stitched_trace", {
-                            if (&(_field_0).stitched_trace).len() > 32 {
+                            if (_field_0).stitched_trace.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).stitched_trace)
+                                (_field_0)
+                                    .stitched_trace
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             (
                                                 "source_flow_run",
                                                 mp::object_value(&[
-                                                    (
-                                                        "id",
-                                                        mp::text(&(&(item).source_flow_run).id)?,
-                                                    ),
+                                                    ("id", mp::text(&(item).source_flow_run.id)?),
                                                     (
                                                         "application_id",
                                                         mp::text(
-                                                            &(&(item).source_flow_run)
-                                                                .application_id,
+                                                            &(item).source_flow_run.application_id,
                                                         )?,
                                                     ),
                                                     (
                                                         "flow_id",
-                                                        mp::text(
-                                                            &(&(item).source_flow_run).flow_id,
-                                                        )?,
+                                                        mp::text(&(item).source_flow_run.flow_id)?,
                                                     ),
                                                     (
                                                         "draft_id",
-                                                        mp::text(
-                                                            &(&(item).source_flow_run).draft_id,
-                                                        )?,
+                                                        mp::text(&(item).source_flow_run.draft_id)?,
                                                     ),
                                                     (
                                                         "compiled_plan_id",
-                                                        match (&(&(item).source_flow_run)
-                                                            .compiled_plan_id)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .compiled_plan_id
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::text(item)?,
@@ -1005,22 +972,21 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                         "run_mode",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .source_flow_run)
-                                                                .run_mode)
+                                                            serde_json::json!((item)
+                                                                .source_flow_run
+                                                                .run_mode
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "status",
-                                                        mp::text(
-                                                            &(&(item).source_flow_run).status,
-                                                        )?,
+                                                        mp::text(&(item).source_flow_run.status)?,
                                                     ),
                                                     (
                                                         "target_node_id",
-                                                        match (&(&(item).source_flow_run)
-                                                            .target_node_id)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .target_node_id
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::text(item)?,
@@ -1031,15 +997,17 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                         "title",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .source_flow_run)
-                                                                .title)
+                                                            serde_json::json!((item)
+                                                                .source_flow_run
+                                                                .title
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "expand_id",
-                                                        match (&(&(item).source_flow_run).expand_id)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .expand_id
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::text(item)?,
@@ -1048,8 +1016,9 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                     ),
                                                     (
                                                         "external_conversation_id",
-                                                        match (&(&(item).source_flow_run)
-                                                            .external_conversation_id)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .external_conversation_id
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::text(item)?,
@@ -1058,8 +1027,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                     ),
                                                     (
                                                         "query",
-                                                        match (&(&(item).source_flow_run).query)
-                                                            .as_ref()
+                                                        match (item).source_flow_run.query.as_ref()
                                                         {
                                                             Some(item) => mp::object_value(&[(
                                                                 "byte_count",
@@ -1070,8 +1038,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                     ),
                                                     (
                                                         "model",
-                                                        match (&(&(item).source_flow_run).model)
-                                                            .as_ref()
+                                                        match (item).source_flow_run.model.as_ref()
                                                         {
                                                             Some(item) => mp::object_value(&[(
                                                                 "byte_count",
@@ -1083,21 +1050,20 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                     (
                                                         "input_payload",
                                                         mp::json_summary(
-                                                            &(&(item).source_flow_run)
-                                                                .input_payload,
+                                                            &(item).source_flow_run.input_payload,
                                                         ),
                                                     ),
                                                     (
                                                         "output_payload",
                                                         mp::json_summary(
-                                                            &(&(item).source_flow_run)
-                                                                .output_payload,
+                                                            &(item).source_flow_run.output_payload,
                                                         ),
                                                     ),
                                                     (
                                                         "error_payload",
-                                                        match (&(&(item).source_flow_run)
-                                                            .error_payload)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .error_payload
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::json_summary(item),
@@ -1108,9 +1074,9 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                         "created_by",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .source_flow_run)
-                                                                .created_by)
+                                                            serde_json::json!((item)
+                                                                .source_flow_run
+                                                                .created_by
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -1118,16 +1084,17 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                         "started_at",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .source_flow_run)
-                                                                .started_at)
+                                                            serde_json::json!((item)
+                                                                .source_flow_run
+                                                                .started_at
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "finished_at",
-                                                        match (&(&(item).source_flow_run)
-                                                            .finished_at)
+                                                        match (item)
+                                                            .source_flow_run
+                                                            .finished_at
                                                             .as_ref()
                                                         {
                                                             Some(item) => mp::object_value(&[(
@@ -1140,13 +1107,13 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                     (
                                                         "created_at",
                                                         mp::text(
-                                                            &(&(item).source_flow_run).created_at,
+                                                            &(item).source_flow_run.created_at,
                                                         )?,
                                                     ),
                                                     (
                                                         "updated_at",
                                                         mp::text(
-                                                            &(&(item).source_flow_run).updated_at,
+                                                            &(item).source_flow_run.updated_at,
                                                         )?,
                                                     ),
                                                 ]),
@@ -1155,23 +1122,21 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "node_runs",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).node_runs).len()),
+                                                    serde_json::json!((item).node_runs.len()),
                                                 )]),
                                             ),
                                             (
                                                 "callback_tasks",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!(
-                                                        (&(item).callback_tasks).len()
-                                                    ),
+                                                    serde_json::json!((item).callback_tasks.len()),
                                                 )]),
                                             ),
                                             (
                                                 "events",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).events).len()),
+                                                    serde_json::json!((item).events.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -1190,16 +1155,16 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                         (
                             "flow_run",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).flow_run).id)?),
+                                ("id", mp::text(&(_field_0).flow_run.id)?),
                                 (
                                     "application_id",
-                                    mp::text(&(&(_field_0).flow_run).application_id)?,
+                                    mp::text(&(_field_0).flow_run.application_id)?,
                                 ),
-                                ("flow_id", mp::text(&(&(_field_0).flow_run).flow_id)?),
-                                ("draft_id", mp::text(&(&(_field_0).flow_run).draft_id)?),
+                                ("flow_id", mp::text(&(_field_0).flow_run.flow_id)?),
+                                ("draft_id", mp::text(&(_field_0).flow_run.draft_id)?),
                                 (
                                     "compiled_plan_id",
-                                    match (&(&(_field_0).flow_run).compiled_plan_id).as_ref() {
+                                    match (_field_0).flow_run.compiled_plan_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
@@ -1208,13 +1173,13 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "run_mode",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).flow_run).run_mode).len()),
+                                        serde_json::json!((_field_0).flow_run.run_mode.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).flow_run).status)?),
+                                ("status", mp::text(&(_field_0).flow_run.status)?),
                                 (
                                     "target_node_id",
-                                    match (&(&(_field_0).flow_run).target_node_id).as_ref() {
+                                    match (_field_0).flow_run.target_node_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
@@ -1223,28 +1188,26 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "title",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).flow_run).title).len()),
+                                        serde_json::json!((_field_0).flow_run.title.len()),
                                     )]),
                                 ),
                                 (
                                     "expand_id",
-                                    match (&(&(_field_0).flow_run).expand_id).as_ref() {
+                                    match (_field_0).flow_run.expand_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "external_conversation_id",
-                                    match (&(&(_field_0).flow_run).external_conversation_id)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).flow_run.external_conversation_id.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "query",
-                                    match (&(&(_field_0).flow_run).query).as_ref() {
+                                    match (_field_0).flow_run.query.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -1254,7 +1217,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 ),
                                 (
                                     "model",
-                                    match (&(&(_field_0).flow_run).model).as_ref() {
+                                    match (_field_0).flow_run.model.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -1264,15 +1227,15 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                 ),
                                 (
                                     "input_payload",
-                                    mp::json_summary(&(&(_field_0).flow_run).input_payload),
+                                    mp::json_summary(&(_field_0).flow_run.input_payload),
                                 ),
                                 (
                                     "output_payload",
-                                    mp::json_summary(&(&(_field_0).flow_run).output_payload),
+                                    mp::json_summary(&(_field_0).flow_run.output_payload),
                                 ),
                                 (
                                     "error_payload",
-                                    match (&(&(_field_0).flow_run).error_payload).as_ref() {
+                                    match (_field_0).flow_run.error_payload.as_ref() {
                                         Some(item) => mp::json_summary(item),
                                         None => serde_json::Value::Null,
                                     },
@@ -1281,23 +1244,19 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                     "created_by",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).flow_run).created_by).len()
-                                        ),
+                                        serde_json::json!((_field_0).flow_run.created_by.len()),
                                     )]),
                                 ),
                                 (
                                     "started_at",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).flow_run).started_at).len()
-                                        ),
+                                        serde_json::json!((_field_0).flow_run.started_at.len()),
                                     )]),
                                 ),
                                 (
                                     "finished_at",
-                                    match (&(&(_field_0).flow_run).finished_at).as_ref() {
+                                    match (_field_0).flow_run.finished_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -1305,69 +1264,62 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                         None => serde_json::Value::Null,
                                     },
                                 ),
-                                ("created_at", mp::text(&(&(_field_0).flow_run).created_at)?),
-                                ("updated_at", mp::text(&(&(_field_0).flow_run).updated_at)?),
+                                ("created_at", mp::text(&(_field_0).flow_run.created_at)?),
+                                ("updated_at", mp::text(&(_field_0).flow_run.updated_at)?),
                             ]),
                         ),
                         (
                             "node_run",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).node_run).id)?),
-                                (
-                                    "flow_run_id",
-                                    mp::text(&(&(_field_0).node_run).flow_run_id)?,
-                                ),
-                                ("node_id", mp::text(&(&(_field_0).node_run).node_id)?),
-                                ("node_type", mp::text(&(&(_field_0).node_run).node_type)?),
+                                ("id", mp::text(&(_field_0).node_run.id)?),
+                                ("flow_run_id", mp::text(&(_field_0).node_run.flow_run_id)?),
+                                ("node_id", mp::text(&(_field_0).node_run.node_id)?),
+                                ("node_type", mp::text(&(_field_0).node_run.node_type)?),
                                 (
                                     "node_alias",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).node_run).node_alias).len()
-                                        ),
+                                        serde_json::json!((_field_0).node_run.node_alias.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).node_run).status)?),
+                                ("status", mp::text(&(_field_0).node_run.status)?),
                                 (
                                     "input_payload",
-                                    mp::json_summary(&(&(_field_0).node_run).input_payload),
+                                    mp::json_summary(&(_field_0).node_run.input_payload),
                                 ),
                                 (
                                     "input_payload_view",
-                                    mp::json_summary(&(&(_field_0).node_run).input_payload_view),
+                                    mp::json_summary(&(_field_0).node_run.input_payload_view),
                                 ),
                                 (
                                     "output_payload",
-                                    mp::json_summary(&(&(_field_0).node_run).output_payload),
+                                    mp::json_summary(&(_field_0).node_run.output_payload),
                                 ),
                                 (
                                     "error_payload",
-                                    match (&(&(_field_0).node_run).error_payload).as_ref() {
+                                    match (_field_0).node_run.error_payload.as_ref() {
                                         Some(item) => mp::json_summary(item),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "metrics_payload",
-                                    mp::json_summary(&(&(_field_0).node_run).metrics_payload),
+                                    mp::json_summary(&(_field_0).node_run.metrics_payload),
                                 ),
                                 (
                                     "debug_payload",
-                                    mp::json_summary(&(&(_field_0).node_run).debug_payload),
+                                    mp::json_summary(&(_field_0).node_run.debug_payload),
                                 ),
                                 (
                                     "started_at",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).node_run).started_at).len()
-                                        ),
+                                        serde_json::json!((_field_0).node_run.started_at.len()),
                                     )]),
                                 ),
                                 (
                                     "finished_at",
-                                    match (&(&(_field_0).node_run).finished_at).as_ref() {
+                                    match (_field_0).node_run.finished_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -1378,11 +1330,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             ]),
                         ),
                         ("checkpoints", {
-                            if (&(_field_0).checkpoints).len() > 32 {
+                            if (_field_0).checkpoints.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).checkpoints)
+                                (_field_0)
+                                    .checkpoints
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -1390,7 +1343,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                             (
                                                 "node_run_id",
-                                                match (&(item).node_run_id).as_ref() {
+                                                match (item).node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -1400,7 +1353,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                                 "reason",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).reason).len()),
+                                                    serde_json::json!((item).reason.len()),
                                                 )]),
                                             ),
                                             (
@@ -1413,7 +1366,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ),
                                             (
                                                 "external_ref_payload",
-                                                match (&(item).external_ref_payload).as_ref() {
+                                                match (item).external_ref_payload.as_ref() {
                                                     Some(item) => mp::json_summary(item),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -1425,11 +1378,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                             )
                         }),
                         ("events", {
-                            if (&(_field_0).events).len() > 32 {
+                            if (_field_0).events.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).events)
+                                (_field_0)
+                                    .events
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -1437,12 +1391,12 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
                                             ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                             (
                                                 "node_run_id",
-                                                match (&(item).node_run_id).as_ref() {
+                                                match (item).node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            ("sequence", serde_json::json!(*(&(item).sequence))),
+                                            ("sequence", serde_json::json!((item).sequence)),
                                             ("event_type", mp::text(&(item).event_type)?),
                                             ("payload", mp::json_summary(&(item).payload)),
                                             ("created_at", mp::text(&(item).created_at)?),

@@ -723,13 +723,15 @@ async fn app_and_runtime_host_from_config(
     let official_mcp_bundle_source =
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
-            std::path::PathBuf::from(&config.mcp_template_library_root),
-            Arc::new(store.clone()),
-            config.api_node_id.clone(),
-            bootstrap_result.root_user_id,
-            trusted_public_keys,
-            network_egress_http_clients.as_ref().clone(),
-            bootstrap_result.workspace_id,
+            official_mcp_bundles::OfficialMcpBundleRegistryDependencies {
+                root: std::path::PathBuf::from(&config.mcp_template_library_root),
+                installation_repository: Arc::new(store.clone()),
+                node_id: config.api_node_id.clone(),
+                actor_user_id: bootstrap_result.root_user_id,
+                trusted_public_keys,
+                network_egress: network_egress_http_clients.as_ref().clone(),
+                workspace_id: bootstrap_result.workspace_id,
+            },
         ));
     if let Err(error) = official_mcp_bundle_source
         .reconcile_local_installations()
@@ -932,15 +934,12 @@ async fn app_and_runtime_host_from_config(
     }.await;
     match boot_result {
         Ok(result) => {
-            if let Err(error) = activate_prepared_host_extensions(
+            activate_prepared_host_extensions(
                 &store,
                 &config.api_node_id,
                 prepared_host_extensions,
             )
-            .await
-            {
-                return Err(error);
-            }
+            .await?;
             Ok(result)
         }
         Err(error) => {

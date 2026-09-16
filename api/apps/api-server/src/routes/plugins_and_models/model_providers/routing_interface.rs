@@ -70,22 +70,20 @@ impl InterfaceContract for ProviderRoutingInput {
                         mp::object_value(&[
                             (
                                 "auto_include_new_instances",
-                                serde_json::Value::Bool(
-                                    *(&(_field_body).auto_include_new_instances),
-                                ),
+                                serde_json::Value::Bool((_field_body).auto_include_new_instances),
                             ),
                             (
                                 "expected_revision",
-                                serde_json::json!(*(&(_field_body).expected_revision)),
+                                serde_json::json!((_field_body).expected_revision),
                             ),
                             (
                                 "model_routing_policies",
-                                match (&(_field_body).model_routing_policies).as_ref() {
+                                match (_field_body).model_routing_policies.as_ref() {
                                     Some(item) => {
                                         if (item).len() > 32 {
                                             return None;
                                         }
-                                        serde_json::Value::Array((item).iter().map(|item| Some(mp::object_value(&[("model_id",mp::text(&(item).model_id)?), ("distribution_rule",mp::object_value(&[("byte_count",serde_json::json!((&(item).distribution_rule).len()))])), ("distribution_rule_contract_version",match (&(item).distribution_rule_contract_version).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("distribution_rule_config",mp::object_value(&[("item_count",serde_json::json!((&(item).distribution_rule_config).len()))])), ("provider_instance_ids",{ if (&(item).provider_instance_ids).len() > 32 { return None; } serde_json::Value::Array((&(item).provider_instance_ids).iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) }), ("excluded_provider_instance_ids",{ if (&(item).excluded_provider_instance_ids).len() > 32 { return None; } serde_json::Value::Array((&(item).excluded_provider_instance_ids).iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
+                                        serde_json::Value::Array((item).iter().map(|item| Some(mp::object_value(&[("model_id",mp::text(&(item).model_id)?), ("distribution_rule",mp::object_value(&[("byte_count",serde_json::json!((item).distribution_rule.len()))])), ("distribution_rule_contract_version",match (item).distribution_rule_contract_version.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("distribution_rule_config",mp::object_value(&[("item_count",serde_json::json!((item).distribution_rule_config.len()))])), ("provider_instance_ids",{ if (item).provider_instance_ids.len() > 32 { return None; } serde_json::Value::Array((item).provider_instance_ids.iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) }), ("excluded_provider_instance_ids",{ if (item).excluded_provider_instance_ids.len() > 32 { return None; } serde_json::Value::Array((item).excluded_provider_instance_ids.iter().map(|item| Some(serde_json::Value::String((item).to_string()))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
                                     }
                                     None => serde_json::Value::Null,
                                 },
@@ -130,18 +128,20 @@ impl InterfaceContract for ProviderRoutingOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                ("provider_code", mp::text(&(&(self).0).provider_code)?),
+                ("provider_code", mp::text(&(self).0.provider_code)?),
                 (
                     "auto_include_new_instances",
-                    serde_json::Value::Bool(*(&(&(self).0).auto_include_new_instances)),
+                    serde_json::Value::Bool((self).0.auto_include_new_instances),
                 ),
-                ("revision", serde_json::json!(*(&(&(self).0).revision))),
+                ("revision", serde_json::json!((self).0.revision)),
                 ("model_routing_policies", {
-                    if (&(&(self).0).model_routing_policies).len() > 32 {
+                    if (self).0.model_routing_policies.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).model_routing_policies)
+                        (self)
+                            .0
+                            .model_routing_policies
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -150,7 +150,7 @@ impl InterfaceContract for ProviderRoutingOutput {
                                         "distribution_rule",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).distribution_rule).len()),
+                                            serde_json::json!((item).distribution_rule.len()),
                                         )]),
                                     ),
                                     (
@@ -165,17 +165,18 @@ impl InterfaceContract for ProviderRoutingOutput {
                                         "distribution_rule_config",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!(
-                                                (&(item).distribution_rule_config).len()
-                                            ),
+                                            serde_json::json!((item)
+                                                .distribution_rule_config
+                                                .len()),
                                         )]),
                                     ),
                                     ("provider_instance_ids", {
-                                        if (&(item).provider_instance_ids).len() > 32 {
+                                        if (item).provider_instance_ids.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).provider_instance_ids)
+                                            (item)
+                                                .provider_instance_ids
                                                 .iter()
                                                 .map(|item| {
                                                     Some(serde_json::Value::String(
@@ -186,11 +187,12 @@ impl InterfaceContract for ProviderRoutingOutput {
                                         )
                                     }),
                                     ("excluded_provider_instance_ids", {
-                                        if (&(item).excluded_provider_instance_ids).len() > 32 {
+                                        if (item).excluded_provider_instance_ids.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).excluded_provider_instance_ids)
+                                            (item)
+                                                .excluded_provider_instance_ids
                                                 .iter()
                                                 .map(|item| {
                                                     Some(serde_json::Value::String(
@@ -206,11 +208,13 @@ impl InterfaceContract for ProviderRoutingOutput {
                     )
                 }),
                 ("distribution_rules", {
-                    if (&(&(self).0).distribution_rules).len() > 32 {
+                    if (self).0.distribution_rules.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).distribution_rules)
+                        (self)
+                            .0
+                            .distribution_rules
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -218,7 +222,7 @@ impl InterfaceContract for ProviderRoutingOutput {
                                         "value",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).value).len()),
+                                            serde_json::json!((item).value.len()),
                                         )]),
                                     ),
                                     ("rule_id", mp::text(&(item).rule_id)?),
@@ -228,14 +232,14 @@ impl InterfaceContract for ProviderRoutingOutput {
                                         "display_name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).display_name).len()),
+                                            serde_json::json!((item).display_name.len()),
                                         )]),
                                     ),
                                     (
                                         "config_fields",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).config_fields).len()),
+                                            serde_json::json!((item).config_fields.len()),
                                         )]),
                                     ),
                                 ]))

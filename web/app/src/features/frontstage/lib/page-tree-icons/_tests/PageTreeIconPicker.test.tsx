@@ -20,7 +20,11 @@ describe('PageTreeIconPicker', () => {
       target: { value: 'SmileTwoTone' }
     });
 
-    expect(screen.getByRole('button', { name: 'SmileTwoTone' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'SmileOutlined' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'SmileTwoTone' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'SmileOutlined' })
+    ).not.toBeInTheDocument();
   });
 });

@@ -161,13 +161,11 @@ impl InterfaceContract for AssistantWebSocketCommandInput {
                     mp::object_value(&[
                         (
                             "application_id",
-                            serde_json::Value::String(
-                                (&(_field_request).application_id).to_string(),
-                            ),
+                            serde_json::Value::String((_field_request).application_id.to_string()),
                         ),
                         (
                             "conversation_id",
-                            match (&(_field_request).conversation_id).as_ref() {
+                            match (_field_request).conversation_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -176,15 +174,16 @@ impl InterfaceContract for AssistantWebSocketCommandInput {
                             "query",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_request).query).len()),
+                                serde_json::json!((_field_request).query.len()),
                             )]),
                         ),
                         ("page_references", {
-                            if (&(_field_request).page_references).len() > 32 {
+                            if (_field_request).page_references.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_request).page_references)
+                                (_field_request)
+                                    .page_references
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -192,14 +191,14 @@ impl InterfaceContract for AssistantWebSocketCommandInput {
                                                 "page_title",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).page_title).len()),
+                                                    serde_json::json!((item).page_title.len()),
                                                 )]),
                                             ),
                                             (
                                                 "outer_html",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).outer_html).len()),
+                                                    serde_json::json!((item).outer_html.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -209,7 +208,7 @@ impl InterfaceContract for AssistantWebSocketCommandInput {
                         }),
                         (
                             "title",
-                            match (&(_field_request).title).as_ref() {
+                            match (_field_request).title.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -366,14 +365,14 @@ impl InterfaceContract for AssistantWebSocketCommandOutput {
                                 "items",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(&(_field_0).snapshot).items).len()),
+                                    serde_json::json!((_field_0).snapshot.items.len()),
                                 )]),
                             ),
-                            ("total", serde_json::json!(*(&(&(_field_0).snapshot).total))),
-                            ("page", serde_json::json!(*(&(&(_field_0).snapshot).page))),
+                            ("total", serde_json::json!((_field_0).snapshot.total)),
+                            ("page", serde_json::json!((_field_0).snapshot.page)),
                             (
                                 "page_size",
-                                serde_json::json!(*(&(&(_field_0).snapshot).page_size)),
+                                serde_json::json!((_field_0).snapshot.page_size),
                             ),
                         ]),
                     )]),
@@ -386,11 +385,11 @@ impl InterfaceContract for AssistantWebSocketCommandOutput {
                     mp::object_value(&[
                         (
                             "run_id",
-                            serde_json::Value::String((&(_field_0).run_id).to_string()),
+                            serde_json::Value::String((_field_0).run_id.to_string()),
                         ),
                         (
                             "from_sequence",
-                            match (&(_field_0).from_sequence).as_ref() {
+                            match (_field_0).from_sequence.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },

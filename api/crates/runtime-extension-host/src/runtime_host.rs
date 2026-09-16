@@ -859,9 +859,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             if *lifecycle != RuntimeBackendLifecycle::Ready {
                 return Err(RuntimeBackendError::Unavailable(*lifecycle));
             }
-            workers
-                .execute(request)
-                .map_err(RuntimeBackendError::from)?
+            workers.execute(request)?
         };
         Ok(Box::pin(async move {
             operation.await.map_err(RuntimeBackendError::from)
@@ -881,9 +879,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             if *lifecycle != RuntimeBackendLifecycle::Ready {
                 return Err(RuntimeBackendError::Unavailable(*lifecycle));
             }
-            workers
-                .admit_event(request)
-                .map_err(RuntimeBackendError::from)?
+            workers.admit_event(request)?
         };
         Ok(Box::pin(async move {
             operation.await.map_err(RuntimeBackendError::from)
@@ -903,9 +899,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
             if *lifecycle != RuntimeBackendLifecycle::Ready {
                 return Err(RuntimeBackendError::Unavailable(*lifecycle));
             }
-            workers
-                .admit_hook(request)
-                .map_err(RuntimeBackendError::from)?
+            workers.admit_hook(request)?
         };
         Ok(Box::pin(async move {
             operation.await.map_err(RuntimeBackendError::from)

@@ -52,7 +52,7 @@ test('Delivery 1944 keeps interface-runtime dependency closed and AuthN adapter-
     .filter(Boolean)
     .sort();
 
-  assert.deepEqual(dependencies, ['domain', 'sha2', 'thiserror', 'tokio', 'uuid']);
+  assert.deepEqual(dependencies, ['domain', 'serde_json', 'sha2', 'thiserror', 'tokio', 'uuid']);
   assert.deepEqual(forbiddenSourceImports(production), []);
   assert.deepEqual(forbiddenSourceImports('use axum::http::HeaderMap;'), ['axum::']);
   assert.doesNotMatch(production, /(?:Cookie|HeaderMap|Session|ApiKey)Credential/u);
@@ -92,6 +92,7 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'InterfaceInvocationReceipt',
     'InterfaceServerStream',
     'InterfaceStreamAccumulator',
+    'ManagedInterfaceProjection',
     'InvocationEnvelope',
     'PrincipalSummary',
     'ProtocolBinding',
@@ -111,6 +112,7 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'hook',
     'identity',
     'invocation',
+    'managed_projection',
     'principal',
     'registry',
     'stream',

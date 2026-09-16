@@ -108,25 +108,27 @@ impl InterfaceContract for WebMcpOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
-            Self::Registrations(_field_0) => mp::object_value(&[
-                (
-                    "variant",
-                    serde_json::Value::String("Registrations".to_owned()),
-                ),
-                ("0", {
-                    if (_field_0).len() > 32 {
-                        return None;
-                    }
-                    serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("instance_id",mp::text(&(item).instance_id)?), ("tools",{ if (&(item).tools).len() > 32 { return None; } serde_json::Value::Array((&(item).tools).iter().map(|item| Some(mp::object_value(&[("operation",mp::text(&(item).operation)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("title",mp::object_value(&[("byte_count",serde_json::json!((&(item).title).len()))])), ("description",mp::object_value(&[("byte_count",serde_json::json!((&(item).description).len()))])), ("input_schema",mp::json_summary(&(item).input_schema)), ("annotations",mp::object_value(&[("read_only_hint",serde_json::Value::Bool(*(&(&(item).annotations).read_only_hint))), ("untrusted_content_hint",serde_json::Value::Bool(*(&(&(item).annotations).untrusted_content_hint)))]))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
-                }),
-            ]),
+            Self::Registrations(_field_0) => {
+                mp::object_value(&[
+                    (
+                        "variant",
+                        serde_json::Value::String("Registrations".to_owned()),
+                    ),
+                    ("0", {
+                        if (_field_0).len() > 32 {
+                            return None;
+                        }
+                        serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("instance_id",mp::text(&(item).instance_id)?), ("tools",{ if (item).tools.len() > 32 { return None; } serde_json::Value::Array((item).tools.iter().map(|item| Some(mp::object_value(&[("operation",mp::text(&(item).operation)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("title",mp::object_value(&[("byte_count",serde_json::json!((item).title.len()))])), ("description",mp::object_value(&[("byte_count",serde_json::json!((item).description.len()))])), ("input_schema",mp::json_summary(&(item).input_schema)), ("annotations",mp::object_value(&[("read_only_hint",serde_json::Value::Bool((item).annotations.read_only_hint)), ("untrusted_content_hint",serde_json::Value::Bool((item).annotations.untrusted_content_hint))]))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?)
+                    }),
+                ])
+            }
             Self::Tool(_field_0) => mp::object_value(&[
                 ("variant", serde_json::Value::String("Tool".to_owned())),
                 (
                     "0",
                     mp::object_value(&[
                         ("content", mp::json_summary(&(_field_0).content)),
-                        ("is_error", serde_json::Value::Bool(*(&(_field_0).is_error))),
+                        ("is_error", serde_json::Value::Bool((_field_0).is_error)),
                     ]),
                 ),
             ]),

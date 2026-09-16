@@ -63,30 +63,32 @@ impl InterfaceContract for PublicLoginEntriesOutput {
             mp::object_value(&[
                 (
                     "default_login_entry_id",
-                    serde_json::Value::String((&(&(self).0).default_login_entry_id).to_string()),
+                    serde_json::Value::String((self).0.default_login_entry_id.to_string()),
                 ),
                 ("login_entries", {
-                    if (&(&(self).0).login_entries).len() > 32 {
+                    if (self).0.login_entries.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).login_entries)
+                        (self)
+                            .0
+                            .login_entries
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
-                                    ("id", serde_json::Value::String((&(item).id).to_string())),
+                                    ("id", serde_json::Value::String((item).id.to_string())),
                                     ("auth_type", mp::text(&(item).auth_type)?),
-                                    ("is_builtin", serde_json::Value::Bool(*(&(item).is_builtin))),
+                                    ("is_builtin", serde_json::Value::Bool((item).is_builtin)),
                                     (
                                         "title",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).title).len()),
+                                            serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     (
                                         "description",
-                                        match (&(item).description).as_ref() {
+                                        match (item).description.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -94,19 +96,19 @@ impl InterfaceContract for PublicLoginEntriesOutput {
                                             None => serde_json::Value::Null,
                                         },
                                     ),
-                                    ("sort_order", serde_json::json!(*(&(item).sort_order))),
+                                    ("sort_order", serde_json::json!((item).sort_order)),
                                     (
                                         "public_ui_block",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).public_ui_block).len()),
+                                            serde_json::json!((item).public_ui_block.len()),
                                         )]),
                                     ),
                                     (
                                         "public_variables",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).public_variables).len()),
+                                            serde_json::json!((item).public_variables.len()),
                                         )]),
                                     ),
                                 ]))

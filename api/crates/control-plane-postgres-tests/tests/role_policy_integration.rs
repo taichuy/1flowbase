@@ -135,6 +135,68 @@ async fn ac_003_bootstrap_does_not_recreate_deleted_workspace_role_templates() {
 }
 
 #[tokio::test]
+async fn bootstrap_initializes_root_credit_without_charges_but_keeps_members_charge_enabled() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let config = BootstrapConfig {
+        workspace_name: "1flowbase".to_string(),
+        root_account: "root".to_string(),
+        root_email: "root@example.com".to_string(),
+        root_password_hash: "hash".to_string(),
+        root_name: "Root".to_string(),
+        root_nickname: "Root".to_string(),
+    };
+    let bootstrap = BootstrapService::new(store.clone())
+        .run(&config)
+        .await
+        .unwrap();
+
+    let root_charge_enabled: bool = sqlx::query_scalar(
+        "select charge_enabled from user_credit_accounts where workspace_id = $1 and user_id = $2 and credit_unit = 'USD'",
+    )
+    .bind(bootstrap.workspace_id)
+    .bind(bootstrap.root_user_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(!root_charge_enabled);
+
+    let member_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into users (
+            id, account, email, phone, password_hash, name, nickname, avatar_url, introduction,
+            default_display_role, email_login_enabled, phone_login_enabled, status, session_version
+        )
+        values ($1, 'member', 'member@example.com', null, 'hash', 'Member', 'Member', null, '', 'member', true, false, 'active', 1)
+        "#,
+    )
+    .bind(member_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into workspace_memberships (id, workspace_id, user_id, introduction) values ($1, $2, $3, '')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(bootstrap.workspace_id)
+    .bind(member_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let member_charge_enabled: bool = sqlx::query_scalar(
+        "select charge_enabled from user_credit_accounts where workspace_id = $1 and user_id = $2 and credit_unit = 'USD'",
+    )
+    .bind(bootstrap.workspace_id)
+    .bind(member_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(member_charge_enabled);
+}
+
+#[tokio::test]
 async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restricted_default() {
     let (store, workspace_id) = bootstrapped_store().await;
 

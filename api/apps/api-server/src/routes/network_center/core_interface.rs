@@ -146,14 +146,14 @@ impl InterfaceContract for NetworkCenterInput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("config", mp::json_summary(&(_field_0).config)),
@@ -198,12 +198,12 @@ impl InterfaceContract for NetworkCenterInput {
                             "consumer_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).consumer_kind).len()),
+                                serde_json::json!((_field_0).consumer_kind.len()),
                             )]),
                         ),
                         (
                             "consumer_reference",
-                            match (&(_field_0).consumer_reference).as_ref() {
+                            match (_field_0).consumer_reference.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -212,17 +212,18 @@ impl InterfaceContract for NetworkCenterInput {
                             },
                         ),
                         ("pool_member_ids", {
-                            if (&(_field_0).pool_member_ids).len() > 32 {
+                            if (_field_0).pool_member_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).pool_member_ids)
+                                (_field_0)
+                                    .pool_member_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                     ]),
                 ),
             ]),
@@ -240,20 +241,18 @@ impl InterfaceContract for NetworkCenterInput {
                     "body",
                     mp::object_value(&[
                         ("pool_member_ids", {
-                            if (&(_field_body).pool_member_ids).len() > 32 {
+                            if (_field_body).pool_member_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_body).pool_member_ids)
+                                (_field_body)
+                                    .pool_member_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        (
-                            "enabled",
-                            serde_json::Value::Bool(*(&(_field_body).enabled)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                     ]),
                 ),
             ]),
@@ -401,7 +400,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "extension_category",
-                                        match (&(item).extension_category).as_ref() {
+                                        match (item).extension_category.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -411,7 +410,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ),
                                     (
                                         "extension_organization",
-                                        match (&(item).extension_organization).as_ref() {
+                                        match (item).extension_organization.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -421,7 +420,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ),
                                     (
                                         "extension_artifact_id",
-                                        match (&(item).extension_artifact_id).as_ref() {
+                                        match (item).extension_artifact_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
@@ -431,14 +430,14 @@ impl InterfaceContract for NetworkCenterOutput {
                                         "display_name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).display_name).len()),
+                                            serde_json::json!((item).display_name.len()),
                                         )]),
                                     ),
                                     (
                                         "description",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).description).len()),
+                                            serde_json::json!((item).description.len()),
                                         )]),
                                     ),
                                     ("lifecycle", mp::text(&(item).lifecycle)?),
@@ -446,12 +445,12 @@ impl InterfaceContract for NetworkCenterOutput {
                                         "health_status",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).health_status).len()),
+                                            serde_json::json!((item).health_status.len()),
                                         )]),
                                     ),
                                     (
                                         "last_sync_error",
-                                        match (&(item).last_sync_error).as_ref() {
+                                        match (item).last_sync_error.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -461,7 +460,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                     ),
                                     (
                                         "last_synced_at",
-                                        match (&(item).last_synced_at).as_ref() {
+                                        match (item).last_synced_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -470,11 +469,12 @@ impl InterfaceContract for NetworkCenterOutput {
                                         },
                                     ),
                                     ("egresses", {
-                                        if (&(item).egresses).len() > 32 {
+                                        if (item).egresses.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).egresses)
+                                            (item)
+                                                .egresses
                                                 .iter()
                                                 .map(|item| {
                                                     Some(mp::object_value(&[
@@ -482,8 +482,8 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "provider_egress_key",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .provider_egress_key)
+                                                                serde_json::json!((item)
+                                                                    .provider_egress_key
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -491,14 +491,14 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "display_name",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .display_name)
+                                                                serde_json::json!((item)
+                                                                    .display_name
                                                                     .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "region",
-                                                            match (&(item).region).as_ref() {
+                                                            match (item).region.as_ref() {
                                                                 Some(item) => {
                                                                     mp::object_value(&[(
                                                                         "byte_count",
@@ -514,17 +514,17 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "tags",
                                                             mp::object_value(&[(
                                                                 "item_count",
-                                                                serde_json::json!(
-                                                                    (&(item).tags).len()
-                                                                ),
+                                                                serde_json::json!((item)
+                                                                    .tags
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "availability",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .availability)
+                                                                serde_json::json!((item)
+                                                                    .availability
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -532,8 +532,8 @@ impl InterfaceContract for NetworkCenterOutput {
                                                             "synced_at",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .synced_at)
+                                                                serde_json::json!((item)
+                                                                    .synced_at
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -564,7 +564,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                 Some(mp::object_value(&[
                                     (
                                         "installation_id",
-                                        match (&(item).installation_id).as_ref() {
+                                        match (item).installation_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
@@ -574,7 +574,7 @@ impl InterfaceContract for NetworkCenterOutput {
                                         "display_name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).display_name).len()),
+                                            serde_json::json!((item).display_name.len()),
                                         )]),
                                     ),
                                     ("form_schema", mp::json_summary(&(item).form_schema)),
@@ -592,7 +592,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         ("id", mp::text(&(_field_0).id)?),
                         (
                             "extension_category",
-                            match (&(_field_0).extension_category).as_ref() {
+                            match (_field_0).extension_category.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -602,7 +602,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         ),
                         (
                             "extension_organization",
-                            match (&(_field_0).extension_organization).as_ref() {
+                            match (_field_0).extension_organization.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -612,7 +612,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         ),
                         (
                             "extension_artifact_id",
-                            match (&(_field_0).extension_artifact_id).as_ref() {
+                            match (_field_0).extension_artifact_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -622,14 +622,14 @@ impl InterfaceContract for NetworkCenterOutput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("lifecycle", mp::text(&(_field_0).lifecycle)?),
@@ -637,12 +637,12 @@ impl InterfaceContract for NetworkCenterOutput {
                             "health_status",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).health_status).len()),
+                                serde_json::json!((_field_0).health_status.len()),
                             )]),
                         ),
                         (
                             "last_sync_error",
-                            match (&(_field_0).last_sync_error).as_ref() {
+                            match (_field_0).last_sync_error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -652,7 +652,7 @@ impl InterfaceContract for NetworkCenterOutput {
                         ),
                         (
                             "last_synced_at",
-                            match (&(_field_0).last_synced_at).as_ref() {
+                            match (_field_0).last_synced_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -661,11 +661,12 @@ impl InterfaceContract for NetworkCenterOutput {
                             },
                         ),
                         ("egresses", {
-                            if (&(_field_0).egresses).len() > 32 {
+                            if (_field_0).egresses.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).egresses)
+                                (_field_0)
+                                    .egresses
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -673,8 +674,8 @@ impl InterfaceContract for NetworkCenterOutput {
                                                 "provider_egress_key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item)
-                                                        .provider_egress_key)
+                                                    serde_json::json!((item)
+                                                        .provider_egress_key
                                                         .len()),
                                                 )]),
                                             ),
@@ -682,12 +683,12 @@ impl InterfaceContract for NetworkCenterOutput {
                                                 "display_name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).display_name).len()),
+                                                    serde_json::json!((item).display_name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "region",
-                                                match (&(item).region).as_ref() {
+                                                match (item).region.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -699,21 +700,21 @@ impl InterfaceContract for NetworkCenterOutput {
                                                 "tags",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).tags).len()),
+                                                    serde_json::json!((item).tags.len()),
                                                 )]),
                                             ),
                                             (
                                                 "availability",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).availability).len()),
+                                                    serde_json::json!((item).availability.len()),
                                                 )]),
                                             ),
                                             (
                                                 "synced_at",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).synced_at).len()),
+                                                    serde_json::json!((item).synced_at.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -740,12 +741,12 @@ impl InterfaceContract for NetworkCenterOutput {
                                         "consumer_kind",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).consumer_kind).len()),
+                                            serde_json::json!((item).consumer_kind.len()),
                                         )]),
                                     ),
                                     (
                                         "consumer_reference",
-                                        match (&(item).consumer_reference).as_ref() {
+                                        match (item).consumer_reference.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -754,22 +755,23 @@ impl InterfaceContract for NetworkCenterOutput {
                                         },
                                     ),
                                     ("pool_member_ids", {
-                                        if (&(item).pool_member_ids).len() > 32 {
+                                        if (item).pool_member_ids.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).pool_member_ids)
+                                            (item)
+                                                .pool_member_ids
                                                 .iter()
-                                                .map(|item| Some(mp::text(item)?))
+                                                .map(|item| mp::text(item))
                                                 .collect::<Option<Vec<_>>>()?,
                                         )
                                     }),
-                                    ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
+                                    ("enabled", serde_json::Value::Bool((item).enabled)),
                                     (
                                         "failure_policy",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).failure_policy).len()),
+                                            serde_json::json!((item).failure_policy.len()),
                                         )]),
                                     ),
                                 ]))
@@ -788,12 +790,12 @@ impl InterfaceContract for NetworkCenterOutput {
                             "consumer_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).consumer_kind).len()),
+                                serde_json::json!((_field_0).consumer_kind.len()),
                             )]),
                         ),
                         (
                             "consumer_reference",
-                            match (&(_field_0).consumer_reference).as_ref() {
+                            match (_field_0).consumer_reference.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -802,22 +804,23 @@ impl InterfaceContract for NetworkCenterOutput {
                             },
                         ),
                         ("pool_member_ids", {
-                            if (&(_field_0).pool_member_ids).len() > 32 {
+                            if (_field_0).pool_member_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).pool_member_ids)
+                                (_field_0)
+                                    .pool_member_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         (
                             "failure_policy",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).failure_policy).len()),
+                                serde_json::json!((_field_0).failure_policy.len()),
                             )]),
                         ),
                     ]),

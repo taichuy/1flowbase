@@ -3,6 +3,13 @@ import { vi } from 'vitest';
 
 window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
 
+if (!document.queryCommandSupported) {
+  Object.defineProperty(document, 'queryCommandSupported', {
+    configurable: true,
+    value: vi.fn(() => false)
+  });
+}
+
 const originalConsoleError = console.error.bind(console);
 const originalConsoleWarn = console.warn.bind(console);
 

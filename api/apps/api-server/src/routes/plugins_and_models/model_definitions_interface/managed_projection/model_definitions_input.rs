@@ -266,14 +266,14 @@ impl InterfaceContract for ModelDefinitionsInput {
                     mp::object_value(&[
                         (
                             "data_source_id",
-                            match (&(_field_query).data_source_id).as_ref() {
+                            match (_field_query).data_source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "filter",
-                            match (&(_field_query).filter).as_ref() {
+                            match (_field_query).filter.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -295,7 +295,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ("data_source_id", mp::text(&(_field_0).data_source_id)?),
                         (
                             "resource_key",
-                            match (&(_field_0).resource_key).as_ref() {
+                            match (_field_0).resource_key.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -319,14 +319,14 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "scope_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).scope_kind).len()),
+                                serde_json::json!((_field_0).scope_kind.len()),
                             )]),
                         ),
                         (
                             "template_provider",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).template_provider).len()),
+                                serde_json::json!((_field_0).template_provider.len()),
                             )]),
                         ),
                         ("template_code", mp::text(&(_field_0).template_code)?),
@@ -336,12 +336,12 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         (
                             "description",
-                            match (&(_field_0).description).as_ref() {
+                            match (_field_0).description.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -351,7 +351,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "status",
-                            match (&(_field_0).status).as_ref() {
+                            match (_field_0).status.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -391,7 +391,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                     mp::object_value(&[
                         (
                             "title",
-                            match (&(_field_body).title).as_ref() {
+                            match (_field_body).title.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -401,7 +401,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "description",
-                            match (&(_field_body).description).as_ref() {
+                            match (_field_body).description.as_ref() {
                                 Some(item) => match (item).as_ref() {
                                     Some(item) => mp::object_value(&[(
                                         "byte_count",
@@ -414,14 +414,14 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "status",
-                            match (&(_field_body).status).as_ref() {
+                            match (_field_body).status.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "external_table_id",
-                            match (&(_field_body).external_table_id).as_ref() {
+                            match (_field_body).external_table_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -448,22 +448,19 @@ impl InterfaceContract for ModelDefinitionsInput {
                     mp::object_value(&[
                         (
                             "filter_by_tk",
-                            match (&(_field_0).filter_by_tk).as_ref() {
+                            match (_field_0).filter_by_tk.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "filter",
-                            match (&(_field_0).filter).as_ref() {
+                            match (_field_0).filter.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        (
-                            "confirmed",
-                            serde_json::Value::Bool(*(&(_field_0).confirmed)),
-                        ),
+                        ("confirmed", serde_json::Value::Bool((_field_0).confirmed)),
                     ]),
                 ),
             ]),
@@ -485,12 +482,12 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).title).len()),
+                                serde_json::json!((_field_body).title.len()),
                             )]),
                         ),
                         (
                             "description",
-                            match (&(_field_body).description).as_ref() {
+                            match (_field_body).description.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -500,7 +497,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "external_field_key",
-                            match (&(_field_body).external_field_key).as_ref() {
+                            match (_field_body).external_field_key.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -512,34 +509,34 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "field_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).field_kind).len()),
+                                serde_json::json!((_field_body).field_kind.len()),
                             )]),
                         ),
                         (
                             "is_required",
-                            serde_json::Value::Bool(*(&(_field_body).is_required)),
+                            serde_json::Value::Bool((_field_body).is_required),
                         ),
                         (
                             "api_required",
-                            match (&(_field_body).api_required).as_ref() {
+                            match (_field_body).api_required.as_ref() {
                                 Some(item) => serde_json::Value::Bool(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "is_unique",
-                            serde_json::Value::Bool(*(&(_field_body).is_unique)),
+                            serde_json::Value::Bool((_field_body).is_unique),
                         ),
                         (
                             "default_value",
-                            match (&(_field_body).default_value).as_ref() {
+                            match (_field_body).default_value.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "display_interface",
-                            match (&(_field_body).display_interface).as_ref() {
+                            match (_field_body).display_interface.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -553,7 +550,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "relation_target_model_id",
-                            match (&(_field_body).relation_target_model_id).as_ref() {
+                            match (_field_body).relation_target_model_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -584,12 +581,12 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).title).len()),
+                                serde_json::json!((_field_body).title.len()),
                             )]),
                         ),
                         (
                             "description",
-                            match (&(_field_body).description).as_ref() {
+                            match (_field_body).description.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -599,29 +596,29 @@ impl InterfaceContract for ModelDefinitionsInput {
                         ),
                         (
                             "is_required",
-                            serde_json::Value::Bool(*(&(_field_body).is_required)),
+                            serde_json::Value::Bool((_field_body).is_required),
                         ),
                         (
                             "api_required",
-                            match (&(_field_body).api_required).as_ref() {
+                            match (_field_body).api_required.as_ref() {
                                 Some(item) => serde_json::Value::Bool(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "is_unique",
-                            serde_json::Value::Bool(*(&(_field_body).is_unique)),
+                            serde_json::Value::Bool((_field_body).is_unique),
                         ),
                         (
                             "default_value",
-                            match (&(_field_body).default_value).as_ref() {
+                            match (_field_body).default_value.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "display_interface",
-                            match (&(_field_body).display_interface).as_ref() {
+                            match (_field_body).display_interface.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -671,28 +668,25 @@ impl InterfaceContract for ModelDefinitionsInput {
                             "scope_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).scope_kind).len()),
+                                serde_json::json!((_field_body).scope_kind.len()),
                             )]),
                         ),
                         (
                             "scope_id",
-                            serde_json::Value::String((&(_field_body).scope_id).to_string()),
+                            serde_json::Value::String((_field_body).scope_id.to_string()),
                         ),
-                        (
-                            "enabled",
-                            serde_json::Value::Bool(*(&(_field_body).enabled)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         (
                             "permission_profile",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).permission_profile).len()),
+                                serde_json::json!((_field_body).permission_profile.len()),
                             )]),
                         ),
                         (
                             "confirm_unsafe_external_source_system_all",
                             serde_json::Value::Bool(
-                                *(&(_field_body).confirm_unsafe_external_source_system_all),
+                                (_field_body).confirm_unsafe_external_source_system_all,
                             ),
                         ),
                     ]),
@@ -715,14 +709,14 @@ impl InterfaceContract for ModelDefinitionsInput {
                     mp::object_value(&[
                         (
                             "enabled",
-                            match (&(_field_body).enabled).as_ref() {
+                            match (_field_body).enabled.as_ref() {
                                 Some(item) => serde_json::Value::Bool(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "permission_profile",
-                            match (&(_field_body).permission_profile).as_ref() {
+                            match (_field_body).permission_profile.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -733,7 +727,7 @@ impl InterfaceContract for ModelDefinitionsInput {
                         (
                             "confirm_unsafe_external_source_system_all",
                             serde_json::Value::Bool(
-                                *(&(_field_body).confirm_unsafe_external_source_system_all),
+                                (_field_body).confirm_unsafe_external_source_system_all,
                             ),
                         ),
                     ]),

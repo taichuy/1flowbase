@@ -93,7 +93,7 @@ impl InterfaceContract for ApplicationManagementQueryParams {
         Some(mp::object_value(&[
             (
                 "filter",
-                match (&(self).filter).as_ref() {
+                match (self).filter.as_ref() {
                     Some(item) => {
                         mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                     }
@@ -102,7 +102,7 @@ impl InterfaceContract for ApplicationManagementQueryParams {
             ),
             (
                 "sort",
-                match (&(self).sort).as_ref() {
+                match (self).sort.as_ref() {
                     Some(item) => {
                         mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                     }
@@ -111,14 +111,14 @@ impl InterfaceContract for ApplicationManagementQueryParams {
             ),
             (
                 "page",
-                match (&(self).page).as_ref() {
+                match (self).page.as_ref() {
                     Some(item) => serde_json::json!(*(item)),
                     None => serde_json::Value::Null,
                 },
             ),
             (
                 "page_size",
-                match (&(self).page_size).as_ref() {
+                match (self).page_size.as_ref() {
                     Some(item) => serde_json::json!(*(item)),
                     None => serde_json::Value::Null,
                 },
@@ -146,11 +146,12 @@ impl InterfaceContract for ApplicationManagementPageResponse {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[
             ("items", {
-                if (&(self).items).len() > 32 {
+                if (self).items.len() > 32 {
                     return None;
                 }
                 serde_json::Value::Array(
-                    (&(self).items)
+                    (self)
+                        .items
                         .iter()
                         .map(|item| {
                             Some(mp::object_value(&[
@@ -158,7 +159,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 ("application_type", mp::text(&(item).application_type)?),
                                 (
                                     "workflow_trigger_type",
-                                    match (&(item).workflow_trigger_type).as_ref() {
+                                    match (item).workflow_trigger_type.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
@@ -167,19 +168,19 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                     "name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).name).len()),
+                                        serde_json::json!((item).name.len()),
                                     )]),
                                 ),
                                 (
                                     "description",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).description).len()),
+                                        serde_json::json!((item).description.len()),
                                     )]),
                                 ),
                                 (
                                     "icon",
-                                    match (&(item).icon).as_ref() {
+                                    match (item).icon.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -189,14 +190,14 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                 ),
                                 (
                                     "icon_type",
-                                    match (&(item).icon_type).as_ref() {
+                                    match (item).icon_type.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "icon_background",
-                                    match (&(item).icon_background).as_ref() {
+                                    match (item).icon_background.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -208,24 +209,25 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                     "created_by",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).created_by).len()),
+                                        serde_json::json!((item).created_by.len()),
                                     )]),
                                 ),
                                 (
                                     "created_by_display_name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).created_by_display_name).len()),
+                                        serde_json::json!((item).created_by_display_name.len()),
                                     )]),
                                 ),
                                 ("created_at", mp::text(&(item).created_at)?),
                                 ("updated_at", mp::text(&(item).updated_at)?),
                                 ("tags", {
-                                    if (&(item).tags).len() > 32 {
+                                    if (item).tags.len() > 32 {
                                         return None;
                                     }
                                     serde_json::Value::Array(
-                                        (&(item).tags)
+                                        (item)
+                                            .tags
                                             .iter()
                                             .map(|item| {
                                                 Some(mp::object_value(&[
@@ -234,7 +236,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                                         "name",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(item).name).len()),
+                                                            serde_json::json!((item).name.len()),
                                                         )]),
                                                     ),
                                                 ]))
@@ -246,7 +248,7 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                                     "publication_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).publication_status).len()),
+                                        serde_json::json!((item).publication_status.len()),
                                     )]),
                                 ),
                             ]))
@@ -254,9 +256,9 @@ impl InterfaceContract for ApplicationManagementPageResponse {
                         .collect::<Option<Vec<_>>>()?,
                 )
             }),
-            ("total", serde_json::json!(*(&(self).total))),
-            ("page", serde_json::json!(*(&(self).page))),
-            ("page_size", serde_json::json!(*(&(self).page_size))),
+            ("total", serde_json::json!((self).total)),
+            ("page", serde_json::json!((self).page)),
+            ("page_size", serde_json::json!((self).page_size)),
         ]))
     }
 

@@ -146,12 +146,12 @@ impl InterfaceContract for ApplicationRuntimeTraceExportsOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("content_type", mp::text(&(_field_0).content_type)?),
+                        ("content_type", mp::text((_field_0).content_type)?),
                         (
                             "body",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).body).len()),
+                                serde_json::json!((_field_0).body.len()),
                             )]),
                         ),
                     ]),

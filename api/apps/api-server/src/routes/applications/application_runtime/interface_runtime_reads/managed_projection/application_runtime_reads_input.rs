@@ -206,28 +206,28 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     mp::object_value(&[
                         (
                             "page",
-                            match (&(_field_query).page).as_ref() {
+                            match (_field_query).page.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page_size",
-                            match (&(_field_query).page_size).as_ref() {
+                            match (_field_query).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "time_range_days",
-                            match (&(_field_query).time_range_days).as_ref() {
+                            match (_field_query).time_range_days.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "sort_by",
-                            match (&(_field_query).sort_by).as_ref() {
+                            match (_field_query).sort_by.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -237,7 +237,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "sort_order",
-                            match (&(_field_query).sort_order).as_ref() {
+                            match (_field_query).sort_order.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -247,7 +247,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "cache_mode",
-                            match (&(_field_query).cache_mode).as_ref() {
+                            match (_field_query).cache_mode.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -278,14 +278,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     mp::object_value(&[
                         (
                             "around_run_id",
-                            match (&(_field_query).around_run_id).as_ref() {
+                            match (_field_query).around_run_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before",
-                            match (&(_field_query).before).as_ref() {
+                            match (_field_query).before.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -295,7 +295,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "after",
-                            match (&(_field_query).after).as_ref() {
+                            match (_field_query).after.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -305,7 +305,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "limit",
-                            match (&(_field_query).limit).as_ref() {
+                            match (_field_query).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -336,14 +336,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     mp::object_value(&[
                         (
                             "around_run_id",
-                            match (&(_field_query).around_run_id).as_ref() {
+                            match (_field_query).around_run_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before",
-                            match (&(_field_query).before).as_ref() {
+                            match (_field_query).before.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -353,7 +353,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "after",
-                            match (&(_field_query).after).as_ref() {
+                            match (_field_query).after.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -363,7 +363,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "limit",
-                            match (&(_field_query).limit).as_ref() {
+                            match (_field_query).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -434,14 +434,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "page_size",
-                            match (&(_field_query).page_size).as_ref() {
+                            match (_field_query).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "cursor",
-                            match (&(_field_query).cursor).as_ref() {
+                            match (_field_query).cursor.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -526,7 +526,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     mp::object_value(&[
                         (
                             "from",
-                            match (&(_field_query).from).as_ref() {
+                            match (_field_query).from.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -536,7 +536,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "to",
-                            match (&(_field_query).to).as_ref() {
+                            match (_field_query).to.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -546,14 +546,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                         ),
                         (
                             "time_range_days",
-                            match (&(_field_query).time_range_days).as_ref() {
+                            match (_field_query).time_range_days.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "bucket",
-                            match (&(_field_query).bucket).as_ref() {
+                            match (_field_query).bucket.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -600,14 +600,14 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
                     mp::object_value(&[
                         (
                             "from_sequence",
-                            match (&(_field_query).from_sequence).as_ref() {
+                            match (_field_query).from_sequence.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "limit",
-                            match (&(_field_query).limit).as_ref() {
+                            match (_field_query).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },

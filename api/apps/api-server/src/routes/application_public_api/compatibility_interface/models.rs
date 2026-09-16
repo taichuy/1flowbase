@@ -72,18 +72,19 @@ impl InterfaceContract for CompatibilityModelsOutput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[
             ("models", {
-                if (&(self).models).len() > 32 {
+                if (self).models.len() > 32 {
                     return None;
                 }
                 serde_json::Value::Array(
-                    (&(self).models)
+                    (self)
+                        .models
                         .iter()
                         .map(|item| {
                             Some(mp::object_value(&[
                                 ("id", mp::text(&(item).id)?),
                                 (
                                     "name",
-                                    match (&(item).name).as_ref() {
+                                    match (item).name.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -93,14 +94,14 @@ impl InterfaceContract for CompatibilityModelsOutput {
                                 ),
                                 (
                                     "context_window",
-                                    match (&(item).context_window).as_ref() {
+                                    match (item).context_window.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "max_context_window",
-                                    match (&(item).max_context_window).as_ref() {
+                                    match (item).max_context_window.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
@@ -110,37 +111,31 @@ impl InterfaceContract for CompatibilityModelsOutput {
                                     mp::object_value(&[
                                         (
                                             "reasoning",
-                                            serde_json::Value::Bool(
-                                                *(&(&(item).capabilities).reasoning),
-                                            ),
+                                            serde_json::Value::Bool((item).capabilities.reasoning),
                                         ),
                                         (
                                             "tool_call",
-                                            serde_json::Value::Bool(
-                                                *(&(&(item).capabilities).tool_call),
-                                            ),
+                                            serde_json::Value::Bool((item).capabilities.tool_call),
                                         ),
                                         (
                                             "multimodal",
-                                            serde_json::Value::Bool(
-                                                *(&(&(item).capabilities).multimodal),
-                                            ),
+                                            serde_json::Value::Bool((item).capabilities.multimodal),
                                         ),
                                         (
                                             "structured_output",
                                             serde_json::Value::Bool(
-                                                *(&(&(item).capabilities).structured_output),
+                                                (item).capabilities.structured_output,
                                             ),
                                         ),
                                     ]),
                                 ),
                                 (
                                     "reasoning",
-                                    match (&(item).reasoning).as_ref() {
+                                    match (item).reasoning.as_ref() {
                                         Some(item) => mp::object_value(&[
                                             (
                                                 "default_effort",
-                                                match (&(item).default_effort).as_ref() {
+                                                match (item).default_effort.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -152,9 +147,9 @@ impl InterfaceContract for CompatibilityModelsOutput {
                                                 "supported_efforts",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!(
-                                                        (&(item).supported_efforts).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .supported_efforts
+                                                        .len()),
                                                 )]),
                                             ),
                                         ]),
@@ -168,7 +163,7 @@ impl InterfaceContract for CompatibilityModelsOutput {
             }),
             (
                 "publication_created_at",
-                serde_json::json!(*(&(self).publication_created_at)),
+                serde_json::json!((self).publication_created_at),
             ),
         ]))
     }

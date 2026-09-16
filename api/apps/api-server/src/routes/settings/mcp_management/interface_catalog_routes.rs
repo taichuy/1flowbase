@@ -80,7 +80,7 @@ impl InterfaceContract for McpCatalogInput {
                     "0",
                     mp::object_value(&[(
                         "bindable_only",
-                        match (&(_field_0).bindable_only).as_ref() {
+                        match (_field_0).bindable_only.as_ref() {
                             Some(item) => serde_json::Value::Bool(*(item)),
                             None => serde_json::Value::Null,
                         },
@@ -94,14 +94,14 @@ impl InterfaceContract for McpCatalogInput {
                     mp::object_value(&[
                         (
                             "instance_id",
-                            match (&(_field_0).instance_id).as_ref() {
+                            match (_field_0).instance_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "path",
-                            match (&(_field_0).path).as_ref() {
+                            match (_field_0).path.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -111,7 +111,7 @@ impl InterfaceContract for McpCatalogInput {
                         ),
                         (
                             "keywords",
-                            match (&(_field_0).keywords).as_ref() {
+                            match (_field_0).keywords.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "item_count",
                                     serde_json::json!((item).len()),
@@ -121,14 +121,14 @@ impl InterfaceContract for McpCatalogInput {
                         ),
                         (
                             "depth",
-                            match (&(_field_0).depth).as_ref() {
+                            match (_field_0).depth.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "path_regex",
-                            match (&(_field_0).path_regex).as_ref() {
+                            match (_field_0).path_regex.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -138,7 +138,7 @@ impl InterfaceContract for McpCatalogInput {
                         ),
                         (
                             "limit",
-                            match (&(_field_0).limit).as_ref() {
+                            match (_field_0).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -248,11 +248,12 @@ impl InterfaceContract for McpCatalogOutput {
                     "0",
                     mp::object_value(&[
                         ("instances", {
-                            if (&(_field_0).instances).len() > 32 {
+                            if (_field_0).instances.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).instances)
+                                (_field_0)
+                                    .instances
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -263,12 +264,12 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description_short",
-                                                match (&(item).description_short).as_ref() {
+                                                match (item).description_short.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -281,30 +282,28 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "default_entry_path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).default_entry_path).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .default_entry_path
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "webmcp_exposure",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).webmcp_exposure).len()
-                                                    ),
+                                                    serde_json::json!((item).webmcp_exposure.len()),
                                                 )]),
                                             ),
                                             (
                                                 "managed_by",
-                                                match (&(item).managed_by).as_ref() {
+                                                match (item).managed_by.as_ref() {
                                                     Some(item) => mp::object_value(&[
                                                         (
                                                             "organization",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .organization)
+                                                                serde_json::json!((item)
+                                                                    .organization
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -321,14 +320,14 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "created_by",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).created_by).len()),
+                                                    serde_json::json!((item).created_by.len()),
                                                 )]),
                                             ),
                                             (
                                                 "updated_by",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).updated_by).len()),
+                                                    serde_json::json!((item).updated_by.len()),
                                                 )]),
                                             ),
                                             ("created_at", mp::text(&(item).created_at)?),
@@ -340,9 +339,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "prefix",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .llm_tool_registration)
-                                                                .prefix)
+                                                            serde_json::json!((item)
+                                                                .llm_tool_registration
+                                                                .prefix
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -350,9 +349,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "tools",
                                                         mp::object_value(&[(
                                                             "item_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .llm_tool_registration)
-                                                                .tools)
+                                                            serde_json::json!((item)
+                                                                .llm_tool_registration
+                                                                .tools
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -364,11 +363,12 @@ impl InterfaceContract for McpCatalogOutput {
                             )
                         }),
                         ("groups", {
-                            if (&(_field_0).groups).len() > 32 {
+                            if (_field_0).groups.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).groups)
+                                (_field_0)
+                                    .groups
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -381,19 +381,19 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).path).len()),
+                                                    serde_json::json!((item).path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "display_name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).display_name).len()),
+                                                    serde_json::json!((item).display_name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description_short",
-                                                match (&(item).description_short).as_ref() {
+                                                match (item).description_short.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -401,31 +401,26 @@ impl InterfaceContract for McpCatalogOutput {
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            (
-                                                "enabled",
-                                                serde_json::Value::Bool(*(&(item).enabled)),
-                                            ),
-                                            (
-                                                "sort_order",
-                                                serde_json::json!(*(&(item).sort_order)),
-                                            ),
+                                            ("enabled", serde_json::Value::Bool((item).enabled)),
+                                            ("sort_order", serde_json::json!((item).sort_order)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         ("tools", {
-                            if (&(_field_0).tools).len() > 32 {
+                            if (_field_0).tools.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).tools).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).short_description).len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).full_description).len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (&(item).permission_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((&(item).risk_level).len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool(*(&(item).des_id_required))), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (&(item).availability_reason).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!(*(&(item).revision))), ("managed_by",match (&(item).managed_by).as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((&(item).organization).len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).tools.iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((item).short_description.len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((item).full_description.len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (item).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((item).risk_level.len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool((item).des_id_required)), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (item).availability_reason.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((item).revision)), ("managed_by",match (item).managed_by.as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("bindings", {
-                            if (&(_field_0).bindings).len() > 32 {
+                            if (_field_0).bindings.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).bindings)
+                                (_field_0)
+                                    .bindings
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -439,13 +434,13 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "group_path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group_path).len()),
+                                                    serde_json::json!((item).group_path.len()),
                                                 )]),
                                             ),
                                             ("tool_id", mp::text(&(item).tool_id)?),
                                             (
                                                 "display_alias",
-                                                match (&(item).display_alias).as_ref() {
+                                                match (item).display_alias.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -453,25 +448,20 @@ impl InterfaceContract for McpCatalogOutput {
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            (
-                                                "visible",
-                                                serde_json::Value::Bool(*(&(item).visible)),
-                                            ),
-                                            (
-                                                "sort_order",
-                                                serde_json::json!(*(&(item).sort_order)),
-                                            ),
+                                            ("visible", serde_json::Value::Bool((item).visible)),
+                                            ("sort_order", serde_json::json!((item).sort_order)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         ("discovery_policies", {
-                            if (&(_field_0).discovery_policies).len() > 32 {
+                            if (_field_0).discovery_policies.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).discovery_policies)
+                                (_field_0)
+                                    .discovery_policies
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -484,21 +474,19 @@ impl InterfaceContract for McpCatalogOutput {
                                             ("instance_id", mp::text(&(item).instance_id)?),
                                             (
                                                 "list_default_limit",
-                                                serde_json::json!(*(&(item).list_default_limit)),
+                                                serde_json::json!((item).list_default_limit),
                                             ),
                                             (
                                                 "list_max_depth",
-                                                serde_json::json!(*(&(item).list_max_depth)),
+                                                serde_json::json!((item).list_max_depth),
                                             ),
                                             (
                                                 "list_regex_enabled",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).list_regex_enabled),
-                                                ),
+                                                serde_json::Value::Bool((item).list_regex_enabled),
                                             ),
                                             (
                                                 "list_regex_max_length",
-                                                serde_json::json!(*(&(item).list_regex_max_length)),
+                                                serde_json::json!((item).list_regex_max_length),
                                             ),
                                             (
                                                 "list_return_fields",
@@ -532,29 +520,30 @@ impl InterfaceContract for McpCatalogOutput {
                                         "path",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).path).len()),
+                                            serde_json::json!((item).path.len()),
                                         )]),
                                     ),
                                     (
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "short_description",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).short_description).len()),
+                                            serde_json::json!((item).short_description.len()),
                                         )]),
                                     ),
                                     ("parameter_descriptors", {
-                                        if (&(item).parameter_descriptors).len() > 32 {
+                                        if (item).parameter_descriptors.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).parameter_descriptors)
+                                            (item)
+                                                .parameter_descriptors
                                                 .iter()
                                                 .map(|item| {
                                                     Some(mp::object_value(&[
@@ -562,9 +551,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                             "name",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!(
-                                                                    (&(item).name).len()
-                                                                ),
+                                                                serde_json::json!((item)
+                                                                    .name
+                                                                    .len()),
                                                             )]),
                                                         ),
                                                         (
@@ -577,7 +566,7 @@ impl InterfaceContract for McpCatalogOutput {
                                                         ),
                                                         (
                                                             "description",
-                                                            match (&(item).description).as_ref() {
+                                                            match (item).description.as_ref() {
                                                                 Some(item) => {
                                                                     mp::object_value(&[(
                                                                         "byte_count",
@@ -592,7 +581,7 @@ impl InterfaceContract for McpCatalogOutput {
                                                         (
                                                             "required",
                                                             serde_json::Value::Bool(
-                                                                *(&(item).required),
+                                                                (item).required,
                                                             ),
                                                         ),
                                                         (
@@ -611,7 +600,7 @@ impl InterfaceContract for McpCatalogOutput {
                                     ("result_schema", mp::json_summary(&(item).result_schema)),
                                     (
                                         "permission_code",
-                                        match (&(item).permission_code).as_ref() {
+                                        match (item).permission_code.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
@@ -621,13 +610,13 @@ impl InterfaceContract for McpCatalogOutput {
                                         "risk_level",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).risk_level).len()),
+                                            serde_json::json!((item).risk_level.len()),
                                         )]),
                                     ),
-                                    ("bindable", serde_json::Value::Bool(*(&(item).bindable))),
+                                    ("bindable", serde_json::Value::Bool((item).bindable)),
                                     (
                                         "disabled_reason",
-                                        match (&(item).disabled_reason).as_ref() {
+                                        match (item).disabled_reason.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -654,14 +643,14 @@ impl InterfaceContract for McpCatalogOutput {
                                 Some(mp::object_value(&[
                                     (
                                         "id",
-                                        match (&(item).id).as_ref() {
+                                        match (item).id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "item_kind",
-                                        match (&(item).item_kind).as_ref() {
+                                        match (item).item_kind.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -671,7 +660,7 @@ impl InterfaceContract for McpCatalogOutput {
                                     ),
                                     (
                                         "path",
-                                        match (&(item).path).as_ref() {
+                                        match (item).path.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -681,7 +670,7 @@ impl InterfaceContract for McpCatalogOutput {
                                     ),
                                     (
                                         "name",
-                                        match (&(item).name).as_ref() {
+                                        match (item).name.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -691,7 +680,7 @@ impl InterfaceContract for McpCatalogOutput {
                                     ),
                                     (
                                         "description_short",
-                                        match (&(item).description_short).as_ref() {
+                                        match (item).description_short.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -701,14 +690,14 @@ impl InterfaceContract for McpCatalogOutput {
                                     ),
                                     (
                                         "children_count",
-                                        match (&(item).children_count).as_ref() {
+                                        match (item).children_count.as_ref() {
                                             Some(item) => serde_json::json!(*(item)),
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "risk_level",
-                                        match (&(item).risk_level).as_ref() {
+                                        match (item).risk_level.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -728,11 +717,12 @@ impl InterfaceContract for McpCatalogOutput {
                     "0",
                     mp::object_value(&[
                         ("instances", {
-                            if (&(_field_0).instances).len() > 32 {
+                            if (_field_0).instances.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).instances)
+                                (_field_0)
+                                    .instances
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -743,12 +733,12 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description_short",
-                                                match (&(item).description_short).as_ref() {
+                                                match (item).description_short.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -761,30 +751,28 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "default_entry_path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).default_entry_path).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .default_entry_path
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "webmcp_exposure",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).webmcp_exposure).len()
-                                                    ),
+                                                    serde_json::json!((item).webmcp_exposure.len()),
                                                 )]),
                                             ),
                                             (
                                                 "managed_by",
-                                                match (&(item).managed_by).as_ref() {
+                                                match (item).managed_by.as_ref() {
                                                     Some(item) => mp::object_value(&[
                                                         (
                                                             "organization",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .organization)
+                                                                serde_json::json!((item)
+                                                                    .organization
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -801,14 +789,14 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "created_by",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).created_by).len()),
+                                                    serde_json::json!((item).created_by.len()),
                                                 )]),
                                             ),
                                             (
                                                 "updated_by",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).updated_by).len()),
+                                                    serde_json::json!((item).updated_by.len()),
                                                 )]),
                                             ),
                                             ("created_at", mp::text(&(item).created_at)?),
@@ -820,9 +808,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "prefix",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .llm_tool_registration)
-                                                                .prefix)
+                                                            serde_json::json!((item)
+                                                                .llm_tool_registration
+                                                                .prefix
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -830,9 +818,9 @@ impl InterfaceContract for McpCatalogOutput {
                                                         "tools",
                                                         mp::object_value(&[(
                                                             "item_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .llm_tool_registration)
-                                                                .tools)
+                                                            serde_json::json!((item)
+                                                                .llm_tool_registration
+                                                                .tools
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -844,11 +832,12 @@ impl InterfaceContract for McpCatalogOutput {
                             )
                         }),
                         ("groups", {
-                            if (&(_field_0).groups).len() > 32 {
+                            if (_field_0).groups.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).groups)
+                                (_field_0)
+                                    .groups
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -861,19 +850,19 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).path).len()),
+                                                    serde_json::json!((item).path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "display_name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).display_name).len()),
+                                                    serde_json::json!((item).display_name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description_short",
-                                                match (&(item).description_short).as_ref() {
+                                                match (item).description_short.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -881,31 +870,26 @@ impl InterfaceContract for McpCatalogOutput {
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            (
-                                                "enabled",
-                                                serde_json::Value::Bool(*(&(item).enabled)),
-                                            ),
-                                            (
-                                                "sort_order",
-                                                serde_json::json!(*(&(item).sort_order)),
-                                            ),
+                                            ("enabled", serde_json::Value::Bool((item).enabled)),
+                                            ("sort_order", serde_json::json!((item).sort_order)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         ("tools", {
-                            if (&(_field_0).tools).len() > 32 {
+                            if (_field_0).tools.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).tools).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).short_description).len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).full_description).len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (&(item).permission_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((&(item).risk_level).len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool(*(&(item).des_id_required))), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (&(item).availability_reason).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!(*(&(item).revision))), ("managed_by",match (&(item).managed_by).as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((&(item).organization).len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).tools.iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((item).short_description.len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((item).full_description.len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (item).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((item).risk_level.len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool((item).des_id_required)), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (item).availability_reason.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((item).revision)), ("managed_by",match (item).managed_by.as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("bindings", {
-                            if (&(_field_0).bindings).len() > 32 {
+                            if (_field_0).bindings.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).bindings)
+                                (_field_0)
+                                    .bindings
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -919,13 +903,13 @@ impl InterfaceContract for McpCatalogOutput {
                                                 "group_path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group_path).len()),
+                                                    serde_json::json!((item).group_path.len()),
                                                 )]),
                                             ),
                                             ("tool_id", mp::text(&(item).tool_id)?),
                                             (
                                                 "display_alias",
-                                                match (&(item).display_alias).as_ref() {
+                                                match (item).display_alias.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -933,25 +917,20 @@ impl InterfaceContract for McpCatalogOutput {
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
-                                            (
-                                                "visible",
-                                                serde_json::Value::Bool(*(&(item).visible)),
-                                            ),
-                                            (
-                                                "sort_order",
-                                                serde_json::json!(*(&(item).sort_order)),
-                                            ),
+                                            ("visible", serde_json::Value::Bool((item).visible)),
+                                            ("sort_order", serde_json::json!((item).sort_order)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         ("discovery_policies", {
-                            if (&(_field_0).discovery_policies).len() > 32 {
+                            if (_field_0).discovery_policies.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).discovery_policies)
+                                (_field_0)
+                                    .discovery_policies
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -964,21 +943,19 @@ impl InterfaceContract for McpCatalogOutput {
                                             ("instance_id", mp::text(&(item).instance_id)?),
                                             (
                                                 "list_default_limit",
-                                                serde_json::json!(*(&(item).list_default_limit)),
+                                                serde_json::json!((item).list_default_limit),
                                             ),
                                             (
                                                 "list_max_depth",
-                                                serde_json::json!(*(&(item).list_max_depth)),
+                                                serde_json::json!((item).list_max_depth),
                                             ),
                                             (
                                                 "list_regex_enabled",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).list_regex_enabled),
-                                                ),
+                                                serde_json::Value::Bool((item).list_regex_enabled),
                                             ),
                                             (
                                                 "list_regex_max_length",
-                                                serde_json::json!(*(&(item).list_regex_max_length)),
+                                                serde_json::json!((item).list_regex_max_length),
                                             ),
                                             (
                                                 "list_return_fields",

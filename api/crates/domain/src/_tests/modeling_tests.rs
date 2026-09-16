@@ -204,6 +204,7 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("total_tokens", Number, false, false),
         ("input_cache_hit_tokens", Number, false, false),
         ("input_cache_hit_rate", Number, false, false),
+        ("cache_write_tokens", Number, false, false),
         ("started_at", Datetime, true, false),
         ("first_token_at", Datetime, false, false),
         ("finished_at", Datetime, false, false),
@@ -233,6 +234,9 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ),
         include_str!(
             "../../../storage/durable/postgres/migrations/20260818130000_add_provider_request_log_billing_status.sql"
+        ),
+        include_str!(
+            "../../../storage/durable/postgres/migrations/20260909080000_add_request_log_cache_write_tokens.sql"
         ),
     ];
     for (code, field_kind, is_required, is_unique) in expected {

@@ -193,14 +193,16 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
     ) -> Result<LifecycleOutboxRecord> {
         update_claim(
             self,
-            event_id,
-            subscriber_id,
-            worker_id,
-            claim_id,
-            "delivered",
-            None,
-            None,
-            None,
+            LifecycleClaimUpdate {
+                event_id,
+                subscriber_id,
+                worker_id,
+                claim_id,
+                target_status: "delivered",
+                available_at: None,
+                error: None,
+                pause_reason: None,
+            },
         )
         .await
     }
@@ -218,14 +220,16 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         }
         update_claim(
             self,
-            event_id,
-            subscriber_id,
-            worker_id,
-            claim_id,
-            "pending",
-            Some(available_at),
-            Some(error),
-            None,
+            LifecycleClaimUpdate {
+                event_id,
+                subscriber_id,
+                worker_id,
+                claim_id,
+                target_status: "pending",
+                available_at: Some(available_at),
+                error: Some(error),
+                pause_reason: None,
+            },
         )
         .await
     }
@@ -239,30 +243,46 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
     ) -> Result<LifecycleOutboxRecord> {
         update_claim(
             self,
-            event_id,
-            subscriber_id,
-            worker_id,
-            claim_id,
-            "paused",
-            None,
-            None,
-            Some(reason),
+            LifecycleClaimUpdate {
+                event_id,
+                subscriber_id,
+                worker_id,
+                claim_id,
+                target_status: "paused",
+                available_at: None,
+                error: None,
+                pause_reason: Some(reason),
+            },
         )
         .await
     }
 }
 
-async fn update_claim(
-    store: &PgControlPlaneStore,
+struct LifecycleClaimUpdate<'a> {
     event_id: Uuid,
-    subscriber_id: &str,
+    subscriber_id: &'a str,
     worker_id: Uuid,
     claim_id: Uuid,
-    target_status: &str,
+    target_status: &'a str,
     available_at: Option<OffsetDateTime>,
-    error: Option<&str>,
+    error: Option<&'a str>,
     pause_reason: Option<LifecycleDeliveryPauseReason>,
+}
+
+async fn update_claim(
+    store: &PgControlPlaneStore,
+    update: LifecycleClaimUpdate<'_>,
 ) -> Result<LifecycleOutboxRecord> {
+    let LifecycleClaimUpdate {
+        event_id,
+        subscriber_id,
+        worker_id,
+        claim_id,
+        target_status,
+        available_at,
+        error,
+        pause_reason,
+    } = update;
     let mut transaction = store.pool().begin().await?;
     // Serialize sibling ACK rollup on the fact; the last ACK sees all earlier committed siblings.
     sqlx::query("select event_id from lifecycle_outbox where event_id = $1 for update")

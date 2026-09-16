@@ -22,13 +22,14 @@ function read(relativePath) {
 
 test('AC-001/002 code audit references are directly routable and evidence bounded', () => {
   const skill = read('.agents/skills/qa-evaluation/SKILL.md');
+  const auditModel = read('.agents/skills/qa-evaluation/references/audit/code-audit-model.md');
 
   for (const existingTrigger of [
-    'stale or incompatible test expectation',
-    'console settings registry',
-    'API-scope authorization',
-    'scope/error-handling acceptance',
-    'i18n/multilingual key-value hygiene',
+    '失败先归因产品回归',
+    'Settings API / 注册 / operation 授权',
+    '后端 API / 状态 / 插件',
+    '后端 API / 状态 / 插件 / 上游错误 contract',
+    'i18n 资源、语言切换、key 引用',
   ]) {
     assert.match(skill, new RegExp(existingTrigger, 'iu'), `existing trigger must remain: ${existingTrigger}`);
   }
@@ -50,18 +51,23 @@ test('AC-001/002 code audit references are directly routable and evidence bounde
       assert.match(source, new RegExp(`^${heading}$`, 'mu'), `${reference} must include ${heading}`);
     }
 
-    assert.match(
-      skill,
-      new RegExp(`references/audit/${reference.replaceAll('.', '\\.')}`, 'u'),
-      `${reference} must be directly routed from SKILL.md`,
-    );
+    if (reference !== 'code-audit-model.md') {
+      const escapedReference = reference.replaceAll('.', '\\.');
+      assert.match(
+        auditModel,
+        new RegExp(`\`${escapedReference}\``, 'u'),
+        `${reference} must be directly routed from code-audit-model.md`,
+      );
+    }
   }
 
-  assert.match(skill, /数据库|索引|query plan|ephemeral/iu);
-  assert.match(skill, /算法|数据结构|状态机|并发/iu);
-  assert.match(skill, /日志|旁路|可观测性|correlation/iu);
-  assert.match(skill, /测试生命周期|短命测试|harness|测试资产/iu);
-  assert.match(skill, /AI Gateway[\s\S]*MCP Gateway[\s\S]*Application Backend[\s\S]*(?:Native React|低代码)/u);
+  assert.match(skill, /references\/audit\/code-audit-model\.md/u);
+
+  assert.match(auditModel, /数据库|索引|query plan|ephemeral/iu);
+  assert.match(auditModel, /算法|数据结构|状态机|并发/iu);
+  assert.match(auditModel, /日志|旁路|可观测性|correlation/iu);
+  assert.match(auditModel, /测试生命周期|短命测试|harness|测试资产/iu);
+  assert.match(auditModel, /AI Gateway[\s\S]*MCP Gateway[\s\S]*Application Backend[\s\S]*(?:Native React|低代码)/u);
 });
 
 test('AC-009/010 foundation cards and subagent audit protocol keep semantic owners explicit', () => {

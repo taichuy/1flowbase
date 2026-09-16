@@ -84,13 +84,13 @@ impl InterfaceContract for FrontstageCallableDispatchInput {
             (
                 "body",
                 mp::object_value(&[
-                    ("block_id", mp::text(&(&(self).body).block_id)?),
-                    ("method", mp::text(&(&(self).body).method)?),
+                    ("block_id", mp::text(&(self).body.block_id)?),
+                    ("method", mp::text(&(self).body.method)?),
                     (
                         "path",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(&(self).body).path).len()),
+                            serde_json::json!((self).body.path.len()),
                         )]),
                     ),
                     (
@@ -100,17 +100,17 @@ impl InterfaceContract for FrontstageCallableDispatchInput {
                                 "path",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(&(&(self).body).request).path).len()),
+                                    serde_json::json!((self).body.request.path.len()),
                                 )]),
                             ),
                             (
                                 "query",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(&(&(self).body).request).query).len()),
+                                    serde_json::json!((self).body.request.query.len()),
                                 )]),
                             ),
-                            ("body", mp::json_summary(&(&(&(self).body).request).body)),
+                            ("body", mp::json_summary(&(self).body.request.body)),
                         ]),
                     ),
                 ]),
@@ -181,12 +181,12 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        ("status", serde_json::json!((_field_0).status)),
                         (
                             "body",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).body).len()),
+                                serde_json::json!((_field_0).body.len()),
                             )]),
                         ),
                     ]),
@@ -197,12 +197,12 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("status", serde_json::json!(*(&(_field_0).status))),
+                        ("status", serde_json::json!((_field_0).status)),
                         (
                             "body",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).body).len()),
+                                serde_json::json!((_field_0).body.len()),
                             )]),
                         ),
                     ]),

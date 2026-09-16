@@ -54,10 +54,10 @@ impl InterfaceContract for HostInfrastructureProviderConfigInput {
                         "enabled_contracts",
                         mp::object_value(&[(
                             "item_count",
-                            serde_json::json!((&(&(self).body).enabled_contracts).len()),
+                            serde_json::json!((self).body.enabled_contracts.len()),
                         )]),
                     ),
-                    ("config_json", mp::json_summary(&(&(self).body).config_json)),
+                    ("config_json", mp::json_summary(&(self).body.config_json)),
                 ]),
             ),
         ]))
@@ -102,20 +102,20 @@ impl InterfaceContract for HostInfrastructureProviderConfigOutput {
             mp::object_value(&[
                 (
                     "restart_required",
-                    serde_json::Value::Bool(*(&(&(self).response).restart_required)),
+                    serde_json::Value::Bool((self).response.restart_required),
                 ),
                 (
                     "installation_desired_state",
                     mp::object_value(&[(
                         "byte_count",
-                        serde_json::json!((&(&(self).response).installation_desired_state).len()),
+                        serde_json::json!((self).response.installation_desired_state.len()),
                     )]),
                 ),
                 (
                     "provider_config_status",
                     mp::object_value(&[(
                         "byte_count",
-                        serde_json::json!((&(&(self).response).provider_config_status).len()),
+                        serde_json::json!((self).response.provider_config_status.len()),
                     )]),
                 ),
             ]),

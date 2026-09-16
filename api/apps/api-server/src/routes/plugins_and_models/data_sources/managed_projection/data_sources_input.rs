@@ -117,7 +117,7 @@ impl InterfaceContract for DataSourcesInput {
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         ("config_json", mp::json_summary(&(_field_0).config_json)),
@@ -140,7 +140,7 @@ impl InterfaceContract for DataSourcesInput {
                         "default_data_model_status",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_body).default_data_model_status).len()),
+                            serde_json::json!((_field_body).default_data_model_status.len()),
                         )]),
                     )]),
                 ),
@@ -199,19 +199,19 @@ impl InterfaceContract for DataSourcesInput {
                             "resource_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).resource_key).len()),
+                                serde_json::json!((_field_body).resource_key.len()),
                             )]),
                         ),
                         (
                             "limit",
-                            match (&(_field_body).limit).as_ref() {
+                            match (_field_body).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "cursor",
-                            match (&(_field_body).cursor).as_ref() {
+                            match (_field_body).cursor.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -243,14 +243,14 @@ impl InterfaceContract for DataSourcesInput {
                             "resource_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).resource_key).len()),
+                                serde_json::json!((_field_body).resource_key.len()),
                             )]),
                         ),
                         (
                             "template_provider",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).template_provider).len()),
+                                serde_json::json!((_field_body).template_provider.len()),
                             )]),
                         ),
                         ("template_code", mp::text(&(_field_body).template_code)?),

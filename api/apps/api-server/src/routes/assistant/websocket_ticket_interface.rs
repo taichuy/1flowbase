@@ -54,7 +54,7 @@ impl InterfaceContract for AssistantWebSocketTicketInput {
                     "body",
                     mp::object_value(&[(
                         "application_id",
-                        serde_json::Value::String((&(_field_body).application_id).to_string()),
+                        serde_json::Value::String((_field_body).application_id.to_string()),
                     )]),
                 ),
             ]),
@@ -99,13 +99,13 @@ impl InterfaceContract for AssistantWebSocketTicketOutput {
                             "ticket",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).ticket).len()),
+                                serde_json::json!((_field_0).ticket.len()),
                             )]),
                         ),
-                        ("protocol", mp::text(&(_field_0).protocol)?),
+                        ("protocol", mp::text((_field_0).protocol)?),
                         (
                             "expires_in_seconds",
-                            serde_json::json!(*(&(_field_0).expires_in_seconds)),
+                            serde_json::json!((_field_0).expires_in_seconds),
                         ),
                     ]),
                 ),

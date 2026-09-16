@@ -117,6 +117,7 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "model_providers.instances.reset_credits.consume"
                     | "system_backups.status"
                     | "extension_center.contribution_authorizations.view"
+                    | "extension_center.managed_execution.view"
                     | "ui_management.components.create"
                     | "ui_management.components.delete"
                     | "ui_management.components.update"

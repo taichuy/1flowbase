@@ -79,11 +79,12 @@ impl InterfaceContract for ConsoleNavigationOutput {
                     "0",
                     mp::object_value(&[
                         ("route_definitions", {
-                            if (&(_field_0).route_definitions).len() > 32 {
+                            if (_field_0).route_definitions.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).route_definitions)
+                                (_field_0)
+                                    .route_definitions
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -92,21 +93,21 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                                 "surface_key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).surface_key).len()),
+                                                    serde_json::json!((item).surface_key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).path).len()),
+                                                    serde_json::json!((item).path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "surface_kind",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).surface_kind).len()),
+                                                    serde_json::json!((item).surface_kind.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -115,11 +116,12 @@ impl InterfaceContract for ConsoleNavigationOutput {
                             )
                         }),
                         ("navigation_items", {
-                            if (&(_field_0).navigation_items).len() > 32 {
+                            if (_field_0).navigation_items.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).navigation_items)
+                                (_field_0)
+                                    .navigation_items
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -127,7 +129,7 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                             ("route_id", mp::text(&(item).route_id)?),
                                             (
                                                 "parent_item_id",
-                                                match (&(item).parent_item_id).as_ref() {
+                                                match (item).parent_item_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -136,30 +138,29 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                                 "label_key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).label_key).len()),
+                                                    serde_json::json!((item).label_key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "navigation_slot",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).navigation_slot).len()
-                                                    ),
+                                                    serde_json::json!((item).navigation_slot.len()),
                                                 )]),
                                             ),
-                                            ("order", serde_json::json!(*(&(item).order))),
+                                            ("order", serde_json::json!((item).order)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         ("permission_bindings", {
-                            if (&(_field_0).permission_bindings).len() > 32 {
+                            if (_field_0).permission_bindings.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).permission_bindings)
+                                (_field_0)
+                                    .permission_bindings
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -169,16 +170,16 @@ impl InterfaceContract for ConsoleNavigationOutput {
                                                 "permission_codes",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!(
-                                                        (&(item).permission_codes).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .permission_codes
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "requirement",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).requirement).len()),
+                                                    serde_json::json!((item).requirement.len()),
                                                 )]),
                                             ),
                                         ]))

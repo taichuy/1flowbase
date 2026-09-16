@@ -69,14 +69,17 @@ pub struct NetworkEgressHttpClientResolver {
 
 #[derive(Clone)]
 enum NetworkEgressResolverBackend {
-    Configured {
-        store: MainDurableStore,
-        runtime: ApiProviderRuntime,
-        provider_secret_master_key: String,
-        node_id: String,
-    },
+    Configured(Box<ConfiguredNetworkEgressResolverBackend>),
     #[cfg(test)]
     Direct,
+}
+
+#[derive(Clone)]
+struct ConfiguredNetworkEgressResolverBackend {
+    store: MainDurableStore,
+    runtime: ApiProviderRuntime,
+    provider_secret_master_key: String,
+    node_id: String,
 }
 
 /// Owns one acquired lease until the host has completed its consumer operation.
@@ -100,12 +103,12 @@ impl NetworkEgressHttpClientResolver {
         &self,
     ) -> Option<(&MainDurableStore, &ApiProviderRuntime, &String, &String)> {
         match &self.backend {
-            NetworkEgressResolverBackend::Configured {
-                store,
-                runtime,
-                provider_secret_master_key,
-                node_id,
-            } => Some((store, runtime, provider_secret_master_key, node_id)),
+            NetworkEgressResolverBackend::Configured(backend) => Some((
+                &backend.store,
+                &backend.runtime,
+                &backend.provider_secret_master_key,
+                &backend.node_id,
+            )),
             #[cfg(test)]
             NetworkEgressResolverBackend::Direct => None,
         }
@@ -118,12 +121,14 @@ impl NetworkEgressHttpClientResolver {
         node_id: impl Into<String>,
     ) -> Self {
         Self {
-            backend: NetworkEgressResolverBackend::Configured {
-                store,
-                runtime,
-                provider_secret_master_key: provider_secret_master_key.into(),
-                node_id: node_id.into(),
-            },
+            backend: NetworkEgressResolverBackend::Configured(Box::new(
+                ConfiguredNetworkEgressResolverBackend {
+                    store,
+                    runtime,
+                    provider_secret_master_key: provider_secret_master_key.into(),
+                    node_id: node_id.into(),
+                },
+            )),
         }
     }
 

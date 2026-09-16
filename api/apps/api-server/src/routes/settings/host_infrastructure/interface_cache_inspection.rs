@@ -103,7 +103,7 @@ impl InterfaceContract for CacheInspectionInput {
                         "key",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_body).key).len()),
+                            serde_json::json!((_field_body).key.len()),
                         )]),
                     )]),
                 ),
@@ -124,7 +124,7 @@ impl InterfaceContract for CacheInspectionInput {
                         "key",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_body).key).len()),
+                            serde_json::json!((_field_body).key.len()),
                         )]),
                     )]),
                 ),
@@ -266,69 +266,52 @@ impl InterfaceContract for CacheInspectionOutput {
                     mp::object_value(&[
                         (
                             "provider_code",
-                            match (&(_field_0).provider_code).as_ref() {
+                            match (_field_0).provider_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        (
-                            "can_manage",
-                            serde_json::Value::Bool(*(&(_field_0).can_manage)),
-                        ),
+                        ("can_manage", serde_json::Value::Bool((_field_0).can_manage)),
                         (
                             "capabilities",
                             mp::object_value(&[
                                 (
                                     "list_domains",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).list_domains),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.list_domains),
                                 ),
                                 (
                                     "list_entries",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).list_entries),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.list_entries),
                                 ),
                                 (
                                     "reveal_value",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).reveal_value),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.reveal_value),
                                 ),
                                 (
                                     "clear_entry",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).clear_entry),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.clear_entry),
                                 ),
                                 (
                                     "clear_domain",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).clear_domain),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.clear_domain),
                                 ),
                             ]),
                         ),
                         ("domains", {
-                            if (&(_field_0).domains).len() > 32 {
+                            if (_field_0).domains.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).domains)
+                                (_field_0)
+                                    .domains
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             ("domain_code", mp::text(&(item).domain_code)?),
-                                            (
-                                                "entry_count",
-                                                serde_json::json!(*(&(item).entry_count)),
-                                            ),
+                                            ("entry_count", serde_json::json!((item).entry_count)),
                                             (
                                                 "total_value_size_bytes",
-                                                serde_json::json!(
-                                                    *(&(item).total_value_size_bytes)
-                                                ),
+                                                serde_json::json!((item).total_value_size_bytes),
                                             ),
                                         ]))
                                     })
@@ -349,42 +332,33 @@ impl InterfaceContract for CacheInspectionOutput {
                             mp::object_value(&[
                                 (
                                     "list_domains",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).list_domains),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.list_domains),
                                 ),
                                 (
                                     "list_entries",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).list_entries),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.list_entries),
                                 ),
                                 (
                                     "reveal_value",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).reveal_value),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.reveal_value),
                                 ),
                                 (
                                     "clear_entry",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).clear_entry),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.clear_entry),
                                 ),
                                 (
                                     "clear_domain",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).capabilities).clear_domain),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).capabilities.clear_domain),
                                 ),
                             ]),
                         ),
                         ("entries", {
-                            if (&(_field_0).entries).len() > 32 {
+                            if (_field_0).entries.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).entries)
+                                (_field_0)
+                                    .entries
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -393,30 +367,30 @@ impl InterfaceContract for CacheInspectionOutput {
                                                 "key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).key).len()),
+                                                    serde_json::json!((item).key.len()),
                                                 )]),
                                             ),
                                             (
                                                 "value_size_bytes",
-                                                serde_json::json!(*(&(item).value_size_bytes)),
+                                                serde_json::json!((item).value_size_bytes),
                                             ),
                                             (
                                                 "ttl_seconds",
-                                                match (&(item).ttl_seconds).as_ref() {
+                                                match (item).ttl_seconds.as_ref() {
                                                     Some(item) => serde_json::json!(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "created_at_unix",
-                                                match (&(item).created_at_unix).as_ref() {
+                                                match (item).created_at_unix.as_ref() {
                                                     Some(item) => serde_json::json!(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "expires_at_unix",
-                                                match (&(item).expires_at_unix).as_ref() {
+                                                match (item).expires_at_unix.as_ref() {
                                                     Some(item) => serde_json::json!(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -437,38 +411,35 @@ impl InterfaceContract for CacheInspectionOutput {
                         (
                             "metadata",
                             mp::object_value(&[
-                                (
-                                    "domain_code",
-                                    mp::text(&(&(_field_0).metadata).domain_code)?,
-                                ),
+                                ("domain_code", mp::text(&(_field_0).metadata.domain_code)?),
                                 (
                                     "key",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).metadata).key).len()),
+                                        serde_json::json!((_field_0).metadata.key.len()),
                                     )]),
                                 ),
                                 (
                                     "value_size_bytes",
-                                    serde_json::json!(*(&(&(_field_0).metadata).value_size_bytes)),
+                                    serde_json::json!((_field_0).metadata.value_size_bytes),
                                 ),
                                 (
                                     "ttl_seconds",
-                                    match (&(&(_field_0).metadata).ttl_seconds).as_ref() {
+                                    match (_field_0).metadata.ttl_seconds.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "created_at_unix",
-                                    match (&(&(_field_0).metadata).created_at_unix).as_ref() {
+                                    match (_field_0).metadata.created_at_unix.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "expires_at_unix",
-                                    match (&(&(_field_0).metadata).expires_at_unix).as_ref() {
+                                    match (_field_0).metadata.expires_at_unix.as_ref() {
                                         Some(item) => serde_json::json!(*(item)),
                                         None => serde_json::Value::Null,
                                     },
@@ -486,10 +457,7 @@ impl InterfaceContract for CacheInspectionOutput {
                 ),
                 (
                     "0",
-                    mp::object_value(&[(
-                        "cleared",
-                        serde_json::Value::Bool(*(&(_field_0).cleared)),
-                    )]),
+                    mp::object_value(&[("cleared", serde_json::Value::Bool((_field_0).cleared))]),
                 ),
             ]),
             Self::DomainCleared(_field_0) => mp::object_value(&[
@@ -501,7 +469,7 @@ impl InterfaceContract for CacheInspectionOutput {
                     "0",
                     mp::object_value(&[(
                         "cleared_count",
-                        serde_json::json!(*(&(_field_0).cleared_count)),
+                        serde_json::json!((_field_0).cleared_count),
                     )]),
                 ),
             ]),

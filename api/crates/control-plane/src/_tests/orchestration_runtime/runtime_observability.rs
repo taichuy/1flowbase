@@ -360,7 +360,7 @@ async fn live_debug_persists_llm_debug_payload_without_polluting_public_outputs(
     assert!(llm_node.output_payload.get("text").is_some());
     assert_eq!(
         llm_node.metrics_payload["usage"]["total_tokens"],
-        serde_json::json!(5)
+        serde_json::json!(12)
     );
     assert_eq!(
         llm_node.debug_payload["assistant_message"]["content"],
@@ -646,8 +646,8 @@ async fn llm_turn_records_context_projection_and_usage_ledger() {
         )
     );
     assert_eq!(usage.len(), 1);
-    assert_eq!(usage[0].input_tokens, Some(9));
-    assert_eq!(usage[0].cache_read_tokens, Some(3));
+    assert_eq!(usage[0].input_tokens, Some(5));
+    assert_eq!(usage[0].cache_read_tokens, None);
     assert_eq!(usage[0].usage_status, domain::UsageLedgerStatus::Recorded);
 }
 

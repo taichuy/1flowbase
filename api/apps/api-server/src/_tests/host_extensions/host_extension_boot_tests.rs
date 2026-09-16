@@ -22,9 +22,7 @@ fn builtin_host_extensions_include_plan_f_official_hosts() {
     );
 }
 
-use control_plane::ports::{
-    AuthRepository, PluginRepository, ReviseUiCodeTemplateInput, UiManagementRepository,
-};
+use control_plane::ports::{PluginRepository, ReviseUiCodeTemplateInput, UiManagementRepository};
 use domain::{NativePluginTarget, PluginDesiredState, PluginRuntimeStatus, UiCodeTemplateLanguage};
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;

@@ -56,10 +56,10 @@ impl InterfaceContract for ProviderIconOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[
-            ("content_type", mp::text(&(self).content_type)?),
+            ("content_type", mp::text((self).content_type)?),
             (
                 "content",
-                mp::object_value(&[("byte_count", serde_json::json!((&(self).content).len()))]),
+                mp::object_value(&[("byte_count", serde_json::json!((self).content.len()))]),
             ),
         ]))
     }
