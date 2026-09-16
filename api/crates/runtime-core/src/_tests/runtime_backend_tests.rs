@@ -5,7 +5,7 @@ use extension_contracts::provider_contract::{
     ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
     ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
     ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
-    ProviderUsageWindowsResult,
+    ProviderTransportSessionCommand, ProviderTransportSessionReceipt, ProviderUsageWindowsResult,
 };
 use extension_contracts::{
     DataModelTemplateDescriptor, DataSourceCatalogEntry, DataSourceConfigInput,
@@ -171,6 +171,14 @@ impl ProviderRuntimePort for CompleteFakeBackend {
         _target_id: &str,
         _input: ProviderInvocationInput,
     ) -> Result<ProviderCompactResult, RuntimeBackendError> {
+        unreachable!("compile fixture is not executed")
+    }
+
+    async fn provider_transport_session(
+        &self,
+        _target_id: &str,
+        _command: ProviderTransportSessionCommand,
+    ) -> Result<ProviderTransportSessionReceipt, RuntimeBackendError> {
         unreachable!("compile fixture is not executed")
     }
 }

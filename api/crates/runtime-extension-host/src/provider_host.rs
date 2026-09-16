@@ -23,8 +23,8 @@ use extension_package_runtime::{
         ProviderInvocationResult, ProviderModelDescriptor, ProviderOperationalCapability,
         ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStreamEvent, ProviderUsageWindowsResult, ProviderWireOperation,
-        CURRENT_PROVIDER_CONTRACT,
+        ProviderStreamEvent, ProviderTransportSessionCommand, ProviderTransportSessionReceipt,
+        ProviderUsageWindowsResult, ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
     provider_count_tokens_estimator::estimate_provider_count_tokens,
     PluginRuntimeLimits,
@@ -948,6 +948,50 @@ impl ProviderHost {
         self.invoke_stream_operation(plugin_id, input)?.await
     }
 
+    pub fn transport_session_operation(
+        &self,
+        plugin_id: &str,
+        command: ProviderTransportSessionCommand,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderTransportSessionReceipt>>
+            + Send
+            + 'static,
+    > {
+        command
+            .validate()
+            .map_err(PluginFrameworkError::invalid_provider_contract)?;
+        let loaded = self.loaded_package(plugin_id)?.clone();
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            if loaded.package.manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
+            {
+                return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+                    ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                    "physical transport sessions require a stateful provider worker",
+                )));
+            }
+            let output = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::TransportSession,
+                serde_json::to_value(command).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(error.to_string())
+                })?,
+            )
+            .await?;
+            let receipt: ProviderTransportSessionReceipt =
+                serde_json::from_value(output).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(format!(
+                        "provider transport session receipt is malformed: {error}"
+                    ))
+                })?;
+            receipt
+                .validate()
+                .map_err(PluginFrameworkError::invalid_provider_contract)?;
+            Ok(receipt)
+        })
+    }
+
     #[cfg(test)]
     pub fn invoke_stream_operation(
         &self,
@@ -1253,7 +1297,8 @@ impl ProviderHost {
             method: ProviderStdioMethod::Invoke,
             input: prepared_wire.wire_value,
         };
-        let invocation_limits = provider_invocation_limits(&loaded.package.manifest.runtime.limits);
+        let invocation_limits =
+            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input);
         let output = match loaded.package.manifest.execution_mode {
             PluginExecutionMode::ProcessPerCall => {
                 if host_calls.is_some() {

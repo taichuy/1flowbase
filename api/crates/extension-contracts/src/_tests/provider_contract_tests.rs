@@ -9,15 +9,19 @@ use extension_contracts::provider_contract::{
     ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderGenerateProjectionError,
     ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
-    ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
-    ProviderNetworkEgressContext, ProviderNetworkEgressMode, ProviderOutputItemPhase,
-    ProviderOutputProtocolFailure, ProviderProjectionErrorCode, ProviderProjectionFidelity,
-    ProviderProjectionLossCode, ProviderProjectionSource, ProviderResetCreditOperation,
-    ProviderResetCreditResult, ProviderResetCreditRuntimeInput, ProviderRuntimeError,
-    ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-    ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+    ProviderInvocationResult, ProviderLogicalSessionState, ProviderMessage, ProviderMessageRole,
+    ProviderNativeTransport, ProviderNetworkEgressContext, ProviderNetworkEgressMode,
+    ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderPhysicalTransportState,
+    ProviderProjectionErrorCode, ProviderProjectionFidelity, ProviderProjectionLossCode,
+    ProviderProjectionSource, ProviderResetCreditOperation, ProviderResetCreditResult,
+    ProviderResetCreditRuntimeInput, ProviderRuntimeError, ProviderRuntimeErrorKind,
+    ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
+    ProviderStreamEvent, ProviderToolCall, ProviderTransportSessionAction,
+    ProviderTransportSessionCloseReason, ProviderTransportSessionCommand,
+    ProviderTransportSessionDirective, ProviderTransportSessionReceipt, ProviderUsage,
     ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation,
-    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY, PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY,
+    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY,
 };
 use serde_json::json;
 
@@ -184,6 +188,83 @@ fn provider_stdio_contract_uses_snake_case_methods_and_result_payloads() {
     .unwrap();
     assert!(response.ok);
     assert_eq!(response.result[0]["model_id"], "fixture_dynamic");
+}
+
+#[test]
+fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
+    let directive = ProviderTransportSessionDirective {
+        logical_session_id: "logical_01".into(),
+        task_id: "task_01".into(),
+        state: ProviderLogicalSessionState::Waiting,
+        physical_deadline_unix_ms: 1_800_000_000_000,
+    };
+    let mut input = ProviderInvocationInput::default();
+    input
+        .set_transport_session_directive(directive.clone())
+        .unwrap();
+    assert_eq!(
+        input.transport_session_directive().unwrap(),
+        Some(directive)
+    );
+    assert!(input.run_context[PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY]
+        .get("provider_config")
+        .is_none());
+
+    let unknown = json!({
+        "logical_session_id": "logical_01",
+        "task_id": "task_01",
+        "state": "idle",
+        "physical_deadline_unix_ms": 1_800_000_000_000_i64,
+        "session_key": "must-not-cross"
+    });
+    assert!(serde_json::from_value::<ProviderTransportSessionDirective>(unknown).is_err());
+    assert!(ProviderTransportSessionCommand {
+        logical_session_id: "contains a space".into(),
+        generation: 1,
+        action: ProviderTransportSessionAction::Drain,
+        deadline_unix_ms: 1,
+    }
+    .validate()
+    .is_err());
+}
+
+#[test]
+fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
+    let receipt = ProviderTransportSessionReceipt {
+        generation: 7,
+        reused: true,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 42,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::RequestedClose),
+        close_acknowledged: Some(true),
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    result
+        .set_transport_session_receipt(receipt.clone())
+        .unwrap();
+    assert_eq!(result.transport_session_receipt().unwrap(), Some(receipt));
+    let value = &result.provider_metadata[PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY];
+    assert!(value.get("logical_session_id").is_none());
+    assert!(value.get("session_key").is_none());
+
+    let request = ProviderStdioRequest {
+        method: ProviderStdioMethod::TransportSession,
+        input: serde_json::to_value(ProviderTransportSessionCommand {
+            logical_session_id: "logical_01".into(),
+            generation: 7,
+            action: ProviderTransportSessionAction::Close,
+            deadline_unix_ms: 1_800_000_000_000,
+        })
+        .unwrap(),
+    };
+    assert_eq!(
+        serde_json::to_value(request).unwrap()["method"],
+        "transport_session"
+    );
 }
 
 #[test]
