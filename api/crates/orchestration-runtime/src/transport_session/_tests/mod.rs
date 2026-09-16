@@ -371,8 +371,12 @@ fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
     let admission = request("orphan-callback");
     let owner = admission.owner_id.clone();
     let session = admission.session_id.clone();
-    registry.admit(admission).unwrap();
-    registry.mark_owner_orphaned(&owner);
+    let fence = registry.admit(admission).unwrap();
+    assert_eq!(registry.mark_owner_orphaned(&owner), vec![fence.clone()]);
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
 
     clock.advance(Duration::from_secs(1));
     registry.maintain();
@@ -387,4 +391,27 @@ fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
     clock.advance(Duration::from_secs(2));
     registry.maintain();
     assert!(registry.tombstone(&session).is_none());
+}
+
+#[test]
+fn owner_disconnect_does_not_regress_terminal_path_states_to_orphaned() {
+    for (index, terminal_state) in [
+        TransportSessionState::Draining,
+        TransportSessionState::Faulted,
+        TransportSessionState::Closing,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let clock = FakeClock::default();
+        let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
+        let admission = request(&format!("terminal-{index}"));
+        let owner = admission.owner_id.clone();
+        let fence = registry.admit(admission).unwrap();
+        registry.activate(&fence).unwrap();
+        registry.transition(&fence, terminal_state).unwrap();
+
+        assert!(registry.mark_owner_orphaned(&owner).is_empty());
+        assert_eq!(registry.state(&fence).unwrap(), terminal_state);
+    }
 }

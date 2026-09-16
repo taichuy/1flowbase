@@ -380,7 +380,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                 &record.owner_id == owner_id
                     && matches!(
                         record.state,
-                        TransportSessionState::Active
+                        TransportSessionState::Opening
+                            | TransportSessionState::Active
                             | TransportSessionState::WaitingTool
                             | TransportSessionState::IdleAffinity
                     )
@@ -595,7 +596,7 @@ fn valid_transition(from: TransportSessionState, to: TransportSessionState) -> b
         (from, to),
         (
             State::Opening,
-            State::Active | State::Faulted | State::Closing
+            State::Active | State::Orphaned | State::Faulted | State::Closing
         ) | (
             State::Active,
             State::WaitingTool
