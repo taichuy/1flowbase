@@ -286,7 +286,7 @@ test('plugin package copies a target binary into bin and encodes the target in t
     'x86_64-unknown-linux-musl',
   ]);
 
-  assert.match(result.packageFile, /@linux-amd64@[a-f0-9]{64}\.1flowbasepkg$/);
+  assert.match(result.packageFile, /@linux-amd64\.1flowbasepkg$/);
   assert.match(result.checksum, /^[a-f0-9]{64}$/);
   assert.equal(fs.existsSync(result.packageFile), true);
 
@@ -320,8 +320,37 @@ test('plugin package writes a windows executable and asset suffix', async () => 
     'x86_64-pc-windows-msvc',
   ]);
 
-  assert.match(result.packageFile, /@windows-amd64@[a-f0-9]{64}\.1flowbasepkg$/);
-  assert.ok(fs.readdirSync(outputDir).some((name) => name.includes('@windows-amd64@')));
+  assert.match(result.packageFile, /@windows-amd64\.1flowbasepkg$/);
+  assert.ok(fs.readdirSync(outputDir).some((name) => name.includes('@windows-amd64.')));
+});
+
+test('plugin package safely replaces the stable target asset name', async () => {
+  const pluginPath = makeTempPluginPath();
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
+
+  await main(['init', pluginPath]);
+  const runtimeBinary = writeFakeRuntimeBinary(outputDir);
+  const args = [
+    'package',
+    pluginPath,
+    '--out',
+    outputDir,
+    '--runtime-binary',
+    runtimeBinary,
+    '--target',
+    'x86_64-unknown-linux-musl',
+  ];
+
+  const first = await main(args);
+  fs.writeFileSync(first.packageFile, 'stale package bytes');
+  const second = await main(args);
+
+  assert.equal(second.packageFile, first.packageFile);
+  assert.notEqual(fs.readFileSync(second.packageFile, 'utf8'), 'stale package bytes');
+  assert.equal(
+    second.checksum,
+    crypto.createHash('sha256').update(fs.readFileSync(second.packageFile)).digest('hex')
+  );
 });
 
 test('plugin package preserves hyphenated manifest identity and synchronizes the staged Windows entry', async () => {
@@ -383,7 +412,7 @@ test('plugin package preserves hyphenated manifest identity and synchronizes the
 
   assert.match(
     result.packageName,
-    /^1flowbase@chatgpt-codex@0\.1\.0@windows-amd64@[a-f0-9]{64}\.1flowbasepkg$/
+    /^1flowbase@chatgpt-codex@0\.1\.0@windows-amd64\.1flowbasepkg$/
   );
   assert.match(
     fs.readFileSync(sourceManifestPath, 'utf8'),
@@ -479,10 +508,8 @@ test('plugin package streams tar output into the archive file instead of passing
     assert.deepEqual(tarLog.args, ['-czf', '-', '.']);
     assert.match(path.basename(tarLog.cwd), /^1flowbase-plugin-package-/);
     assert.equal(fs.readFileSync(result.packageFile).equals(archiveBytes), true);
-    assert.match(
-      result.packageFile,
-      new RegExp(`@windows-amd64@${expectedChecksum}\\.1flowbasepkg$`)
-    );
+    assert.match(result.packageFile, /@windows-amd64\.1flowbasepkg$/);
+    assert.equal(result.checksum, expectedChecksum);
   } finally {
     if (originalPath === undefined) {
       delete process.env.PATH;

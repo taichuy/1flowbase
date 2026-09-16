@@ -359,8 +359,9 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
     const checksum = hashFile(pendingFile);
     const finalFile = path.join(
       resolvedOutputDir,
-      `${vendor}@${pluginCode}@${version}@${target.assetSuffix}@${checksum}.1flowbasepkg`
+      `${vendor}@${pluginCode}@${version}@${target.assetSuffix}.1flowbasepkg`
     );
+    removeDirIfExists(finalFile);
     fs.renameSync(pendingFile, finalFile);
 
     return {
