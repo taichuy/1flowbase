@@ -72,6 +72,7 @@
     "test:legacy-ui": "pnpm run test:page-regression"
   },
   "devDependencies": {
+    "@types/react-is": "^19.3.0",
     "@vitest/coverage-v8": "^4.1.0",
     "fake-indexeddb": "^6.2.5",
     "vite": "^8.0.16",

@@ -131,7 +131,7 @@ test('AC-003 build calls Cargo directly with no deadline and selects its reporte
   fs.mkdirSync(path.dirname(binary));
   fs.writeFileSync(binary, 'fixture');
   fs.writeFileSync(path.join(root, '.1flowbase.verify.local.json'), JSON.stringify({ backend: { cargoJobs: 1, incremental: true } }));
-  const s = { ...service(root), envOverrides: { CI: '' } };
+  const s = { ...service(root), envOverrides: { CI: '', GITHUB_ACTIONS: '' } };
   let seen;
   const launch = await buildBackend(s, {
     logImpl() {},
@@ -148,7 +148,7 @@ test('AC-003 build calls Cargo directly with no deadline and selects its reporte
   assert.equal(seen.options.env.CARGO_MEMORY_BUDGET_ACTIVE, process.env.CARGO_MEMORY_BUDGET_ACTIVE);
   assert.equal(seen.options.cleanup, undefined);
   assert.deepEqual(launch, { command: binary, args: [] });
-  assert.deepEqual(s.envOverrides, { CI: '' });
+  assert.deepEqual(s.envOverrides, { CI: '', GITHUB_ACTIONS: '' });
   await assert.rejects(buildBackend(s, {
     logImpl() {}, runPhaseImpl: async () => {},
   }), /without an api-server executable/);
