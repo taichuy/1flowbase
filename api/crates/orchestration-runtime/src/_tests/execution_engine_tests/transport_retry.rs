@@ -134,6 +134,41 @@ async fn endpoint_unreachable_before_first_token_retries_without_node_opt_in() {
 }
 
 #[tokio::test]
+async fn provider_transport_unavailable_before_first_token_retries_without_node_opt_in() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = sequenced_invoker([
+        provider_error_output(
+            ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+            false,
+        ),
+        final_provider_output("recovered".to_string()),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow should execute");
+    let attempts = llm_attempts(&outcome);
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(
+        attempts[0]["error_code"],
+        json!("provider_transport_unavailable")
+    );
+    assert_eq!(attempts[0]["failed_after_first_token"], json!(false));
+    assert_eq!(attempts[1]["is_retry"], json!(true));
+    assert_eq!(
+        attempts[1]["retry_reason"],
+        json!("provider_transport_unavailable")
+    );
+    assert_eq!(attempts[1]["status"], json!("succeeded"));
+
+    let ids = invocation_ids
+        .lock()
+        .expect("invocation ids mutex poisoned");
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+}
+
+#[tokio::test]
 async fn automatic_transport_retry_budget_exhaustion_keeps_original_error() {
     let plan = base_plan();
     let (invoker, invocation_ids) = sequenced_invoker([
@@ -164,6 +199,7 @@ async fn automatic_transport_retry_budget_exhaustion_keeps_original_error() {
 async fn automatic_transport_retry_rejects_post_token_and_non_endpoint_failures() {
     for output in [
         provider_error_output(ProviderRuntimeErrorKind::EndpointUnreachable, true),
+        provider_error_output(ProviderRuntimeErrorKind::ProviderTransportUnavailable, true),
         provider_error_output(ProviderRuntimeErrorKind::ProviderInvalidResponse, false),
     ] {
         let plan = base_plan();

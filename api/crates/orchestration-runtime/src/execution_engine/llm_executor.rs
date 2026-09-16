@@ -19,8 +19,13 @@ fn select_llm_retry(
 ) -> Option<LlmRetryClass> {
     if !provider_output_started
         && automatic_transport_retries_used < AUTOMATIC_TRANSPORT_RETRY_LIMIT
-        && provider_error
-            .is_some_and(|error| error.kind == ProviderRuntimeErrorKind::EndpointUnreachable)
+        && provider_error.is_some_and(|error| {
+            matches!(
+                error.kind,
+                ProviderRuntimeErrorKind::EndpointUnreachable
+                    | ProviderRuntimeErrorKind::ProviderTransportUnavailable
+            )
+        })
     {
         Some(LlmRetryClass::AutomaticTransport)
     } else if configured_retry_allowed {
