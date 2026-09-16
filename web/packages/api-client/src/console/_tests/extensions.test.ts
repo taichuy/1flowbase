@@ -60,6 +60,7 @@ describe('extension center client contract', () => {
           status: 'installed',
           is_current: true,
           desired_state: 'active_requested',
+          runtime_status: 'inactive',
           availability_status: 'available',
           application_action: 'none',
           application_status: 'not_required',
