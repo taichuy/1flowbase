@@ -49,6 +49,7 @@ fn api_config_does_not_require_ephemeral_backend_env() {
 
     assert_eq!(config.cookie_name, "flowbase_console_session");
     assert!(!config.runtime_table_name_policy.auto_prefix_enabled());
+    assert!(!config.model_billing_require_provider_usage);
     assert!(config
         .system_backup_repository_root
         .ends_with("tmp/system-backups"));
@@ -58,6 +59,16 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     );
     assert!(!config.application_build.as_str().contains(".git."));
     assert!(!config.application_build.as_str().contains("unavailable"));
+}
+
+#[test]
+fn api_config_parses_strict_provider_usage_billing_as_opt_in() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.push(("API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE", "true"));
+
+    let config = ApiConfig::from_env_map(&env).unwrap();
+
+    assert!(config.model_billing_require_provider_usage);
 }
 
 #[test]

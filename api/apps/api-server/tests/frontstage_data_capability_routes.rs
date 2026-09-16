@@ -265,6 +265,7 @@ async fn fixture_state() -> (
         official_model_pricing_catalog_index_url: config
             .official_model_pricing_catalog_index_url
             .clone(),
+        model_billing_require_provider_usage: config.model_billing_require_provider_usage,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),

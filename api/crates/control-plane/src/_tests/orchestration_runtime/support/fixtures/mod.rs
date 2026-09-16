@@ -38,6 +38,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             std::sync::Arc::new(
                 crate::orchestration_runtime::TestProviderTransportStore::default(),
             ),
+            false,
         )
         .with_node_artifact_context("local:test", std::env::temp_dir())
     }
@@ -92,6 +93,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             std::sync::Arc::new(
                 crate::orchestration_runtime::TestProviderTransportStore::default(),
             ),
+            false,
         )
         .with_node_artifact_context("local:test", std::env::temp_dir())
         .with_file_storage_registry(std::sync::Arc::new(

@@ -364,7 +364,7 @@ where
             canonical_stream_state,
             native_responses_passthrough,
         } = outcome;
-        let usage = invocation_output.as_ref().map_or_else(
+        let mut usage = invocation_output.as_ref().map_or_else(
             || {
                 canonical_stream_state
                     .map(|state| state.accumulated().usage().value().clone())
@@ -377,24 +377,32 @@ where
             || usage.input_cache_hit_tokens.is_some()
             || usage.cache_read_tokens.is_some()
             || usage.cache_write_tokens.is_some()
-            || usage.output_tokens.is_some();
+            || usage.output_tokens.is_some()
+            || usage.reasoning_tokens.is_some()
+            || usage.total_tokens.is_some();
+        let mut provider_usage_unavailable = false;
         if !has_usage {
-            billing
-                .release(if invocation_error.is_some() {
-                    "provider_invocation_failed_without_usage"
-                } else {
-                    "provider_usage_unavailable"
-                })
-                .await?;
             if let Some(error) = invocation_error.take() {
+                billing
+                    .release("provider_invocation_failed_without_usage")
+                    .await?;
                 return Err(error);
             }
             if let Some(output) = invocation_output.as_ref() {
-                if orchestration_runtime::execution_engine::billable_provider_output(
-                    &output.events,
-                    &output.result,
-                    native_responses_passthrough,
-                ) {
+                let billable_output =
+                    orchestration_runtime::execution_engine::billable_provider_output(
+                        &output.events,
+                        &output.result,
+                        native_responses_passthrough,
+                    );
+                let require_provider_usage = self
+                    .invoker
+                    .flow_execution_context
+                    .as_ref()
+                    .is_some_and(|context| context.require_provider_usage_for_billing);
+                if billable_output && require_provider_usage && !billing.reservation.charge_skipped
+                {
+                    billing.release("provider_usage_unavailable").await?;
                     let metadata = json!({"billing_status":"reconciliation_failed", "billing_error_code":"provider_usage_unavailable", "billing_session_id":billing.reservation.billing_session_id, "provider_invocation_id":billing.invocation_id, "pricing_rule_id":billing.rule.id});
                     return Err(with_fee_details(
                         provider_usage_unavailable_conflict(output).into(),
@@ -407,7 +415,21 @@ where
                     ));
                 }
             }
-            return Ok(());
+            provider_usage_unavailable = true;
+            usage = ProviderUsage {
+                input_tokens: Some(0),
+                input_cache_hit_tokens: Some(0),
+                input_cache_miss_tokens: Some(0),
+                output_tokens: Some(0),
+                reasoning_tokens: Some(0),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                total_tokens: Some(0),
+                ..ProviderUsage::default()
+            };
+            if let Some(output) = invocation_output.as_mut() {
+                output.result.usage = usage.clone();
+            }
         }
         let rated = normalized_token_usage(&billing.rule, &usage).and_then(|normalized| {
             crate::billing::rate_token_usage_at(&billing.rule, &normalized, billing.started_at)
@@ -447,7 +469,12 @@ where
             "cache_write_by_ttl_seconds":rated.applied_rates.cache_write_by_ttl_seconds,
             "rules":rule.rules, "matched_rule_indices":rated.matched_rule_indices,
         });
-        let usage_snapshot = json!({"usage_source":"provider_reported", "ordinary_input_tokens":rated.ordinary_input_tokens,
+        let usage_source = if provider_usage_unavailable {
+            "provider_usage_unavailable_zero"
+        } else {
+            "provider_reported"
+        };
+        let usage_snapshot = json!({"usage_source":usage_source, "ordinary_input_tokens":rated.ordinary_input_tokens,
             "input_cache_hit_tokens":rated.cache_hit_tokens, "cache_write_tokens":rated.cache_write_tokens,
             "cache_write_by_ttl_seconds":usage.cache_write_by_ttl_seconds, "cache_write_cost":rated.cache_write_cost.to_string(),
             "output_tokens":rated.output_tokens, "raw_usage":usage});
@@ -503,7 +530,11 @@ where
                     cost_snapshot: Some(
                         json!({"total_cost":rated.total_cost.to_string(),"currency_code":"USD"}),
                     ),
-                    usage_status: domain::UsageLedgerStatus::Recorded,
+                    usage_status: if provider_usage_unavailable {
+                        domain::UsageLedgerStatus::UnavailableError
+                    } else {
+                        domain::UsageLedgerStatus::Recorded
+                    },
                     raw_usage: serde_json::to_value(&usage)?,
                     normalized_usage: usage_snapshot.clone(),
                 },
@@ -522,8 +553,18 @@ where
                     raw_cost: Some(rated.total_cost.to_string()),
                     normalized_cost: Some(rated.total_cost.to_string()),
                     settlement_currency: Some("USD".to_string()),
-                    cost_source: "local_token_pricing".to_string(),
-                    cost_status: "rated".to_string(),
+                    cost_source: if provider_usage_unavailable {
+                        "provider_usage_unavailable_zero"
+                    } else {
+                        "local_token_pricing"
+                    }
+                    .to_string(),
+                    cost_status: if provider_usage_unavailable {
+                        "reconciliation_failed_zero"
+                    } else {
+                        "rated"
+                    }
+                    .to_string(),
                 },
                 settlement: crate::ports::SettleCreditInput {
                     billing_session_id: reservation.billing_session_id,
@@ -545,7 +586,14 @@ where
         });
         match finalized {
             Ok(finalized) => {
-                billing_metadata["billing_status"] = json!("settled");
+                billing_metadata["billing_status"] = json!(if provider_usage_unavailable {
+                    "reconciliation_failed"
+                } else {
+                    "settled"
+                });
+                if provider_usage_unavailable {
+                    billing_metadata["billing_error_code"] = json!("provider_usage_unavailable");
+                }
                 billing_metadata["usage_ledger_id"] = json!(finalized.usage.id);
                 billing_metadata["cost_ledger_id"] = json!(finalized.cost.id);
                 billing.disarm();

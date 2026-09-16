@@ -849,6 +849,7 @@ struct NativeResumeAdapter {
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -932,6 +933,7 @@ impl NativeResumePort for NativeResumeAdapter {
                 Arc::clone(&self.runtime_engine),
                 self.provider_secret_master_key.clone(),
                 self.provider_transport_store.clone(),
+                self.model_billing_require_provider_usage,
             )
             .with_node_artifact_context(
                 self.api_node_id.clone(),
@@ -979,6 +981,7 @@ pub(crate) fn native_resume_port(
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
     api_node_id: String,
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -994,6 +997,7 @@ pub(crate) fn native_resume_port(
         provider_runtime,
         runtime_engine,
         provider_secret_master_key,
+        model_billing_require_provider_usage,
         api_node_id,
         provider_install_root,
         file_storage_registry,

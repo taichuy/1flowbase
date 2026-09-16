@@ -128,6 +128,7 @@ struct WorkflowExtensionAdapter {
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
     provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     api_node_id: String,
     provider_install_root: String,
@@ -204,6 +205,7 @@ pub(crate) fn workflow_extension_port(
     provider_runtime: ApiProviderRuntime,
     runtime_engine: Arc<RuntimeEngine>,
     provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
     provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     api_node_id: String,
     provider_install_root: String,
@@ -218,6 +220,7 @@ pub(crate) fn workflow_extension_port(
         provider_runtime,
         runtime_engine,
         provider_secret_master_key,
+        model_billing_require_provider_usage,
         provider_transport_store,
         api_node_id,
         provider_install_root,
@@ -253,6 +256,7 @@ fn spawn_workflow_extension_execution(
             dependencies.runtime_engine.clone(),
             dependencies.provider_secret_master_key.clone(),
             dependencies.provider_transport_store.clone(),
+            dependencies.model_billing_require_provider_usage,
         )
         .with_node_artifact_context(
             dependencies.api_node_id.clone(),

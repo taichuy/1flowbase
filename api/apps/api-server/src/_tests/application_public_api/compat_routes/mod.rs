@@ -715,6 +715,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
         official_model_pricing_catalog_index_url: base_state
             .official_model_pricing_catalog_index_url
             .clone(),
+        model_billing_require_provider_usage: base_state.model_billing_require_provider_usage,
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),

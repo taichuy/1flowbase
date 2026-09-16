@@ -1571,8 +1571,9 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             billing_session_id: Uuid::now_v7(),
             account_id: input.user_id,
             reserved_amount: input.amount.clone(),
-            charge_skipped: false,
-            charge_skip_reason: None,
+            charge_skipped: !input.charge_enabled_default,
+            charge_skip_reason: (!input.charge_enabled_default)
+                .then(|| "charge_disabled".to_string()),
         })
     }
 
@@ -1595,10 +1596,48 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
 
     async fn finalize_model_billing(
         &self,
-        _input: &crate::ports::FinalizeModelBillingInput,
+        input: &crate::ports::FinalizeModelBillingInput,
     ) -> Result<crate::ports::FinalizedModelBilling> {
         self.record_model_billing_finalize_attempt();
-        anyhow::bail!("test finalize stub only records settlement attempts")
+        if !self
+            .inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_finalize_succeeds
+        {
+            anyhow::bail!("test finalize stub only records settlement attempts")
+        }
+        let usage = self.append_usage_ledger(&input.usage).await?;
+        let mut cost_input = input.cost.clone();
+        cost_input.usage_ledger_id = Some(usage.id);
+        cost_input.billing_session_id = Some(input.settlement.billing_session_id);
+        let cost = self.append_cost_ledger(&cost_input).await?;
+        Ok(crate::ports::FinalizedModelBilling {
+            usage,
+            cost,
+            credit: crate::ports::CreditTransactionRecord {
+                id: Uuid::now_v7(),
+                transaction_id: Uuid::now_v7(),
+                account_id: Uuid::nil(),
+                workspace_id: cost_input.workspace_id,
+                user_id: Uuid::nil(),
+                billing_session_id: Some(input.settlement.billing_session_id),
+                actor_user_id: None,
+                actor_plugin_id: None,
+                transaction_type: "settle".to_string(),
+                amount: input.settlement.actual_amount.clone(),
+                balance_after: "0".to_string(),
+                reserved_after: "0".to_string(),
+                credit_unit: "credit".to_string(),
+                reason: "test_finalize".to_string(),
+                source_type: None,
+                source_id: None,
+                idempotency_key: input.settlement.billing_session_id.to_string(),
+                status: "posted".to_string(),
+                metadata: json!({}),
+                created_at: OffsetDateTime::now_utc(),
+            },
+        })
     }
 
     async fn append_audit_hash(

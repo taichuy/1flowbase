@@ -66,6 +66,7 @@ pub struct ApiConfig {
     pub official_plugin_trusted_public_keys_json: String,
     pub official_model_pricing_catalog_index_url: String,
     pub model_pricing_bootstrap_root: String,
+    pub model_billing_require_provider_usage: bool,
     pub official_extension_catalog_sources:
         BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
     pub official_extension_source_connect_timeout: Duration,
@@ -369,6 +370,11 @@ impl ApiConfig {
             official_plugin_trusted_public_keys_json,
             official_model_pricing_catalog_index_url,
             model_pricing_bootstrap_root,
+            model_billing_require_provider_usage: parse_bool_flag(
+                "API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE",
+                map.get("API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE"),
+                false,
+            )?,
             official_extension_catalog_sources,
             official_extension_source_connect_timeout: parse_positive_duration_seconds(
                 "API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS",

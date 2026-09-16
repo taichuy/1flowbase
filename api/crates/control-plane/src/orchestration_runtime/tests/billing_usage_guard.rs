@@ -4,12 +4,23 @@ use plugin_framework::provider_contract::{
 };
 use plugin_framework::PluginFrameworkError;
 
-fn billing_flow_execution_context(flow_run_id: Uuid) -> Arc<RuntimeFlowExecutionContext> {
+fn billing_flow_execution_context(
+    flow_run_id: Uuid,
+    is_root: bool,
+    require_provider_usage_for_billing: bool,
+) -> Arc<RuntimeFlowExecutionContext> {
+    let user_id = Uuid::now_v7();
+    let actor = if is_root {
+        domain::ActorContext::root(user_id, Uuid::nil(), "root")
+    } else {
+        domain::ActorContext::scoped(user_id, Uuid::nil(), "member", Vec::<String>::new())
+    };
     Arc::new(RuntimeFlowExecutionContext {
         user_account: Some("billing-user".to_string()),
+        require_provider_usage_for_billing,
         active_node: Mutex::new(None),
         data_model: RuntimeDataModelExecutionContext {
-            actor: domain::ActorContext::root(Uuid::now_v7(), Uuid::nil(), "root"),
+            actor,
             application_id: Uuid::nil(),
             draft_id: Uuid::nil(),
             flow_run_id,
@@ -21,6 +32,19 @@ fn billing_flow_execution_context(flow_run_id: Uuid) -> Arc<RuntimeFlowExecution
 fn billing_invoker(
     repository: test_support::InMemoryOrchestrationRuntimeRepository,
     runtime: test_support::InMemoryProviderRuntime,
+) -> RuntimeProviderInvoker<
+    test_support::InMemoryOrchestrationRuntimeRepository,
+    test_support::InMemoryProviderRuntime,
+> {
+    repository.allow_model_billing_finalize();
+    billing_invoker_with_policy(repository, runtime, false, false)
+}
+
+fn billing_invoker_with_policy(
+    repository: test_support::InMemoryOrchestrationRuntimeRepository,
+    runtime: test_support::InMemoryProviderRuntime,
+    is_root: bool,
+    require_provider_usage_for_billing: bool,
 ) -> RuntimeProviderInvoker<
     test_support::InMemoryOrchestrationRuntimeRepository,
     test_support::InMemoryProviderRuntime,
@@ -40,7 +64,11 @@ fn billing_invoker(
         active_node_run_id: None,
         api_node_id: Some("local:test".to_string()),
         provider_install_root: Some(std::env::temp_dir()),
-        flow_execution_context: Some(billing_flow_execution_context(flow_run_id)),
+        flow_execution_context: Some(billing_flow_execution_context(
+            flow_run_id,
+            is_root,
+            require_provider_usage_for_billing,
+        )),
         answer_presentation: None,
         provider_transport_payload: None,
         provider_transport_store: None,
@@ -166,15 +194,13 @@ async fn billing_no_usage_with_upstream_error_event_returns_output_for_classific
         Some(json!({ "status_code": 429 }))
     );
     assert_eq!(repository_probe.model_billing_reserved_session_count(), 1);
-    let releases = repository_probe.model_billing_credit_releases();
-    assert_eq!(releases.len(), 1);
-    assert_eq!(releases[0].1, "provider_usage_unavailable");
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 // AC-001: partial content must not make a later upstream failure billable.
 // The original error remains available to executor classification and retry
-// policy after the reservation is released.
+// policy after the missing usage is recorded as zero.
 #[tokio::test]
 async fn billing_no_usage_after_partial_content_preserves_upstream_failure() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
@@ -198,12 +224,8 @@ async fn billing_no_usage_after_partial_content_preserves_upstream_failure() {
     assert!(output.events.iter().any(|event| {
         matches!(event, ProviderStreamEvent::Error { error } if error.message.contains("429"))
     }));
-    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
-    assert_eq!(
-        repository_probe.model_billing_credit_releases()[0].1,
-        "provider_usage_unavailable"
-    );
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 #[tokio::test]
@@ -229,8 +251,8 @@ async fn billing_no_usage_with_event_only_finish_error_returns_output_for_classi
     assert!(output.events.iter().any(|event| {
         matches!(event, ProviderStreamEvent::Finish { reason } if *reason == ProviderFinishReason::Error)
     }));
-    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 #[tokio::test]
@@ -257,8 +279,8 @@ async fn billing_no_usage_with_result_only_finish_error_returns_output_for_class
         output.result.finish_reason,
         Some(ProviderFinishReason::Error)
     );
-    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 #[tokio::test]
@@ -285,8 +307,8 @@ async fn billing_no_usage_with_output_protocol_failure_returns_output_for_classi
         .events
         .iter()
         .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) }));
-    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 // AC-002 + AC-004: billing armed, empty stream (no events, no output, no usage)
@@ -317,16 +339,14 @@ async fn billing_no_usage_empty_stream_returns_output_for_classification() {
 
     assert!(output.events.is_empty());
     assert_eq!(output.result.final_content, None);
-    let releases = repository_probe.model_billing_credit_releases();
-    assert_eq!(releases.len(), 1);
-    assert_eq!(releases[0].1, "provider_usage_unavailable");
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
-// AC-003 + AC-004: billable output without provider usage stays fail-closed, and
-// the conflict carries structured evidence instead of a bare static string.
+// Missing provider usage defaults to a searchable zero-value reconciliation record without
+// blocking a completed provider invocation.
 #[tokio::test]
-async fn billing_no_usage_with_billable_output_fails_closed_with_evidence() {
+async fn billing_no_usage_with_billable_output_records_zero_and_succeeds_by_default() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     repository.enable_model_billing();
@@ -344,41 +364,98 @@ async fn billing_no_usage_with_billable_output_fails_closed_with_evidence() {
     let invoker = billing_invoker(repository, runtime);
     let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
 
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("missing usage must fail open by default");
+    assert_eq!(output.result.usage.input_tokens, Some(0));
+    assert_eq!(output.result.usage.output_tokens, Some(0));
+    let details = &output.result.provider_metadata["_1flowbase_upstream_provider_metadata"]
+        ["_1flowbase_billing"];
+    assert_eq!(details["billing_status"], "reconciliation_failed");
+    assert_eq!(details["billing_error_code"], "provider_usage_unavailable");
+    assert_eq!(details["total_cost"], "0");
+    assert!(repository_probe.model_billing_credit_releases().is_empty());
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
+    let usage = repository_probe.model_billing_usage_ledger(invoker.flow_run_id.unwrap());
+    assert_eq!(usage.len(), 1);
+    assert_eq!(
+        usage[0].usage_status,
+        domain::UsageLedgerStatus::UnavailableError
+    );
+    assert_eq!(usage[0].total_tokens, Some(0));
+    let costs = repository_probe.model_billing_cost_ledger(invoker.flow_run_id.unwrap());
+    assert_eq!(costs.len(), 1);
+    assert_eq!(costs[0].normalized_cost.as_deref(), Some("0"));
+    assert_eq!(costs[0].cost_status, "reconciliation_failed_zero");
+}
+
+#[tokio::test]
+async fn billing_no_usage_with_billable_output_fails_for_chargeable_user_in_strict_mode() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: Vec::new(),
+            result: ProviderInvocationResult {
+                final_content: Some("computed answer".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+        },
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker_with_policy(repository, runtime, false, true);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
     let error = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
         &invoker,
         &runtime,
         provider_user_input(provider_instance_id),
     )
     .await
-    .expect_err("billable output without usage must fail closed");
-
-    let contract_error = error
-        .downcast_ref::<PluginFrameworkError>()
-        .and_then(|error| match error {
-            PluginFrameworkError::RuntimeContract { error } => Some(error.as_ref()),
-            _ => None,
-        })
-        .expect("usage conflict must carry a structured provider runtime error");
-    assert_eq!(contract_error.message, "provider_usage_unavailable");
-    let details = contract_error
-        .provider_details
-        .as_ref()
-        .expect("usage conflict must carry provider evidence details");
-    assert_eq!(details["finish_reason"], json!("stop"));
-    assert_eq!(details["billable_output"], json!(true));
+    .expect_err("strict mode must reject missing usage for a chargeable user");
+    assert!(error.to_string().contains("provider_usage_unavailable"));
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
     assert_eq!(
-        details["_1flowbase_billing"]["billing_status"],
-        "reconciliation_failed"
-    );
-    assert_eq!(
-        details["_1flowbase_billing"]["billing_error_code"],
+        repository_probe.model_billing_credit_releases()[0].1,
         "provider_usage_unavailable"
     );
-    assert_eq!(details["_1flowbase_user_account"], "billing-user");
-    let releases = repository_probe.model_billing_credit_releases();
-    assert_eq!(releases.len(), 1);
-    assert_eq!(releases[0].1, "provider_usage_unavailable");
-    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+}
+
+#[tokio::test]
+async fn billing_exempt_user_missing_usage_succeeds_even_in_strict_mode() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    repository.allow_model_billing_finalize();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: Vec::new(),
+            result: ProviderInvocationResult {
+                final_content: Some("computed answer".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+        },
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker_with_policy(repository, runtime, true, true);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("billing-exempt user must bypass strict missing-usage failure");
+    assert_eq!(output.result.usage.total_tokens, Some(0));
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 1);
 }
 
 // AC4: reported usage reaches settlement; a failed settlement releases the reservation
@@ -404,7 +481,7 @@ async fn billing_finalize_failure_releases_and_preserves_failure_evidence() {
         },
     ]);
     let repository_probe = repository.clone();
-    let invoker = billing_invoker(repository, runtime);
+    let invoker = billing_invoker_with_policy(repository, runtime, false, false);
     let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
 
     let error = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(

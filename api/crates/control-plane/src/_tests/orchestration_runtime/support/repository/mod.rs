@@ -63,6 +63,7 @@ struct InMemoryOrchestrationRuntimeState {
     model_billing_credit_releases: Vec<(Uuid, String)>,
     model_billing_reserved_session_count: usize,
     model_billing_finalize_attempt_count: usize,
+    model_billing_finalize_succeeds: bool,
     plugin_credit_transactions_by_idempotency:
         HashMap<(Uuid, String), crate::ports::CreditTransactionRecord>,
     plugin_credit_rejections: Vec<(Uuid, String, String, String, String)>,
@@ -159,6 +160,39 @@ impl InMemoryOrchestrationRuntimeRepository {
             .lock()
             .expect("runtime repo mutex poisoned")
             .model_billing_finalize_attempt_count
+    }
+
+    pub(crate) fn allow_model_billing_finalize(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_finalize_succeeds = true;
+    }
+
+    pub(crate) fn model_billing_usage_ledger(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Vec<domain::UsageLedgerRecord> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .usage_ledger_by_flow_run_id
+            .get(&flow_run_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn model_billing_cost_ledger(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Vec<domain::CostLedgerRecord> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .cost_ledger_by_flow_run_id
+            .get(&flow_run_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub(super) fn reset_application_run_detail_read_count(&self) {

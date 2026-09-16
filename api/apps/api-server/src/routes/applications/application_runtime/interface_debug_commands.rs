@@ -144,6 +144,7 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
     provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     api_node_id: String,
     provider_install_root: String,
@@ -163,6 +164,7 @@ pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependenc
         runtime_activity: state.runtime_activity.clone(),
         runtime_engine: state.runtime_engine.clone(),
         provider_secret_master_key: state.provider_secret_master_key.clone(),
+        model_billing_require_provider_usage: state.model_billing_require_provider_usage,
         provider_transport_store: state.infrastructure.provider_transport_store(),
         api_node_id: state.api_node_id.clone(),
         provider_install_root: state.provider_install_root.clone(),
@@ -216,6 +218,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             self.dependencies.runtime_engine.clone(),
             self.dependencies.provider_secret_master_key.clone(),
             self.dependencies.provider_transport_store.clone(),
+            self.dependencies.model_billing_require_provider_usage,
         )
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),
@@ -340,6 +343,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.runtime_engine.clone(),
                 dependencies.provider_secret_master_key.clone(),
                 dependencies.provider_transport_store.clone(),
+                dependencies.model_billing_require_provider_usage,
             )
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),
@@ -767,6 +771,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 dependencies.runtime_engine.clone(),
                 dependencies.provider_secret_master_key.clone(),
                 dependencies.provider_transport_store.clone(),
+                dependencies.model_billing_require_provider_usage,
             )
             .with_node_artifact_context(
                 dependencies.api_node_id.clone(),

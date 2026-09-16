@@ -604,6 +604,7 @@ impl AssistantWebSocketCommandAdapter {
             self.dependencies.runtime_engine.clone(),
             self.dependencies.provider_secret_master_key.clone(),
             self.dependencies.provider_transport_store.clone(),
+            self.dependencies.model_billing_require_provider_usage,
         )
         .with_node_artifact_context(
             self.dependencies.api_node_id.clone(),

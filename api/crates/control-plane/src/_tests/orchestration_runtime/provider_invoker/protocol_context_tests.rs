@@ -55,6 +55,7 @@ async fn service_preserves_business_json_and_protects_scoped_contexts() {
         Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
         "test-master-key",
         Arc::new(TestProviderTransportStore::default()),
+        false,
     );
     let invoker = service
         .runtime_invoker(Uuid::nil())

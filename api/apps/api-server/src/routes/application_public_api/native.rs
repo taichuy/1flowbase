@@ -159,6 +159,7 @@ pub(crate) struct ApplicationNativeRunDependencies {
     pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     pub(crate) provider_secret_master_key: String,
+    pub(crate) model_billing_require_provider_usage: bool,
     pub(crate) api_node_id: String,
     pub(crate) provider_install_root: String,
     pub(crate) file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -279,6 +280,7 @@ pub(crate) fn native_runtime_service(
         dependencies.runtime_engine.clone(),
         dependencies.provider_secret_master_key.clone(),
         dependencies.provider_transport_store.clone(),
+        dependencies.model_billing_require_provider_usage,
     )
     .with_node_artifact_context(
         dependencies.api_node_id.clone(),
@@ -307,6 +309,7 @@ pub(crate) fn native_run_terminal_dependencies(
         dependencies.runtime_engine.clone(),
         dependencies.provider_runtime.clone(),
         dependencies.provider_secret_master_key.clone(),
+        dependencies.model_billing_require_provider_usage,
         dependencies.provider_transport_store.clone(),
         dependencies.runtime_event_stream.clone(),
     )

@@ -353,6 +353,7 @@ pub(super) mod tests {
             std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
             "test-master-key",
             std::sync::Arc::new(TestProviderTransportStore::default()),
+            false,
         );
 
         let error = service
@@ -423,6 +424,7 @@ pub(super) mod tests {
             std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
             "test-master-key",
             store.clone(),
+            false,
         );
 
         let resolved = service

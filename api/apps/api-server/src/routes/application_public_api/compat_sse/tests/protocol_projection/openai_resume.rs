@@ -93,6 +93,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
         official_model_pricing_catalog_index_url: base_state
             .official_model_pricing_catalog_index_url
             .clone(),
+        model_billing_require_provider_usage: base_state.model_billing_require_provider_usage,
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),
@@ -351,6 +352,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
         official_model_pricing_catalog_index_url: base_state
             .official_model_pricing_catalog_index_url
             .clone(),
+        model_billing_require_provider_usage: base_state.model_billing_require_provider_usage,
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),

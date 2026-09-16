@@ -327,6 +327,7 @@ struct RuntimeProviderInvoker<R, H> {
 
 struct RuntimeFlowExecutionContext {
     user_account: Option<String>,
+    require_provider_usage_for_billing: bool,
     active_node: Mutex<Option<RuntimeActiveNode>>,
     data_model: RuntimeDataModelExecutionContext,
 }
@@ -375,6 +376,7 @@ pub struct OrchestrationRuntimeService<R, H> {
         Option<Arc<dyn orchestration_runtime::execution_engine::LlmRoutingCounterStore>>,
     model_routing_cache_store: Option<Arc<dyn CacheStore>>,
     provider_secret_master_key: String,
+    require_provider_usage_for_billing: bool,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
     provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
@@ -410,6 +412,7 @@ where
         runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
         provider_secret_master_key: impl Into<String>,
         provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
+        require_provider_usage_for_billing: bool,
     ) -> Self {
         Self {
             repository,
@@ -419,6 +422,7 @@ where
             llm_routing_counter_store: None,
             model_routing_cache_store: None,
             provider_secret_master_key: provider_secret_master_key.into(),
+            require_provider_usage_for_billing,
             runtime_event_stream: None,
             provider_request_log_queue: None,
             provider_transport_store,
@@ -502,6 +506,7 @@ where
     ) -> Arc<RuntimeFlowExecutionContext> {
         Arc::new(RuntimeFlowExecutionContext {
             user_account,
+            require_provider_usage_for_billing: self.require_provider_usage_for_billing,
             active_node: Mutex::new(active_node),
             data_model: RuntimeDataModelExecutionContext {
                 actor,
