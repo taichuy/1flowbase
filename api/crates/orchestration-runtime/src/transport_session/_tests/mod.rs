@@ -8,8 +8,9 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, LifecycleEvent, RegistryError,
-    TerminationKind, TransportClock, TransportInstant, TransportOwnerId, TransportRegistryConfig,
-    TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
+    TerminationKind, TransportClock, TransportInstant, TransportOwnerId, TransportProviderId,
+    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportSessionRegistry, TransportSessionState,
 };
 
 #[derive(Clone, Default)]
@@ -56,6 +57,7 @@ fn request(value: &str) -> AdmissionRequest {
     AdmissionRequest {
         session_id: session_id(value),
         owner_id: TransportOwnerId::new(format!("owner-{value}")).unwrap(),
+        provider_id: TransportProviderId::new(format!("provider-{value}")).unwrap(),
         runtime_target_id: TransportRuntimeTargetId::new(format!("target-{value}")).unwrap(),
         task_deadline: None,
         provider_hard_deadline: None,
@@ -328,6 +330,14 @@ fn termination_event_preserves_the_same_stable_receipt_as_the_tombstone() {
         .unwrap();
     assert_eq!(event, receipt);
     assert_eq!(registry.tombstone(&session_id("receipt")), Some(&receipt));
+    registry.record_close_acknowledgement(&fence, true).unwrap();
+    assert_eq!(
+        registry
+            .tombstone(&session_id("receipt"))
+            .unwrap()
+            .close_acknowledged,
+        Some(true)
+    );
 }
 
 #[test]
@@ -370,6 +380,9 @@ fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
         registry.tombstone(&session).unwrap().kind,
         TerminationKind::OwnerOrphaned
     );
+    let snapshot = registry.safe_snapshot();
+    assert_eq!(snapshot.tombstone_ttl, Duration::from_secs(2));
+    assert_eq!(snapshot.tombstones.len(), 1);
 
     clock.advance(Duration::from_secs(2));
     registry.maintain();

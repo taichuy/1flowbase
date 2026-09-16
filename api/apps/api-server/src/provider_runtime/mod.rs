@@ -321,6 +321,12 @@ impl ApiRuntimeServices {
         self.transport_sessions.mark_owner_orphaned(owner_id).await;
     }
 
+    pub(crate) async fn transport_session_snapshot(
+        &self,
+    ) -> orchestration_runtime::transport_session::SafeRegistrySnapshot {
+        self.transport_sessions.safe_snapshot().await
+    }
+
     pub(crate) async fn shutdown_transport_sessions(&self, timeout: std::time::Duration) {
         self.transport_sessions.shutdown(timeout).await;
     }

@@ -37,6 +37,7 @@ macro_rules! opaque_id {
 
 opaque_id!(TransportSessionId, "transport_session_id");
 opaque_id!(TransportOwnerId, "transport_owner_id");
+opaque_id!(TransportProviderId, "transport_provider_id");
 opaque_id!(TransportRuntimeTargetId, "transport_runtime_target_id");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -117,10 +118,14 @@ pub enum TerminationKind {
 pub struct TerminationReceipt {
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,
+    pub provider_id: TransportProviderId,
     pub runtime_target_id: TransportRuntimeTargetId,
     pub previous_state: TransportSessionState,
     pub kind: TerminationKind,
     pub terminated_at: TransportInstant,
+    pub connection_age: Duration,
+    /// Result of the downstream close command. `None` means that the command is still pending.
+    pub close_acknowledged: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,6 +143,8 @@ pub enum LifecycleEvent {
 pub struct AdmissionRequest {
     pub session_id: TransportSessionId,
     pub owner_id: TransportOwnerId,
+    /// Opaque Provider instance that owns the logical session.
+    pub provider_id: TransportProviderId,
     /// Opaque Runtime Backend target used only for lifecycle control dispatch.
     pub runtime_target_id: TransportRuntimeTargetId,
     /// The task's absolute deadline. When absent, the configured invocation default is used.
@@ -189,18 +196,23 @@ impl InvocationCompletion {
 pub struct SafeSessionSnapshot {
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,
+    pub provider_id: TransportProviderId,
+    pub runtime_target_id: TransportRuntimeTargetId,
     pub state: TransportSessionState,
     pub inflight: bool,
     pub age: Duration,
     pub state_age: Duration,
     pub logical_ttl: Duration,
     pub physical_ttl: Duration,
+    pub deadline_kind: DeadlineKind,
+    pub eviction_priority: Option<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SafeRegistrySnapshot {
     pub observed_at: TransportInstant,
     pub capacity: usize,
+    pub tombstone_ttl: Duration,
     pub sessions: Vec<SafeSessionSnapshot>,
     pub tombstones: Vec<TerminationReceipt>,
 }

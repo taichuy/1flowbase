@@ -9,6 +9,8 @@ pub(crate) struct MemoryInspectionDependencies {
     pub(crate) task_queue: Option<Arc<dyn TaskQueue>>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
     pub(crate) runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    pub(crate) provider_transport_sessions:
+        Option<Arc<crate::provider_runtime::ApiRuntimeServices>>,
     pub(crate) provider_codes: std::collections::BTreeMap<String, String>,
 }
 
@@ -20,6 +22,7 @@ pub(super) enum MemoryInspectionTarget {
     TaskQueue(Arc<dyn TaskQueue>),
     EventBus(Arc<dyn EventBus>),
     RuntimeEvents(Arc<dyn RuntimeEventStream>),
+    ProviderTransportSessions(Arc<crate::provider_runtime::ApiRuntimeServices>),
     Unsupported,
 }
 
@@ -33,6 +36,7 @@ impl MemoryInspectionTarget {
             Self::TaskQueue(store) => store.ephemeral_inspection_capabilities(),
             Self::EventBus(store) => store.ephemeral_inspection_capabilities(),
             Self::RuntimeEvents(stream) => stream.ephemeral_inspection_capabilities(),
+            Self::ProviderTransportSessions(_) => EphemeralInspectionCapabilities::metadata_only(),
             Self::Unsupported => EphemeralInspectionCapabilities::unsupported(),
         }
     }
@@ -41,7 +45,13 @@ impl MemoryInspectionTarget {
         &self,
         inspection_path: &[String],
     ) -> anyhow::Result<EphemeralInspectionSummarySnapshot> {
-        let entries = match self {
+        let entries = self.list_entries().await?;
+
+        Ok(summarize_memory_entries_at_path(entries, inspection_path))
+    }
+
+    async fn list_entries(&self) -> anyhow::Result<Vec<EphemeralEntrySnapshot>> {
+        Ok(match self {
             Self::Session(store) => store.list_ephemeral_entries().await?,
             Self::Cache(store) => store.list_ephemeral_entries().await?,
             Self::RateLimit(store) => store.list_ephemeral_entries().await?,
@@ -49,10 +59,13 @@ impl MemoryInspectionTarget {
             Self::TaskQueue(store) => store.list_ephemeral_entries().await?,
             Self::EventBus(store) => store.list_ephemeral_entries().await?,
             Self::RuntimeEvents(stream) => stream.list_ephemeral_entries().await?,
+            Self::ProviderTransportSessions(runtime) => {
+                super::provider_transport_session_observation::project(
+                    runtime.transport_session_snapshot().await,
+                )
+            }
             Self::Unsupported => Vec::new(),
-        };
-
-        Ok(summarize_memory_entries_at_path(entries, inspection_path))
+        })
     }
 
     pub(super) async fn list_tree(
@@ -67,6 +80,9 @@ impl MemoryInspectionTarget {
             Self::TaskQueue(store) => store.list_ephemeral_tree(request).await,
             Self::EventBus(store) => store.list_ephemeral_tree(request).await,
             Self::RuntimeEvents(stream) => stream.list_ephemeral_tree(request).await,
+            Self::ProviderTransportSessions(_) => {
+                Ok(paginate_ephemeral_tree(self.list_entries().await?, request))
+            }
             Self::Unsupported => Ok(empty_memory_tree_page(request)),
         }
     }
@@ -83,6 +99,10 @@ impl MemoryInspectionTarget {
             Self::TaskQueue(store) => store.list_ephemeral_entry_page(request).await,
             Self::EventBus(store) => store.list_ephemeral_entry_page(request).await,
             Self::RuntimeEvents(stream) => stream.list_ephemeral_entry_page(request).await,
+            Self::ProviderTransportSessions(_) => Ok(paginate_ephemeral_entries(
+                self.list_entries().await?,
+                request,
+            )),
             Self::Unsupported => Ok(empty_memory_entry_page(request)),
         }
     }
@@ -100,6 +120,11 @@ impl MemoryInspectionTarget {
             Self::TaskQueue(store) => store.search_ephemeral_entry_page(query, request).await,
             Self::EventBus(store) => store.search_ephemeral_entry_page(query, request).await,
             Self::RuntimeEvents(stream) => stream.search_ephemeral_entry_page(query, request).await,
+            Self::ProviderTransportSessions(_) => Ok(search_ephemeral_entries(
+                self.list_entries().await?,
+                query,
+                request,
+            )),
             Self::Unsupported => Ok(empty_memory_entry_page(request)),
         }
     }
@@ -119,6 +144,7 @@ impl MemoryInspectionTarget {
             Self::RuntimeEvents(stream) => {
                 stream.reveal_ephemeral_entry(entry_ref, reveal_mode).await
             }
+            Self::ProviderTransportSessions(_) => Ok(None),
             Self::Unsupported => Ok(None),
         }
     }
@@ -132,6 +158,7 @@ const MEMORY_CONTRACTS: &[(&str, &str)] = &[
     ("task-queue", "Task Queue"),
     ("event-bus", "Event Bus"),
     ("runtime-event-stream", "Runtime Events"),
+    ("provider-transport-sessions", "Provider Transport Sessions"),
 ];
 
 pub(super) fn memory_contract_definitions() -> &'static [(&'static str, &'static str)] {
@@ -184,6 +211,11 @@ pub(super) fn memory_inspection_target(
             .runtime_event_stream
             .clone()
             .map(MemoryInspectionTarget::RuntimeEvents)
+            .unwrap_or(MemoryInspectionTarget::Unsupported)),
+        "provider-transport-sessions" => Ok(dependencies
+            .provider_transport_sessions
+            .clone()
+            .map(MemoryInspectionTarget::ProviderTransportSessions)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
         _ => Err(ControlPlaneError::NotFound("memory_contract").into()),
     }

@@ -9,7 +9,7 @@ use std::{
 use orchestration_runtime::transport_session::{
     AdmissionRequest, InvocationCompletion, InvocationLease, LifecycleEvent, RegistryError,
     SystemTransportClock, TerminationKind, TransportFence, TransportInstant, TransportOwnerId,
-    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
     TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
@@ -39,6 +39,7 @@ struct LifecycleCommand {
     target_id: String,
     command: ProviderTransportSessionCommand,
     termination: Option<TransportTerminationNotice>,
+    close_fence: Option<TransportFence>,
 }
 
 pub(crate) struct PreparedTransportInvocation {
@@ -120,6 +121,7 @@ impl TransportSessionCoordinator {
             &input.model,
         ]))?;
         let target = TransportRuntimeTargetId::new(target_id.to_string())?;
+        let provider_id = TransportProviderId::new(input.provider_instance_id.clone())?;
         let task_deadline = u64::try_from(context.deadline_unix_ms)
             .ok()
             .map(TransportInstant::from_millis);
@@ -150,6 +152,7 @@ impl TransportSessionCoordinator {
                 .admit(AdmissionRequest {
                     session_id: session_id.clone(),
                     owner_id,
+                    provider_id,
                     runtime_target_id: target,
                     task_deadline,
                     provider_hard_deadline: None,
@@ -221,6 +224,12 @@ impl TransportSessionCoordinator {
         self.registry.lock().await.mark_owner_orphaned(&owner_id);
     }
 
+    pub(crate) async fn safe_snapshot(
+        &self,
+    ) -> orchestration_runtime::transport_session::SafeRegistrySnapshot {
+        self.registry.lock().await.safe_snapshot()
+    }
+
     pub(crate) async fn shutdown(&self, timeout: Duration) {
         self.shutdown.store(true, Ordering::Release);
         self.registry
@@ -265,16 +274,26 @@ impl TransportSessionCoordinator {
                     .provider_transport_session(&command.target_id, command.command.clone()),
             )
             .await;
-            match result {
+            let acknowledged = matches!(
+                &result,
                 Ok(Ok(receipt))
                     if receipt.generation == command.command.generation
                         && (command.termination.is_none()
-                            || receipt.close_acknowledged == Some(true)) => {}
-                Ok(Ok(_)) | Ok(Err(_)) | Err(_) => tracing::warn!(
+                            || receipt.close_acknowledged == Some(true))
+            );
+            if !acknowledged {
+                tracing::warn!(
                     target_id = %command.target_id,
                     generation = command.command.generation,
                     "provider transport lifecycle command did not return a matching ACK"
-                ),
+                );
+            }
+            if let Some(fence) = &command.close_fence {
+                let _ = self
+                    .registry
+                    .lock()
+                    .await
+                    .record_close_acknowledgement(fence, acknowledged);
             }
             if let Some(notice) = command.termination {
                 let _ = self.notices.send(notice);
@@ -303,6 +322,7 @@ fn lifecycle_command(
                     deadline_unix_ms: control_deadline_unix_ms(),
                 },
                 termination: None,
+                close_fence: None,
             })
         }
         LifecycleEvent::Terminated(receipt) => Some(LifecycleCommand {
@@ -317,6 +337,7 @@ fn lifecycle_command(
                 owner_id: receipt.owner_id.as_str().to_string(),
                 code: termination_code(receipt.kind),
             }),
+            close_fence: Some(receipt.fence),
         }),
         _ => None,
     }

@@ -10,6 +10,7 @@ use control_plane::{
     errors::ControlPlaneError,
     host_infrastructure_config::HostInfrastructureProviderConfigView,
     ports::{
+        paginate_ephemeral_entries, paginate_ephemeral_tree, search_ephemeral_entries,
         CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities, CacheStore,
         DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
         EphemeralInspectionCapabilities, EphemeralInspectionEntryPage,
@@ -38,6 +39,7 @@ pub(crate) mod interface_memory_inspection;
 pub mod interface_operation;
 pub(crate) mod interface_provider_config;
 mod memory_support;
+mod provider_transport_session_observation;
 
 use memory_support::{memory_contract_definitions, MemoryInspectionDependencies};
 
@@ -862,6 +864,7 @@ pub(crate) fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspecti
         task_queue: state.infrastructure.registered_task_queue(),
         event_bus: state.infrastructure.registered_event_bus(),
         runtime_event_stream: state.infrastructure.runtime_event_stream(),
+        provider_transport_sessions: Some(Arc::clone(&state.provider_runtime)),
         provider_codes,
     }
 }

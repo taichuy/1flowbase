@@ -7,8 +7,8 @@ use super::types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, InvocationCompletion, InvocationLease,
     LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot, TerminationKind,
     TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration, TransportInstant,
-    TransportOwnerId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
-    TransportSessionState,
+    TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
+    TransportSessionId, TransportSessionState,
 };
 
 pub trait TransportClock: Send + Sync {
@@ -43,6 +43,7 @@ impl TransportClock for SystemTransportClock {
 
 struct SessionRecord {
     owner_id: TransportOwnerId,
+    provider_id: TransportProviderId,
     runtime_target_id: TransportRuntimeTargetId,
     generation: TransportGeneration,
     state: TransportSessionState,
@@ -128,6 +129,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             request.session_id,
             SessionRecord {
                 owner_id: request.owner_id,
+                provider_id: request.provider_id,
                 runtime_target_id: request.runtime_target_id,
                 generation,
                 state: TransportSessionState::Opening,
@@ -328,6 +330,21 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .find(|receipt| receipt.fence.session_id == *session_id)
     }
 
+    pub fn record_close_acknowledgement(
+        &mut self,
+        fence: &TransportFence,
+        acknowledged: bool,
+    ) -> Result<(), RegistryError> {
+        let receipt = self
+            .tombstones
+            .iter_mut()
+            .rev()
+            .find(|receipt| receipt.fence == *fence)
+            .ok_or(RegistryError::NotFound)?;
+        receipt.close_acknowledged = Some(acknowledged);
+        Ok(())
+    }
+
     pub fn fence(&self, session_id: &TransportSessionId) -> Option<TransportFence> {
         self.sessions.get(session_id).map(|record| TransportFence {
             session_id: session_id.clone(),
@@ -398,17 +415,22 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     generation: record.generation,
                 },
                 owner_id: record.owner_id.clone(),
+                provider_id: record.provider_id.clone(),
+                runtime_target_id: record.runtime_target_id.clone(),
                 state: record.state,
                 inflight: record.inflight.is_some(),
                 age: now.saturating_duration_since(record.created_at),
                 state_age: now.saturating_duration_since(record.state_since),
                 logical_ttl: effective_logical_deadline(record).saturating_duration_since(now),
                 physical_ttl: record.physical_hard_deadline.saturating_duration_since(now),
+                deadline_kind: effective_deadline(record).1,
+                eviction_priority: eviction_rank(record.state),
             })
             .collect();
         SafeRegistrySnapshot {
             observed_at: now,
             capacity: self.config.capacity,
+            tombstone_ttl: self.config.tombstone_ttl,
             sessions,
             tombstones: self.tombstones.iter().cloned().collect(),
         }
@@ -506,10 +528,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                 generation: record.generation,
             },
             owner_id: record.owner_id,
+            provider_id: record.provider_id,
             runtime_target_id: record.runtime_target_id,
             previous_state: record.state,
             kind,
             terminated_at: now,
+            connection_age: now.saturating_duration_since(record.created_at),
+            close_acknowledged: None,
         };
         self.tombstones.push_back(receipt.clone());
         while self.tombstones.len() > self.config.tombstone_capacity {
@@ -615,6 +640,21 @@ fn effective_logical_deadline(record: &SessionRecord) -> TransportDeadline {
         .task_deadline
         .min(record.logical_absolute_deadline)
         .min(record.state_deadline)
+}
+
+fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {
+    [
+        (record.physical_hard_deadline, DeadlineKind::PhysicalHard),
+        (record.task_deadline, DeadlineKind::Task),
+        (
+            record.logical_absolute_deadline,
+            DeadlineKind::LogicalAbsolute,
+        ),
+        (record.state_deadline, DeadlineKind::StateLease),
+    ]
+    .into_iter()
+    .min_by_key(|(deadline, kind)| (*deadline, deadline_priority(*kind)))
+    .expect("transport sessions always have a deadline")
 }
 
 fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<TerminationKind> {
