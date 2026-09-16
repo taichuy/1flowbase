@@ -31,325 +31,448 @@
 1flowbase lets an Agent take over the entire application through MCP — whether orchestrating and publishing an AI gateway, generating backend application endpoints, or building native React interfaces.
 
 ```text
-Local Agent        -> MCP Gateway         -> discover / configure / build / operate
-Model clients      -> AI Gateway          -> compatible endpoints / model workflows / traces
-External systems   -> Application Backend -> generated CRUD APIs / custom workflow APIs
-People             -> React blocks        -> interactive application UI
+list
+ │
+ ▼
+Discover available Tools
 
-The four foundations can be used independently, or combined around the same 1flowbase application.
+get
+ │
+ ▼
+Get full Tool definition
+
+call
+ │
+ ▼
+Execute Tool
 ```
 
-| Foundation | What it provides |
-|---|---|
-| **AI Gateway** | Translate and dispatch OpenAI Responses, Chat Completions, and Claude Messages traffic; route models and publish observable workflows as virtual models |
-| **MCP Gateway** | Project 1flowbase capabilities into progressively discoverable tools; manage Tools, mappings, Groups, Bindings, policies, upstream MCP connections, and reusable Bundles |
-| **Application Backend** | Define Data Models that materialize PostgreSQL tables, fields, indexes, and relations; automatically generate governed CRUD APIs and publish custom endpoints powered by Workflows |
-| **Native React frontend blocks** | Build responsive application interfaces with standard React/TSX and CSS, controlled component imports, data binding, and Shadow DOM isolation |
+Agents only need to understand three basic tools:
 
-For example, a local Agent can create `Customer` and `Ticket` Data Models through MCP, assemble a workflow-backed `/api/ex/tickets/escalate` endpoint, and build the React interface. External systems call the generated backend APIs, while people work directly in the interface. If the same local Agent also points its model endpoint at the AI Gateway, it gains virtual models with routing, model composition, and full logs; the application itself does not depend on this optional connection.
+**list / get / call**
 
----
+Then progressively discover and invoke the capabilities they actually need based on the current task.
 
-## What You Can Build
+This avoids stuffing a massive number of Tool definitions into the context all at once.
 
-### Let an agent build and operate a 1flowbase application
+------
 
-The MCP Gateway projects platform capabilities into an agent-oriented virtual UI. An agent can progressively discover the relevant domain, inspect a tool contract, make a call, verify the resulting state, and continue building — no hard-coded frontend flow needed for each new task.
+# React Blocks
 
-```text
-Agent
-  -> mcp_list: discover applications and capabilities
-  -> mcp_get: inspect the next tool contract
-  -> mcp_call: create, configure, run, and publish
-  -> inspect state / traces
-  -> iterate
+Business systems ultimately still need UI.
+
+1flowbase provides **React**-based code block capabilities.
+
+Each Block can directly contain React code, so you're not limited by fixed low-code components.
+
+For example, Ant Design's official example code can serve directly as the foundation for a Block:
+
+```jsx
+import React from 'react';
+import { ColorPicker, Space } from 'antd';
+
+const DEFAULT_COLOR = [
+  {
+    color: 'rgb(16, 142, 233)',
+    percent: 0,
+  },
+  {
+    color: 'rgb(135, 208, 104)',
+    percent: 100,
+  },
+];
+
+const Demo = () => (
+  <Space vertical>
+    <ColorPicker
+      defaultValue={DEFAULT_COLOR}
+      allowClear
+      showText
+      mode={['single', 'gradient']}
+      onChangeComplete={(color) => {
+        console.log(color.toCssString());
+      }}
+    />
+  </Space>
+);
+
+export default Demo;
 ```
 
-### Create a ready-to-use application backend
+You can continue using the entire React ecosystem to build your business interfaces.
 
-Define and publish a Data Model in 1flowbase, and the platform materializes the PostgreSQL schema and generates model-aware List, Get, Create, Update, and Delete APIs with OpenAPI contracts. When standard CRUD is not enough, use a Workflow Extension to define business logic and publish it as a custom endpoint under `/api/ex/{slug}`.
+So 1flowbase's goal isn't to provide a closed drag-and-drop page editor.
+
+It's to:
+
+> **Strike a balance between low-code efficiency and native React freedom.**
+
+------
+
+# Built for Agents
+
+We're entering a new software era:
+
+> **Build for Agents.**
+
+But many systems today that claim to be "built for Agents" are really just adding a few Tools for Agents.
+
+The infrastructure itself is still primarily designed for humans:
 
 ```text
-Data Model definition
-  -> PostgreSQL table / columns / indexes / relations
-  -> generated CRUD runtime APIs + OpenAPI
+Human
+  │
+  ▼
+Dashboard
+  │
+  ▼
+Buttons / Forms
+  │
+  ▼
+Application
+```
 
+1flowbase takes a different approach.
+
+If the GUI can perform a runtime operation, that capability should also be exposable through an API.
+
+And APIs can further be exposed to Agents through MCP.
+
+```text
+           Human
+             │
+             ▼
+            GUI
+             │
+             ▼
+            API
+             ▲
+             │
+            MCP
+             ▲
+             │
+           Agent
+```
+
+So humans and Agents operate the same system.
+
+In 1flowbase's runtime, Agents can further participate in:
+
+- Creating and modifying Gateways
+- Configuring models
+- Creating Workflows
+- Creating data tables
+- Managing business data
+- Creating and calling APIs
+- Querying runtime logs
+- Configuring permissions
+- Building React interfaces
+
+So the problem we want to solve isn't:
+
+> **How do you add an Agent to an application?**
+
+It's:
+
+> **How do you build an application system truly built for Agents?**
+
+------
+
+# From AI Gateway to Full Application System
+
+Ultimately, you can combine all these capabilities:
+
+```text
+AI Gateway
+     +
 Workflow
-  -> custom input/output contract
-  -> published /api/ex/{slug} endpoint
+     +
+API
+     +
+Business Data
+     +
+React UI
+     +
+MCP
+     │
+     ▼
+AI Application
 ```
 
-### Build the human interface with Native React blocks
+In other words:
 
-Frontend blocks use standard React/TSX, Hooks, events, and CSS directly. 1flowbase compiles and mounts each block in an isolated Shadow DOM runtime, exposing the platform capabilities the block is allowed to use through controlled catalogs and context contracts.
+> **Build a complete application system truly built for Agents on top of an AI Gateway.**
 
-```tsx
-export default function StatusCard({ ctx }) {
-  const status = ctx.inputs.status;
-  return <button onClick={() => ctx.outputs.publish({ action: 'retry' })}>
-    {status}
-  </button>;
-}
-```
+------
 
-### Add vision to text-first coding models
+# What Can an Agent Do?
 
-Keep GLM-5.2, DeepSeek V4, or another strong text-based coding model in charge of planning and writing code, and let 1flowbase route screenshots, UI images, charts, and PDF pages to a mounted vision model.
+For example, connecting 1flowbase MCP to Codex:
 
 ```text
-Claude Code
-  -> 1flowbase virtual model endpoint
-  -> GLM-5.2 / DeepSeek / other main coding model
-  -> mounted vision tool
-  -> GLM-5V-Turbo / Gemini / GPT vision / OCR model
-  -> structured visual result
-  -> final coding answer
+Codex
+  │
+  ▼
+MCP
+  │
+  ▼
+1flowbase
 ```
 
-Guide: [Make GLM-5.2 See Images in Claude Code with 1flowbase](https://github.com/taichuy/1flowbase/wiki/Make-GLM-5.2-See-Images-in-Claude-Code-with-1flowbase)
-
-### Publish a Fusion-style multi-model reviewer
-
-1flowbase ships with a `fusion` template. The client calls a single model name; 1flowbase queries multiple branch models in the background, invokes a synthesis model, returns the final answer, and keeps the execution record of every branch.
+Agents can continue operating 1flowbase based on your business needs:
 
 ```text
-User request
-  -> Main LLM
-  -> fusion tool
-     -> Branch LLM A
-     -> Branch LLM B
-     -> Branch LLM C
-     -> Synthesis LLM
-  -> final answer
+Create Data Model
+       ↓
+Create Business API
+       ↓
+Configure AI Gateway
+       ↓
+Create Workflow
+       ↓
+Build React UI
+       ↓
+Operate Application
 ```
 
-Guide: [Fusion-Style Workflows: Publish a Multi-Model Panel as an Observable Virtual Model](https://github.com/taichuy/1flowbase/wiki/Fusion-Style-Workflow)
+## Current Status
 
-### Publish workflow-backed model APIs
+1flowbase's underlying runtime is already built API-first, so these capabilities can be further exposed to MCP.
 
-Build the workflow once, then serve it through common model protocols:
+We're currently actively improving:
 
-| Protocol | API path | Typical usage |
-|---|---:|---|
-| OpenAI Responses API | `/v1/responses` | newer OpenAI-style clients and application code |
-| OpenAI Chat Completions API | `/v1/chat/completions` | SDKs, coding tools, chat clients, application frameworks |
-| Claude-compatible Messages API | `/v1/messages` | Claude-compatible clients that support custom endpoints |
+- Official MCP Tool definitions
+- Tool descriptions
+- Agent Context
+- Default configurations
+- Application templates
 
----
+The goal is to enable Coding Agents like Codex to **understand platform capabilities and build applications directly without reading 1flowbase source code**.
 
-## Installation or Upgrade
+At the current stage, for complex application building scenarios, we still recommend having Coding Agents work within the 1flowbase project context.
 
-Linux/macOS:
+------
+
+# Out-of-the-Box Application Templates
+
+1flowbase itself has many capabilities.
+
+This is also one of the issues we're currently focused on improving:
+
+> **A powerful system shouldn't require every new user to start from a blank canvas.**
+
+So we're packaging common capabilities into application templates.
+
+For example, in the future you'll be able to start directly from:
+
+```text
+AI Gateway
+Multi-model Router
+Enterprise AI Gateway
+AI Education Platform
+Agent Application Backend
+```
+
+And other scenarios.
+
+You can use a template to handle 80% of the basic configuration, then extend further based on your business needs.
+
+------
+
+# Quick Start
+
+## Linux / macOS
+
+Run the official deployment script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh
 ```
 
-迁移到新机器时，运行同一官方命令会询问是否恢复一个便携备份；也可显式指定备份文件（如备份设置过密码，再加 `--restore-password`）：
+Follow the prompts to complete configuration and start 1flowbase.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh -s -- --restore-backup /safe/path/system.1fb-backup
-```
+------
 
-恢复在首次启动前完成。请使用备份中原有的 root 登录凭据；脚本不会把新 `.env` 的初始密码误报为已恢复系统的密码。
-
-Windows PowerShell:
+## Windows PowerShell
 
 ```powershell
 irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex
 ```
 
-PowerShell 同样会询问是否恢复备份；或先下载脚本后使用 `-RestoreBackup C:\safe\system.1fb-backup`。
+------
 
-Windows CMD:
+## Windows CMD
 
 ```cmd
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex"
 ```
 
----
+The entire process uses Docker deployment — no need to manually set up complex runtime environments.
 
-## Run From Source
+------
 
-This path is for developing 1flowbase itself.
+# Who Is It For?
 
-Requirements: Node.js `>= 24.0.0`, pnpm, the latest stable Rust, and Docker for local middleware.
+## Enterprise AI Teams
 
-```bash
-git clone https://github.com/taichuy/1flowbase.git
-cd 1flowbase
+If your organization needs unified distribution of:
 
-docker compose -f docker/docker-compose.middleware.yaml up -d
+- OpenAI
+- Anthropic
+- Other model providers
+- Custom models
+- Composite models
+- Agent Workflows
 
-cd web
-pnpm install
-pnpm dev
-```
+And you also want to:
 
-Frontend:
+- Own your AI data
+- Analyze enterprise AI usage behavior
+- Build internal AI applications
+- Provide unified AI capabilities across departments
 
-```text
-http://127.0.0.1:3100
-```
+1flowbase can serve as this infrastructure layer.
 
-To develop Native React blocks with the optional External npm Pack, start the companion repository in another terminal. Vite proxies the same production path, `/external-npm/`, to port `4174` by default:
+------
 
-```bash
-git clone https://github.com/taichuy/1flowbase-web-external-npm.git
-cd 1flowbase-web-external-npm
-pnpm install --ignore-scripts
-pnpm dev
-```
+## AI Product Teams
 
-Override `VITE_EXTERNAL_NPM_PROXY_TARGET` in `web/app/.env` when the pack server uses another address.
-
-Start the backend service:
-
-```bash
-cd api
-# Copy api/apps/api-server/.env.example to .env before the first run.
-cargo run -p api-server --bin api-server
-```
-
-Default backend endpoint:
+If you're building AI SaaS or Agent products, you can start from the Gateway and expand:
 
 ```text
-API Server: http://127.0.0.1:7800
+Gateway → Data → API → Workflow → UI
 ```
 
-Script-assisted startup:
+Without having to build multiple disconnected systems separately.
 
-```bash
-node scripts/node/dev-up.js
-node scripts/node/dev-up.js status
-node scripts/node/dev-up.js stop
-node scripts/node/dev-up.js restart
-```
+------
 
-See [scripts/README.md](scripts/README.md) for more configuration options.
+## Advanced Individual Users
 
----
+If you use multiple models simultaneously, you can also leverage Workflows to build your own composite models:
 
-## Common Use Cases
+> High-capability models handle decisions, low-cost models handle execution.
 
-### Have an agent build and continuously manage an internal application
+Then use it as a single model through a unified API.
 
-```text
-Local or external Agent
-  -> MCP Gateway
-  -> create Data Models and relations
-  -> publish CRUD and Workflow Extension APIs
-  -> assemble Native React blocks
-  -> inspect and continuously evolve the running application
-```
+------
 
-This is the primary full-stack path formed by the four foundations: the agent operates the control plane through MCP, the Application Backend handles data and APIs, and Native React blocks provide the human interface. The AI Gateway is connected on demand only when the application also needs to serve governed model endpoints externally.
+# How Is 1flowbase Different from Other Tools?
 
-### Deliver an application backend without assembling a separate backend stack
+| Project    | AI Gateway | Composite Models / Workflow | Full Conversation Data | Dynamic Business Data | MCP      | React Apps   |
+| ---------- | ---------- | --------------------------- | ---------------------- | --------------------- | -------- | ------------ |
+| 1flowbase  | ✅          | ✅                           | ✅                      | ✅                     | ✅        | ✅            |
+| LiteLLM    | ✅          | —                           | Partial                | —                     | —        | —            |
+| OpenRouter | ✅          | —                           | Platform-hosted        | —                     | —        | —            |
+| Dify       | Partial    | ✅                           | ✅                      | —                     | ✅        | Fixed app forms |
+| Supabase   | —          | —                           | —                      | ✅                     | Ecosystem | Build your own frontend |
+| n8n        | —          | ✅                           | —                      | —                     | Ecosystem | —            |
 
-```text
-Data Model
-  -> PostgreSQL table / columns / indexes / relations
-  -> generated CRUD runtime and OpenAPI
-  -> custom business logic via Workflow Extension APIs
-```
+------
 
-Ideal for internal tools, management systems, operations dashboards, agent memory storage, content systems, and small-to-medium product backends.
+# Data Storage
 
-### Add custom human interfaces to agent-managed data
+1flowbase currently uses PostgreSQL as its primary data source.
 
-```text
-Data Model / custom APIs
-  -> Native React blocks
-  -> search, filters, forms, actions, and responsive layouts
-```
+Since storing complete AI conversations can generate significant data volume, for high-traffic production environments, please evaluate in advance:
 
-The task planning board is a real example: the native React interface reads and updates records directly through the Data Model API, without a separate frontend-backend stack.
+- Storage capacity
+- Data retention periods
+- Backup strategies
+- Compliance requirements
 
-### Publish a programmable upstream model for AI clients
+We also plan to continue strengthening AI data lifecycle management capabilities.
 
-```text
-External AI clients
-  -> optional AI Gateway
-  -> protocol translation
-  -> model and tool workflows
-  -> logs, traces, token usage, and final responses
-```
+------
 
-The client calls a single model name, and 1flowbase can run cross-provider workflows behind it. Suitable for multimodal enhancement, Fusion-style review, model cascading, structured output validation, and programmable coding model flows.
+# Roadmap
+
+Current priorities include:
+
+- Simpler default AI Gateway configuration
+- Common model routing templates
+- Composite model templates
+- Enterprise AI Gateway templates
+- Improved MCP Tool descriptions
+- Better understanding of system capabilities by Coding Agents like Codex
+- Reduced dependency on project source context when Agents build applications
+- Improved AI conversation data management and lifecycle policies
+- More out-of-the-box business application templates
+
 
 ---
 
-## Transparency and Security
+# Star 1flowbase
 
-1flowbase is committed to providing a transparent, self-hosted environment for AI workflow execution.
+If you also believe the future of software isn't just:
 
-Recommended principles:
+> **Built with AI**
 
-- self-hosted first
-- transparent model chains
-- auditable node calls
-- traceable token usage
-- configurable log retention
-- explicit model and workflow configuration
+But should go further:
 
-1flowbase does not advocate silently replacing models without the user's knowledge. Every published endpoint should be clearly configured, observed, and governed by the project owner.
+> **Built for Agents**
+
+Give 1flowbase a ⭐.
+
+What we want to explore is:
+
+> **When AI Gateway, business data, APIs, Workflows, and UI can all be operated by Agents — what should applications become?**
 
 ---
 
-## Guides
+## Tutorials
 
-- [Make GLM-5.2 See Images in Claude Code with 1flowbase](https://github.com/taichuy/1flowbase/wiki/Make-GLM-5.2-See-Images-in-Claude-Code-with-1flowbase)
-- [Fusion-Style Workflows: Publish a Multi-Model Panel as an Observable Virtual Model](https://github.com/taichuy/1flowbase/wiki/Fusion-Style-Workflow)
+- [Make GLM-5.2 See Images in Claude Code with 1flowbase](https://github.com/taichuy/1flowbase/wiki/Make-GLM-5.2-See-Images-in-Claude-Code-with-1flowbase-CN)
+- [Fusion-Style Workflow: Publish a Multi-Model Review Panel as an Observable Virtual Model](https://github.com/taichuy/1flowbase/wiki/Fusion-Style-Workflow-CN)
 - [1flowbase Wiki](https://github.com/taichuy/1flowbase/wiki)
 
 ---
 
-## Repo Layout
+## Repository Layout
 
 ```text
 web/          Frontend root, powered by pnpm + Turbo
 api/          Rust backend workspace
 api/apps/     Backend service entry points
 api/crates/   Shared backend crates
-api/plugins/  Plugin workspace, HostExtension manifests, and templates
-docker/       Local middleware orchestration and self-hosted stack
-scripts/      Development, testing, verification, and debugging scripts
+api/plugins/  Plugin source workspace, HostExtension manifests and templates
+docker/       Local middleware orchestration and self-hosted service stack
+scripts/      Repository-level development, testing, verification, and debugging scripts
 ```
 
 ---
 
 ## Contributing
 
-Community contributions are very welcome. Before submitting a pull request, run the following verification script:
+Community contributions are very welcome. Before submitting a Pull Request, please run the following verification script:
 
 ```bash
 node scripts/node/verify.js repo
 ```
 
-Project development guidelines:
+Development guidelines:
 
-- [AGENTS.md](AGENTS.md)
-- [web/AGENTS.md](web/AGENTS.md)
-- [api/AGENTS.md](api/AGENTS.md)
+- [AGENTS.md](../../AGENTS.md)
+- [web/AGENTS.md](../../web/AGENTS.md)
+- [api/AGENTS.md](../../api/AGENTS.md)
 
 ---
 
-## Friend Links
+## Friends
 
 - [Linux.do](https://linux.do/) - Learn AI, on L Station.
-- [Aionui](https://github.com/iOfficeAI/AionUi) - Remotely control AI to work via mobile phone.
-- [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) - Office suite designed for AI agents.
+- [Aionui](https://github.com/iOfficeAI/AionUi) - Remotely control AI from your phone.
+- [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) - Office suite designed for AI Agents.
 - [deepseek-pp](https://github.com/zhu1090093659/deepseek-pp) - DeepSeek web chat browser extension.
-- [MuseAI](https://github.com/yejiming/MuseAI) - Local AI companion, text adventure, and story immersion app.
-- [FrontAgent](https://github.com/FrontAgent/FrontAgent) - AI Agent system designed specifically for front-end engineering.
-- [RedBox](https://github.com/Jamailar/RedBox) - Localized AI creative workbench for Xiaohongshu creators.
+- [MuseAI](https://github.com/yejiming/MuseAI) - Local AI companion, text adventure, and interactive fiction app.
+- [FrontAgent](https://github.com/FrontAgent/FrontAgent) - AI Agent system designed for frontend engineering.
+- [RedBox](https://github.com/Jamailar/RedBox) - Localized AI creation workspace for Xiaohongshu creators.
 
 ---
 
 ## License
 
-This project is licensed under the [Apache-2.0](LICENSE) open-source license.
+This project is licensed under [Apache-2.0](./LICENSE).
 
 ---
 
@@ -377,8 +500,8 @@ This project is licensed under the [Apache-2.0](LICENSE) open-source license.
 
 <div align="center">
 
-**If you want agents to build and operate self-hosted applications across AI, MCP, Application Backend, and React surfaces, give 1flowbase a star.**
+**If you want Agents to build and operate self-hosted applications across AI, MCP, application backends, and React interfaces — give 1flowbase a Star.**
 
-[Report Bug](https://github.com/taichuy/1flowbase/issues) · [Request Feature](https://github.com/taichuy/1flowbase/issues)
+[Report a Bug](https://github.com/taichuy/1flowbase/issues) · [Request a Feature](https://github.com/taichuy/1flowbase/issues)
 
 </div>
