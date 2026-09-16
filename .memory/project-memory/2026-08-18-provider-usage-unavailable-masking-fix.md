@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: billing no-usage 守卫掩盖上游报错修复（issue #1758）
-summary: 用户于 `2026-08-18 23` 确认平衡方向：`provider_invoker.rs:770-784` no-usage 分支收窄为仅「有可计费产出但无 usage」返回 `provider_usage_unavailable`，其余释放 credit 后把真实 output/error 交回 executor 分类；已挂 issue #1758（phase:discussion）。
+summary: 用户于 `2026-09-16 20` 更新产品决策：缺失 provider usage 默认按 0 token / 0 cost 留下 `UnavailableError` 对账记录但不阻断调用；免扣费用户永不因此失败，只有非免扣费用户在显式开启严格配置时返回 `provider_usage_unavailable`。Issue #2061 已实现并进入用户验收。
 keywords:
   - provider-usage-unavailable
   - billing-guard
@@ -14,8 +14,8 @@ match_when:
   - 实现或验收 issue #1758
   - 调整 billing 守卫、provider 错误分类或重试准入
 created_at: 2026-08-18 23
-updated_at: 2026-08-18 23
-last_verified_at: 2026-08-18 23
+updated_at: 2026-09-16 20
+last_verified_at: 2026-09-16 20
 decision_policy: verify_before_decision
 scope:
   - api/crates/control-plane/src/orchestration_runtime/provider_invoker.rs
@@ -45,3 +45,7 @@ billing 提交 `72a6186fb`（08-17）引入的守卫在「invocation Ok + 无 us
 ## 截止日期
 
 无固定截止日期；issue #1758 用户确认后转 phase:ready。
+
+## 2026-09-16 产品决策更新
+
+sub2api 源码取证确认：Responses terminal 缺 usage 时可继续透传并按 0 cost 记录，因此不能假设中转一定提供 usage。用户批准新的优先级：免扣费用户优先放行；usage 存在时正常结算；usage 缺失时默认写 0 token / 0 cost、`UsageLedgerStatus::UnavailableError` 与 reconciliation evidence 后继续，只有非免扣费用户且 `API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE=true` 时 fail closed。实现提交 `90e826b8d`，Issue #2061。
