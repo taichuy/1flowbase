@@ -195,6 +195,7 @@ fn provider_stdio_contract_uses_snake_case_methods_and_result_payloads() {
 fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
     let directive = ProviderTransportSessionDirective {
         logical_session_id: "logical_01".into(),
+        generation: 41,
         task_id: "task_01".into(),
         state: ProviderLogicalSessionState::Waiting,
         physical_deadline_unix_ms: 1_800_000_000_000,
@@ -213,12 +214,22 @@ fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
 
     let unknown = json!({
         "logical_session_id": "logical_01",
+        "generation": 41,
         "task_id": "task_01",
         "state": "idle",
         "physical_deadline_unix_ms": 1_800_000_000_000_i64,
         "session_key": "must-not-cross"
     });
     assert!(serde_json::from_value::<ProviderTransportSessionDirective>(unknown).is_err());
+    let missing_generation = json!({
+        "logical_session_id": "logical_01",
+        "task_id": "task_01",
+        "state": "idle",
+        "physical_deadline_unix_ms": 1_800_000_000_000_i64
+    });
+    assert!(
+        serde_json::from_value::<ProviderTransportSessionDirective>(missing_generation).is_err()
+    );
     assert!(ProviderTransportSessionCommand {
         logical_session_id: "contains a space".into(),
         generation: 1,

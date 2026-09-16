@@ -169,6 +169,7 @@ impl TransportSessionCoordinator {
         input
             .set_transport_session_directive(ProviderTransportSessionDirective {
                 logical_session_id: session_id.as_str().to_string(),
+                generation: fence.generation.get(),
                 task_id: format!("invocation-{}-{}", fence.generation.get(), lease.sequence()),
                 state: ProviderLogicalSessionState::Active,
                 physical_deadline_unix_ms,

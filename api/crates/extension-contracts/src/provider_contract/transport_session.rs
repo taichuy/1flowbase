@@ -22,6 +22,7 @@ pub enum ProviderLogicalSessionState {
 #[serde(deny_unknown_fields)]
 pub struct ProviderTransportSessionDirective {
     pub logical_session_id: String,
+    pub generation: u64,
     pub task_id: String,
     pub state: ProviderLogicalSessionState,
     pub physical_deadline_unix_ms: i64,
@@ -30,6 +31,9 @@ pub struct ProviderTransportSessionDirective {
 impl ProviderTransportSessionDirective {
     pub fn validate(&self) -> Result<(), String> {
         validate_opaque_id("logical_session_id", &self.logical_session_id)?;
+        if self.generation == 0 {
+            return Err("transport session directive generation must be positive".into());
+        }
         validate_opaque_id("task_id", &self.task_id)?;
         if self.physical_deadline_unix_ms <= 0 {
             return Err("transport session physical_deadline_unix_ms must be positive".into());
