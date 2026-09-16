@@ -775,6 +775,7 @@ where
         );
         let deadline_unix_ms =
             provider_execution_deadline_unix_ms(&input, OffsetDateTime::now_utc());
+        let flow_ms = bounded_timing_millis(provider_invoke_started.elapsed());
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -872,6 +873,16 @@ where
         }
         let mut invocation_output = invocation_output
             .ok_or_else(|| anyhow!("provider invocation completed without output or error"))?;
+        let runtime_stream_timing = provider_stream_timing
+            .lock()
+            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
+            .clone();
+        attach_gateway_stage_timing(
+            &mut invocation_output.result.provider_metadata,
+            flow_ms,
+            first_runtime_ingress_ms(&runtime_stream_timing),
+            max_runtime_flush_ms(&runtime_stream_timing),
+        )?;
         if let Some(account) = self
             .flow_execution_context
             .as_ref()
@@ -883,10 +894,6 @@ where
                 "_1flowbase_upstream_provider_metadata": upstream,
             });
         }
-        let runtime_stream_timing = provider_stream_timing
-            .lock()
-            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
-            .clone();
         if !runtime_stream_timing.is_empty() {
             let provider_metadata = std::mem::take(&mut invocation_output.result.provider_metadata);
             invocation_output.result.provider_metadata = json!({
@@ -908,6 +915,53 @@ where
         );
         Ok(output)
     }
+}
+
+const GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY: &str = "1flowbase_gateway_provider_stages";
+
+fn bounded_timing_millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(24 * 60 * 60 * 1_000)
+}
+
+fn max_runtime_flush_ms(timeline: &[Value]) -> Option<u64> {
+    timeline
+        .iter()
+        .filter_map(|event| {
+            let ingress = event.get("ingress_ms")?.as_u64()?;
+            let appended = event.get("runtime_append_ms")?.as_u64()?;
+            appended.checked_sub(ingress)
+        })
+        .max()
+}
+
+fn first_runtime_ingress_ms(timeline: &[Value]) -> Option<u64> {
+    timeline
+        .iter()
+        .filter_map(|event| event.get("ingress_ms").and_then(Value::as_u64))
+        .min()
+}
+
+fn attach_gateway_stage_timing(
+    metadata: &mut Value,
+    flow_ms: u64,
+    ingress_ms: Option<u64>,
+    flush_ms: Option<u64>,
+) -> Result<()> {
+    let object = metadata
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("provider_metadata must be an object for gateway stage timing"))?;
+    object.insert(
+        GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
+        json!({
+            "schema_version": 1,
+            "ingress_ms": ingress_ms,
+            "flow_ms": flow_ms,
+            "flush_ms": flush_ms,
+        }),
+    );
+    Ok(())
 }
 
 fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
@@ -1978,6 +2032,10 @@ mod continuation_claim_tests;
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/provider_invoker/credit_command_tests.rs"]
 mod credit_command_tests;
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/provider_invoker/timing_receipt_tests.rs"]
+mod timing_receipt_tests;
 
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/support.rs"]

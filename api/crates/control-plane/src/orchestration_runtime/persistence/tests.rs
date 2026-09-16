@@ -707,6 +707,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.billing_status.as_deref(), Some("settled"));
     assert_eq!(task.time_to_first_token_ms, None);
     assert_eq!(task.total_duration_ms, Some(7426));
+    assert_eq!(task.provider_timing_receipt, None);
     serde_json::to_value(task).unwrap();
 }
 

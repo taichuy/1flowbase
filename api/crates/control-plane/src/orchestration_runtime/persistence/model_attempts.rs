@@ -341,6 +341,7 @@ pub(super) fn provider_request_log_task_from_attempt(
                 .try_into()
                 .unwrap_or(i64::MAX),
         ),
+        provider_timing_receipt: attempt.get("provider_timing_receipt").cloned(),
     }
 }
 

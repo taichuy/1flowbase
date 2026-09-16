@@ -5,6 +5,7 @@ use control_plane::ports::{
     ClaimedTask, ProviderRequestLogTask, TaskQueue, PROVIDER_REQUEST_LOG_QUEUE,
 };
 use control_plane::system_recovery::SystemWriteOwner;
+use serde_json::{json, Map, Value};
 use time::Duration;
 use tracing::{error, warn};
 
@@ -79,6 +80,19 @@ pub async fn consume_provider_request_log_batch(
     for task in tasks {
         match serde_json::from_value::<ProviderRequestLogTask>(task.payload.clone()) {
             Ok(record) => {
+                if let Some(receipt) = record
+                    .provider_timing_receipt
+                    .as_ref()
+                    .and_then(safe_provider_timing_log_receipt)
+                {
+                    tracing::info!(
+                        attempt_id = %record.attempt_id,
+                        provider_code = %record.provider_code,
+                        attempt_index = record.attempt_index,
+                        provider_timing_receipt = %receipt,
+                        "provider request timing receipt"
+                    );
+                }
                 valid_tasks.push(task);
                 records.push(record);
             }
@@ -126,6 +140,62 @@ pub async fn consume_provider_request_log_batch(
         persisted,
         discarded,
     })
+}
+
+pub(crate) fn safe_provider_timing_log_receipt(receipt: &Value) -> Option<Value> {
+    if receipt.get("schema_version").and_then(Value::as_u64) != Some(1) {
+        return None;
+    }
+    let mut stages = Map::new();
+    for name in [
+        "ingress", "mapping", "flow", "queue", "connect", "upstream", "flush",
+    ] {
+        let duration_ms = receipt
+            .pointer(&format!("/stages/{name}/duration_ms"))
+            .and_then(Value::as_u64)
+            .filter(|value| *value <= 24 * 60 * 60 * 1_000);
+        stages.insert(
+            name.to_string(),
+            json!({
+                "duration_ms": duration_ms,
+                "availability": if duration_ms.is_some() { "observed" } else { "unavailable" },
+            }),
+        );
+    }
+    let connection = receipt.get("connection").and_then(Value::as_object).map(|value| {
+        json!({
+            "cold": value.get("cold").and_then(Value::as_bool),
+            "reused": value.get("reused").and_then(Value::as_bool),
+            "generation": value.get("generation").and_then(Value::as_u64),
+            "connection_age_ms": value.get("connection_age_ms").and_then(Value::as_u64),
+            "ttl_remaining_ms": value.get("ttl_remaining_ms").and_then(Value::as_u64),
+            "physical_state": value.get("physical_state").and_then(Value::as_str).filter(|state| matches!(*state, "ready" | "draining" | "closing" | "closed" | "faulted")),
+            "close_reason": value.get("close_reason").and_then(Value::as_str).filter(|reason| matches!(*reason, "requested_drain" | "requested_close" | "ttl_expired" | "capacity_rejected" | "transport_fault" | "invocation_deadline")),
+            "close_acknowledged": value.get("close_acknowledged").and_then(Value::as_bool),
+        })
+    });
+    let termination_kind = receipt
+        .get("termination_kind")
+        .and_then(Value::as_str)
+        .filter(|kind| {
+            matches!(
+                *kind,
+                "completed"
+                    | "upstream_error"
+                    | "transport_error"
+                    | "deadline"
+                    | "failed"
+                    | "empty_response"
+            )
+        })
+        .unwrap_or("unknown");
+    Some(json!({
+        "schema_version": 1,
+        "attempt_index": receipt.get("attempt_index").and_then(Value::as_u64),
+        "stages": stages,
+        "connection": connection,
+        "termination_kind": termination_kind,
+    }))
 }
 
 async fn insert_batch_with_retries(

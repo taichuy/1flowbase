@@ -3,9 +3,12 @@ use super::*;
 pub const PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY: &str = "physical_transport_session";
 pub const PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY: &str =
     "1flowbase_physical_transport_session";
+pub const PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY: &str =
+    "1flowbase_provider_invocation_timing";
 
 const MAX_OPAQUE_ID_BYTES: usize = 256;
 const MAX_CONNECTION_LIFETIME_MS: u64 = 24 * 60 * 60 * 1_000;
+pub const PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -111,6 +114,43 @@ impl ProviderTransportSessionReceipt {
         }
         if self.close_acknowledged.is_some() && self.close_reason.is_none() {
             return Err("transport session close ACK requires a close reason".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderInvocationTerminationKind {
+    Completed,
+    UpstreamError,
+    TransportError,
+    Deadline,
+}
+
+/// Provider-owned timing facts. Durations use the provider process monotonic
+/// clock and are deliberately independent rather than wall-clock timestamps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderInvocationTimingReceipt {
+    pub schema_version: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_ms: Option<u64>,
+    pub upstream_ms: u64,
+    pub termination_kind: ProviderInvocationTerminationKind,
+}
+
+impl ProviderInvocationTimingReceipt {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION {
+            return Err("provider invocation timing schema version is unsupported".into());
+        }
+        if self
+            .connect_ms
+            .is_some_and(|value| value > MAX_CONNECTION_LIFETIME_MS)
+            || self.upstream_ms > MAX_CONNECTION_LIFETIME_MS
+        {
+            return Err("provider invocation timing exceeds the bounded contract".into());
         }
         Ok(())
     }

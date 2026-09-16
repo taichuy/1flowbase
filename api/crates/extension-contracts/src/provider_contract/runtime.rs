@@ -17,6 +17,38 @@ pub struct ProviderInvocationResult {
 }
 
 impl ProviderInvocationResult {
+    pub fn set_invocation_timing_receipt(
+        &mut self,
+        receipt: ProviderInvocationTimingReceipt,
+    ) -> Result<(), String> {
+        receipt.validate()?;
+        let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {
+            "provider_metadata must be an object for an invocation timing receipt".to_string()
+        })?;
+        metadata.insert(
+            PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY.to_string(),
+            serde_json::to_value(receipt)
+                .expect("ProviderInvocationTimingReceipt must always serialize"),
+        );
+        Ok(())
+    }
+
+    pub fn invocation_timing_receipt(
+        &self,
+    ) -> Result<Option<ProviderInvocationTimingReceipt>, String> {
+        let Some(value) = self
+            .provider_metadata
+            .as_object()
+            .and_then(|metadata| metadata.get(PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY))
+        else {
+            return Ok(None);
+        };
+        let receipt: ProviderInvocationTimingReceipt = serde_json::from_value(value.clone())
+            .map_err(|_| "provider invocation timing receipt is invalid".to_string())?;
+        receipt.validate()?;
+        Ok(Some(receipt))
+    }
+
     pub fn set_transport_session_receipt(
         &mut self,
         receipt: ProviderTransportSessionReceipt,

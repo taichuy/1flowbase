@@ -912,6 +912,13 @@ where
             distribution_selection_receipt.as_ref(),
         );
         attach_provider_stream_timing(&mut attempt, provider_observability.stream_timing.as_ref());
+        attach_provider_timing_receipt(
+            &mut attempt,
+            &provider_observability,
+            attempt_index,
+            attempt_status,
+            error_payload.as_ref(),
+        );
         attach_provider_billing(&mut attempt, provider_observability.billing.as_ref());
         if let Some(account) = provider_observability.user_account {
             attempt["user_account"] = account;

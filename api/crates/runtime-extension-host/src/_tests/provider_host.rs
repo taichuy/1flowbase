@@ -21,6 +21,27 @@ use tokio::time::sleep;
 use crate::package_loader::PackageLoader;
 use crate::stdio_runtime::ProviderWorkerLifecycleState;
 
+#[test]
+fn c2_runtime_stage_receipt_is_metadata_only() {
+    let mut metadata = json!({});
+    attach_runtime_stage_timing(&mut metadata, 3, 7).unwrap();
+    let receipt = &metadata[RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY];
+    assert_eq!(receipt["schema_version"], 1);
+    assert_eq!(receipt["mapping_ms"], 3);
+    assert_eq!(receipt["queue_ms"], 7);
+    let serialized = serde_json::to_string(&metadata).unwrap();
+    for forbidden in [
+        "api_key",
+        "prompt",
+        "tool_output",
+        "encrypted_content",
+        "previous_response_id",
+        "response_id",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
+
 struct TempProviderPackage {
     root: PathBuf,
 }

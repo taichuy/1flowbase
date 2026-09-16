@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Value;
 
 pub const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
 
@@ -55,6 +56,10 @@ pub struct ProviderRequestLogTask {
     pub finished_at: Option<OffsetDateTime>,
     pub time_to_first_token_ms: Option<i64>,
     pub total_duration_ms: Option<i64>,
+    /// Ephemeral, metadata-only receipt emitted to the existing provider log
+    /// stream. Durable adapters deliberately do not persist this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_timing_receipt: Option<Value>,
 }
 
 pub type InsertModelProviderRequestLogInput = ProviderRequestLogTask;

@@ -8,6 +8,9 @@ use std::{
     },
 };
 
+pub(crate) const RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY: &str =
+    "1flowbase_runtime_provider_stages";
+
 use extension_contracts::{
     PluginDataBinding, PluginDataPermission, PluginDataPort, PluginStorageBinding,
     RUNTIME_HOST_CALL_CAPABILITY_V1,
@@ -1280,13 +1283,17 @@ impl ProviderHost {
             host_calls,
         } = invocation;
 
+        let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
+        let mapping_ms = bounded_stage_millis(mapping_started.elapsed());
         tracing::info!(
             wire_audit = ?input.wire_audit(),
             "provider generate wire prepared"
         );
+        let queue_started = std::time::Instant::now();
         let _lease =
             Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
+        let queue_ms = bounded_stage_millis(queue_started.elapsed());
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
             .await;
         let event_observer = Some(Self::active_stream_event_observer(
@@ -1340,11 +1347,39 @@ impl ProviderHost {
         prepared_wire
             .translation_receipt
             .attach_to_provider_metadata(&mut result.provider_metadata)?;
+        attach_runtime_stage_timing(&mut result.provider_metadata, mapping_ms, queue_ms)?;
         Ok(ProviderInvokeStreamOutput {
             events: output.events,
             result,
         })
     }
+}
+
+fn bounded_stage_millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(24 * 60 * 60 * 1_000)
+}
+
+pub(crate) fn attach_runtime_stage_timing(
+    metadata: &mut Value,
+    mapping_ms: u64,
+    queue_ms: u64,
+) -> FrameworkResult<()> {
+    let object = metadata.as_object_mut().ok_or_else(|| {
+        PluginFrameworkError::invalid_provider_contract(
+            "provider_metadata must be an object for runtime stage timing",
+        )
+    })?;
+    object.insert(
+        RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "schema_version": 1,
+            "mapping_ms": mapping_ms,
+            "queue_ms": queue_ms,
+        }),
+    );
+    Ok(())
 }
 
 struct PreparedProviderGenerateWire {

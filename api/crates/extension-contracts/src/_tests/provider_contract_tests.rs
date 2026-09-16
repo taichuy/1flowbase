@@ -268,6 +268,37 @@ fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
 }
 
 #[test]
+fn c2_provider_timing_receipt_is_bounded_typed_and_contains_no_payload() {
+    let receipt = ProviderInvocationTimingReceipt {
+        schema_version: PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION,
+        connect_ms: Some(18),
+        upstream_ms: 243,
+        termination_kind: ProviderInvocationTerminationKind::Completed,
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+
+    result
+        .set_invocation_timing_receipt(receipt.clone())
+        .unwrap();
+
+    assert_eq!(result.invocation_timing_receipt().unwrap(), Some(receipt));
+    let serialized = serde_json::to_string(&result.provider_metadata).unwrap();
+    for forbidden in [
+        "api_key",
+        "prompt",
+        "tool_output",
+        "encrypted_content",
+        "previous_response_id",
+        "response_id",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
+
+#[test]
 fn provider_balance_stdio_method_serializes_balance() {
     let request = ProviderStdioRequest {
         method: ProviderStdioMethod::Balance,
