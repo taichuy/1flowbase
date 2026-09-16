@@ -2,7 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -19,7 +19,6 @@ use crate::{app_state::ApiState, runtime_activity::ApplicationActivityKind};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
     Idle,
-    Prewarming,
     Active,
     Cancelling,
     Closed,
@@ -30,7 +29,6 @@ pub(crate) struct TurnId(u64);
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ConnectionAction {
-    Prewarmed { response_id: String },
     StartTurn { turn: TurnId, response: Value },
     CancelTurn { turn: TurnId },
     Close,
@@ -51,8 +49,6 @@ pub(crate) enum ConnectionTransitionError {
     InvalidResponse,
     #[error("response.input must be text or an array when present")]
     InvalidInput,
-    #[error("prewarm response reference is not available on this connection")]
-    UnknownPrewarmResponse,
     #[error("only one response may be active on a connection")]
     ActiveTurnExists,
     #[error("the Responses WebSocket connection is closing")]
@@ -69,7 +65,6 @@ impl ConnectionTransitionError {
             Self::InvalidGenerate => "response.generate must be boolean",
             Self::InvalidResponse => "response must be an object",
             Self::InvalidInput => "response.input must be text or an array",
-            Self::UnknownPrewarmResponse => "prewarm response reference is unavailable",
             Self::ActiveTurnExists => "a response is already active",
             Self::ConnectionClosing => "connection is closing",
         }
@@ -80,21 +75,14 @@ impl ConnectionTransitionError {
 /// this type so none of them can mutate the connection lifecycle directly.
 pub(crate) struct ResponsesConnectionActor {
     state: ConnectionState,
-    prewarmed_response: Option<PrewarmedResponse>,
     active_turn: Option<TurnId>,
     next_turn: u64,
-}
-
-struct PrewarmedResponse {
-    id: String,
-    fields: Map<String, Value>,
 }
 
 impl ResponsesConnectionActor {
     pub(crate) fn new() -> Self {
         Self {
             state: ConnectionState::Idle,
-            prewarmed_response: None,
             active_turn: None,
             next_turn: 1,
         }
@@ -103,13 +91,6 @@ impl ResponsesConnectionActor {
     #[cfg(test)]
     pub(crate) fn state(&self) -> ConnectionState {
         self.state
-    }
-
-    #[cfg(test)]
-    pub(crate) fn prewarmed_response_id(&self) -> Option<&str> {
-        self.prewarmed_response
-            .as_ref()
-            .map(|prewarmed| prewarmed.id.as_str())
     }
 
     pub(crate) fn accept_response(
@@ -126,15 +107,14 @@ impl ResponsesConnectionActor {
             return Err(ConnectionTransitionError::ConnectionClosing);
         }
 
-        let mut response = response
+        let response = response
             .as_object()
             .cloned()
             .ok_or(ConnectionTransitionError::InvalidResponse)?;
-        let generate = match response.remove("generate") {
-            None => true,
-            Some(Value::Bool(generate)) => generate,
+        match response.get("generate") {
+            None | Some(Value::Bool(_)) => {}
             Some(_) => return Err(ConnectionTransitionError::InvalidGenerate),
-        };
+        }
 
         if response
             .get("input")
@@ -143,50 +123,6 @@ impl ResponsesConnectionActor {
             return Err(ConnectionTransitionError::InvalidInput);
         }
 
-        if !generate {
-            let response_id = format!("resp_prewarm_{}", uuid::Uuid::now_v7());
-            self.prewarmed_response = Some(PrewarmedResponse {
-                id: response_id.clone(),
-                fields: response,
-            });
-            self.state = ConnectionState::Prewarming;
-            return Ok(ConnectionAction::Prewarmed { response_id });
-        }
-
-        let prewarm_reference = response
-            .get("previous_response_id")
-            .and_then(Value::as_str)
-            .filter(|id| id.starts_with("resp_prewarm_"));
-        if let Some(reference) = prewarm_reference {
-            let prewarmed = self
-                .prewarmed_response
-                .as_ref()
-                .filter(|prewarmed| prewarmed.id == reference)
-                .ok_or(ConnectionTransitionError::UnknownPrewarmResponse)?;
-            let mut fields = prewarmed.fields.clone();
-            response.remove("previous_response_id");
-            // Codex sends only the new input after a prewarm response. In Responses Lite,
-            // replacing this array would discard additional_tools and base instructions.
-            if let (Some(prefix), Some(delta)) = (fields.get("input"), response.get("input")) {
-                let mut input = Vec::new();
-                for part in [prefix, delta] {
-                    match part {
-                        Value::Array(items) => input.extend(items.iter().cloned()),
-                        Value::String(text) => input.push(serde_json::json!({
-                            "role": "user",
-                            "content": text,
-                        })),
-                        _ => return Err(ConnectionTransitionError::InvalidInput),
-                    }
-                }
-                response.insert("input".to_string(), Value::Array(input));
-            }
-            fields.extend(response);
-            response = fields;
-        }
-        // A full request or ordinary upstream continuation owns its own context.
-        // Only an explicit reference above is allowed to consume prewarm fields.
-        self.prewarmed_response = None;
         let response = Value::Object(response);
         let turn = TurnId(self.next_turn);
         self.next_turn = self.next_turn.saturating_add(1);
@@ -203,7 +139,6 @@ impl ResponsesConnectionActor {
             }
             (ConnectionState::Cancelling, Some(turn)) => ConnectionAction::CancelTurn { turn },
             _ => {
-                self.prewarmed_response = None;
                 self.active_turn = None;
                 self.state = ConnectionState::Closed;
                 ConnectionAction::Close
@@ -226,7 +161,7 @@ impl ResponsesConnectionActor {
                 self.state = ConnectionState::Idle;
                 TurnCompletion::ReturnedToIdle
             }
-            ConnectionState::Idle | ConnectionState::Prewarming => TurnCompletion::IgnoredStaleTurn,
+            ConnectionState::Idle => TurnCompletion::IgnoredStaleTurn,
         }
     }
 }
@@ -266,7 +201,7 @@ where
     );
     let mut active: Option<ActiveTurn> = None;
 
-    'connection: loop {
+    loop {
         if let Some((turn, mut task, mut frames)) = active.take() {
             tokio::select! {
                 biased;
@@ -404,14 +339,6 @@ where
             message => match decode_client_message(message) {
                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
                     match actor.accept_response(response) {
-                        Ok(ConnectionAction::Prewarmed { response_id }) => {
-                            for frame in prewarm_completion_frames(&response_id) {
-                                if sender.send(Message::Text(frame)).await.is_err() {
-                                    actor.begin_close();
-                                    break 'connection;
-                                }
-                            }
-                        }
                         Ok(ConnectionAction::StartTurn { turn, response }) => {
                             let (frame_sender, frame_receiver) = mpsc::channel(1);
                             terminal_delivered = false;
@@ -451,30 +378,6 @@ where
             },
         }
     }
-}
-
-pub(crate) fn prewarm_completion_frames(response_id: &str) -> [String; 2] {
-    [
-        serde_json::json!({
-            "type": "response.created",
-            "response": { "id": response_id }
-        })
-        .to_string(),
-        serde_json::json!({
-            "type": "response.completed",
-            "response": {
-                "id": response_id,
-                "usage": {
-                    "input_tokens": 0,
-                    "input_tokens_details": null,
-                    "output_tokens": 0,
-                    "output_tokens_details": null,
-                    "total_tokens": 0
-                }
-            }
-        })
-        .to_string(),
-    ]
 }
 
 fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {

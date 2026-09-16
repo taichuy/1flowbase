@@ -513,6 +513,7 @@ pub(super) fn responses_transport_requirement(
         .get("input")
         .is_some_and(responses_input_requires_native_passthrough);
     let has_native_only_execution_hint = object.get("store").and_then(Value::as_bool) == Some(true)
+        || object.get("generate").and_then(Value::as_bool) == Some(false)
         || object
             .get("include")
             .and_then(Value::as_array)

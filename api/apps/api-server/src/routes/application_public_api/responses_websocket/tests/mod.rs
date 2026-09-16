@@ -5,10 +5,7 @@ use axum::{
 use serde_json::json;
 
 use super::{
-    actor::{
-        prewarm_completion_frames, ConnectionAction, ConnectionState, ResponsesConnectionActor,
-        TurnCompletion,
-    },
+    actor::{ConnectionAction, ConnectionState, ResponsesConnectionActor, TurnCompletion},
     auth::{require_responses_websocket_beta, RESPONSES_WEBSOCKET_BETA},
     schema::{
         decode_client_message, ResponsesWebSocketClientMessageError,
@@ -188,88 +185,37 @@ fn control_frames_are_not_request_envelopes() {
 }
 
 #[test]
-fn prewarm_action_has_structural_completion_metadata_without_starting_a_turn() {
+fn generate_false_starts_a_real_turn_and_preserves_the_provider_directive() {
     let mut actor = ResponsesConnectionActor::new();
 
-    let prewarm = actor
+    let action = actor
         .accept_response(json!({
             "model": "published-model",
+            "input": [],
             "instructions": "shared instructions",
             "generate": false
         }))
         .expect("a valid prewarm request must be accepted");
-    let ConnectionAction::Prewarmed { response_id } = prewarm else {
-        panic!("generate=false must return prewarm metadata");
-    };
-    assert!(response_id.starts_with("resp_prewarm_"));
-    assert_eq!(actor.state(), ConnectionState::Prewarming);
-
-    let [created, completed] = prewarm_completion_frames(&response_id).map(|frame| {
-        serde_json::from_str::<serde_json::Value>(&frame).expect("prewarm frame must be valid JSON")
-    });
-    assert_eq!(
-        created,
-        json!({
-            "type": "response.created",
-            "response": { "id": response_id }
-        })
-    );
-    assert_eq!(
-        completed,
-        json!({
-            "type": "response.completed",
-            "response": {
-                "id": response_id,
-                "usage": {
-                    "input_tokens": 0,
-                    "input_tokens_details": null,
-                    "output_tokens": 0,
-                    "output_tokens_details": null,
-                    "total_tokens": 0
-                }
-            }
-        })
-    );
-
-    let generated = actor
-        .accept_response(json!({
-            "input": "first turn",
-            "previous_response_id": response_id,
-            "generate": true
-        }))
-        .expect("the generated request must start the prewarmed turn");
-    let ConnectionAction::StartTurn { turn, response } = generated else {
-        panic!("generated response.create must start one turn");
+    let ConnectionAction::StartTurn { turn, response } = action else {
+        panic!("generate=false must execute through the regular turn bridge");
     };
     assert_eq!(response["model"], json!("published-model"));
     assert_eq!(response["instructions"], json!("shared instructions"));
-    assert_eq!(response["input"], json!("first turn"));
-    assert!(response.get("previous_response_id").is_none());
-    assert!(response.get("generate").is_none());
+    assert_eq!(response["generate"], false);
     assert_eq!(actor.state(), ConnectionState::Active);
 
     assert_eq!(actor.complete_turn(turn), TurnCompletion::ReturnedToIdle);
     assert_eq!(actor.state(), ConnectionState::Idle);
-
-    let second = actor
-        .accept_response(json!({"model": "published-model", "input": "second turn"}))
-        .expect("the same connection must accept a later sequential turn");
-    assert!(matches!(second, ConnectionAction::StartTurn { .. }));
-    assert_eq!(actor.state(), ConnectionState::Active);
 }
 
 #[test]
-fn prewarm_preserves_a_nonmatching_previous_response_id_for_the_gateway() {
+fn standard_previous_response_id_is_forwarded_without_local_body_merging() {
     let mut actor = ResponsesConnectionActor::new();
-    let prewarm = actor
-        .accept_response(json!({"model": "published-model", "generate": false}))
-        .expect("prewarm must be accepted");
-    assert!(matches!(prewarm, ConnectionAction::Prewarmed { .. }));
-
     let generated = actor
         .accept_response(json!({
+            "model": "published-model",
             "input": "continued turn",
-            "previous_response_id": "resp_real_previous"
+            "previous_response_id": "resp_provider_owned"
         }))
         .expect("generated request must start");
     let ConnectionAction::StartTurn { turn, response } = generated else {
@@ -277,22 +223,11 @@ fn prewarm_preserves_a_nonmatching_previous_response_id_for_the_gateway() {
     };
     assert_eq!(
         response["previous_response_id"],
-        json!("resp_real_previous")
+        json!("resp_provider_owned")
     );
+    assert_eq!(response["input"], "continued turn");
+    assert_eq!(response.as_object().unwrap().len(), 3);
     assert_eq!(actor.complete_turn(turn), TurnCompletion::ReturnedToIdle);
-}
-
-#[test]
-fn closing_a_prewarmed_connection_discards_its_structural_cursor() {
-    let mut actor = ResponsesConnectionActor::new();
-    actor
-        .accept_response(json!({"generate": false}))
-        .expect("prewarm must be accepted");
-    assert!(actor.prewarmed_response_id().is_some());
-
-    assert_eq!(actor.begin_close(), ConnectionAction::Close);
-    assert_eq!(actor.state(), ConnectionState::Closed);
-    assert_eq!(actor.prewarmed_response_id(), None);
 }
 
 #[test]
