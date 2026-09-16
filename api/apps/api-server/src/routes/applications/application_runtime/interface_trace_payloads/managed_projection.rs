@@ -305,7 +305,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                             "node_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).node_kind).len()),
+                                serde_json::json!((_field_0).node_kind.len()),
                             )]),
                         ),
                         (
@@ -315,37 +315,35 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .projection_status)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .projection_status
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "projection_version",
                                     serde_json::json!(
-                                        *(&(&(_field_0).projection_status).projection_version)
+                                        (_field_0).projection_status.projection_version
                                     ),
                                 ),
                                 (
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .source_watermark)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .source_watermark
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "attempt_count",
-                                    serde_json::json!(
-                                        *(&(&(_field_0).projection_status).attempt_count)
-                                    ),
+                                    serde_json::json!((_field_0).projection_status.attempt_count),
                                 ),
                                 (
                                     "last_attempt_at",
-                                    match (&(&(_field_0).projection_status).last_attempt_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_attempt_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -355,9 +353,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_success_at",
-                                    match (&(&(_field_0).projection_status).last_success_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_success_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -367,18 +363,14 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_code",
-                                    match (&(&(_field_0).projection_status).last_error_code)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_code.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "last_error_stage",
-                                    match (&(&(_field_0).projection_status).last_error_stage)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_stage.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -388,7 +380,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    match (&(&(_field_0).projection_status).last_error_source_kind)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_kind
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -400,8 +394,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    match (&(&(_field_0).projection_status)
-                                        .last_error_source_locator)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_locator
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -413,8 +408,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_ref",
-                                    match (&(&(_field_0).projection_status).last_error_ref).as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_ref.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -424,9 +418,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "retriable",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).projection_status).retriable),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).projection_status.retriable),
                                 ),
                             ]),
                         ),
@@ -434,7 +426,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                             "content_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).content_kind).len()),
+                                serde_json::json!((_field_0).content_kind.len()),
                             )]),
                         ),
                         ("source_refs", mp::json_summary(&(_field_0).source_refs)),
@@ -456,7 +448,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                             "node_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).node_kind).len()),
+                                serde_json::json!((_field_0).node_kind.len()),
                             )]),
                         ),
                         (
@@ -466,37 +458,35 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .projection_status)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .projection_status
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "projection_version",
                                     serde_json::json!(
-                                        *(&(&(_field_0).projection_status).projection_version)
+                                        (_field_0).projection_status.projection_version
                                     ),
                                 ),
                                 (
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .source_watermark)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .source_watermark
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "attempt_count",
-                                    serde_json::json!(
-                                        *(&(&(_field_0).projection_status).attempt_count)
-                                    ),
+                                    serde_json::json!((_field_0).projection_status.attempt_count),
                                 ),
                                 (
                                     "last_attempt_at",
-                                    match (&(&(_field_0).projection_status).last_attempt_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_attempt_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -506,9 +496,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_success_at",
-                                    match (&(&(_field_0).projection_status).last_success_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_success_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -518,18 +506,14 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_code",
-                                    match (&(&(_field_0).projection_status).last_error_code)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_code.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "last_error_stage",
-                                    match (&(&(_field_0).projection_status).last_error_stage)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_stage.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -539,7 +523,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    match (&(&(_field_0).projection_status).last_error_source_kind)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_kind
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -551,8 +537,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    match (&(&(_field_0).projection_status)
-                                        .last_error_source_locator)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_locator
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -564,8 +551,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_ref",
-                                    match (&(&(_field_0).projection_status).last_error_ref).as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_ref.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -575,9 +561,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "retriable",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).projection_status).retriable),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).projection_status.retriable),
                                 ),
                             ]),
                         ),
@@ -586,7 +570,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                             "detail_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).detail_kind).len()),
+                                serde_json::json!((_field_0).detail_kind.len()),
                             )]),
                         ),
                         ("source_refs", mp::json_summary(&(_field_0).source_refs)),
@@ -611,37 +595,35 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                     "projection_status",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .projection_status)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .projection_status
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "projection_version",
                                     serde_json::json!(
-                                        *(&(&(_field_0).projection_status).projection_version)
+                                        (_field_0).projection_status.projection_version
                                     ),
                                 ),
                                 (
                                     "source_watermark",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).projection_status)
-                                            .source_watermark)
+                                        serde_json::json!((_field_0)
+                                            .projection_status
+                                            .source_watermark
                                             .len()),
                                     )]),
                                 ),
                                 (
                                     "attempt_count",
-                                    serde_json::json!(
-                                        *(&(&(_field_0).projection_status).attempt_count)
-                                    ),
+                                    serde_json::json!((_field_0).projection_status.attempt_count),
                                 ),
                                 (
                                     "last_attempt_at",
-                                    match (&(&(_field_0).projection_status).last_attempt_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_attempt_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -651,9 +633,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_success_at",
-                                    match (&(&(_field_0).projection_status).last_success_at)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_success_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -663,18 +643,14 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_code",
-                                    match (&(&(_field_0).projection_status).last_error_code)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_code.as_ref() {
                                         Some(item) => mp::text(item)?,
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 (
                                     "last_error_stage",
-                                    match (&(&(_field_0).projection_status).last_error_stage)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_stage.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -684,7 +660,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_kind",
-                                    match (&(&(_field_0).projection_status).last_error_source_kind)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_kind
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -696,8 +674,9 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_source_locator",
-                                    match (&(&(_field_0).projection_status)
-                                        .last_error_source_locator)
+                                    match (_field_0)
+                                        .projection_status
+                                        .last_error_source_locator
                                         .as_ref()
                                     {
                                         Some(item) => mp::object_value(&[(
@@ -709,8 +688,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "last_error_ref",
-                                    match (&(&(_field_0).projection_status).last_error_ref).as_ref()
-                                    {
+                                    match (_field_0).projection_status.last_error_ref.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -720,9 +698,7 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
                                 ),
                                 (
                                     "retriable",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).projection_status).retriable),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).projection_status.retriable),
                                 ),
                             ]),
                         ),

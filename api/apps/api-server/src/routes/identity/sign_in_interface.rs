@@ -41,7 +41,7 @@ impl InterfaceContract for PublicSignInInput {
             "0",
             mp::object_value(&[(
                 "login_entry_id",
-                serde_json::Value::String((&(&(self).0).login_entry_id).to_string()),
+                serde_json::Value::String((self).0.login_entry_id.to_string()),
             )]),
         )]))
     }
@@ -85,34 +85,29 @@ impl InterfaceContract for PublicSignInOutput {
                 mp::object_value(&[
                     (
                         "user_id",
-                        serde_json::Value::String((&(&(&(self).0).actor).user_id).to_string()),
+                        serde_json::Value::String((self).0.actor.user_id.to_string()),
                     ),
                     (
                         "tenant_id",
-                        serde_json::Value::String((&(&(&(self).0).actor).tenant_id).to_string()),
+                        serde_json::Value::String((self).0.actor.tenant_id.to_string()),
                     ),
                     (
                         "current_workspace_id",
-                        serde_json::Value::String(
-                            (&(&(&(self).0).actor).current_workspace_id).to_string(),
-                        ),
+                        serde_json::Value::String((self).0.actor.current_workspace_id.to_string()),
                     ),
                     (
                         "effective_display_role",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(&(&(self).0).actor).effective_display_role).len()),
+                            serde_json::json!((self).0.actor.effective_display_role.len()),
                         )]),
                     ),
-                    (
-                        "is_root",
-                        serde_json::Value::Bool(*(&(&(&(self).0).actor).is_root)),
-                    ),
+                    ("is_root", serde_json::Value::Bool((self).0.actor.is_root)),
                     (
                         "permissions",
                         mp::object_value(&[(
                             "item_count",
-                            serde_json::json!((&(&(&(self).0).actor).permissions).len()),
+                            serde_json::json!((self).0.actor.permissions.len()),
                         )]),
                     ),
                 ]),

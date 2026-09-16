@@ -262,7 +262,8 @@ async fn start_native_run_creates_published_api_flow_run_from_frozen_publication
                 "priority": "high",
                 "system": [],
                 "operation": {"kind": "generate", "profile": "standard"}
-            }
+            },
+            "sys": {"requested_model_id": "public-model/pass-through"}
         })
     );
     assert_eq!(result.metadata["model"], json!("public-model/pass-through"));

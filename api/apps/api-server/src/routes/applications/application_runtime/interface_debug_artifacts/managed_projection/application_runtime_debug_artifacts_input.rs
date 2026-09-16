@@ -58,11 +58,12 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
                 (
                     "body",
                     mp::object_value(&[("artifact_refs", {
-                        if (&(_field_body).artifact_refs).len() > 32 {
+                        if (_field_body).artifact_refs.len() > 32 {
                             return None;
                         }
                         serde_json::Value::Array(
-                            (&(_field_body).artifact_refs)
+                            (_field_body)
+                                .artifact_refs
                                 .iter()
                                 .map(|item| Some(serde_json::Value::String((item).to_string())))
                                 .collect::<Option<Vec<_>>>()?,

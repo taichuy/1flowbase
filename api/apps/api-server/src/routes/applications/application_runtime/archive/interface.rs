@@ -161,11 +161,12 @@ impl InterfaceContract for ApplicationRuntimeArchiveInput {
                     "body",
                     mp::object_value(&[
                         ("run_ids", {
-                            if (&(_field_body).run_ids).len() > 32 {
+                            if (_field_body).run_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_body).run_ids)
+                                (_field_body)
+                                    .run_ids
                                     .iter()
                                     .map(|item| Some(serde_json::Value::String((item).to_string())))
                                     .collect::<Option<Vec<_>>>()?,
@@ -173,7 +174,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveInput {
                         }),
                         (
                             "archive_version",
-                            match (&(_field_body).archive_version).as_ref() {
+                            match (_field_body).archive_version.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -199,11 +200,11 @@ impl InterfaceContract for ApplicationRuntimeArchiveInput {
                     mp::object_value(&[
                         (
                             "total_size_bytes",
-                            serde_json::json!(*(&(_field_body).total_size_bytes)),
+                            serde_json::json!((_field_body).total_size_bytes),
                         ),
                         (
                             "expected_sha256",
-                            match (&(_field_body).expected_sha256).as_ref() {
+                            match (_field_body).expected_sha256.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -213,7 +214,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveInput {
                         ),
                         (
                             "chunk_size_bytes",
-                            match (&(_field_body).chunk_size_bytes).as_ref() {
+                            match (_field_body).chunk_size_bytes.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -404,7 +405,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         "body",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_0).body).len()),
+                            serde_json::json!((_field_0).body.len()),
                         )]),
                     )]),
                 ),
@@ -421,15 +422,15 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "total_size_bytes",
-                            serde_json::json!(*(&(_field_0).total_size_bytes)),
+                            serde_json::json!((_field_0).total_size_bytes),
                         ),
                         (
                             "received_bytes",
-                            serde_json::json!(*(&(_field_0).received_bytes)),
+                            serde_json::json!((_field_0).received_bytes),
                         ),
                         (
                             "expected_sha256",
-                            match (&(_field_0).expected_sha256).as_ref() {
+                            match (_field_0).expected_sha256.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -447,21 +448,21 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("chunk_index", serde_json::json!(*(&(_field_0).chunk_index))),
+                        ("chunk_index", serde_json::json!((_field_0).chunk_index)),
                         (
                             "chunk_size_bytes",
-                            serde_json::json!(*(&(_field_0).chunk_size_bytes)),
+                            serde_json::json!((_field_0).chunk_size_bytes),
                         ),
                         (
                             "chunk_sha256",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).chunk_sha256).len()),
+                                serde_json::json!((_field_0).chunk_sha256.len()),
                             )]),
                         ),
                         (
                             "received_bytes",
-                            serde_json::json!(*(&(_field_0).received_bytes)),
+                            serde_json::json!((_field_0).received_bytes),
                         ),
                         ("status", mp::text(&(_field_0).status)?),
                     ]),
@@ -477,14 +478,14 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "archive_version",
-                            match (&(_field_0).archive_version).as_ref() {
+                            match (_field_0).archive_version.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "archive_sha256",
-                            match (&(_field_0).archive_sha256).as_ref() {
+                            match (_field_0).archive_sha256.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -492,17 +493,18 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("run_count", serde_json::json!(*(&(_field_0).run_count))),
+                        ("run_count", serde_json::json!((_field_0).run_count)),
                         (
                             "imported_run_count",
-                            serde_json::json!(*(&(_field_0).imported_run_count)),
+                            serde_json::json!((_field_0).imported_run_count),
                         ),
                         ("source_to_target_run_ids", {
-                            if (&(_field_0).source_to_target_run_ids).len() > 32 {
+                            if (_field_0).source_to_target_run_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).source_to_target_run_ids)
+                                (_field_0)
+                                    .source_to_target_run_ids
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -515,7 +517,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         }),
                         (
                             "error_payload",
-                            match (&(_field_0).error_payload).as_ref() {
+                            match (_field_0).error_payload.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -528,7 +530,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         ("updated_at", mp::text(&(_field_0).updated_at)?),
                         (
                             "started_at",
-                            match (&(_field_0).started_at).as_ref() {
+                            match (_field_0).started_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -538,7 +540,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
                         ),
                         (
                             "finished_at",
-                            match (&(_field_0).finished_at).as_ref() {
+                            match (_field_0).finished_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),

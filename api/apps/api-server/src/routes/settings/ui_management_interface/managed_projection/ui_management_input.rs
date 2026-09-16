@@ -241,14 +241,14 @@ impl InterfaceContract for UiManagementInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
@@ -288,14 +288,14 @@ impl InterfaceContract for UiManagementInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).name).len()),
+                                serde_json::json!((_field_body).name.len()),
                             )]),
                         ),
                         (
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).source).len()),
+                                serde_json::json!((_field_body).source.len()),
                             )]),
                         ),
                         (
@@ -330,10 +330,7 @@ impl InterfaceContract for UiManagementInput {
                 ("id", mp::text(_field_id)?),
                 (
                     "body",
-                    mp::object_value(&[(
-                        "revision",
-                        serde_json::json!(*(&(_field_body).revision)),
-                    )]),
+                    mp::object_value(&[("revision", serde_json::json!((_field_body).revision))]),
                 ),
             ]),
             Self::SetDefaultTemplate { id: _field_id, .. } => mp::object_value(&[
@@ -387,14 +384,14 @@ impl InterfaceContract for UiManagementInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("import_code", mp::text(&(_field_0).import_code)?),
@@ -403,14 +400,14 @@ impl InterfaceContract for UiManagementInput {
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).group).len()),
+                                serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
@@ -420,10 +417,10 @@ impl InterfaceContract for UiManagementInput {
                                     "identity",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).upstream).identity).len()),
+                                        serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
                                 ),
-                                ("version", mp::text(&(&(_field_0).upstream).version)?),
+                                ("version", mp::text(&(_field_0).upstream.version)?),
                             ]),
                         ),
                         ("version", mp::text(&(_field_0).version)?),
@@ -431,7 +428,7 @@ impl InterfaceContract for UiManagementInput {
                             "keywords",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).keywords).len()),
+                                serde_json::json!((_field_0).keywords.len()),
                             )]),
                         ),
                     ]),
@@ -454,14 +451,14 @@ impl InterfaceContract for UiManagementInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).name).len()),
+                                serde_json::json!((_field_body).name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).description).len()),
+                                serde_json::json!((_field_body).description.len()),
                             )]),
                         ),
                         ("import_code", mp::text(&(_field_body).import_code)?),
@@ -470,14 +467,14 @@ impl InterfaceContract for UiManagementInput {
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).source).len()),
+                                serde_json::json!((_field_body).source.len()),
                             )]),
                         ),
                         (
                             "group",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).group).len()),
+                                serde_json::json!((_field_body).group.len()),
                             )]),
                         ),
                         (
@@ -487,12 +484,10 @@ impl InterfaceContract for UiManagementInput {
                                     "identity",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_body).upstream).identity).len()
-                                        ),
+                                        serde_json::json!((_field_body).upstream.identity.len()),
                                     )]),
                                 ),
-                                ("version", mp::text(&(&(_field_body).upstream).version)?),
+                                ("version", mp::text(&(_field_body).upstream.version)?),
                             ]),
                         ),
                         ("version", mp::text(&(_field_body).version)?),
@@ -500,7 +495,7 @@ impl InterfaceContract for UiManagementInput {
                             "keywords",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_body).keywords).len()),
+                                serde_json::json!((_field_body).keywords.len()),
                             )]),
                         ),
                     ]),
@@ -538,11 +533,11 @@ impl InterfaceContract for UiManagementInput {
                             "q",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).q).len()),
+                                serde_json::json!((_field_0).q.len()),
                             )]),
                         ),
-                        ("page", serde_json::json!(*(&(_field_0).page))),
-                        ("page_size", serde_json::json!(*(&(_field_0).page_size))),
+                        ("page", serde_json::json!((_field_0).page)),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
                     ]),
                 ),
             ]),

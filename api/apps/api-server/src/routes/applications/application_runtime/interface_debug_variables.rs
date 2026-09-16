@@ -108,7 +108,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                             "variable_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).variable_key).len()),
+                                serde_json::json!((_field_body).variable_key.len()),
                             )]),
                         ),
                         ("value", mp::json_summary(&(_field_body).value)),
@@ -129,7 +129,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                     "body",
                     mp::object_value(&[(
                         "keys",
-                        match (&(_field_body).keys).as_ref() {
+                        match (_field_body).keys.as_ref() {
                             Some(item) => {
                                 if (item).len() > 32 {
                                     return None;
@@ -144,9 +144,9 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesInput {
                                                     "variable_key",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (&(item).variable_key).len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .variable_key
+                                                            .len()),
                                                     )]),
                                                 ),
                                             ]))
@@ -233,25 +233,25 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                             "document_hash",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).document_hash).len()),
+                                serde_json::json!((_field_0).document_hash.len()),
                             )]),
                         ),
                         (
                             "latest_run_scope",
-                            match (&(_field_0).latest_run_scope).as_ref() {
+                            match (_field_0).latest_run_scope.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     ("flow_run_id", mp::text(&(item).flow_run_id)?),
                                     (
                                         "run_mode",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).run_mode).len()),
+                                            serde_json::json!((item).run_mode.len()),
                                         )]),
                                     ),
                                     ("status", mp::text(&(item).status)?),
                                     (
                                         "target_node_id",
-                                        match (&(item).target_node_id).as_ref() {
+                                        match (item).target_node_id.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
@@ -264,7 +264,7 @@ impl InterfaceContract for ApplicationRuntimeDebugVariablesOutput {
                             "snapshot_completeness",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).snapshot_completeness).len()),
+                                serde_json::json!((_field_0).snapshot_completeness.len()),
                             )]),
                         ),
                         (

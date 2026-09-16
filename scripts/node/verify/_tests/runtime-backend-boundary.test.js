@@ -7,7 +7,13 @@ const test = require('node:test');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const forbidden = /PLUGIN_RUNNER|plugin-runner|plugin_runner|PluginRunner|\b7801\b/u;
-const ignoredDirectories = new Set(['_tests', 'node_modules', 'target', 'volumes']);
+const ignoredDirectories = new Set([
+  '_tests',
+  'ai-gateway-concurrency',
+  'node_modules',
+  'target',
+  'volumes',
+]);
 
 function productionFiles(root, ignored = ignoredDirectories) {
   const files = [];

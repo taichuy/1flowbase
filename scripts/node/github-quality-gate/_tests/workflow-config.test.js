@@ -1002,12 +1002,12 @@ test("container image publishing avoids deprecated artifact runtime and qemu cac
   );
 });
 
-test("quality gate workflow keeps non-ci dispatch scopes on a single targeted job", () => {
+test("quality gate workflow keeps regular dispatch scopes on a single targeted job", () => {
   const workflow = readQualityGateWorkflow();
 
   assert.match(
     workflow,
-    /single-scope-gate:\n\s+if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope != 'ci' && inputs\.scope != 'container-images' \}\}/u,
+    /single-scope-gate:\n\s+if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.scope != 'ci' && inputs\.scope != 'container-images' && inputs\.scope != 'plugin-composition-2007' && inputs\.scope != 'plugin-composition-2014' \}\}/u,
   );
   assert.match(
     workflow,

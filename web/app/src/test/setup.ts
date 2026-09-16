@@ -3,6 +3,18 @@ import { vi } from 'vitest';
 
 window.localStorage.setItem('1flowbase.ui.locale_preference', 'zh_Hans');
 
+const { loadApplicationI18nResources } = await import(
+  '../shared/i18n/app-i18n'
+);
+await loadApplicationI18nResources();
+
+if (!document.queryCommandSupported) {
+  Object.defineProperty(document, 'queryCommandSupported', {
+    configurable: true,
+    value: vi.fn(() => false)
+  });
+}
+
 const originalConsoleError = console.error.bind(console);
 const originalConsoleWarn = console.warn.bind(console);
 

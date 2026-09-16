@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Result } from 'antd';
+import { App } from 'antd';
 
 import { i18nText } from '../../../shared/i18n/text';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';

@@ -93,11 +93,12 @@ impl InterfaceContract for BlockContextContractResponse {
             ("contract_version", mp::text(&(self).contract_version)?),
             ("block_sdk_version", mp::text(&(self).block_sdk_version)?),
             ("entries", {
-                if (&(self).entries).len() > 32 {
+                if (self).entries.len() > 32 {
                     return None;
                 }
                 serde_json::Value::Array(
-                    (&(self).entries)
+                    (self)
+                        .entries
                         .iter()
                         .map(|item| {
                             Some(mp::object_value(&[
@@ -105,7 +106,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                     "key",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).key).len()),
+                                        serde_json::json!((item).key.len()),
                                     )]),
                                 ),
                                 (
@@ -121,27 +122,28 @@ impl InterfaceContract for BlockContextContractResponse {
                                         )]),
                                     },
                                 ),
-                                ("nullable", serde_json::Value::Bool(*(&(item).nullable))),
+                                ("nullable", serde_json::Value::Bool((item).nullable)),
                                 (
                                     "type_name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).type_name).len()),
+                                        serde_json::json!((item).type_name.len()),
                                     )]),
                                 ),
                                 (
                                     "description",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(item).description).len()),
+                                        serde_json::json!((item).description.len()),
                                     )]),
                                 ),
                                 ("members", {
-                                    if (&(item).members).len() > 32 {
+                                    if (item).members.len() > 32 {
                                         return None;
                                     }
                                     serde_json::Value::Array(
-                                        (&(item).members)
+                                        (item)
+                                            .members
                                             .iter()
                                             .map(|item| {
                                                 Some(mp::object_value(&[
@@ -149,7 +151,7 @@ impl InterfaceContract for BlockContextContractResponse {
                                                         "name",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(item).name).len()),
+                                                            serde_json::json!((item).name.len()),
                                                         )]),
                                                     ),
                                                     (
@@ -177,17 +179,17 @@ impl InterfaceContract for BlockContextContractResponse {
                                                         "type_name",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (&(item).type_name).len()
-                                                            ),
+                                                            serde_json::json!((item)
+                                                                .type_name
+                                                                .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "description",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(item)
-                                                                .description)
+                                                            serde_json::json!((item)
+                                                                .description
                                                                 .len()),
                                                         )]),
                                                     ),
@@ -205,7 +207,7 @@ impl InterfaceContract for BlockContextContractResponse {
                 "non_context_symbols",
                 mp::object_value(&[(
                     "item_count",
-                    serde_json::json!((&(self).non_context_symbols).len()),
+                    serde_json::json!((self).non_context_symbols.len()),
                 )]),
             ),
         ]))

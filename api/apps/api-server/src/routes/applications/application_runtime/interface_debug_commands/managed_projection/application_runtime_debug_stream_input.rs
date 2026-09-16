@@ -65,7 +65,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                         ),
                         (
                             "document",
-                            match (&(_field_body).document).as_ref() {
+                            match (_field_body).document.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -77,14 +77,14 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
                     mp::object_value(&[
                         (
                             "from_sequence",
-                            match (&(_field_stream_query).from_sequence).as_ref() {
+                            match (_field_stream_query).from_sequence.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "last_event_id",
-                            match (&(_field_stream_query).last_event_id).as_ref() {
+                            match (_field_stream_query).last_event_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },

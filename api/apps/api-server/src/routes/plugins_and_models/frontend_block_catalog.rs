@@ -229,11 +229,12 @@ impl InterfaceContract for FrontendBlocksOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[("0", {
-            if (&(self).0).len() > 32 {
+            if (self).0.len() > 32 {
                 return None;
             }
             serde_json::Value::Array(
-                (&(self).0)
+                (self)
+                    .0
                     .iter()
                     .map(|item| {
                         Some(mp::object_value(&[
@@ -246,26 +247,26 @@ impl InterfaceContract for FrontendBlocksOutput {
                                 "title",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).title).len()),
+                                    serde_json::json!((item).title.len()),
                                 )]),
                             ),
                             (
                                 "runtime",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).runtime).len()),
+                                    serde_json::json!((item).runtime.len()),
                                 )]),
                             ),
                             (
                                 "entry",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).entry).len()),
+                                    serde_json::json!((item).entry.len()),
                                 )]),
                             ),
                             (
                                 "code_template",
-                                match (&(item).code_template).as_ref() {
+                                match (item).code_template.as_ref() {
                                     Some(item) => mp::object_value(&[(
                                         "byte_count",
                                         serde_json::json!((item).len()),
@@ -275,14 +276,14 @@ impl InterfaceContract for FrontendBlocksOutput {
                             ),
                             (
                                 "code_template_version",
-                                match (&(item).code_template_version).as_ref() {
+                                match (item).code_template_version.as_ref() {
                                     Some(item) => mp::text(item)?,
                                     None => serde_json::Value::Null,
                                 },
                             ),
                             (
                                 "code_template_language",
-                                match (&(item).code_template_language).as_ref() {
+                                match (item).code_template_language.as_ref() {
                                     Some(item) => mp::object_value(&[(
                                         "byte_count",
                                         serde_json::json!((item).len()),
@@ -292,21 +293,21 @@ impl InterfaceContract for FrontendBlocksOutput {
                             ),
                             (
                                 "isolated_entry_asset",
-                                match (&(item).isolated_entry_asset).as_ref() {
+                                match (item).isolated_entry_asset.as_ref() {
                                     Some(item) => mp::object_value(&[
                                         ("media_type", mp::text(&(item).media_type)?),
                                         (
                                             "sha256",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).sha256).len()),
+                                                serde_json::json!((item).sha256.len()),
                                             )]),
                                         ),
                                         (
                                             "integrity",
                                             mp::object_value(&[(
                                                 "byte_count",
-                                                serde_json::json!((&(item).integrity).len()),
+                                                serde_json::json!((item).integrity.len()),
                                             )]),
                                         ),
                                     ]),
@@ -320,14 +321,15 @@ impl InterfaceContract for FrontendBlocksOutput {
                                         "primitives",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(&(item).context_contract)
-                                                .primitives)
+                                            serde_json::json!((item)
+                                                .context_contract
+                                                .primitives
                                                 .len()),
                                         )]),
                                     ),
                                     (
                                         "input_schema",
-                                        mp::json_summary(&(&(item).context_contract).input_schema),
+                                        mp::json_summary(&(item).context_contract.input_schema),
                                     ),
                                 ]),
                             ),
@@ -338,18 +340,14 @@ impl InterfaceContract for FrontendBlocksOutput {
                                         "network",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!(
-                                                (&(&(item).permissions).network).len()
-                                            ),
+                                            serde_json::json!((item).permissions.network.len()),
                                         )]),
                                     ),
                                     (
                                         "storage",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!(
-                                                (&(&(item).permissions).storage).len()
-                                            ),
+                                            serde_json::json!((item).permissions.storage.len()),
                                         )]),
                                     ),
                                 ]),
@@ -358,7 +356,7 @@ impl InterfaceContract for FrontendBlocksOutput {
                                 "ui_capabilities",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(item).ui_capabilities).len()),
+                                    serde_json::json!((item).ui_capabilities.len()),
                                 )]),
                             ),
                             (
@@ -374,35 +372,35 @@ impl InterfaceContract for FrontendBlocksOutput {
                                 "runtime_kind",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).runtime_kind).len()),
+                                    serde_json::json!((item).runtime_kind.len()),
                                 )]),
                             ),
                             (
                                 "execution_kind",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).execution_kind).len()),
+                                    serde_json::json!((item).execution_kind.len()),
                                 )]),
                             ),
                             (
                                 "isolation_requirement",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).isolation_requirement).len()),
+                                    serde_json::json!((item).isolation_requirement.len()),
                                 )]),
                             ),
                             (
                                 "requested_permissions",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(item).requested_permissions).len()),
+                                    serde_json::json!((item).requested_permissions.len()),
                                 )]),
                             ),
                             (
                                 "granted_permissions",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(item).granted_permissions).len()),
+                                    serde_json::json!((item).granted_permissions.len()),
                                 )]),
                             ),
                             ("workspace_id", mp::text(&(item).workspace_id)?),
@@ -410,38 +408,36 @@ impl InterfaceContract for FrontendBlocksOutput {
                                 "lifecycle_kind",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).lifecycle_kind).len()),
+                                    serde_json::json!((item).lifecycle_kind.len()),
                                 )]),
                             ),
                             (
                                 "graph_fingerprint",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).graph_fingerprint).len()),
+                                    serde_json::json!((item).graph_fingerprint.len()),
                                 )]),
                             ),
                             (
                                 "provenance",
                                 mp::object_value(&[
-                                    ("module_id", mp::text(&(&(item).provenance).module_id)?),
+                                    ("module_id", mp::text(&(item).provenance.module_id)?),
                                     (
                                         "module_version",
-                                        mp::text(&(&(item).provenance).module_version)?,
+                                        mp::text(&(item).provenance.module_version)?,
                                     ),
                                     (
                                         "module_kind",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!(
-                                                (&(&(item).provenance).module_kind).len()
-                                            ),
+                                            serde_json::json!((item).provenance.module_kind.len()),
                                         )]),
                                     ),
                                 ]),
                             ),
                             (
                                 "disable_reason",
-                                match (&(item).disable_reason).as_ref() {
+                                match (item).disable_reason.as_ref() {
                                     Some(item) => mp::object_value(&[(
                                         "byte_count",
                                         serde_json::json!((item).len()),

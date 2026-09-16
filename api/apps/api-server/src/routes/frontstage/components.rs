@@ -237,7 +237,7 @@ impl InterfaceContract for FrontstageComponentsInput {
                     mp::object_value(&[
                         (
                             "query",
-                            match (&(_field_0).query).as_ref() {
+                            match (_field_0).query.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -247,14 +247,14 @@ impl InterfaceContract for FrontstageComponentsInput {
                         ),
                         (
                             "offset",
-                            match (&(_field_0).offset).as_ref() {
+                            match (_field_0).offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "limit",
-                            match (&(_field_0).limit).as_ref() {
+                            match (_field_0).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -383,11 +383,12 @@ impl InterfaceContract for FrontstageComponentsOutput {
                     "0",
                     mp::object_value(&[
                         ("items", {
-                            if (&(_field_0).items).len() > 32 {
+                            if (_field_0).items.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).items)
+                                (_field_0)
+                                    .items
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -398,14 +399,14 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).description).len()),
+                                                    serde_json::json!((item).description.len()),
                                                 )]),
                                             ),
                                             ("import_code", mp::text(&(item).import_code)?),
@@ -414,14 +415,14 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                                 "source",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).source).len()),
+                                                    serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group).len()),
+                                                    serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
@@ -431,15 +432,15 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                                         "identity",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .upstream)
-                                                                .identity)
+                                                            serde_json::json!((item)
+                                                                .upstream
+                                                                .identity
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "version",
-                                                        mp::text(&(&(item).upstream).version)?,
+                                                        mp::text(&(item).upstream.version)?,
                                                     ),
                                                 ]),
                                             ),
@@ -448,12 +449,12 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                                 "keywords",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).keywords).len()),
+                                                    serde_json::json!((item).keywords.len()),
                                                 )]),
                                             ),
                                             (
                                                 "catalog_updated_at",
-                                                match (&(item).catalog_updated_at).as_ref() {
+                                                match (item).catalog_updated_at.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -463,7 +464,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             ),
                                             (
                                                 "source_locator",
-                                                match (&(item).source_locator).as_ref() {
+                                                match (item).source_locator.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -473,7 +474,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                             ),
                                             (
                                                 "source_checksum",
-                                                match (&(item).source_checksum).as_ref() {
+                                                match (item).source_checksum.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -488,13 +489,13 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("total", serde_json::json!(*(&(_field_0).total))),
-                        ("offset", serde_json::json!(*(&(_field_0).offset))),
-                        ("limit", serde_json::json!(*(&(_field_0).limit))),
-                        ("has_more", serde_json::Value::Bool(*(&(_field_0).has_more))),
+                        ("total", serde_json::json!((_field_0).total)),
+                        ("offset", serde_json::json!((_field_0).offset)),
+                        ("limit", serde_json::json!((_field_0).limit)),
+                        ("has_more", serde_json::Value::Bool((_field_0).has_more)),
                         (
                             "next_offset",
-                            match (&(_field_0).next_offset).as_ref() {
+                            match (_field_0).next_offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -514,14 +515,14 @@ impl InterfaceContract for FrontstageComponentsOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("import_code", mp::text(&(_field_0).import_code)?),
@@ -530,14 +531,14 @@ impl InterfaceContract for FrontstageComponentsOutput {
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).group).len()),
+                                serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
@@ -547,10 +548,10 @@ impl InterfaceContract for FrontstageComponentsOutput {
                                     "identity",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).upstream).identity).len()),
+                                        serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
                                 ),
-                                ("version", mp::text(&(&(_field_0).upstream).version)?),
+                                ("version", mp::text(&(_field_0).upstream.version)?),
                             ]),
                         ),
                         ("version", mp::text(&(_field_0).version)?),
@@ -558,12 +559,12 @@ impl InterfaceContract for FrontstageComponentsOutput {
                             "keywords",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).keywords).len()),
+                                serde_json::json!((_field_0).keywords.len()),
                             )]),
                         ),
                         (
                             "catalog_updated_at",
-                            match (&(_field_0).catalog_updated_at).as_ref() {
+                            match (_field_0).catalog_updated_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -573,7 +574,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         ),
                         (
                             "source_locator",
-                            match (&(_field_0).source_locator).as_ref() {
+                            match (_field_0).source_locator.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -583,7 +584,7 @@ impl InterfaceContract for FrontstageComponentsOutput {
                         ),
                         (
                             "source_checksum",
-                            match (&(_field_0).source_checksum).as_ref() {
+                            match (_field_0).source_checksum.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),

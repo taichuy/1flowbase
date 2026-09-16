@@ -838,8 +838,8 @@ where
         }
         fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
-                reservation: billing,
-                outcome: fee_lifecycle::ProviderFeeOutcome {
+                reservation: Box::new(billing),
+                outcome: Box::new(fee_lifecycle::ProviderFeeOutcome {
                     upstream_model_id: &runtime.model,
                     provider_instance_id: instance.id,
                     actual_provider_code: &actual_provider_code,
@@ -847,7 +847,7 @@ where
                     invocation_error: &mut invocation_error,
                     canonical_stream_state: canonical_stream_state.as_ref(),
                     native_responses_passthrough,
-                },
+                }),
             })
             .await?;
         if let Some(error) = invocation_error {

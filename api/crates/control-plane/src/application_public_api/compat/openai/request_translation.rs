@@ -234,9 +234,18 @@ pub fn translate_response_request_with_context_and_previous(
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
-    let report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
     let request_index =
         super::responses_index::ResponsesRequestIndex::build(&request).map_err(|error| {
+            if error.param() == "input" {
+                report.record(
+                    "$.input",
+                    None,
+                    TranslationDecisionKind::Rejected,
+                    Some("Responses input contains invalid items"),
+                    TranslationSafeRepresentation::Present,
+                );
+            }
             OpenAiCompatError::invalid(error.param(), error.message()).with_report(report.clone())
         })?;
     translate_indexed_response_request(request, request_index, context, previous_response, report)

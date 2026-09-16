@@ -753,6 +753,16 @@ impl BootstrapRepository for PgControlPlaneStore {
         .execute(&mut *tx)
         .await?;
 
+        // Membership creation precedes the root role binding, so its credit-account trigger sees
+        // a root user only after this transaction has established the binding.
+        sqlx::query(
+            "update user_credit_accounts set charge_enabled = false where workspace_id = $1 and user_id = $2 and credit_unit = 'USD'",
+        )
+        .bind(workspace_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
 
         self.find_user_by_id(user_id)

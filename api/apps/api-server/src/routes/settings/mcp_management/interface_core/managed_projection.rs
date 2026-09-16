@@ -298,12 +298,12 @@ impl InterfaceContract for McpCoreInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description_short",
-                            match (&(_field_0).description_short).as_ref() {
+                            match (_field_0).description_short.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -316,14 +316,14 @@ impl InterfaceContract for McpCoreInput {
                             "default_entry_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).default_entry_path).len()),
+                                serde_json::json!((_field_0).default_entry_path.len()),
                             )]),
                         ),
                         (
                             "webmcp_exposure",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).webmcp_exposure).len()),
+                                serde_json::json!((_field_0).webmcp_exposure.len()),
                             )]),
                         ),
                     ]),
@@ -346,7 +346,7 @@ impl InterfaceContract for McpCoreInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).name).len()),
+                                serde_json::json!((_field_1).name.len()),
                             )]),
                         ),
                     ]),
@@ -369,12 +369,12 @@ impl InterfaceContract for McpCoreInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).name).len()),
+                                serde_json::json!((_field_1).name.len()),
                             )]),
                         ),
                         (
                             "description_short",
-                            match (&(_field_1).description_short).as_ref() {
+                            match (_field_1).description_short.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -387,14 +387,14 @@ impl InterfaceContract for McpCoreInput {
                             "default_entry_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).default_entry_path).len()),
+                                serde_json::json!((_field_1).default_entry_path.len()),
                             )]),
                         ),
                         (
                             "webmcp_exposure",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).webmcp_exposure).len()),
+                                serde_json::json!((_field_1).webmcp_exposure.len()),
                             )]),
                         ),
                     ]),
@@ -426,12 +426,12 @@ impl InterfaceContract for McpCoreInput {
                             "path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).path).len()),
+                                serde_json::json!((_field_1).path.len()),
                             )]),
                         ),
                         (
                             "display_name",
-                            match (&(_field_1).display_name).as_ref() {
+                            match (_field_1).display_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -441,7 +441,7 @@ impl InterfaceContract for McpCoreInput {
                         ),
                         (
                             "description_short",
-                            match (&(_field_1).description_short).as_ref() {
+                            match (_field_1).description_short.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -449,8 +449,8 @@ impl InterfaceContract for McpCoreInput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_1).enabled))),
-                        ("sort_order", serde_json::json!(*(&(_field_1).sort_order))),
+                        ("enabled", serde_json::Value::Bool((_field_1).enabled)),
+                        ("sort_order", serde_json::json!((_field_1).sort_order)),
                     ]),
                 ),
             ]),
@@ -467,17 +467,17 @@ impl InterfaceContract for McpCoreInput {
                             "source_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).source_path).len()),
+                                serde_json::json!((_field_1).source_path.len()),
                             )]),
                         ),
                         (
                             "target_parent_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).target_parent_path).len()),
+                                serde_json::json!((_field_1).target_parent_path.len()),
                             )]),
                         ),
-                        ("sort_order", serde_json::json!(*(&(_field_1).sort_order))),
+                        ("sort_order", serde_json::json!((_field_1).sort_order)),
                     ]),
                 ),
             ]),
@@ -496,7 +496,7 @@ impl InterfaceContract for McpCoreInput {
                         "path",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_1).path).len()),
+                            serde_json::json!((_field_1).path.len()),
                         )]),
                     )]),
                 ),
@@ -517,13 +517,13 @@ impl InterfaceContract for McpCoreInput {
                             "group_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).group_path).len()),
+                                serde_json::json!((_field_1).group_path.len()),
                             )]),
                         ),
                         ("tool_id", mp::text(&(_field_1).tool_id)?),
                         (
                             "display_alias",
-                            match (&(_field_1).display_alias).as_ref() {
+                            match (_field_1).display_alias.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -531,8 +531,8 @@ impl InterfaceContract for McpCoreInput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("visible", serde_json::Value::Bool(*(&(_field_1).visible))),
-                        ("sort_order", serde_json::json!(*(&(_field_1).sort_order))),
+                        ("visible", serde_json::Value::Bool((_field_1).visible)),
+                        ("sort_order", serde_json::json!((_field_1).sort_order)),
                     ]),
                 ),
             ]),
@@ -552,12 +552,12 @@ impl InterfaceContract for McpCoreInput {
                             "group_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_1).group_path).len()),
+                                serde_json::json!((_field_1).group_path.len()),
                             )]),
                         ),
                         (
                             "display_alias",
-                            match (&(_field_1).display_alias).as_ref() {
+                            match (_field_1).display_alias.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -565,8 +565,8 @@ impl InterfaceContract for McpCoreInput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("visible", serde_json::Value::Bool(*(&(_field_1).visible))),
-                        ("sort_order", serde_json::json!(*(&(_field_1).sort_order))),
+                        ("visible", serde_json::Value::Bool((_field_1).visible)),
+                        ("sort_order", serde_json::json!((_field_1).sort_order)),
                     ]),
                 ),
             ]),
@@ -604,19 +604,19 @@ impl InterfaceContract for McpCoreInput {
                     mp::object_value(&[
                         (
                             "list_default_limit",
-                            serde_json::json!(*(&(_field_1).list_default_limit)),
+                            serde_json::json!((_field_1).list_default_limit),
                         ),
                         (
                             "list_max_depth",
-                            serde_json::json!(*(&(_field_1).list_max_depth)),
+                            serde_json::json!((_field_1).list_max_depth),
                         ),
                         (
                             "list_regex_enabled",
-                            serde_json::Value::Bool(*(&(_field_1).list_regex_enabled)),
+                            serde_json::Value::Bool((_field_1).list_regex_enabled),
                         ),
                         (
                             "list_regex_max_length",
-                            serde_json::json!(*(&(_field_1).list_regex_max_length)),
+                            serde_json::json!((_field_1).list_regex_max_length),
                         ),
                         (
                             "list_return_fields",
@@ -784,7 +784,7 @@ impl InterfaceContract for McpCoreOutput {
                 ),
                 (
                     "0",
-                    mp::object_value(&[("saved", serde_json::Value::Bool(*(&(_field_0).saved)))]),
+                    mp::object_value(&[("saved", serde_json::Value::Bool((_field_0).saved))]),
                 ),
             ]),
             Self::Instances(_field_0) => mp::object_value(&[
@@ -805,12 +805,12 @@ impl InterfaceContract for McpCoreOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "description_short",
-                                        match (&(item).description_short).as_ref() {
+                                        match (item).description_short.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -823,27 +823,27 @@ impl InterfaceContract for McpCoreOutput {
                                         "default_entry_path",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).default_entry_path).len()),
+                                            serde_json::json!((item).default_entry_path.len()),
                                         )]),
                                     ),
                                     (
                                         "webmcp_exposure",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).webmcp_exposure).len()),
+                                            serde_json::json!((item).webmcp_exposure.len()),
                                         )]),
                                     ),
                                     (
                                         "managed_by",
-                                        match (&(item).managed_by).as_ref() {
+                                        match (item).managed_by.as_ref() {
                                             Some(item) => mp::object_value(&[
                                                 (
                                                     "organization",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (&(item).organization).len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .organization
+                                                            .len()),
                                                     )]),
                                                 ),
                                                 ("bundle_id", mp::text(&(item).bundle_id)?),
@@ -859,14 +859,14 @@ impl InterfaceContract for McpCoreOutput {
                                         "created_by",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).created_by).len()),
+                                            serde_json::json!((item).created_by.len()),
                                         )]),
                                     ),
                                     (
                                         "updated_by",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).updated_by).len()),
+                                            serde_json::json!((item).updated_by.len()),
                                         )]),
                                     ),
                                     ("created_at", mp::text(&(item).created_at)?),
@@ -878,9 +878,9 @@ impl InterfaceContract for McpCoreOutput {
                                                 "prefix",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(item)
-                                                        .llm_tool_registration)
-                                                        .prefix)
+                                                    serde_json::json!((item)
+                                                        .llm_tool_registration
+                                                        .prefix
                                                         .len()),
                                                 )]),
                                             ),
@@ -888,9 +888,9 @@ impl InterfaceContract for McpCoreOutput {
                                                 "tools",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(&(item)
-                                                        .llm_tool_registration)
-                                                        .tools)
+                                                    serde_json::json!((item)
+                                                        .llm_tool_registration
+                                                        .tools
                                                         .len()),
                                                 )]),
                                             ),
@@ -914,12 +914,12 @@ impl InterfaceContract for McpCoreOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description_short",
-                            match (&(_field_0).description_short).as_ref() {
+                            match (_field_0).description_short.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -932,25 +932,25 @@ impl InterfaceContract for McpCoreOutput {
                             "default_entry_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).default_entry_path).len()),
+                                serde_json::json!((_field_0).default_entry_path.len()),
                             )]),
                         ),
                         (
                             "webmcp_exposure",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).webmcp_exposure).len()),
+                                serde_json::json!((_field_0).webmcp_exposure.len()),
                             )]),
                         ),
                         (
                             "managed_by",
-                            match (&(_field_0).managed_by).as_ref() {
+                            match (_field_0).managed_by.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     (
                                         "organization",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).organization).len()),
+                                            serde_json::json!((item).organization.len()),
                                         )]),
                                     ),
                                     ("bundle_id", mp::text(&(item).bundle_id)?),
@@ -963,14 +963,14 @@ impl InterfaceContract for McpCoreOutput {
                             "created_by",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).created_by).len()),
+                                serde_json::json!((_field_0).created_by.len()),
                             )]),
                         ),
                         (
                             "updated_by",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).updated_by).len()),
+                                serde_json::json!((_field_0).updated_by.len()),
                             )]),
                         ),
                         ("created_at", mp::text(&(_field_0).created_at)?),
@@ -982,8 +982,9 @@ impl InterfaceContract for McpCoreOutput {
                                     "prefix",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).llm_tool_registration)
-                                            .prefix)
+                                        serde_json::json!((_field_0)
+                                            .llm_tool_registration
+                                            .prefix
                                             .len()),
                                     )]),
                                 ),
@@ -991,8 +992,9 @@ impl InterfaceContract for McpCoreOutput {
                                     "tools",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).llm_tool_registration)
-                                            .tools)
+                                        serde_json::json!((_field_0)
+                                            .llm_tool_registration
+                                            .tools
                                             .len()),
                                     )]),
                                 ),
@@ -1015,19 +1017,19 @@ impl InterfaceContract for McpCoreOutput {
                             "path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).path).len()),
+                                serde_json::json!((_field_0).path.len()),
                             )]),
                         ),
                         (
                             "display_name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).display_name).len()),
+                                serde_json::json!((_field_0).display_name.len()),
                             )]),
                         ),
                         (
                             "description_short",
-                            match (&(_field_0).description_short).as_ref() {
+                            match (_field_0).description_short.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1035,8 +1037,8 @@ impl InterfaceContract for McpCoreOutput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        ("sort_order", serde_json::json!(*(&(_field_0).sort_order))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
+                        ("sort_order", serde_json::json!((_field_0).sort_order)),
                     ]),
                 ),
             ]),
@@ -1055,13 +1057,13 @@ impl InterfaceContract for McpCoreOutput {
                             "group_path",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).group_path).len()),
+                                serde_json::json!((_field_0).group_path.len()),
                             )]),
                         ),
                         ("tool_id", mp::text(&(_field_0).tool_id)?),
                         (
                             "display_alias",
-                            match (&(_field_0).display_alias).as_ref() {
+                            match (_field_0).display_alias.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1069,8 +1071,8 @@ impl InterfaceContract for McpCoreOutput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("visible", serde_json::Value::Bool(*(&(_field_0).visible))),
-                        ("sort_order", serde_json::json!(*(&(_field_0).sort_order))),
+                        ("visible", serde_json::Value::Bool((_field_0).visible)),
+                        ("sort_order", serde_json::json!((_field_0).sort_order)),
                     ]),
                 ),
             ]),
@@ -1091,19 +1093,19 @@ impl InterfaceContract for McpCoreOutput {
                         ("instance_id", mp::text(&(_field_0).instance_id)?),
                         (
                             "list_default_limit",
-                            serde_json::json!(*(&(_field_0).list_default_limit)),
+                            serde_json::json!((_field_0).list_default_limit),
                         ),
                         (
                             "list_max_depth",
-                            serde_json::json!(*(&(_field_0).list_max_depth)),
+                            serde_json::json!((_field_0).list_max_depth),
                         ),
                         (
                             "list_regex_enabled",
-                            serde_json::Value::Bool(*(&(_field_0).list_regex_enabled)),
+                            serde_json::Value::Bool((_field_0).list_regex_enabled),
                         ),
                         (
                             "list_regex_max_length",
-                            serde_json::json!(*(&(_field_0).list_regex_max_length)),
+                            serde_json::json!((_field_0).list_regex_max_length),
                         ),
                         (
                             "list_return_fields",

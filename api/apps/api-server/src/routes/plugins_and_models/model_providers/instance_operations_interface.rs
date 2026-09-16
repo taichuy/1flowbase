@@ -145,7 +145,7 @@ impl InterfaceContract for ProviderInstanceOperationsInput {
                         "idempotency_key",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_body).idempotency_key).len()),
+                            serde_json::json!((_field_body).idempotency_key.len()),
                         )]),
                     )]),
                 ),
@@ -161,14 +161,14 @@ impl InterfaceContract for ProviderInstanceOperationsInput {
                     mp::object_value(&[
                         (
                             "installation_id",
-                            match (&(_field_0).installation_id).as_ref() {
+                            match (_field_0).installation_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "instance_id",
-                            match (&(_field_0).instance_id).as_ref() {
+                            match (_field_0).instance_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -190,7 +190,7 @@ impl InterfaceContract for ProviderInstanceOperationsInput {
                         "key",
                         mp::object_value(&[(
                             "byte_count",
-                            serde_json::json!((&(_field_body).key).len()),
+                            serde_json::json!((_field_body).key.len()),
                         )]),
                     )]),
                 ),
@@ -366,60 +366,58 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                         (
                             "instance",
                             mp::object_value(&[
-                                ("id", mp::text(&(&(_field_0).instance).id)?),
+                                ("id", mp::text(&(_field_0).instance.id)?),
                                 (
                                     "installation_id",
-                                    mp::text(&(&(_field_0).instance).installation_id)?,
+                                    mp::text(&(_field_0).instance.installation_id)?,
                                 ),
                                 (
                                     "provider_code",
-                                    mp::text(&(&(_field_0).instance).provider_code)?,
+                                    mp::text(&(_field_0).instance.provider_code)?,
                                 ),
-                                ("protocol", mp::text(&(&(_field_0).instance).protocol)?),
+                                ("protocol", mp::text(&(_field_0).instance.protocol)?),
                                 (
                                     "display_name",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).instance).display_name).len()
-                                        ),
+                                        serde_json::json!((_field_0).instance.display_name.len()),
                                     )]),
                                 ),
-                                ("status", mp::text(&(&(_field_0).instance).status)?),
+                                ("status", mp::text(&(_field_0).instance.status)?),
                                 (
                                     "included_in_main",
-                                    serde_json::Value::Bool(
-                                        *(&(&(_field_0).instance).included_in_main),
-                                    ),
+                                    serde_json::Value::Bool((_field_0).instance.included_in_main),
                                 ),
                                 (
                                     "config_json",
-                                    mp::json_summary(&(&(_field_0).instance).config_json),
+                                    mp::json_summary(&(_field_0).instance.config_json),
                                 ),
                                 (
                                     "configured_models",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).instance)
-                                            .configured_models)
+                                        serde_json::json!((_field_0)
+                                            .instance
+                                            .configured_models
                                             .len()),
                                     )]),
                                 ),
                                 ("enabled_model_ids", {
-                                    if (&(&(_field_0).instance).enabled_model_ids).len() > 32 {
+                                    if (_field_0).instance.enabled_model_ids.len() > 32 {
                                         return None;
                                     }
                                     serde_json::Value::Array(
-                                        (&(&(_field_0).instance).enabled_model_ids)
+                                        (_field_0)
+                                            .instance
+                                            .enabled_model_ids
                                             .iter()
-                                            .map(|item| Some(mp::text(item)?))
+                                            .map(|item| mp::text(item))
                                             .collect::<Option<Vec<_>>>()?,
                                     )
                                 }),
                                 (
                                     "catalog_refresh_status",
-                                    match (&(&(_field_0).instance).catalog_refresh_status).as_ref()
-                                    {
+                                    match (_field_0).instance.catalog_refresh_status.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -429,9 +427,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                 ),
                                 (
                                     "catalog_last_error_message",
-                                    match (&(&(_field_0).instance).catalog_last_error_message)
-                                        .as_ref()
-                                    {
+                                    match (_field_0).instance.catalog_last_error_message.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -441,7 +437,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                 ),
                                 (
                                     "catalog_refreshed_at",
-                                    match (&(&(_field_0).instance).catalog_refreshed_at).as_ref() {
+                                    match (_field_0).instance.catalog_refreshed_at.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -451,14 +447,14 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                 ),
                                 (
                                     "model_count",
-                                    serde_json::json!(*(&(&(_field_0).instance).model_count)),
+                                    serde_json::json!((_field_0).instance.model_count),
                                 ),
                             ]),
                         ),
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "message",
-                            match (&(_field_0).message).as_ref() {
+                            match (_field_0).message.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -468,33 +464,33 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                         ),
                         (
                             "user_action",
-                            match (&(_field_0).user_action).as_ref() {
+                            match (_field_0).user_action.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     ("kind", mp::text(&(item).kind)?),
                                     (
                                         "user_code",
-                                        match (&(item).user_code).as_ref() {
+                                        match (item).user_code.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "expires_at",
-                                        match (&(item).expires_at).as_ref() {
+                                        match (item).expires_at.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "poll_interval_seconds",
-                                        match (&(item).poll_interval_seconds).as_ref() {
+                                        match (item).poll_interval_seconds.as_ref() {
                                             Some(item) => serde_json::json!(*(item)),
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "prompt",
-                                        match (&(item).prompt).as_ref() {
+                                        match (item).prompt.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -515,25 +511,26 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                     "0",
                     mp::object_value(&[
                         ("windows", {
-                            if (&(_field_0).windows).len() > 32 {
+                            if (_field_0).windows.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).windows)
+                                (_field_0)
+                                    .windows
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             (
                                                 "limit_window_seconds",
-                                                serde_json::json!(*(&(item).limit_window_seconds)),
+                                                serde_json::json!((item).limit_window_seconds),
                                             ),
                                             (
                                                 "used_percent",
-                                                serde_json::json!(*(&(item).used_percent)),
+                                                serde_json::json!((item).used_percent),
                                             ),
                                             (
                                                 "reset_at",
-                                                match (&(item).reset_at).as_ref() {
+                                                match (item).reset_at.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -550,7 +547,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                             "queried_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).queried_at).len()),
+                                serde_json::json!((_field_0).queried_at.len()),
                             )]),
                         ),
                     ]),
@@ -565,7 +562,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                     "0",
                     mp::object_value(&[(
                         "available_count",
-                        serde_json::json!(*(&(_field_0).available_count)),
+                        serde_json::json!((_field_0).available_count),
                     )]),
                 ),
             ]),
@@ -573,10 +570,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                 ("variant", serde_json::Value::String("Consumed".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[(
-                        "consumed",
-                        serde_json::Value::Bool(*(&(_field_0).consumed)),
-                    )]),
+                    mp::object_value(&[("consumed", serde_json::Value::Bool((_field_0).consumed))]),
                 ),
             ]),
             Self::Balance(_field_0) => mp::object_value(&[
@@ -586,14 +580,15 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                     mp::object_value(&[
                         (
                             "is_available",
-                            serde_json::Value::Bool(*(&(_field_0).is_available)),
+                            serde_json::Value::Bool((_field_0).is_available),
                         ),
                         ("balance_infos", {
-                            if (&(_field_0).balance_infos).len() > 32 {
+                            if (_field_0).balance_infos.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).balance_infos)
+                                (_field_0)
+                                    .balance_infos
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -601,21 +596,19 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                                 "currency",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).currency).len()),
+                                                    serde_json::json!((item).currency.len()),
                                                 )]),
                                             ),
                                             (
                                                 "total_balance",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).total_balance).len()
-                                                    ),
+                                                    serde_json::json!((item).total_balance.len()),
                                                 )]),
                                             ),
                                             (
                                                 "granted_balance",
-                                                match (&(item).granted_balance).as_ref() {
+                                                match (item).granted_balance.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -625,7 +618,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                             ),
                                             (
                                                 "topped_up_balance",
-                                                match (&(item).topped_up_balance).as_ref() {
+                                                match (item).topped_up_balance.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -651,11 +644,12 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                     "0",
                     mp::object_value(&[
                         ("models", {
-                            if (&(_field_0).models).len() > 32 {
+                            if (_field_0).models.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).models)
+                                (_field_0)
+                                    .models
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -664,12 +658,12 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                                 "display_name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).display_name).len()),
+                                                    serde_json::json!((item).display_name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "namespace",
-                                                match (&(item).namespace).as_ref() {
+                                                match (item).namespace.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -679,7 +673,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                             ),
                                             (
                                                 "label_key",
-                                                match (&(item).label_key).as_ref() {
+                                                match (item).label_key.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -689,7 +683,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                             ),
                                             (
                                                 "description_key",
-                                                match (&(item).description_key).as_ref() {
+                                                match (item).description_key.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -699,7 +693,7 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                             ),
                                             (
                                                 "display_name_fallback",
-                                                match (&(item).display_name_fallback).as_ref() {
+                                                match (item).display_name_fallback.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -711,30 +705,24 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                                                 "source",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).source).len()),
+                                                    serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "supports_streaming",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).supports_streaming),
-                                                ),
+                                                serde_json::Value::Bool((item).supports_streaming),
                                             ),
                                             (
                                                 "supports_tool_call",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).supports_tool_call),
-                                                ),
+                                                serde_json::Value::Bool((item).supports_tool_call),
                                             ),
                                             (
                                                 "supports_multimodal",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).supports_multimodal),
-                                                ),
+                                                serde_json::Value::Bool((item).supports_multimodal),
                                             ),
                                             (
                                                 "context_window",
-                                                match (&(item).context_window).as_ref() {
+                                                match (item).context_window.as_ref() {
                                                     Some(item) => serde_json::json!(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
@@ -761,14 +749,14 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         (
                             "value",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).value).len()),
+                                serde_json::json!((_field_0).value.len()),
                             )]),
                         ),
                     ]),

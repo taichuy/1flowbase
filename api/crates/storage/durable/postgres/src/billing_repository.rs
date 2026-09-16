@@ -554,7 +554,7 @@ impl BillingRepository for PgControlPlaneStore {
         &self,
         rules: &[PricingRule],
     ) -> Result<control_plane_contracts::ports::PricingCatalogSyncSummary> {
-        catalog_sync::merge(&self.pool(), rules).await
+        catalog_sync::merge(self.pool(), rules).await
     }
 
     async fn delete_pricing_rule(&self, id: Uuid) -> Result<bool> {

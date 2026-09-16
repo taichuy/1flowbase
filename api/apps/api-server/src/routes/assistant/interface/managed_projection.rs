@@ -48,25 +48,26 @@ impl InterfaceContract for AssistantSettingsInput {
                     mp::object_value(&[
                         (
                             "application_id",
-                            match (&(_field_0).application_id).as_ref() {
+                            match (_field_0).application_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         ("mcp_instance_ids", {
-                            if (&(_field_0).mcp_instance_ids).len() > 32 {
+                            if (_field_0).mcp_instance_ids.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).mcp_instance_ids)
+                                (_field_0)
+                                    .mcp_instance_ids
                                     .iter()
-                                    .map(|item| Some(mp::text(item)?))
+                                    .map(|item| mp::text(item))
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
                         (
                             "model",
-                            match (&(_field_0).model).as_ref() {
+                            match (_field_0).model.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -76,7 +77,7 @@ impl InterfaceContract for AssistantSettingsInput {
                         ),
                         (
                             "reasoning_effort",
-                            match (&(_field_0).reasoning_effort).as_ref() {
+                            match (_field_0).reasoning_effort.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -85,10 +86,10 @@ impl InterfaceContract for AssistantSettingsInput {
                             },
                         ),
                         ("enabled_client_tools", {
-                            if (&(_field_0).enabled_client_tools).len() > 32 {
+                            if (_field_0).enabled_client_tools.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).enabled_client_tools).iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value(&[("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value(&[("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value(&[("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value(&[("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value(&[("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value(&[("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value(&[("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value(&[("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).enabled_client_tools.iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value(&[("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value(&[("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value(&[("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value(&[("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value(&[("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value(&[("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value(&[("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value(&[("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
                         }),
                     ]),
                 ),
@@ -187,25 +188,27 @@ impl InterfaceContract for AssistantSettingsOutput {
                             mp::object_value(&[
                                 (
                                     "application_id",
-                                    match (&(&(_field_0).preference).application_id).as_ref() {
+                                    match (_field_0).preference.application_id.as_ref() {
                                         Some(item) => serde_json::Value::String((item).to_string()),
                                         None => serde_json::Value::Null,
                                     },
                                 ),
                                 ("mcp_instance_ids", {
-                                    if (&(&(_field_0).preference).mcp_instance_ids).len() > 32 {
+                                    if (_field_0).preference.mcp_instance_ids.len() > 32 {
                                         return None;
                                     }
                                     serde_json::Value::Array(
-                                        (&(&(_field_0).preference).mcp_instance_ids)
+                                        (_field_0)
+                                            .preference
+                                            .mcp_instance_ids
                                             .iter()
-                                            .map(|item| Some(mp::text(item)?))
+                                            .map(|item| mp::text(item))
                                             .collect::<Option<Vec<_>>>()?,
                                     )
                                 }),
                                 (
                                     "model",
-                                    match (&(&(_field_0).preference).model).as_ref() {
+                                    match (_field_0).preference.model.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -215,7 +218,7 @@ impl InterfaceContract for AssistantSettingsOutput {
                                 ),
                                 (
                                     "reasoning_effort",
-                                    match (&(&(_field_0).preference).reasoning_effort).as_ref() {
+                                    match (_field_0).preference.reasoning_effort.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -227,33 +230,35 @@ impl InterfaceContract for AssistantSettingsOutput {
                                     "enabled_client_tools",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!((&(&(_field_0).preference)
-                                            .enabled_client_tools)
+                                        serde_json::json!((_field_0)
+                                            .preference
+                                            .enabled_client_tools
                                             .len()),
                                     )]),
                                 ),
                             ]),
                         ),
                         ("published_agent_flows", {
-                            if (&(_field_0).published_agent_flows).len() > 32 {
+                            if (_field_0).published_agent_flows.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).published_agent_flows)
+                                (_field_0)
+                                    .published_agent_flows
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             (
                                                 "application_id",
                                                 serde_json::Value::String(
-                                                    (&(item).application_id).to_string(),
+                                                    (item).application_id.to_string(),
                                                 ),
                                             ),
                                             (
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -262,11 +267,12 @@ impl InterfaceContract for AssistantSettingsOutput {
                             )
                         }),
                         ("enabled_mcp_instances", {
-                            if (&(_field_0).enabled_mcp_instances).len() > 32 {
+                            if (_field_0).enabled_mcp_instances.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).enabled_mcp_instances)
+                                (_field_0)
+                                    .enabled_mcp_instances
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -275,7 +281,7 @@ impl InterfaceContract for AssistantSettingsOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -285,15 +291,15 @@ impl InterfaceContract for AssistantSettingsOutput {
                         }),
                         (
                             "page_reference_max_bytes",
-                            serde_json::json!(*(&(_field_0).page_reference_max_bytes)),
+                            serde_json::json!((_field_0).page_reference_max_bytes),
                         ),
                         (
                             "page_reference_max_count",
-                            serde_json::json!(*(&(_field_0).page_reference_max_count)),
+                            serde_json::json!((_field_0).page_reference_max_count),
                         ),
                         (
                             "page_reference_max_total_bytes",
-                            serde_json::json!(*(&(_field_0).page_reference_max_total_bytes)),
+                            serde_json::json!((_field_0).page_reference_max_total_bytes),
                         ),
                         (
                             "run_capabilities",
@@ -301,22 +307,20 @@ impl InterfaceContract for AssistantSettingsOutput {
                                 (
                                     "model_selection_enabled",
                                     serde_json::Value::Bool(
-                                        *(&(&(_field_0).run_capabilities).model_selection_enabled),
+                                        (_field_0).run_capabilities.model_selection_enabled,
                                     ),
                                 ),
                                 (
                                     "reasoning_effort_enabled",
                                     serde_json::Value::Bool(
-                                        *(&(&(_field_0).run_capabilities).reasoning_effort_enabled),
+                                        (_field_0).run_capabilities.reasoning_effort_enabled,
                                     ),
                                 ),
                                 (
                                     "models",
                                     mp::object_value(&[(
                                         "item_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).run_capabilities).models).len()
-                                        ),
+                                        serde_json::json!((_field_0).run_capabilities.models.len()),
                                     )]),
                                 ),
                             ]),
@@ -422,18 +426,18 @@ impl InterfaceContract for AssistantConversationsInput {
                     mp::object_value(&[
                         (
                             "application_id",
-                            serde_json::Value::String((&(_field_query).application_id).to_string()),
+                            serde_json::Value::String((_field_query).application_id.to_string()),
                         ),
                         (
                             "after_sequence",
-                            match (&(_field_query).after_sequence).as_ref() {
+                            match (_field_query).after_sequence.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page_size",
-                            match (&(_field_query).page_size).as_ref() {
+                            match (_field_query).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -451,11 +455,11 @@ impl InterfaceContract for AssistantConversationsInput {
                     mp::object_value(&[
                         (
                             "application_id",
-                            serde_json::Value::String((&(_field_0).application_id).to_string()),
+                            serde_json::Value::String((_field_0).application_id.to_string()),
                         ),
                         (
                             "seed_legacy_flow_run_id",
-                            match (&(_field_0).seed_legacy_flow_run_id).as_ref() {
+                            match (_field_0).seed_legacy_flow_run_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -473,18 +477,18 @@ impl InterfaceContract for AssistantConversationsInput {
                     mp::object_value(&[
                         (
                             "application_id",
-                            serde_json::Value::String((&(_field_0).application_id).to_string()),
+                            serde_json::Value::String((_field_0).application_id.to_string()),
                         ),
                         (
                             "page",
-                            match (&(_field_0).page).as_ref() {
+                            match (_field_0).page.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page_size",
-                            match (&(_field_0).page_size).as_ref() {
+                            match (_field_0).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -509,7 +513,7 @@ impl InterfaceContract for AssistantConversationsInput {
                     "query",
                     mp::object_value(&[(
                         "application_id",
-                        serde_json::Value::String((&(_field_query).application_id).to_string()),
+                        serde_json::Value::String((_field_query).application_id.to_string()),
                     )]),
                 ),
             ]),
@@ -530,7 +534,7 @@ impl InterfaceContract for AssistantConversationsInput {
                     "query",
                     mp::object_value(&[(
                         "application_id",
-                        serde_json::Value::String((&(_field_query).application_id).to_string()),
+                        serde_json::Value::String((_field_query).application_id.to_string()),
                     )]),
                 ),
             ]),
@@ -631,12 +635,12 @@ impl InterfaceContract for AssistantConversationsOutput {
                             "started_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).started_at).len()),
+                                serde_json::json!((_field_0).started_at.len()),
                             )]),
                         ),
                         (
                             "finished_at",
-                            match (&(_field_0).finished_at).as_ref() {
+                            match (_field_0).finished_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -646,23 +650,24 @@ impl InterfaceContract for AssistantConversationsOutput {
                         ),
                         (
                             "duration_ms",
-                            match (&(_field_0).duration_ms).as_ref() {
+                            match (_field_0).duration_ms.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         ("items", {
-                            if (&(_field_0).items).len() > 32 {
+                            if (_field_0).items.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).items).iter().map(|item| Some(match item {crate::routes::assistant::run_activity::AssistantRunActivityItem::Reasoning {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, text: _field_text, .. } => mp::object_value(&[("variant",serde_json::Value::String("Reasoning".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("text",mp::object_value(&[("byte_count",serde_json::json!((_field_text).len()))]))]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Output {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, text: _field_text, segment_index: _field_segment_index, .. } => mp::object_value(&[("variant",serde_json::Value::String("Output".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("text",mp::object_value(&[("byte_count",serde_json::json!((_field_text).len()))])), ("segment_index",match (_field_segment_index).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null })]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Tool {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, tool_call_id: _field_tool_call_id, tool_name: _field_tool_name, input: _field_input, output: _field_output, duration_ms: _field_duration_ms, is_error: _field_is_error, status: _field_status, .. } => mp::object_value(&[("variant",serde_json::Value::String("Tool".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("tool_call_id",mp::text(_field_tool_call_id)?), ("tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_tool_name).len()))])), ("input",mp::json_summary(_field_input)), ("output",match (_field_output).as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null }), ("duration_ms",match (_field_duration_ms).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null }), ("is_error",serde_json::Value::Bool(*(_field_is_error))), ("status",match _field_status {crate::routes::assistant::run_activity::AssistantRunToolStatus::Running => mp::object_value(&[("variant",serde_json::Value::String("Running".to_owned()))]), crate::routes::assistant::run_activity::AssistantRunToolStatus::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), crate::routes::assistant::run_activity::AssistantRunToolStatus::Failed => mp::object_value(&[("variant",serde_json::Value::String("Failed".to_owned()))])})]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Error {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, error: _field_error, .. } => mp::object_value(&[("variant",serde_json::Value::String("Error".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("error",mp::object_value(&[("byte_count",serde_json::json!((_field_error).len()))]))])})).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).items.iter().map(|item| Some(match item {crate::routes::assistant::run_activity::AssistantRunActivityItem::Reasoning {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, text: _field_text, .. } => mp::object_value(&[("variant",serde_json::Value::String("Reasoning".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("text",mp::object_value(&[("byte_count",serde_json::json!((_field_text).len()))]))]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Output {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, text: _field_text, segment_index: _field_segment_index, .. } => mp::object_value(&[("variant",serde_json::Value::String("Output".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("text",mp::object_value(&[("byte_count",serde_json::json!((_field_text).len()))])), ("segment_index",match (_field_segment_index).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null })]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Tool {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, tool_call_id: _field_tool_call_id, tool_name: _field_tool_name, input: _field_input, output: _field_output, duration_ms: _field_duration_ms, is_error: _field_is_error, status: _field_status, .. } => mp::object_value(&[("variant",serde_json::Value::String("Tool".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("tool_call_id",mp::text(_field_tool_call_id)?), ("tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_tool_name).len()))])), ("input",mp::json_summary(_field_input)), ("output",match (_field_output).as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null }), ("duration_ms",match (_field_duration_ms).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null }), ("is_error",serde_json::Value::Bool(*(_field_is_error))), ("status",match _field_status {crate::routes::assistant::run_activity::AssistantRunToolStatus::Running => mp::object_value(&[("variant",serde_json::Value::String("Running".to_owned()))]), crate::routes::assistant::run_activity::AssistantRunToolStatus::Succeeded => mp::object_value(&[("variant",serde_json::Value::String("Succeeded".to_owned()))]), crate::routes::assistant::run_activity::AssistantRunToolStatus::Failed => mp::object_value(&[("variant",serde_json::Value::String("Failed".to_owned()))])})]), crate::routes::assistant::run_activity::AssistantRunActivityItem::Error {event_id: _field_event_id, sequence_start: _field_sequence_start, sequence_end: _field_sequence_end, created_at: _field_created_at, error: _field_error, .. } => mp::object_value(&[("variant",serde_json::Value::String("Error".to_owned())), ("event_id",mp::text(_field_event_id)?), ("sequence_start",serde_json::json!(*(_field_sequence_start))), ("sequence_end",serde_json::json!(*(_field_sequence_end))), ("created_at",mp::text(_field_created_at)?), ("error",mp::object_value(&[("byte_count",serde_json::json!((_field_error).len()))]))])})).collect::<Option<Vec<_>>>()?)
                         }),
                         ("trace_events", {
-                            if (&(_field_0).trace_events).len() > 32 {
+                            if (_field_0).trace_events.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).trace_events)
+                                (_field_0)
+                                    .trace_events
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -670,32 +675,32 @@ impl InterfaceContract for AssistantConversationsOutput {
                                             ("run_id", mp::text(&(item).run_id)?),
                                             (
                                                 "node_run_id",
-                                                match (&(item).node_run_id).as_ref() {
+                                                match (item).node_run_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             ("event_type", mp::text(&(item).event_type)?),
-                                            ("sequence", serde_json::json!(*(&(item).sequence))),
+                                            ("sequence", serde_json::json!((item).sequence)),
                                             ("created_at", mp::text(&(item).created_at)?),
                                             ("payload", mp::json_summary(&(item).payload)),
                                             (
                                                 "delta_index",
-                                                match (&(item).delta_index).as_ref() {
+                                                match (item).delta_index.as_ref() {
                                                     Some(item) => serde_json::json!(*(item)),
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "content_type",
-                                                match (&(item).content_type).as_ref() {
+                                                match (item).content_type.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
                                             ),
                                             (
                                                 "text",
-                                                match (&(item).text).as_ref() {
+                                                match (item).text.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -708,10 +713,10 @@ impl InterfaceContract for AssistantConversationsOutput {
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("has_more", serde_json::Value::Bool(*(&(_field_0).has_more))),
+                        ("has_more", serde_json::Value::Bool((_field_0).has_more)),
                         (
                             "next_sequence",
-                            match (&(_field_0).next_sequence).as_ref() {
+                            match (_field_0).next_sequence.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -729,11 +734,11 @@ impl InterfaceContract for AssistantConversationsOutput {
                     mp::object_value(&[
                         (
                             "conversation_id",
-                            serde_json::Value::String((&(_field_0).conversation_id).to_string()),
+                            serde_json::Value::String((_field_0).conversation_id.to_string()),
                         ),
                         (
                             "application_id",
-                            serde_json::Value::String((&(_field_0).application_id).to_string()),
+                            serde_json::Value::String((_field_0).application_id.to_string()),
                         ),
                         ("created_at", mp::text(&(_field_0).created_at)?),
                         ("updated_at", mp::text(&(_field_0).updated_at)?),
@@ -749,17 +754,18 @@ impl InterfaceContract for AssistantConversationsOutput {
                     "0",
                     mp::object_value(&[
                         ("items", {
-                            if (&(_field_0).items).len() > 32 {
+                            if (_field_0).items.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).items)
+                                (_field_0)
+                                    .items
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
                                             (
                                                 "conversation_id",
-                                                match (&(item).conversation_id).as_ref() {
+                                                match (item).conversation_id.as_ref() {
                                                     Some(item) => serde_json::Value::String(
                                                         (item).to_string(),
                                                     ),
@@ -768,7 +774,7 @@ impl InterfaceContract for AssistantConversationsOutput {
                                             ),
                                             (
                                                 "legacy_flow_run_id",
-                                                match (&(item).legacy_flow_run_id).as_ref() {
+                                                match (item).legacy_flow_run_id.as_ref() {
                                                     Some(item) => serde_json::Value::String(
                                                         (item).to_string(),
                                                     ),
@@ -777,7 +783,7 @@ impl InterfaceContract for AssistantConversationsOutput {
                                             ),
                                             (
                                                 "latest_flow_run_id",
-                                                match (&(item).latest_flow_run_id).as_ref() {
+                                                match (item).latest_flow_run_id.as_ref() {
                                                     Some(item) => serde_json::Value::String(
                                                         (item).to_string(),
                                                     ),
@@ -786,7 +792,7 @@ impl InterfaceContract for AssistantConversationsOutput {
                                             ),
                                             (
                                                 "latest_flow_run_status",
-                                                match (&(item).latest_flow_run_status).as_ref() {
+                                                match (item).latest_flow_run_status.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -796,7 +802,7 @@ impl InterfaceContract for AssistantConversationsOutput {
                                             ),
                                             (
                                                 "title",
-                                                match (&(item).title).as_ref() {
+                                                match (item).title.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -811,9 +817,9 @@ impl InterfaceContract for AssistantConversationsOutput {
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("total", serde_json::json!(*(&(_field_0).total))),
-                        ("page", serde_json::json!(*(&(_field_0).page))),
-                        ("page_size", serde_json::json!(*(&(_field_0).page_size))),
+                        ("total", serde_json::json!((_field_0).total)),
+                        ("page", serde_json::json!((_field_0).page)),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
                     ]),
                 ),
             ]),
@@ -834,31 +840,30 @@ impl InterfaceContract for AssistantConversationsOutput {
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "flow_run_id",
-                                        serde_json::Value::String(
-                                            (&(item).flow_run_id).to_string(),
-                                        ),
+                                        serde_json::Value::String((item).flow_run_id.to_string()),
                                     ),
                                     (
                                         "role",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).role).len()),
+                                            serde_json::json!((item).role.len()),
                                         )]),
                                     ),
                                     (
                                         "content",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).content).len()),
+                                            serde_json::json!((item).content.len()),
                                         )]),
                                     ),
                                     ("status", mp::text(&(item).status)?),
                                     ("page_references", {
-                                        if (&(item).page_references).len() > 32 {
+                                        if (item).page_references.len() > 32 {
                                             return None;
                                         }
                                         serde_json::Value::Array(
-                                            (&(item).page_references)
+                                            (item)
+                                                .page_references
                                                 .iter()
                                                 .map(|item| {
                                                     Some(mp::object_value(&[
@@ -866,8 +871,8 @@ impl InterfaceContract for AssistantConversationsOutput {
                                                             "page_title",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .page_title)
+                                                                serde_json::json!((item)
+                                                                    .page_title
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -875,8 +880,8 @@ impl InterfaceContract for AssistantConversationsOutput {
                                                             "outer_html",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(item)
-                                                                    .outer_html)
+                                                                serde_json::json!((item)
+                                                                    .outer_html
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -932,28 +937,27 @@ impl InterfaceContract for AssistantRunInput {
             mp::object_value(&[
                 (
                     "application_id",
-                    serde_json::Value::String((&(&(self).body).application_id).to_string()),
+                    serde_json::Value::String((self).body.application_id.to_string()),
                 ),
                 (
                     "conversation_id",
-                    match (&(&(self).body).conversation_id).as_ref() {
+                    match (self).body.conversation_id.as_ref() {
                         Some(item) => serde_json::Value::String((item).to_string()),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "query",
-                    mp::object_value(&[(
-                        "byte_count",
-                        serde_json::json!((&(&(self).body).query).len()),
-                    )]),
+                    mp::object_value(&[("byte_count", serde_json::json!((self).body.query.len()))]),
                 ),
                 ("page_references", {
-                    if (&(&(self).body).page_references).len() > 32 {
+                    if (self).body.page_references.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).body).page_references)
+                        (self)
+                            .body
+                            .page_references
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
@@ -961,14 +965,14 @@ impl InterfaceContract for AssistantRunInput {
                                         "page_title",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).page_title).len()),
+                                            serde_json::json!((item).page_title.len()),
                                         )]),
                                     ),
                                     (
                                         "outer_html",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).outer_html).len()),
+                                            serde_json::json!((item).outer_html.len()),
                                         )]),
                                     ),
                                 ]))
@@ -978,7 +982,7 @@ impl InterfaceContract for AssistantRunInput {
                 }),
                 (
                     "title",
-                    match (&(&(self).body).title).as_ref() {
+                    match (self).body.title.as_ref() {
                         Some(item) => {
                             mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                         }
@@ -1020,35 +1024,29 @@ impl InterfaceContract for AssistantRunOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                (
-                    "id",
-                    serde_json::Value::String((&(&(self).0).id).to_string()),
-                ),
+                ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
-                    serde_json::Value::String((&(&(self).0).application_id).to_string()),
+                    serde_json::Value::String((self).0.application_id.to_string()),
                 ),
                 (
                     "conversation_id",
-                    serde_json::Value::String((&(&(self).0).conversation_id).to_string()),
+                    serde_json::Value::String((self).0.conversation_id.to_string()),
                 ),
-                ("status", mp::text(&(&(self).0).status)?),
+                ("status", mp::text(&(self).0.status)?),
                 (
                     "answer",
-                    match (&(&(self).0).answer).as_ref() {
+                    match (self).0.answer.as_ref() {
                         Some(item) => {
                             mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                         }
                         None => serde_json::Value::Null,
                     },
                 ),
-                (
-                    "output_payload",
-                    mp::json_summary(&(&(self).0).output_payload),
-                ),
+                ("output_payload", mp::json_summary(&(self).0.output_payload)),
                 (
                     "error_payload",
-                    match (&(&(self).0).error_payload).as_ref() {
+                    match (self).0.error_payload.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
@@ -1073,7 +1071,7 @@ impl InterfaceContract for AssistantRunStreamEvent {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[(
             "0",
-            mp::object_value(&[("is_ok", serde_json::Value::Bool((&(self).0).is_ok()))]),
+            mp::object_value(&[("is_ok", serde_json::Value::Bool((self).0.is_ok()))]),
         )]))
     }
 

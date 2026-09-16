@@ -167,21 +167,21 @@ impl InterfaceContract for MembershipInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).nickname).len()),
+                                serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                     ]),
@@ -204,21 +204,21 @@ impl InterfaceContract for MembershipInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).name).len()),
+                                serde_json::json!((_field_body).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).nickname).len()),
+                                serde_json::json!((_field_body).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).introduction).len()),
+                                serde_json::json!((_field_body).introduction.len()),
                             )]),
                         ),
                     ]),
@@ -280,7 +280,7 @@ impl InterfaceContract for MembershipInput {
                         "role_codes",
                         mp::object_value(&[(
                             "item_count",
-                            serde_json::json!((&(_field_body).role_codes).len()),
+                            serde_json::json!((_field_body).role_codes.len()),
                         )]),
                     )]),
                 ),
@@ -301,14 +301,14 @@ impl InterfaceContract for MembershipInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                     ]),
@@ -431,7 +431,7 @@ impl InterfaceContract for MembershipOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                 ]))
@@ -456,26 +456,26 @@ impl InterfaceContract for MembershipOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "nickname",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).nickname).len()),
+                                            serde_json::json!((item).nickname.len()),
                                         )]),
                                     ),
                                     (
                                         "introduction",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).introduction).len()),
+                                            serde_json::json!((item).introduction.len()),
                                         )]),
                                     ),
                                     (
                                         "default_display_role",
-                                        match (&(item).default_display_role).as_ref() {
+                                        match (item).default_display_role.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -488,7 +488,7 @@ impl InterfaceContract for MembershipOutput {
                                         "role_codes",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).role_codes).len()),
+                                            serde_json::json!((item).role_codes.len()),
                                         )]),
                                     ),
                                 ]))
@@ -507,26 +507,26 @@ impl InterfaceContract for MembershipOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "nickname",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).nickname).len()),
+                                serde_json::json!((_field_0).nickname.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                         (
                             "default_display_role",
-                            match (&(_field_0).default_display_role).as_ref() {
+                            match (_field_0).default_display_role.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -539,7 +539,7 @@ impl InterfaceContract for MembershipOutput {
                             "role_codes",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).role_codes).len()),
+                                serde_json::json!((_field_0).role_codes.len()),
                             )]),
                         ),
                     ]),
@@ -555,14 +555,14 @@ impl InterfaceContract for MembershipOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "introduction",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).introduction).len()),
+                                serde_json::json!((_field_0).introduction.len()),
                             )]),
                         ),
                     ]),
@@ -587,17 +587,17 @@ impl InterfaceContract for MembershipOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "introduction",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).introduction).len()),
+                                            serde_json::json!((item).introduction.len()),
                                         )]),
                                     ),
-                                    ("is_current", serde_json::Value::Bool(*(&(item).is_current))),
+                                    ("is_current", serde_json::Value::Bool((item).is_current)),
                                 ]))
                             })
                             .collect::<Option<Vec<_>>>()?,

@@ -92,24 +92,23 @@ impl InterfaceContract for NativeModelsOutput {
             mp::object_value(&[
                 (
                     "object",
-                    mp::object_value(&[(
-                        "byte_count",
-                        serde_json::json!((&(&(self).0).object).len()),
-                    )]),
+                    mp::object_value(&[("byte_count", serde_json::json!((self).0.object.len()))]),
                 ),
                 ("data", {
-                    if (&(&(self).0).data).len() > 32 {
+                    if (self).0.data.len() > 32 {
                         return None;
                     }
                     serde_json::Value::Array(
-                        (&(&(self).0).data)
+                        (self)
+                            .0
+                            .data
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
                                     ("id", mp::text(&(item).id)?),
                                     (
                                         "name",
-                                        match (&(item).name).as_ref() {
+                                        match (item).name.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -119,14 +118,14 @@ impl InterfaceContract for NativeModelsOutput {
                                     ),
                                     (
                                         "context_window",
-                                        match (&(item).context_window).as_ref() {
+                                        match (item).context_window.as_ref() {
                                             Some(item) => serde_json::json!(*(item)),
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "max_context_window",
-                                        match (&(item).max_context_window).as_ref() {
+                                        match (item).max_context_window.as_ref() {
                                             Some(item) => serde_json::json!(*(item)),
                                             None => serde_json::Value::Null,
                                         },
@@ -137,36 +136,36 @@ impl InterfaceContract for NativeModelsOutput {
                                             (
                                                 "reasoning",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(item).capabilities).reasoning),
+                                                    (item).capabilities.reasoning,
                                                 ),
                                             ),
                                             (
                                                 "tool_call",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(item).capabilities).tool_call),
+                                                    (item).capabilities.tool_call,
                                                 ),
                                             ),
                                             (
                                                 "multimodal",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(item).capabilities).multimodal),
+                                                    (item).capabilities.multimodal,
                                                 ),
                                             ),
                                             (
                                                 "structured_output",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(item).capabilities).structured_output),
+                                                    (item).capabilities.structured_output,
                                                 ),
                                             ),
                                         ]),
                                     ),
                                     (
                                         "reasoning",
-                                        match (&(item).reasoning).as_ref() {
+                                        match (item).reasoning.as_ref() {
                                             Some(item) => mp::object_value(&[
                                                 (
                                                     "default_effort",
-                                                    match (&(item).default_effort).as_ref() {
+                                                    match (item).default_effort.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -178,8 +177,8 @@ impl InterfaceContract for NativeModelsOutput {
                                                     "supported_efforts",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!((&(item)
-                                                            .supported_efforts)
+                                                        serde_json::json!((item)
+                                                            .supported_efforts
                                                             .len()),
                                                     )]),
                                                 ),
@@ -210,7 +209,7 @@ impl InterfaceContract for NativeGetRunInput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[(
             "0",
-            serde_json::Value::String((&(self).0).to_string()),
+            serde_json::Value::String((self).0.to_string()),
         )]))
     }
 
@@ -268,27 +267,24 @@ impl InterfaceContract for NativeGetRunOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                (
-                    "id",
-                    serde_json::Value::String((&(&(self).0).id).to_string()),
-                ),
+                ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
-                    serde_json::Value::String((&(&(self).0).application_id).to_string()),
+                    serde_json::Value::String((self).0.application_id.to_string()),
                 ),
                 (
                     "publication_version_id",
-                    serde_json::Value::String((&(&(self).0).publication_version_id).to_string()),
+                    serde_json::Value::String((self).0.publication_version_id.to_string()),
                 ),
-                ("status", mp::text(&(&(self).0).status)?),
+                ("status", mp::text(&(self).0.status)?),
                 (
                     "node_input_payload",
-                    mp::json_summary(&(&(self).0).node_input_payload),
+                    mp::json_summary(&(self).0.node_input_payload),
                 ),
-                ("metadata", mp::json_summary(&(&(self).0).metadata)),
+                ("metadata", mp::json_summary(&(self).0.metadata)),
                 (
                     "answer",
-                    match (&(&(self).0).answer).as_ref() {
+                    match (self).0.answer.as_ref() {
                         Some(item) => {
                             mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                         }
@@ -297,47 +293,47 @@ impl InterfaceContract for NativeGetRunOutput {
                 ),
                 (
                     "answer_segments",
-                    match (&(&(self).0).answer_segments).as_ref() {
+                    match (self).0.answer_segments.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "required_action",
-                    match (&(&(self).0).required_action).as_ref() {
+                    match (self).0.required_action.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "tool_calls",
-                    match (&(&(self).0).tool_calls).as_ref() {
+                    match (self).0.tool_calls.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "usage",
-                    match (&(&(self).0).usage).as_ref() {
+                    match (self).0.usage.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "error",
-                    match (&(&(self).0).error).as_ref() {
+                    match (self).0.error.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "operation_terminal",
-                    match (&(&(self).0).operation_terminal).as_ref() {
+                    match (self).0.operation_terminal.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
-                ("created_at", mp::text(&(&(self).0).created_at)?),
+                ("created_at", mp::text(&(self).0.created_at)?),
             ]),
         )]))
     }
@@ -356,7 +352,7 @@ impl InterfaceContract for NativeCancelRunInput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[(
             "0",
-            serde_json::Value::String((&(self).0).to_string()),
+            serde_json::Value::String((self).0.to_string()),
         )]))
     }
 
@@ -414,27 +410,24 @@ impl InterfaceContract for NativeCancelRunOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                (
-                    "id",
-                    serde_json::Value::String((&(&(self).0).id).to_string()),
-                ),
+                ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
-                    serde_json::Value::String((&(&(self).0).application_id).to_string()),
+                    serde_json::Value::String((self).0.application_id.to_string()),
                 ),
                 (
                     "publication_version_id",
-                    serde_json::Value::String((&(&(self).0).publication_version_id).to_string()),
+                    serde_json::Value::String((self).0.publication_version_id.to_string()),
                 ),
-                ("status", mp::text(&(&(self).0).status)?),
+                ("status", mp::text(&(self).0.status)?),
                 (
                     "node_input_payload",
-                    mp::json_summary(&(&(self).0).node_input_payload),
+                    mp::json_summary(&(self).0.node_input_payload),
                 ),
-                ("metadata", mp::json_summary(&(&(self).0).metadata)),
+                ("metadata", mp::json_summary(&(self).0.metadata)),
                 (
                     "answer",
-                    match (&(&(self).0).answer).as_ref() {
+                    match (self).0.answer.as_ref() {
                         Some(item) => {
                             mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                         }
@@ -443,47 +436,47 @@ impl InterfaceContract for NativeCancelRunOutput {
                 ),
                 (
                     "answer_segments",
-                    match (&(&(self).0).answer_segments).as_ref() {
+                    match (self).0.answer_segments.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "required_action",
-                    match (&(&(self).0).required_action).as_ref() {
+                    match (self).0.required_action.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "tool_calls",
-                    match (&(&(self).0).tool_calls).as_ref() {
+                    match (self).0.tool_calls.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "usage",
-                    match (&(&(self).0).usage).as_ref() {
+                    match (self).0.usage.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "error",
-                    match (&(&(self).0).error).as_ref() {
+                    match (self).0.error.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "operation_terminal",
-                    match (&(&(self).0).operation_terminal).as_ref() {
+                    match (self).0.operation_terminal.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
-                ("created_at", mp::text(&(&(self).0).created_at)?),
+                ("created_at", mp::text(&(self).0.created_at)?),
             ]),
         )]))
     }
@@ -516,11 +509,11 @@ impl InterfaceContract for NativeResumeRunInput {
         Some(mp::object_value(&[
             (
                 "run_id",
-                serde_json::Value::String((&(self).run_id).to_string()),
+                serde_json::Value::String((self).run_id.to_string()),
             ),
             (
                 "callback_task_id",
-                serde_json::Value::String((&(self).callback_task_id).to_string()),
+                serde_json::Value::String((self).callback_task_id.to_string()),
             ),
             (
                 "response_payload",
@@ -528,7 +521,7 @@ impl InterfaceContract for NativeResumeRunInput {
             ),
             (
                 "response_mode",
-                match (&(self).response_mode).as_ref() {
+                match (self).response_mode.as_ref() {
                     Some(item) => mp::text(item)?,
                     None => serde_json::Value::Null,
                 },
@@ -590,27 +583,24 @@ impl InterfaceContract for NativeResumeRunOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                (
-                    "id",
-                    serde_json::Value::String((&(&(self).0).id).to_string()),
-                ),
+                ("id", serde_json::Value::String((self).0.id.to_string())),
                 (
                     "application_id",
-                    serde_json::Value::String((&(&(self).0).application_id).to_string()),
+                    serde_json::Value::String((self).0.application_id.to_string()),
                 ),
                 (
                     "publication_version_id",
-                    serde_json::Value::String((&(&(self).0).publication_version_id).to_string()),
+                    serde_json::Value::String((self).0.publication_version_id.to_string()),
                 ),
-                ("status", mp::text(&(&(self).0).status)?),
+                ("status", mp::text(&(self).0.status)?),
                 (
                     "node_input_payload",
-                    mp::json_summary(&(&(self).0).node_input_payload),
+                    mp::json_summary(&(self).0.node_input_payload),
                 ),
-                ("metadata", mp::json_summary(&(&(self).0).metadata)),
+                ("metadata", mp::json_summary(&(self).0.metadata)),
                 (
                     "answer",
-                    match (&(&(self).0).answer).as_ref() {
+                    match (self).0.answer.as_ref() {
                         Some(item) => {
                             mp::object_value(&[("byte_count", serde_json::json!((item).len()))])
                         }
@@ -619,47 +609,47 @@ impl InterfaceContract for NativeResumeRunOutput {
                 ),
                 (
                     "answer_segments",
-                    match (&(&(self).0).answer_segments).as_ref() {
+                    match (self).0.answer_segments.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "required_action",
-                    match (&(&(self).0).required_action).as_ref() {
+                    match (self).0.required_action.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "tool_calls",
-                    match (&(&(self).0).tool_calls).as_ref() {
+                    match (self).0.tool_calls.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "usage",
-                    match (&(&(self).0).usage).as_ref() {
+                    match (self).0.usage.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "error",
-                    match (&(&(self).0).error).as_ref() {
+                    match (self).0.error.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
                 (
                     "operation_terminal",
-                    match (&(&(self).0).operation_terminal).as_ref() {
+                    match (self).0.operation_terminal.as_ref() {
                         Some(item) => mp::json_summary(item),
                         None => serde_json::Value::Null,
                     },
                 ),
-                ("created_at", mp::text(&(&(self).0).created_at)?),
+                ("created_at", mp::text(&(self).0.created_at)?),
             ]),
         )]))
     }
@@ -694,18 +684,18 @@ impl InterfaceContract for NativeUploadFileInput {
         Some(mp::object_value(&[
             (
                 "file_table_id",
-                serde_json::Value::String((&(self).file_table_id).to_string()),
+                serde_json::Value::String((self).file_table_id.to_string()),
             ),
             (
                 "content_type",
-                match (&(self).content_type).as_ref() {
+                match (self).content_type.as_ref() {
                     Some(item) => mp::text(item)?,
                     None => serde_json::Value::Null,
                 },
             ),
             (
                 "bytes",
-                mp::object_value(&[("byte_count", serde_json::json!((&(self).bytes).len()))]),
+                mp::object_value(&[("byte_count", serde_json::json!((self).bytes.len()))]),
             ),
         ]))
     }
@@ -732,9 +722,9 @@ impl InterfaceContract for NativeUploadFileOutput {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                ("file_table_id", mp::text(&(&(self).0).file_table_id)?),
-                ("storage_id", mp::text(&(&(self).0).storage_id)?),
-                ("record", mp::json_summary(&(&(self).0).record)),
+                ("file_table_id", mp::text(&(self).0.file_table_id)?),
+                ("storage_id", mp::text(&(self).0.storage_id)?),
+                ("record", mp::json_summary(&(self).0.record)),
             ]),
         )]))
     }
@@ -767,14 +757,11 @@ impl InterfaceContract for NativeReadTargetError {
         Some(mp::object_value(&[(
             "0",
             mp::object_value(&[
-                ("status", serde_json::json!((&(&(self).0).status).as_u16())),
-                ("code", mp::text(&(&(self).0).code)?),
+                ("status", serde_json::json!((self).0.status.as_u16())),
+                ("code", mp::text((self).0.code)?),
                 (
                     "message",
-                    mp::object_value(&[(
-                        "byte_count",
-                        serde_json::json!((&(&(self).0).message).len()),
-                    )]),
+                    mp::object_value(&[("byte_count", serde_json::json!((self).0.message.len()))]),
                 ),
             ]),
         )]))

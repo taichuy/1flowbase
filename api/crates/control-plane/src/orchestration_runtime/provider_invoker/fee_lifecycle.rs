@@ -104,7 +104,7 @@ where
                     billing_started_at,
                 )?
                 .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
-                let input_tokens = estimate_provider_count_tokens(&input)
+                let input_tokens = estimate_provider_count_tokens(input)
                     .map(|estimate| estimate.input_tokens)
                     .unwrap_or(0);
                 let maximum_output_tokens = input
@@ -130,7 +130,7 @@ where
                     .invoker
                     .flow_run_id
                     .ok_or(ControlPlaneError::Conflict("billing_flow_run_required"))?;
-                let invocation_id = billing_invocation_id(flow_run_id, billing_node_id, &input);
+                let invocation_id = billing_invocation_id(flow_run_id, billing_node_id, input);
                 let reservation = self
                     .invoker
                     .repository
@@ -646,8 +646,8 @@ pub(super) enum ProviderFeeEvent<
         billing_node_id: Option<&'a str>,
     },
     AfterUsage {
-        reservation: Option<FeeReservation<R>>,
-        outcome: ProviderFeeOutcome<'a>,
+        reservation: Box<Option<FeeReservation<R>>>,
+        outcome: Box<ProviderFeeOutcome<'a>>,
     },
 }
 
@@ -689,7 +689,7 @@ where
                 reservation,
                 outcome,
             } => {
-                self.subscriber.after_usage(reservation, outcome).await?;
+                self.subscriber.after_usage(*reservation, *outcome).await?;
                 Ok(None)
             }
         }

@@ -80,25 +80,22 @@ impl InterfaceContract for RuntimeI18nOutput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[(
             "payload",
-            match (&(self).payload).as_ref() {
+            match (self).payload.as_ref() {
                 Some(item) => mp::object_value(&[
                     (
                         "catalog_revision",
-                        serde_json::json!(*(&(item).catalog_revision)),
+                        serde_json::json!((item).catalog_revision),
                     ),
                     ("locale", mp::text(&(item).locale)?),
                     (
                         "digest",
-                        mp::object_value(&[(
-                            "byte_count",
-                            serde_json::json!((&(item).digest).len()),
-                        )]),
+                        mp::object_value(&[("byte_count", serde_json::json!((item).digest.len()))]),
                     ),
                     (
                         "messages",
                         mp::object_value(&[(
                             "item_count",
-                            serde_json::json!((&(item).messages).len()),
+                            serde_json::json!((item).messages.len()),
                         )]),
                     ),
                 ]),

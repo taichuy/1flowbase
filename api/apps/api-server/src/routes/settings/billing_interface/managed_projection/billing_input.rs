@@ -467,28 +467,28 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "provider_code",
-                            match (&(_field_0).provider_code).as_ref() {
+                            match (_field_0).provider_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "upstream_model_id",
-                            match (&(_field_0).upstream_model_id).as_ref() {
+                            match (_field_0).upstream_model_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "enabled",
-                            match (&(_field_0).enabled).as_ref() {
+                            match (_field_0).enabled.as_ref() {
                                 Some(item) => serde_json::Value::Bool(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_kind",
-                            match (&(_field_0).source_kind).as_ref() {
+                            match (_field_0).source_kind.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -498,14 +498,14 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "page",
-                            match (&(_field_0).page).as_ref() {
+                            match (_field_0).page.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page_size",
-                            match (&(_field_0).page_size).as_ref() {
+                            match (_field_0).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -523,7 +523,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "id",
-                            match (&(_field_0).id).as_ref() {
+                            match (_field_0).id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -535,18 +535,18 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "currency_code",
-                            match (&(_field_0).currency_code).as_ref() {
+                            match (_field_0).currency_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "effective_from",
-                            serde_json::json!((&(_field_0).effective_from).unix_timestamp()),
+                            serde_json::json!((_field_0).effective_from.unix_timestamp()),
                         ),
                         (
                             "effective_to",
-                            match (&(_field_0).effective_to).as_ref() {
+                            match (_field_0).effective_to.as_ref() {
                                 Some(item) => serde_json::json!((item).unix_timestamp()),
                                 None => serde_json::Value::Null,
                             },
@@ -555,16 +555,13 @@ impl InterfaceContract for BillingInput {
                             "timezone",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).timezone).len()),
+                                serde_json::json!((_field_0).timezone.len()),
                             )]),
                         ),
-                        (
-                            "weekday_mask",
-                            serde_json::json!(*(&(_field_0).weekday_mask)),
-                        ),
+                        ("weekday_mask", serde_json::json!((_field_0).weekday_mask)),
                         (
                             "local_time_start",
-                            match (&(_field_0).local_time_start).as_ref() {
+                            match (_field_0).local_time_start.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -574,7 +571,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "local_time_end",
-                            match (&(_field_0).local_time_end).as_ref() {
+                            match (_field_0).local_time_end.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -582,12 +579,12 @@ impl InterfaceContract for BillingInput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("priority", serde_json::json!(*(&(_field_0).priority))),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        ("priority", serde_json::json!((_field_0).priority)),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         ("rules", mp::json_summary(&(_field_0).rules)),
                         (
                             "source_kind",
-                            match (&(_field_0).source_kind).as_ref() {
+                            match (_field_0).source_kind.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -597,21 +594,21 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "source_catalog_id",
-                            match (&(_field_0).source_catalog_id).as_ref() {
+                            match (_field_0).source_catalog_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_version",
-                            match (&(_field_0).source_version).as_ref() {
+                            match (_field_0).source_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_checksum",
-                            match (&(_field_0).source_checksum).as_ref() {
+                            match (_field_0).source_checksum.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -621,7 +618,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "extensions",
-                            match (&(_field_0).extensions).as_ref() {
+                            match (_field_0).extensions.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -644,7 +641,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "id",
-                            match (&(_field_body).id).as_ref() {
+                            match (_field_body).id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -656,18 +653,18 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "currency_code",
-                            match (&(_field_body).currency_code).as_ref() {
+                            match (_field_body).currency_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "effective_from",
-                            serde_json::json!((&(_field_body).effective_from).unix_timestamp()),
+                            serde_json::json!((_field_body).effective_from.unix_timestamp()),
                         ),
                         (
                             "effective_to",
-                            match (&(_field_body).effective_to).as_ref() {
+                            match (_field_body).effective_to.as_ref() {
                                 Some(item) => serde_json::json!((item).unix_timestamp()),
                                 None => serde_json::Value::Null,
                             },
@@ -676,16 +673,16 @@ impl InterfaceContract for BillingInput {
                             "timezone",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).timezone).len()),
+                                serde_json::json!((_field_body).timezone.len()),
                             )]),
                         ),
                         (
                             "weekday_mask",
-                            serde_json::json!(*(&(_field_body).weekday_mask)),
+                            serde_json::json!((_field_body).weekday_mask),
                         ),
                         (
                             "local_time_start",
-                            match (&(_field_body).local_time_start).as_ref() {
+                            match (_field_body).local_time_start.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -695,7 +692,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "local_time_end",
-                            match (&(_field_body).local_time_end).as_ref() {
+                            match (_field_body).local_time_end.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -703,15 +700,12 @@ impl InterfaceContract for BillingInput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("priority", serde_json::json!(*(&(_field_body).priority))),
-                        (
-                            "enabled",
-                            serde_json::Value::Bool(*(&(_field_body).enabled)),
-                        ),
+                        ("priority", serde_json::json!((_field_body).priority)),
+                        ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         ("rules", mp::json_summary(&(_field_body).rules)),
                         (
                             "source_kind",
-                            match (&(_field_body).source_kind).as_ref() {
+                            match (_field_body).source_kind.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -721,21 +715,21 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "source_catalog_id",
-                            match (&(_field_body).source_catalog_id).as_ref() {
+                            match (_field_body).source_catalog_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_version",
-                            match (&(_field_body).source_version).as_ref() {
+                            match (_field_body).source_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_checksum",
-                            match (&(_field_body).source_checksum).as_ref() {
+                            match (_field_body).source_checksum.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -745,7 +739,7 @@ impl InterfaceContract for BillingInput {
                         ),
                         (
                             "extensions",
-                            match (&(_field_body).extensions).as_ref() {
+                            match (_field_body).extensions.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -770,28 +764,28 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "provider_code",
-                            match (&(_field_0).provider_code).as_ref() {
+                            match (_field_0).provider_code.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "upstream_model_id",
-                            match (&(_field_0).upstream_model_id).as_ref() {
+                            match (_field_0).upstream_model_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page",
-                            match (&(_field_0).page).as_ref() {
+                            match (_field_0).page.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "page_size",
-                            match (&(_field_0).page_size).as_ref() {
+                            match (_field_0).page_size.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -810,11 +804,12 @@ impl InterfaceContract for BillingInput {
                 (
                     "0",
                     mp::object_value(&[("catalog_ids", {
-                        if (&(_field_0).catalog_ids).len() > 32 {
+                        if (_field_0).catalog_ids.len() > 32 {
                             return None;
                         }
                         serde_json::Value::Array(
-                            (&(_field_0).catalog_ids)
+                            (_field_0)
+                                .catalog_ids
                                 .iter()
                                 .map(|item| Some(serde_json::Value::String((item).to_string())))
                                 .collect::<Option<Vec<_>>>()?,
@@ -832,35 +827,35 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "limit",
-                            match (&(_field_0).limit).as_ref() {
+                            match (_field_0).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "offset",
-                            match (&(_field_0).offset).as_ref() {
+                            match (_field_0).offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "user_id",
-                            match (&(_field_0).user_id).as_ref() {
+                            match (_field_0).user_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before_created_at",
-                            match (&(_field_0).before_created_at).as_ref() {
+                            match (_field_0).before_created_at.as_ref() {
                                 Some(item) => serde_json::json!((item).unix_timestamp()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before_id",
-                            match (&(_field_0).before_id).as_ref() {
+                            match (_field_0).before_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -891,35 +886,35 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "limit",
-                            match (&(_field_0).limit).as_ref() {
+                            match (_field_0).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "offset",
-                            match (&(_field_0).offset).as_ref() {
+                            match (_field_0).offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "user_id",
-                            match (&(_field_0).user_id).as_ref() {
+                            match (_field_0).user_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before_created_at",
-                            match (&(_field_0).before_created_at).as_ref() {
+                            match (_field_0).before_created_at.as_ref() {
                                 Some(item) => serde_json::json!((item).unix_timestamp()),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "before_id",
-                            match (&(_field_0).before_id).as_ref() {
+                            match (_field_0).before_id.as_ref() {
                                 Some(item) => serde_json::Value::String((item).to_string()),
                                 None => serde_json::Value::Null,
                             },
@@ -945,7 +940,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -957,19 +952,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -978,12 +973,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -1009,7 +1004,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1021,19 +1016,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1042,12 +1037,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -1073,7 +1068,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1085,19 +1080,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1106,12 +1101,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -1137,7 +1132,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1149,19 +1144,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1170,12 +1165,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -1201,7 +1196,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1213,19 +1208,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1234,12 +1229,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -1265,7 +1260,7 @@ impl InterfaceContract for BillingInput {
                     mp::object_value(&[
                         (
                             "amount",
-                            match (&(_field_body).amount).as_ref() {
+                            match (_field_body).amount.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -1277,19 +1272,19 @@ impl InterfaceContract for BillingInput {
                             "reason",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).reason).len()),
+                                serde_json::json!((_field_body).reason.len()),
                             )]),
                         ),
                         (
                             "source_type",
-                            match (&(_field_body).source_type).as_ref() {
+                            match (_field_body).source_type.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "source_id",
-                            match (&(_field_body).source_id).as_ref() {
+                            match (_field_body).source_id.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1298,12 +1293,12 @@ impl InterfaceContract for BillingInput {
                             "idempotency_key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).idempotency_key).len()),
+                                serde_json::json!((_field_body).idempotency_key.len()),
                             )]),
                         ),
                         (
                             "metadata",
-                            match (&(_field_body).metadata).as_ref() {
+                            match (_field_body).metadata.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },

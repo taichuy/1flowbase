@@ -12,7 +12,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamEvent {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[(
             "0",
-            mp::object_value(&[("is_ok", serde_json::Value::Bool((&(self).0).is_ok()))]),
+            mp::object_value(&[("is_ok", serde_json::Value::Bool((self).0.is_ok()))]),
         )]))
     }
 

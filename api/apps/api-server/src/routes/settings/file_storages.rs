@@ -148,15 +148,12 @@ impl InterfaceContract for FileStoragesInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         ("driver_type", mp::text(&(_field_0).driver_type)?),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        (
-                            "is_default",
-                            serde_json::Value::Bool(*(&(_field_0).is_default)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
+                        ("is_default", serde_json::Value::Bool((_field_0).is_default)),
                         ("config_json", mp::json_summary(&(_field_0).config_json)),
                         ("rule_json", mp::json_summary(&(_field_0).rule_json)),
                     ]),
@@ -176,16 +173,13 @@ impl InterfaceContract for FileStoragesInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).title).len()),
+                                serde_json::json!((_field_body).title.len()),
                             )]),
                         ),
-                        (
-                            "enabled",
-                            serde_json::Value::Bool(*(&(_field_body).enabled)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         (
                             "is_default",
-                            serde_json::Value::Bool(*(&(_field_body).is_default)),
+                            serde_json::Value::Bool((_field_body).is_default),
                         ),
                         ("config_json", mp::json_summary(&(_field_body).config_json)),
                         ("rule_json", mp::json_summary(&(_field_body).rule_json)),
@@ -277,24 +271,24 @@ impl InterfaceContract for FileStoragesOutput {
                                         "title",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).title).len()),
+                                            serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     ("driver_type", mp::text(&(item).driver_type)?),
-                                    ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
-                                    ("is_default", serde_json::Value::Bool(*(&(item).is_default))),
+                                    ("enabled", serde_json::Value::Bool((item).enabled)),
+                                    ("is_default", serde_json::Value::Bool((item).is_default)),
                                     ("config_json", mp::json_summary(&(item).config_json)),
                                     ("rule_json", mp::json_summary(&(item).rule_json)),
                                     (
                                         "health_status",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).health_status).len()),
+                                            serde_json::json!((item).health_status.len()),
                                         )]),
                                     ),
                                     (
                                         "last_health_error",
-                                        match (&(item).last_health_error).as_ref() {
+                                        match (item).last_health_error.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -319,27 +313,24 @@ impl InterfaceContract for FileStoragesOutput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         ("driver_type", mp::text(&(_field_0).driver_type)?),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
-                        (
-                            "is_default",
-                            serde_json::Value::Bool(*(&(_field_0).is_default)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
+                        ("is_default", serde_json::Value::Bool((_field_0).is_default)),
                         ("config_json", mp::json_summary(&(_field_0).config_json)),
                         ("rule_json", mp::json_summary(&(_field_0).rule_json)),
                         (
                             "health_status",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).health_status).len()),
+                                serde_json::json!((_field_0).health_status.len()),
                             )]),
                         ),
                         (
                             "last_health_error",
-                            match (&(_field_0).last_health_error).as_ref() {
+                            match (_field_0).last_health_error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),

@@ -213,7 +213,7 @@ pub struct ApplicationArchivePreviewEntryResponse {
 pub enum ApplicationArchiveImportEntryResponse {
     Succeeded {
         entry_index: usize,
-        result: ImportAgentFlowTemplateResponse,
+        result: Box<ImportAgentFlowTemplateResponse>,
     },
     Failed {
         entry_index: usize,

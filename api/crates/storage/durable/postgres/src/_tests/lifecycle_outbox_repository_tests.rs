@@ -712,7 +712,7 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
         .managed_installation_has_backlog(
             installation,
             Some(workspace),
-            Some(&[exact.expected.clone()])
+            Some(std::slice::from_ref(&exact.expected))
         )
         .await
         .unwrap());

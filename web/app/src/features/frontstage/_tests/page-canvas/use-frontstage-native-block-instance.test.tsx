@@ -58,11 +58,11 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       'button',
       { name: 'runtime control' }
     );
-    const before = renders;
+    const view = renders;
     const slot = screen.getByTestId('block-slot-block-1');
     fireEvent.mouseEnter(slot);
     fireEvent.mouseLeave(slot);
-    expect(renders).toBe(before);
+    expect(renders).toBe(view);
   });
 
   test('I2005-AC-001/002 publishes one Block through the live canvas without disturbing another instance', async () => {
@@ -131,7 +131,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         await secondQueries.findByRole('button', { name: 'second:0' })
       );
       await secondQueries.findByRole('button', { name: 'second:1' });
-      const before = secondRenders;
+      const view = secondRenders;
       const stableSnapshot = scheduler.getBlockSnapshot('block-2');
       act(() => releaseFirst());
       const firstSlot = screen.getByTestId('block-slot-block-1');
@@ -160,7 +160,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         secondQueries.getByRole('button', { name: 'second:1' })
       ).toBeInTheDocument();
       expect(scheduler.getBlockSnapshot('block-2')).toBe(stableSnapshot);
-      expect(secondRenders).toBe(before);
+      expect(secondRenders).toBe(view);
     } finally {
       view.unmount();
       scheduler.dispose();

@@ -1302,10 +1302,10 @@ where
                             source_kind: source_metadata.source_kind.clone(),
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
-                            desired_state: domain::PluginDesiredState::Disabled,
+                            desired_state: domain::PluginDesiredState::PendingRestart,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
-                                domain::PluginDesiredState::Disabled,
+                                domain::PluginDesiredState::PendingRestart,
                                 domain::PluginArtifactStatus::Ready,
                                 domain::PluginRuntimeStatus::Inactive,
                             ),

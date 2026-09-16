@@ -134,7 +134,7 @@ impl InterfaceContract for McpUpstreamInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::List => mp::object_value(&[("variant",serde_json::Value::String("List".to_owned()))]), Self::Create(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value(&[("name",mp::object_value(&[("byte_count",serde_json::json!((&(_field_0).name).len()))])), ("transport",mp::text(&(_field_0).transport)?), ("auth_type",mp::text(&(_field_0).auth_type)?), ("custom_header_name",match (&(_field_0).custom_header_name).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("status",mp::text(&(_field_0).status)?)]))]), Self::Update {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Update".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",mp::object_value(&[("name",mp::object_value(&[("byte_count",serde_json::json!((&(_field_body).name).len()))])), ("transport",mp::text(&(_field_body).transport)?), ("auth_type",mp::text(&(_field_body).auth_type)?), ("custom_header_name",match (&(_field_body).custom_header_name).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("status",mp::text(&(_field_body).status)?)]))]), Self::Delete(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Delete".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::SaveCredentials {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("SaveCredentials".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",match _field_body {crate::routes::settings_group::mcp_management::upstream::SaveMcpUpstreamCredentialBody::Bearer { .. } => mp::object_value(&[("variant",serde_json::Value::String("Bearer".to_owned()))]), crate::routes::settings_group::mcp_management::upstream::SaveMcpUpstreamCredentialBody::CustomHeader {header_name: _field_header_name, header_value: _field_header_value, .. } => mp::object_value(&[("variant",serde_json::Value::String("CustomHeader".to_owned())), ("header_name",mp::object_value(&[("byte_count",serde_json::json!((_field_header_name).len()))])), ("header_value",mp::object_value(&[("byte_count",serde_json::json!((_field_header_value).len()))]))])})]), Self::DeleteCredentials(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("DeleteCredentials".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::TestDraft(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("TestDraft".to_owned())), ("0",mp::object_value(&[("connection_id",match (&(_field_0).connection_id).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("transport",mp::text(&(_field_0).transport)?), ("auth_type",mp::text(&(_field_0).auth_type)?), ("custom_header_name",match (&(_field_0).custom_header_name).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Test(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Test".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Discover(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Discover".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Import {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Import".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",mp::object_value(&[("remote_tool_names",mp::object_value(&[("item_count",serde_json::json!((&(_field_body).remote_tool_names).len()))]))]))]), Self::Debug {tool_id: _field_tool_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Debug".to_owned())), ("tool_id",mp::text(_field_tool_id)?), ("body",mp::object_value(&[("arguments",mp::json_summary(&(_field_body).arguments))]))])})
+        Some(match self {Self::List => mp::object_value(&[("variant",serde_json::Value::String("List".to_owned()))]), Self::Create(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value(&[("name",mp::object_value(&[("byte_count",serde_json::json!((_field_0).name.len()))])), ("transport",mp::text(&(_field_0).transport)?), ("auth_type",mp::text(&(_field_0).auth_type)?), ("custom_header_name",match (_field_0).custom_header_name.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("status",mp::text(&(_field_0).status)?)]))]), Self::Update {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Update".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",mp::object_value(&[("name",mp::object_value(&[("byte_count",serde_json::json!((_field_body).name.len()))])), ("transport",mp::text(&(_field_body).transport)?), ("auth_type",mp::text(&(_field_body).auth_type)?), ("custom_header_name",match (_field_body).custom_header_name.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("status",mp::text(&(_field_body).status)?)]))]), Self::Delete(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Delete".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::SaveCredentials {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("SaveCredentials".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",match _field_body {crate::routes::settings_group::mcp_management::upstream::SaveMcpUpstreamCredentialBody::Bearer { .. } => mp::object_value(&[("variant",serde_json::Value::String("Bearer".to_owned()))]), crate::routes::settings_group::mcp_management::upstream::SaveMcpUpstreamCredentialBody::CustomHeader {header_name: _field_header_name, header_value: _field_header_value, .. } => mp::object_value(&[("variant",serde_json::Value::String("CustomHeader".to_owned())), ("header_name",mp::object_value(&[("byte_count",serde_json::json!((_field_header_name).len()))])), ("header_value",mp::object_value(&[("byte_count",serde_json::json!((_field_header_value).len()))]))])})]), Self::DeleteCredentials(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("DeleteCredentials".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::TestDraft(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("TestDraft".to_owned())), ("0",mp::object_value(&[("connection_id",match (_field_0).connection_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("transport",mp::text(&(_field_0).transport)?), ("auth_type",mp::text(&(_field_0).auth_type)?), ("custom_header_name",match (_field_0).custom_header_name.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Test(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Test".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Discover(_field_0) => mp::object_value(&[("variant",serde_json::Value::String("Discover".to_owned())), ("0",mp::object_value(&[("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Import {connection_id: _field_connection_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Import".to_owned())), ("connection_id",mp::text(_field_connection_id)?), ("body",mp::object_value(&[("remote_tool_names",mp::object_value(&[("item_count",serde_json::json!((_field_body).remote_tool_names.len()))]))]))]), Self::Debug {tool_id: _field_tool_id, body: _field_body, .. } => mp::object_value(&[("variant",serde_json::Value::String("Debug".to_owned())), ("tool_id",mp::text(_field_tool_id)?), ("body",mp::object_value(&[("arguments",mp::json_summary(&(_field_body).arguments))]))])})
     }
 
     const CONTRACT_ID: &'static str = "console-mcp-upstream-input";
@@ -352,14 +352,14 @@ impl InterfaceContract for McpUpstreamOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     ("transport", mp::text(&(item).transport)?),
                                     ("auth_type", mp::text(&(item).auth_type)?),
                                     (
                                         "custom_header_name",
-                                        match (&(item).custom_header_name).as_ref() {
+                                        match (item).custom_header_name.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -370,7 +370,7 @@ impl InterfaceContract for McpUpstreamOutput {
                                     ("status", mp::text(&(item).status)?),
                                     (
                                         "last_connected_at",
-                                        match (&(item).last_connected_at).as_ref() {
+                                        match (item).last_connected_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -380,7 +380,7 @@ impl InterfaceContract for McpUpstreamOutput {
                                     ),
                                     (
                                         "last_discovered_at",
-                                        match (&(item).last_discovered_at).as_ref() {
+                                        match (item).last_discovered_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -390,7 +390,7 @@ impl InterfaceContract for McpUpstreamOutput {
                                     ),
                                     (
                                         "last_error",
-                                        match (&(item).last_error).as_ref() {
+                                        match (item).last_error.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -417,14 +417,14 @@ impl InterfaceContract for McpUpstreamOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         ("transport", mp::text(&(_field_0).transport)?),
                         ("auth_type", mp::text(&(_field_0).auth_type)?),
                         (
                             "custom_header_name",
-                            match (&(_field_0).custom_header_name).as_ref() {
+                            match (_field_0).custom_header_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -435,7 +435,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "last_connected_at",
-                            match (&(_field_0).last_connected_at).as_ref() {
+                            match (_field_0).last_connected_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -445,7 +445,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "last_discovered_at",
-                            match (&(_field_0).last_discovered_at).as_ref() {
+                            match (_field_0).last_discovered_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -455,7 +455,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "last_error",
-                            match (&(_field_0).last_error).as_ref() {
+                            match (_field_0).last_error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -482,14 +482,14 @@ impl InterfaceContract for McpUpstreamOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         ("transport", mp::text(&(_field_0).transport)?),
                         ("auth_type", mp::text(&(_field_0).auth_type)?),
                         (
                             "custom_header_name",
-                            match (&(_field_0).custom_header_name).as_ref() {
+                            match (_field_0).custom_header_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -500,7 +500,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ("status", mp::text(&(_field_0).status)?),
                         (
                             "last_connected_at",
-                            match (&(_field_0).last_connected_at).as_ref() {
+                            match (_field_0).last_connected_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -510,7 +510,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "last_discovered_at",
-                            match (&(_field_0).last_discovered_at).as_ref() {
+                            match (_field_0).last_discovered_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -520,7 +520,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "last_error",
-                            match (&(_field_0).last_error).as_ref() {
+                            match (_field_0).last_error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -538,10 +538,10 @@ impl InterfaceContract for McpUpstreamOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("ok", serde_json::Value::Bool(*(&(_field_0).ok))),
+                        ("ok", serde_json::Value::Bool((_field_0).ok)),
                         (
                             "server_name",
-                            match (&(_field_0).server_name).as_ref() {
+                            match (_field_0).server_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -551,14 +551,14 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "server_version",
-                            match (&(_field_0).server_version).as_ref() {
+                            match (_field_0).server_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "protocol_version",
-                            match (&(_field_0).protocol_version).as_ref() {
+                            match (_field_0).protocol_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -567,12 +567,12 @@ impl InterfaceContract for McpUpstreamOutput {
                             "tested_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).tested_at).len()),
+                                serde_json::json!((_field_0).tested_at.len()),
                             )]),
                         ),
                         (
                             "error",
-                            match (&(_field_0).error).as_ref() {
+                            match (_field_0).error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -589,10 +589,10 @@ impl InterfaceContract for McpUpstreamOutput {
                     "0",
                     mp::object_value(&[
                         ("connection_id", mp::text(&(_field_0).connection_id)?),
-                        ("ok", serde_json::Value::Bool(*(&(_field_0).ok))),
+                        ("ok", serde_json::Value::Bool((_field_0).ok)),
                         (
                             "server_name",
-                            match (&(_field_0).server_name).as_ref() {
+                            match (_field_0).server_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -602,14 +602,14 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "server_version",
-                            match (&(_field_0).server_version).as_ref() {
+                            match (_field_0).server_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "protocol_version",
-                            match (&(_field_0).protocol_version).as_ref() {
+                            match (_field_0).protocol_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -618,12 +618,12 @@ impl InterfaceContract for McpUpstreamOutput {
                             "tested_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).tested_at).len()),
+                                serde_json::json!((_field_0).tested_at.len()),
                             )]),
                         ),
                         (
                             "error",
-                            match (&(_field_0).error).as_ref() {
+                            match (_field_0).error.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -642,7 +642,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ("connection_id", mp::text(&(_field_0).connection_id)?),
                         (
                             "server_name",
-                            match (&(_field_0).server_name).as_ref() {
+                            match (_field_0).server_name.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -652,7 +652,7 @@ impl InterfaceContract for McpUpstreamOutput {
                         ),
                         (
                             "server_version",
-                            match (&(_field_0).server_version).as_ref() {
+                            match (_field_0).server_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -662,15 +662,16 @@ impl InterfaceContract for McpUpstreamOutput {
                             "discovered_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).discovered_at).len()),
+                                serde_json::json!((_field_0).discovered_at.len()),
                             )]),
                         ),
                         ("items", {
-                            if (&(_field_0).items).len() > 32 {
+                            if (_field_0).items.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).items)
+                                (_field_0)
+                                    .items
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -678,14 +679,14 @@ impl InterfaceContract for McpUpstreamOutput {
                                                 "remote_tool_name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).remote_tool_name).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .remote_tool_name
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
-                                                match (&(item).description).as_ref() {
+                                                match (item).description.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -705,14 +706,12 @@ impl InterfaceContract for McpUpstreamOutput {
                                                 "source_status",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).source_status).len()
-                                                    ),
+                                                    serde_json::json!((item).source_status.len()),
                                                 )]),
                                             ),
                                             (
                                                 "imported_tool_id",
-                                                match (&(item).imported_tool_id).as_ref() {
+                                                match (item).imported_tool_id.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -721,7 +720,7 @@ impl InterfaceContract for McpUpstreamOutput {
                                                 "schema_hash",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).schema_hash).len()),
+                                                    serde_json::json!((item).schema_hash.len()),
                                                 )]),
                                             ),
                                         ]))
@@ -738,7 +737,7 @@ impl InterfaceContract for McpUpstreamOutput {
                     if (_field_0).len() > 32 {
                         return None;
                     }
-                    serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).short_description).len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((&(item).full_description).len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (&(item).permission_code).as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((&(item).risk_level).len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool(*(&(item).des_id_required))), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (&(item).availability_reason).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!(*(&(item).revision))), ("managed_by",match (&(item).managed_by).as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((&(item).organization).len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
+                    serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("short_description",mp::object_value(&[("byte_count",serde_json::json!((item).short_description.len()))])), ("full_description",mp::object_value(&[("byte_count",serde_json::json!((item).full_description.len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value(&[("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value(&[("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value(&[("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value(&[("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value(&[("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("permission_code",match (item).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value(&[("byte_count",serde_json::json!((item).risk_level.len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool((item).des_id_required)), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value(&[("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value(&[("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value(&[("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value(&[("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value(&[("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value(&[("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (item).availability_reason.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((item).revision)), ("managed_by",match (item).managed_by.as_ref() { Some(item) => mp::object_value(&[("organization",mp::object_value(&[("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
                 }),
             ]),
             Self::Debug(_field_0) => mp::object_value(&[

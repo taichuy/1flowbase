@@ -308,26 +308,23 @@ impl InterfaceContract for SystemInterfaceOutput {
                     mp::object_value(&[
                         ("current_version", mp::text(&(_field_0).current_version)?),
                         ("latest_version", mp::text(&(_field_0).latest_version)?),
-                        (
-                            "has_update",
-                            serde_json::Value::Bool(*(&(_field_0).has_update)),
-                        ),
+                        ("has_update", serde_json::Value::Bool((_field_0).has_update)),
                         (
                             "release_info",
-                            match (&(_field_0).release_info).as_ref() {
+                            match (_field_0).release_info.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     (
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "body",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).body).len()),
+                                            serde_json::json!((item).body.len()),
                                         )]),
                                     ),
                                     ("published_at", mp::text(&(item).published_at)?),
@@ -342,26 +339,25 @@ impl InterfaceContract for SystemInterfaceOutput {
                                     "shell",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).upgrade_commands).shell).len()
-                                        ),
+                                        serde_json::json!((_field_0).upgrade_commands.shell.len()),
                                     )]),
                                 ),
                                 (
                                     "powershell",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).upgrade_commands)
-                                            .powershell)
+                                        serde_json::json!((_field_0)
+                                            .upgrade_commands
+                                            .powershell
                                             .len()),
                                     )]),
                                 ),
                             ]),
                         ),
-                        ("cached", serde_json::Value::Bool(*(&(_field_0).cached))),
+                        ("cached", serde_json::Value::Bool((_field_0).cached)),
                         (
                             "warning",
-                            match (&(_field_0).warning).as_ref() {
+                            match (_field_0).warning.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -386,31 +382,26 @@ impl InterfaceContract for SystemInterfaceOutput {
                                 "provider_install_root",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(_field_0).provider_install_root).len()),
+                                    serde_json::json!((_field_0).provider_install_root.len()),
                                 )]),
                             ),
                             (
                                 "host_extension_dropin_root",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!(
-                                        (&(_field_0).host_extension_dropin_root).len()
-                                    ),
+                                    serde_json::json!((_field_0).host_extension_dropin_root.len()),
                                 )]),
                             ),
                             (
                                 "related_process_memory_complete",
-                                serde_json::Value::Bool(
-                                    *(&(_field_0).related_process_memory_complete),
-                                ),
+                                serde_json::Value::Bool((_field_0).related_process_memory_complete),
                             ),
                             (
                                 "locale_meta",
                                 mp::object_value(&[
                                     (
                                         "requested_locale",
-                                        match (&(&(_field_0).locale_meta).requested_locale).as_ref()
-                                        {
+                                        match (_field_0).locale_meta.requested_locale.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -422,14 +413,15 @@ impl InterfaceContract for SystemInterfaceOutput {
                                         "resolved_locale",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(&(_field_0).locale_meta)
-                                                .resolved_locale)
+                                            serde_json::json!((_field_0)
+                                                .locale_meta
+                                                .resolved_locale
                                                 .len()),
                                         )]),
                                     ),
                                     (
                                         "source",
-                                        match &(&(_field_0).locale_meta).source {
+                                        match &(_field_0).locale_meta.source {
                                             LocaleSourceResponse::Query => mp::object_value(&[(
                                                 "variant",
                                                 serde_json::Value::String("Query".to_owned()),
@@ -472,8 +464,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                         "fallback_locale",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(&(_field_0).locale_meta)
-                                                .fallback_locale)
+                                            serde_json::json!((_field_0)
+                                                .locale_meta
+                                                .fallback_locale
                                                 .len()),
                                         )]),
                                     ),
@@ -481,8 +474,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                         "supported_locales",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(&(_field_0).locale_meta)
-                                                .supported_locales)
+                                            serde_json::json!((_field_0)
+                                                .locale_meta
+                                                .supported_locales
                                                 .len()),
                                         )]),
                                     ),
@@ -492,7 +486,7 @@ impl InterfaceContract for SystemInterfaceOutput {
                                 "topology",
                                 mp::object_value(&[(
                                     "relationship",
-                                    match &(&(_field_0).topology).relationship {
+                                    match &(_field_0).topology.relationship {
                                         SystemRuntimeRelationship::SameHost => {
                                             mp::object_value(&[(
                                                 "variant",
@@ -525,24 +519,23 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             (
                                                 "reachable",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(&(_field_0).services).api_server)
-                                                        .reachable),
+                                                    (_field_0).services.api_server.reachable,
                                                 ),
                                             ),
                                             (
                                                 "service",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(&(_field_0).services)
-                                                        .api_server)
-                                                        .service)
+                                                    serde_json::json!((_field_0)
+                                                        .services
+                                                        .api_server
+                                                        .service
                                                         .len()),
                                                 )]),
                                             ),
                                             (
                                                 "status",
-                                                match (&(&(&(_field_0).services).api_server).status)
-                                                    .as_ref()
+                                                match (_field_0).services.api_server.status.as_ref()
                                                 {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
@@ -550,8 +543,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             ),
                                             (
                                                 "version",
-                                                match (&(&(&(_field_0).services).api_server)
-                                                    .version)
+                                                match (_field_0)
+                                                    .services
+                                                    .api_server
+                                                    .version
                                                     .as_ref()
                                                 {
                                                     Some(item) => mp::text(item)?,
@@ -560,8 +555,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             ),
                                             (
                                                 "host_fingerprint",
-                                                match (&(&(&(_field_0).services).api_server)
-                                                    .host_fingerprint)
+                                                match (_field_0)
+                                                    .services
+                                                    .api_server
+                                                    .host_fingerprint
                                                     .as_ref()
                                                 {
                                                     Some(item) => mp::object_value(&[(
@@ -579,24 +576,26 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             (
                                                 "reachable",
                                                 serde_json::Value::Bool(
-                                                    *(&(&(&(_field_0).services).plugin_runner)
-                                                        .reachable),
+                                                    (_field_0).services.plugin_runner.reachable,
                                                 ),
                                             ),
                                             (
                                                 "service",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(&(_field_0).services)
-                                                        .plugin_runner)
-                                                        .service)
+                                                    serde_json::json!((_field_0)
+                                                        .services
+                                                        .plugin_runner
+                                                        .service
                                                         .len()),
                                                 )]),
                                             ),
                                             (
                                                 "status",
-                                                match (&(&(&(_field_0).services).plugin_runner)
-                                                    .status)
+                                                match (_field_0)
+                                                    .services
+                                                    .plugin_runner
+                                                    .status
                                                     .as_ref()
                                                 {
                                                     Some(item) => mp::text(item)?,
@@ -605,8 +604,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             ),
                                             (
                                                 "version",
-                                                match (&(&(&(_field_0).services).plugin_runner)
-                                                    .version)
+                                                match (_field_0)
+                                                    .services
+                                                    .plugin_runner
+                                                    .version
                                                     .as_ref()
                                                 {
                                                     Some(item) => mp::text(item)?,
@@ -615,8 +616,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                             ),
                                             (
                                                 "host_fingerprint",
-                                                match (&(&(&(_field_0).services).plugin_runner)
-                                                    .host_fingerprint)
+                                                match (_field_0)
+                                                    .services
+                                                    .plugin_runner
+                                                    .host_fingerprint
                                                     .as_ref()
                                                 {
                                                     Some(item) => mp::object_value(&[(
@@ -631,11 +634,12 @@ impl InterfaceContract for SystemInterfaceOutput {
                                 ]),
                             ),
                             ("hosts", {
-                                if (&(_field_0).hosts).len() > 32 {
+                                if (_field_0).hosts.len() > 32 {
                                     return None;
                                 }
                                 serde_json::Value::Array(
-                                    (&(_field_0).hosts)
+                                    (_field_0)
+                                        .hosts
                                         .iter()
                                         .map(|item| {
                                             Some(mp::object_value(&[
@@ -643,8 +647,8 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                     "host_fingerprint",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!((&(item)
-                                                            .host_fingerprint)
+                                                        serde_json::json!((item)
+                                                            .host_fingerprint
                                                             .len()),
                                                     )]),
                                                 ),
@@ -655,9 +659,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                             "os",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(&(item)
-                                                                    .platform)
-                                                                    .os)
+                                                                serde_json::json!((item)
+                                                                    .platform
+                                                                    .os
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -665,17 +669,15 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                             "arch",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(&(item)
-                                                                    .platform)
-                                                                    .arch)
+                                                                serde_json::json!((item)
+                                                                    .platform
+                                                                    .arch
                                                                     .len()),
                                                             )]),
                                                         ),
                                                         (
                                                             "libc",
-                                                            match (&(&(item).platform).libc)
-                                                                .as_ref()
-                                                            {
+                                                            match (item).platform.libc.as_ref() {
                                                                 Some(item) => {
                                                                     mp::object_value(&[(
                                                                         "byte_count",
@@ -691,9 +693,9 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                             "rust_target_triple",
                                                             mp::object_value(&[(
                                                                 "byte_count",
-                                                                serde_json::json!((&(&(item)
-                                                                    .platform)
-                                                                    .rust_target_triple)
+                                                                serde_json::json!((item)
+                                                                    .platform
+                                                                    .rust_target_triple
                                                                     .len()),
                                                             )]),
                                                         ),
@@ -703,9 +705,7 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                     "cpu",
                                                     mp::object_value(&[(
                                                         "logical_count",
-                                                        serde_json::json!(
-                                                            *(&(&(item).cpu).logical_count)
-                                                        ),
+                                                        serde_json::json!((item).cpu.logical_count),
                                                     )]),
                                                 ),
                                                 (
@@ -714,59 +714,54 @@ impl InterfaceContract for SystemInterfaceOutput {
                                                         (
                                                             "total_bytes",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory).total_bytes)
+                                                                (item).memory.total_bytes
                                                             ),
                                                         ),
                                                         (
                                                             "total_gb",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory).total_gb)
+                                                                (item).memory.total_gb
                                                             ),
                                                         ),
                                                         (
                                                             "available_bytes",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory)
-                                                                    .available_bytes)
+                                                                (item).memory.available_bytes
                                                             ),
                                                         ),
                                                         (
                                                             "available_gb",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory).available_gb)
+                                                                (item).memory.available_gb
                                                             ),
                                                         ),
                                                         (
                                                             "process_bytes",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory).process_bytes)
+                                                                (item).memory.process_bytes
                                                             ),
                                                         ),
                                                         (
                                                             "process_gb",
                                                             serde_json::json!(
-                                                                *(&(&(item).memory).process_gb)
+                                                                (item).memory.process_gb
                                                             ),
                                                         ),
                                                     ]),
                                                 ),
                                                 (
                                                     "related_process_bytes",
-                                                    serde_json::json!(
-                                                        *(&(item).related_process_bytes)
-                                                    ),
+                                                    serde_json::json!((item).related_process_bytes),
                                                 ),
                                                 (
                                                     "related_process_count",
-                                                    serde_json::json!(
-                                                        *(&(item).related_process_count)
-                                                    ),
+                                                    serde_json::json!((item).related_process_count),
                                                 ),
                                                 (
                                                     "services",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!((&(item).services).len()),
+                                                        serde_json::json!((item).services.len()),
                                                     )]),
                                                 ),
                                             ]))
@@ -775,10 +770,10 @@ impl InterfaceContract for SystemInterfaceOutput {
                                 )
                             }),
                             ("runtime_targets", {
-                                if (&(_field_0).runtime_targets).len() > 32 {
+                                if (_field_0).runtime_targets.len() > 32 {
                                     return None;
                                 }
-                                serde_json::Value::Array((&(_field_0).runtime_targets).iter().map(|item| Some(mp::object_value(&[("target_id",mp::text(&(item).target_id)?), ("reachable",serde_json::Value::Bool(*(&(item).reachable))), ("host_fingerprint",match (&(item).host_fingerprint).as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("metrics",match (&(item).metrics).as_ref() { Some(item) => mp::object_value(&[("captured_at_unix_milliseconds",serde_json::json!(*(&(item).captured_at_unix_milliseconds))), ("sample_interval_milliseconds",match (&(item).sample_interval_milliseconds).as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null })]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
+                                serde_json::Value::Array((_field_0).runtime_targets.iter().map(|item| Some(mp::object_value(&[("target_id",mp::text(&(item).target_id)?), ("reachable",serde_json::Value::Bool((item).reachable)), ("host_fingerprint",match (item).host_fingerprint.as_ref() { Some(item) => mp::object_value(&[("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("metrics",match (item).metrics.as_ref() { Some(item) => mp::object_value(&[("captured_at_unix_milliseconds",serde_json::json!((item).captured_at_unix_milliseconds)), ("sample_interval_milliseconds",match (item).sample_interval_milliseconds.as_ref() { Some(item) => serde_json::json!(*(item)), None => serde_json::Value::Null })]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?)
                             }),
                         ]),
                     ),

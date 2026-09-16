@@ -122,13 +122,6 @@ impl ExtensionBootSnapshot {
             .set(composition)
             .map_err(|_| anyhow::anyhow!("managed composition already attached"))
     }
-    pub(crate) async fn managed_workspace_snapshot(
-        &self,
-        workspace_id: uuid::Uuid,
-    ) -> Option<Arc<super::ManagedWorkspaceSnapshot>> {
-        self.managed_composition.get()?.snapshot(workspace_id).await
-    }
-
     #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {

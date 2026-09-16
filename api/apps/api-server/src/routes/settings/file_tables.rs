@@ -102,7 +102,7 @@ impl InterfaceContract for FileTablesInput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                     ]),
@@ -205,14 +205,14 @@ impl InterfaceContract for FileTablesOutput {
                                         "title",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).title).len()),
+                                            serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     (
                                         "scope_kind",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).scope_kind).len()),
+                                            serde_json::json!((item).scope_kind.len()),
                                         )]),
                                     ),
                                     ("scope_id", mp::text(&(item).scope_id)?),
@@ -223,7 +223,7 @@ impl InterfaceContract for FileTablesOutput {
                                     ("bound_storage_id", mp::text(&(item).bound_storage_id)?),
                                     (
                                         "bound_storage_title",
-                                        match (&(item).bound_storage_title).as_ref() {
+                                        match (item).bound_storage_title.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -231,8 +231,8 @@ impl InterfaceContract for FileTablesOutput {
                                             None => serde_json::Value::Null,
                                         },
                                     ),
-                                    ("is_builtin", serde_json::Value::Bool(*(&(item).is_builtin))),
-                                    ("is_default", serde_json::Value::Bool(*(&(item).is_default))),
+                                    ("is_builtin", serde_json::Value::Bool((item).is_builtin)),
+                                    ("is_default", serde_json::Value::Bool((item).is_default)),
                                     ("status", mp::text(&(item).status)?),
                                 ]))
                             })
@@ -251,14 +251,14 @@ impl InterfaceContract for FileTablesOutput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         (
                             "scope_kind",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).scope_kind).len()),
+                                serde_json::json!((_field_0).scope_kind.len()),
                             )]),
                         ),
                         ("scope_id", mp::text(&(_field_0).scope_id)?),
@@ -269,7 +269,7 @@ impl InterfaceContract for FileTablesOutput {
                         ("bound_storage_id", mp::text(&(_field_0).bound_storage_id)?),
                         (
                             "bound_storage_title",
-                            match (&(_field_0).bound_storage_title).as_ref() {
+                            match (_field_0).bound_storage_title.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -277,14 +277,8 @@ impl InterfaceContract for FileTablesOutput {
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        (
-                            "is_builtin",
-                            serde_json::Value::Bool(*(&(_field_0).is_builtin)),
-                        ),
-                        (
-                            "is_default",
-                            serde_json::Value::Bool(*(&(_field_0).is_default)),
-                        ),
+                        ("is_builtin", serde_json::Value::Bool((_field_0).is_builtin)),
+                        ("is_default", serde_json::Value::Bool((_field_0).is_default)),
                         ("status", mp::text(&(_field_0).status)?),
                     ]),
                 ),

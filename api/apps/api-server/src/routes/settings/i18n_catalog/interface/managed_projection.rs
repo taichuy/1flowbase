@@ -169,7 +169,7 @@ impl InterfaceContract for I18nCatalogInput {
                     "0",
                     mp::object_value(&[(
                         "expected_revision",
-                        serde_json::json!(*(&(_field_0).expected_revision)),
+                        serde_json::json!((_field_0).expected_revision),
                     )]),
                 ),
             ]),
@@ -204,24 +204,24 @@ impl InterfaceContract for I18nCatalogInput {
                     mp::object_value(&[
                         (
                             "expected_revision",
-                            serde_json::json!(*(&(_field_body).expected_revision)),
+                            serde_json::json!((_field_body).expected_revision),
                         ),
                         (
                             "integrity_override",
-                            match (&(_field_body).integrity_override).as_ref() {
+                            match (_field_body).integrity_override.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     (
                                         "reason",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).reason).len()),
+                                            serde_json::json!((item).reason.len()),
                                         )]),
                                     ),
                                     (
                                         "acknowledged_warnings",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).acknowledged_warnings).len()),
+                                            serde_json::json!((item).acknowledged_warnings.len()),
                                         )]),
                                     ),
                                 ]),
@@ -241,7 +241,7 @@ impl InterfaceContract for I18nCatalogInput {
                     mp::object_value(&[
                         (
                             "key",
-                            match (&(_field_0).key).as_ref() {
+                            match (_field_0).key.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -251,14 +251,14 @@ impl InterfaceContract for I18nCatalogInput {
                         ),
                         (
                             "locale",
-                            match (&(_field_0).locale).as_ref() {
+                            match (_field_0).locale.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "search",
-                            match (&(_field_0).search).as_ref() {
+                            match (_field_0).search.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -268,14 +268,14 @@ impl InterfaceContract for I18nCatalogInput {
                         ),
                         (
                             "offset",
-                            match (&(_field_0).offset).as_ref() {
+                            match (_field_0).offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "limit",
-                            match (&(_field_0).limit).as_ref() {
+                            match (_field_0).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
@@ -292,7 +292,7 @@ impl InterfaceContract for I18nCatalogInput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         ("locale", mp::text(&(_field_0).locale)?),
@@ -311,7 +311,7 @@ impl InterfaceContract for I18nCatalogInput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         ("locale", mp::text(&(_field_0).locale)?),
@@ -319,12 +319,12 @@ impl InterfaceContract for I18nCatalogInput {
                             "translation",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).translation).len()),
+                                serde_json::json!((_field_0).translation.len()),
                             )]),
                         ),
                         (
                             "expected_revision",
-                            serde_json::json!(*(&(_field_0).expected_revision)),
+                            serde_json::json!((_field_0).expected_revision),
                         ),
                     ]),
                 ),
@@ -341,13 +341,13 @@ impl InterfaceContract for I18nCatalogInput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         ("locale", mp::text(&(_field_0).locale)?),
                         (
                             "expected_revision",
-                            serde_json::json!(*(&(_field_0).expected_revision)),
+                            serde_json::json!((_field_0).expected_revision),
                         ),
                     ]),
                 ),
@@ -364,7 +364,7 @@ impl InterfaceContract for I18nCatalogInput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         ("locale", mp::text(&(_field_0).locale)?),
@@ -372,12 +372,12 @@ impl InterfaceContract for I18nCatalogInput {
                             "translation",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).translation).len()),
+                                serde_json::json!((_field_0).translation.len()),
                             )]),
                         ),
                         (
                             "expected_revision",
-                            serde_json::json!(*(&(_field_0).expected_revision)),
+                            serde_json::json!((_field_0).expected_revision),
                         ),
                     ]),
                 ),
@@ -394,12 +394,12 @@ impl InterfaceContract for I18nCatalogInput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         (
                             "expected_revision",
-                            serde_json::json!(*(&(_field_0).expected_revision)),
+                            serde_json::json!((_field_0).expected_revision),
                         ),
                     ]),
                 ),
@@ -413,7 +413,7 @@ impl InterfaceContract for I18nCatalogInput {
                     "0",
                     mp::object_value(&[(
                         "expected_revision",
-                        serde_json::json!(*(&(_field_0).expected_revision)),
+                        serde_json::json!((_field_0).expected_revision),
                     )]),
                 ),
             ]),
@@ -608,31 +608,31 @@ impl InterfaceContract for I18nCatalogOutput {
                     mp::object_value(&[
                         (
                             "active_catalog_version",
-                            match (&(_field_0).active_catalog_version).as_ref() {
+                            match (_field_0).active_catalog_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("revision", serde_json::json!((_field_0).revision)),
                         (
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "source_locale",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source_locale).len()),
+                                serde_json::json!((_field_0).source_locale.len()),
                             )]),
                         ),
                         (
                             "locales",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).locales).len()),
+                                serde_json::json!((_field_0).locales.len()),
                             )]),
                         ),
                     ]),
@@ -646,10 +646,10 @@ impl InterfaceContract for I18nCatalogOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("status", mp::text(&(_field_0).status)?),
+                        ("status", mp::text((_field_0).status)?),
                         (
                             "active_catalog_version",
-                            match (&(_field_0).active_catalog_version).as_ref() {
+                            match (_field_0).active_catalog_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -669,9 +669,9 @@ impl InterfaceContract for I18nCatalogOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("status", mp::text(&(_field_0).status)?),
+                        ("status", mp::text((_field_0).status)?),
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("revision", serde_json::json!((_field_0).revision)),
                     ]),
                 ),
             ]),
@@ -691,12 +691,12 @@ impl InterfaceContract for I18nCatalogOutput {
                             "application_status",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).application_status).len()),
+                                serde_json::json!((_field_0).application_status.len()),
                             )]),
                         ),
                         (
                             "active_catalog_version",
-                            match (&(_field_0).active_catalog_version).as_ref() {
+                            match (_field_0).active_catalog_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -705,13 +705,14 @@ impl InterfaceContract for I18nCatalogOutput {
                             "installed_catalog_version",
                             mp::text(&(_field_0).installed_catalog_version)?,
                         ),
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("revision", serde_json::json!((_field_0).revision)),
                         ("integrity_warnings", {
-                            if (&(_field_0).integrity_warnings).len() > 32 {
+                            if (_field_0).integrity_warnings.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).integrity_warnings)
+                                (_field_0)
+                                    .integrity_warnings
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -720,12 +721,12 @@ impl InterfaceContract for I18nCatalogOutput {
                                                 "message",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).message).len()),
+                                                    serde_json::json!((item).message.len()),
                                                 )]),
                                             ),
                                             (
                                                 "overridable",
-                                                serde_json::Value::Bool(*(&(item).overridable)),
+                                                serde_json::Value::Bool((item).overridable),
                                             ),
                                         ]))
                                     })
@@ -734,24 +735,24 @@ impl InterfaceContract for I18nCatalogOutput {
                         }),
                         (
                             "required_integrity_override",
-                            match (&(_field_0).required_integrity_override).as_ref() {
+                            match (_field_0).required_integrity_override.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     (
                                         "warnings",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).warnings).len()),
+                                            serde_json::json!((item).warnings.len()),
                                         )]),
                                     ),
                                     (
                                         "compatibility",
-                                        match (&(item).compatibility).as_ref() {
+                                        match (item).compatibility.as_ref() {
                                             Some(item) => mp::object_value(&[
                                                 (
                                                     "reason",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!((&(item).reason).len()),
+                                                        serde_json::json!((item).reason.len()),
                                                     )]),
                                                 ),
                                                 (
@@ -779,11 +780,12 @@ impl InterfaceContract for I18nCatalogOutput {
                     "0",
                     mp::object_value(&[
                         ("entries", {
-                            if (&(_field_0).entries).len() > 32 {
+                            if (_field_0).entries.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).entries)
+                                (_field_0)
+                                    .entries
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -791,13 +793,13 @@ impl InterfaceContract for I18nCatalogOutput {
                                                 "key",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).key).len()),
+                                                    serde_json::json!((item).key.len()),
                                                 )]),
                                             ),
                                             ("locale", mp::text(&(item).locale)?),
                                             (
                                                 "official_translation",
-                                                match (&(item).official_translation).as_ref() {
+                                                match (item).official_translation.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -807,7 +809,7 @@ impl InterfaceContract for I18nCatalogOutput {
                                             ),
                                             (
                                                 "override_translation",
-                                                match (&(item).override_translation).as_ref() {
+                                                match (item).override_translation.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -817,7 +819,7 @@ impl InterfaceContract for I18nCatalogOutput {
                                             ),
                                             (
                                                 "custom_translation",
-                                                match (&(item).custom_translation).as_ref() {
+                                                match (item).custom_translation.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -829,27 +831,19 @@ impl InterfaceContract for I18nCatalogOutput {
                                                 "effective_value",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).effective_value).len()
-                                                    ),
+                                                    serde_json::json!((item).effective_value.len()),
                                                 )]),
                                             ),
-                                            (
-                                                "missing",
-                                                serde_json::Value::Bool(*(&(item).missing)),
-                                            ),
-                                            (
-                                                "obsolete",
-                                                serde_json::Value::Bool(*(&(item).obsolete)),
-                                            ),
-                                            ("revision", serde_json::json!(*(&(item).revision))),
+                                            ("missing", serde_json::Value::Bool((item).missing)),
+                                            ("obsolete", serde_json::Value::Bool((item).obsolete)),
+                                            ("revision", serde_json::json!((item).revision)),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("total", serde_json::json!(*(&(_field_0).total))),
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("total", serde_json::json!((_field_0).total)),
+                        ("revision", serde_json::json!((_field_0).revision)),
                     ]),
                 ),
             ]),
@@ -862,13 +856,13 @@ impl InterfaceContract for I18nCatalogOutput {
                             "key",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).key).len()),
+                                serde_json::json!((_field_0).key.len()),
                             )]),
                         ),
                         ("locale", mp::text(&(_field_0).locale)?),
                         (
                             "official_translation",
-                            match (&(_field_0).official_translation).as_ref() {
+                            match (_field_0).official_translation.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -878,7 +872,7 @@ impl InterfaceContract for I18nCatalogOutput {
                         ),
                         (
                             "override_translation",
-                            match (&(_field_0).override_translation).as_ref() {
+                            match (_field_0).override_translation.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -888,7 +882,7 @@ impl InterfaceContract for I18nCatalogOutput {
                         ),
                         (
                             "custom_translation",
-                            match (&(_field_0).custom_translation).as_ref() {
+                            match (_field_0).custom_translation.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -900,12 +894,12 @@ impl InterfaceContract for I18nCatalogOutput {
                             "effective_value",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).effective_value).len()),
+                                serde_json::json!((_field_0).effective_value.len()),
                             )]),
                         ),
-                        ("missing", serde_json::Value::Bool(*(&(_field_0).missing))),
-                        ("obsolete", serde_json::Value::Bool(*(&(_field_0).obsolete))),
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("missing", serde_json::Value::Bool((_field_0).missing)),
+                        ("obsolete", serde_json::Value::Bool((_field_0).obsolete)),
+                        ("revision", serde_json::json!((_field_0).revision)),
                     ]),
                 ),
             ]),
@@ -917,7 +911,7 @@ impl InterfaceContract for I18nCatalogOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        ("revision", serde_json::json!(*(&(_field_0).revision))),
+                        ("revision", serde_json::json!((_field_0).revision)),
                         (
                             "entry",
                             mp::object_value(&[
@@ -925,13 +919,13 @@ impl InterfaceContract for I18nCatalogOutput {
                                     "key",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).entry).key).len()),
+                                        serde_json::json!((_field_0).entry.key.len()),
                                     )]),
                                 ),
-                                ("locale", mp::text(&(&(_field_0).entry).locale)?),
+                                ("locale", mp::text(&(_field_0).entry.locale)?),
                                 (
                                     "official_translation",
-                                    match (&(&(_field_0).entry).official_translation).as_ref() {
+                                    match (_field_0).entry.official_translation.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -941,7 +935,7 @@ impl InterfaceContract for I18nCatalogOutput {
                                 ),
                                 (
                                     "override_translation",
-                                    match (&(&(_field_0).entry).override_translation).as_ref() {
+                                    match (_field_0).entry.override_translation.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -951,7 +945,7 @@ impl InterfaceContract for I18nCatalogOutput {
                                 ),
                                 (
                                     "custom_translation",
-                                    match (&(&(_field_0).entry).custom_translation).as_ref() {
+                                    match (_field_0).entry.custom_translation.as_ref() {
                                         Some(item) => mp::object_value(&[(
                                             "byte_count",
                                             serde_json::json!((item).len()),
@@ -963,23 +957,15 @@ impl InterfaceContract for I18nCatalogOutput {
                                     "effective_value",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).entry).effective_value).len()
-                                        ),
+                                        serde_json::json!((_field_0).entry.effective_value.len()),
                                     )]),
                                 ),
-                                (
-                                    "missing",
-                                    serde_json::Value::Bool(*(&(&(_field_0).entry).missing)),
-                                ),
+                                ("missing", serde_json::Value::Bool((_field_0).entry.missing)),
                                 (
                                     "obsolete",
-                                    serde_json::Value::Bool(*(&(&(_field_0).entry).obsolete)),
+                                    serde_json::Value::Bool((_field_0).entry.obsolete),
                                 ),
-                                (
-                                    "revision",
-                                    serde_json::json!(*(&(&(_field_0).entry).revision)),
-                                ),
+                                ("revision", serde_json::json!((_field_0).entry.revision)),
                             ]),
                         ),
                     ]),
@@ -989,7 +975,7 @@ impl InterfaceContract for I18nCatalogOutput {
                 ("variant", serde_json::Value::String("Revision".to_owned())),
                 (
                     "0",
-                    mp::object_value(&[("revision", serde_json::json!(*(&(_field_0).revision)))]),
+                    mp::object_value(&[("revision", serde_json::json!((_field_0).revision))]),
                 ),
             ]),
         })

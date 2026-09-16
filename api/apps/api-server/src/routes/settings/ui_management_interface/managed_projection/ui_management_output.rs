@@ -342,7 +342,7 @@ impl InterfaceContract for UiManagementOutput {
                     mp::object_value(&[
                         (
                             "default_template",
-                            match (&(_field_0).default_template).as_ref() {
+                            match (_field_0).default_template.as_ref() {
                                 Some(item) => mp::object_value(&[
                                     ("provider_code", mp::text(&(item).provider_code)?),
                                     ("contribution_code", mp::text(&(item).contribution_code)?),
@@ -350,14 +350,14 @@ impl InterfaceContract for UiManagementOutput {
                                         "title",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).title).len()),
+                                            serde_json::json!((item).title.len()),
                                         )]),
                                     ),
                                     (
                                         "source",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).source).len()),
+                                            serde_json::json!((item).source.len()),
                                         )]),
                                     ),
                                     (
@@ -378,22 +378,22 @@ impl InterfaceContract for UiManagementOutput {
                                         },
                                     ),
                                     ("version", mp::text(&(item).version)?),
-                                    ("is_default", serde_json::Value::Bool(*(&(item).is_default))),
+                                    ("is_default", serde_json::Value::Bool((item).is_default)),
                                 ]),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         ("official", {
-                            if (&(_field_0).official).len() > 32 {
+                            if (_field_0).official.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).official).iter().map(|item| Some(mp::object_value(&[("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("title",mp::object_value(&[("byte_count",serde_json::json!((&(item).title).len()))])), ("source",mp::object_value(&[("byte_count",serde_json::json!((&(item).source).len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("version",mp::text(&(item).version)?), ("is_default",serde_json::Value::Bool(*(&(item).is_default)))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).official.iter().map(|item| Some(mp::object_value(&[("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("title",mp::object_value(&[("byte_count",serde_json::json!((item).title.len()))])), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("version",mp::text(&(item).version)?), ("is_default",serde_json::Value::Bool((item).is_default))]))).collect::<Option<Vec<_>>>()?)
                         }),
                         ("managed", {
-                            if (&(_field_0).managed).len() > 32 {
+                            if (_field_0).managed.len() > 32 {
                                 return None;
                             }
-                            serde_json::Value::Array((&(_field_0).managed).iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((&(item).name).len()))])), ("latest_revision",mp::object_value(&[("revision",serde_json::json!(*(&(&(item).latest_revision).revision))), ("source",mp::object_value(&[("byte_count",serde_json::json!((&(&(item).latest_revision).source).len()))])), ("language",match &(&(item).latest_revision).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool(*(&(&(item).latest_revision).is_published)))])), ("published_revision",match (&(item).published_revision).as_ref() { Some(item) => mp::object_value(&[("revision",serde_json::json!(*(&(item).revision))), ("source",mp::object_value(&[("byte_count",serde_json::json!((&(item).source).len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool(*(&(item).is_published)))]), None => serde_json::Value::Null }), ("is_default",serde_json::Value::Bool(*(&(item).is_default))), ("owner_plugin_code",match (&(item).owner_plugin_code).as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("owner_feature_id",match (&(item).owner_feature_id).as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("applied_plugin_version",match (&(item).applied_plugin_version).as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("overwrite_on_plugin_upgrade",serde_json::Value::Bool((item).overwrite_on_plugin_upgrade))]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array((_field_0).managed.iter().map(|item| Some(mp::object_value(&[("id",mp::text(&(item).id)?), ("provider_code",mp::text(&(item).provider_code)?), ("contribution_code",mp::text(&(item).contribution_code)?), ("name",mp::object_value(&[("byte_count",serde_json::json!((item).name.len()))])), ("latest_revision",mp::object_value(&[("revision",serde_json::json!((item).latest_revision.revision)), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).latest_revision.source.len()))])), ("language",match &(item).latest_revision.language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).latest_revision.is_published))])), ("published_revision",match (item).published_revision.as_ref() { Some(item) => mp::object_value(&[("revision",serde_json::json!((item).revision)), ("source",mp::object_value(&[("byte_count",serde_json::json!((item).source.len()))])), ("language",match &(item).language {domain::ui_management::UiCodeTemplateLanguage::Jsx => mp::object_value(&[("variant",serde_json::Value::String("Jsx".to_owned()))]), domain::ui_management::UiCodeTemplateLanguage::Tsx => mp::object_value(&[("variant",serde_json::Value::String("Tsx".to_owned()))])}), ("is_published",serde_json::Value::Bool((item).is_published))]), None => serde_json::Value::Null }), ("is_default",serde_json::Value::Bool((item).is_default)), ("owner_plugin_code",match (item).owner_plugin_code.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("owner_feature_id",match (item).owner_feature_id.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("applied_plugin_version",match (item).applied_plugin_version.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }), ("overwrite_on_plugin_upgrade",serde_json::Value::Bool((item).overwrite_on_plugin_upgrade))]))).collect::<Option<Vec<_>>>()?)
                         }),
                     ]),
                 ),
@@ -413,7 +413,7 @@ impl InterfaceContract for UiManagementOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
@@ -421,20 +421,18 @@ impl InterfaceContract for UiManagementOutput {
                             mp::object_value(&[
                                 (
                                     "revision",
-                                    serde_json::json!(*(&(&(_field_0).latest_revision).revision)),
+                                    serde_json::json!((_field_0).latest_revision.revision),
                                 ),
                                 (
                                     "source",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!(
-                                            (&(&(_field_0).latest_revision).source).len()
-                                        ),
+                                        serde_json::json!((_field_0).latest_revision.source.len()),
                                     )]),
                                 ),
                                 (
                                     "language",
-                                    match &(&(_field_0).latest_revision).language {
+                                    match &(_field_0).latest_revision.language {
                                         domain::ui_management::UiCodeTemplateLanguage::Jsx => {
                                             mp::object_value(&[(
                                                 "variant",
@@ -452,21 +450,21 @@ impl InterfaceContract for UiManagementOutput {
                                 (
                                     "is_published",
                                     serde_json::Value::Bool(
-                                        *(&(&(_field_0).latest_revision).is_published),
+                                        (_field_0).latest_revision.is_published,
                                     ),
                                 ),
                             ]),
                         ),
                         (
                             "published_revision",
-                            match (&(_field_0).published_revision).as_ref() {
+                            match (_field_0).published_revision.as_ref() {
                                 Some(item) => mp::object_value(&[
-                                    ("revision", serde_json::json!(*(&(item).revision))),
+                                    ("revision", serde_json::json!((item).revision)),
                                     (
                                         "source",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).source).len()),
+                                            serde_json::json!((item).source.len()),
                                         )]),
                                     ),
                                     (
@@ -486,35 +484,29 @@ impl InterfaceContract for UiManagementOutput {
                                             }
                                         },
                                     ),
-                                    (
-                                        "is_published",
-                                        serde_json::Value::Bool(*(&(item).is_published)),
-                                    ),
+                                    ("is_published", serde_json::Value::Bool((item).is_published)),
                                 ]),
                                 None => serde_json::Value::Null,
                             },
                         ),
-                        (
-                            "is_default",
-                            serde_json::Value::Bool(*(&(_field_0).is_default)),
-                        ),
+                        ("is_default", serde_json::Value::Bool((_field_0).is_default)),
                         (
                             "owner_plugin_code",
-                            match (&(_field_0).owner_plugin_code).as_ref() {
+                            match (_field_0).owner_plugin_code.as_ref() {
                                 Some(value) => mp::text(value)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "owner_feature_id",
-                            match (&(_field_0).owner_feature_id).as_ref() {
+                            match (_field_0).owner_feature_id.as_ref() {
                                 Some(value) => mp::text(value)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "applied_plugin_version",
-                            match (&(_field_0).applied_plugin_version).as_ref() {
+                            match (_field_0).applied_plugin_version.as_ref() {
                                 Some(value) => mp::text(value)?,
                                 None => serde_json::Value::Null,
                             },
@@ -547,14 +539,14 @@ impl InterfaceContract for UiManagementOutput {
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "description",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).description).len()),
+                                            serde_json::json!((item).description.len()),
                                         )]),
                                     ),
                                     ("import_code", mp::text(&(item).import_code)?),
@@ -563,14 +555,14 @@ impl InterfaceContract for UiManagementOutput {
                                         "source",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).source).len()),
+                                            serde_json::json!((item).source.len()),
                                         )]),
                                     ),
                                     (
                                         "group",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).group).len()),
+                                            serde_json::json!((item).group.len()),
                                         )]),
                                     ),
                                     (
@@ -580,12 +572,13 @@ impl InterfaceContract for UiManagementOutput {
                                                 "identity",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(&(item).upstream)
-                                                        .identity)
+                                                    serde_json::json!((item)
+                                                        .upstream
+                                                        .identity
                                                         .len()),
                                                 )]),
                                             ),
-                                            ("version", mp::text(&(&(item).upstream).version)?),
+                                            ("version", mp::text(&(item).upstream.version)?),
                                         ]),
                                     ),
                                     ("version", mp::text(&(item).version)?),
@@ -593,12 +586,12 @@ impl InterfaceContract for UiManagementOutput {
                                         "keywords",
                                         mp::object_value(&[(
                                             "item_count",
-                                            serde_json::json!((&(item).keywords).len()),
+                                            serde_json::json!((item).keywords.len()),
                                         )]),
                                     ),
                                     (
                                         "catalog_updated_at",
-                                        match (&(item).catalog_updated_at).as_ref() {
+                                        match (item).catalog_updated_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -608,7 +601,7 @@ impl InterfaceContract for UiManagementOutput {
                                     ),
                                     (
                                         "source_locator",
-                                        match (&(item).source_locator).as_ref() {
+                                        match (item).source_locator.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -618,7 +611,7 @@ impl InterfaceContract for UiManagementOutput {
                                     ),
                                     (
                                         "source_checksum",
-                                        match (&(item).source_checksum).as_ref() {
+                                        match (item).source_checksum.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -646,14 +639,14 @@ impl InterfaceContract for UiManagementOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("import_code", mp::text(&(_field_0).import_code)?),
@@ -662,14 +655,14 @@ impl InterfaceContract for UiManagementOutput {
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).group).len()),
+                                serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
@@ -679,10 +672,10 @@ impl InterfaceContract for UiManagementOutput {
                                     "identity",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).upstream).identity).len()),
+                                        serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
                                 ),
-                                ("version", mp::text(&(&(_field_0).upstream).version)?),
+                                ("version", mp::text(&(_field_0).upstream.version)?),
                             ]),
                         ),
                         ("version", mp::text(&(_field_0).version)?),
@@ -690,12 +683,12 @@ impl InterfaceContract for UiManagementOutput {
                             "keywords",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).keywords).len()),
+                                serde_json::json!((_field_0).keywords.len()),
                             )]),
                         ),
                         (
                             "catalog_updated_at",
-                            match (&(_field_0).catalog_updated_at).as_ref() {
+                            match (_field_0).catalog_updated_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -705,7 +698,7 @@ impl InterfaceContract for UiManagementOutput {
                         ),
                         (
                             "source_locator",
-                            match (&(_field_0).source_locator).as_ref() {
+                            match (_field_0).source_locator.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -715,7 +708,7 @@ impl InterfaceContract for UiManagementOutput {
                         ),
                         (
                             "source_checksum",
-                            match (&(_field_0).source_checksum).as_ref() {
+                            match (_field_0).source_checksum.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -741,19 +734,19 @@ impl InterfaceContract for UiManagementOutput {
                             "generated_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).generated_at).len()),
+                                serde_json::json!((_field_0).generated_at.len()),
                             )]),
                         ),
-                        ("page_size", serde_json::json!(*(&(_field_0).page_size))),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
                         (
                             "total_components",
-                            serde_json::json!(*(&(_field_0).total_components)),
+                            serde_json::json!((_field_0).total_components),
                         ),
                         (
                             "source_fingerprint",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source_fingerprint).len()),
+                                serde_json::json!((_field_0).source_fingerprint.len()),
                             )]),
                         ),
                     ]),
@@ -770,20 +763,20 @@ impl InterfaceContract for UiManagementOutput {
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
                         (
                             "total_components",
-                            serde_json::json!(*(&(_field_0).total_components)),
+                            serde_json::json!((_field_0).total_components),
                         ),
-                        ("page_size", serde_json::json!(*(&(_field_0).page_size))),
-                        ("page", serde_json::json!(*(&(_field_0).page))),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
+                        ("page", serde_json::json!((_field_0).page)),
                         (
                             "cursor",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).cursor).len()),
+                                serde_json::json!((_field_0).cursor.len()),
                             )]),
                         ),
                         (
                             "next_cursor",
-                            match (&(_field_0).next_cursor).as_ref() {
+                            match (_field_0).next_cursor.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -792,11 +785,12 @@ impl InterfaceContract for UiManagementOutput {
                             },
                         ),
                         ("records", {
-                            if (&(_field_0).records).len() > 32 {
+                            if (_field_0).records.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).records)
+                                (_field_0)
+                                    .records
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -805,14 +799,14 @@ impl InterfaceContract for UiManagementOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).description).len()),
+                                                    serde_json::json!((item).description.len()),
                                                 )]),
                                             ),
                                             ("import_code", mp::text(&(item).import_code)?),
@@ -821,14 +815,14 @@ impl InterfaceContract for UiManagementOutput {
                                                 "source",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).source).len()),
+                                                    serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group).len()),
+                                                    serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
@@ -838,15 +832,15 @@ impl InterfaceContract for UiManagementOutput {
                                                         "identity",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .upstream)
-                                                                .identity)
+                                                            serde_json::json!((item)
+                                                                .upstream
+                                                                .identity
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "version",
-                                                        mp::text(&(&(item).upstream).version)?,
+                                                        mp::text(&(item).upstream.version)?,
                                                     ),
                                                 ]),
                                             ),
@@ -855,39 +849,35 @@ impl InterfaceContract for UiManagementOutput {
                                                 "keywords",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).keywords).len()),
+                                                    serde_json::json!((item).keywords.len()),
                                                 )]),
                                             ),
                                             (
                                                 "catalog_updated_at",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).catalog_updated_at).len()
-                                                    ),
+                                                    serde_json::json!((item)
+                                                        .catalog_updated_at
+                                                        .len()),
                                                 )]),
                                             ),
                                             (
                                                 "source_locator",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).source_locator).len()
-                                                    ),
+                                                    serde_json::json!((item).source_locator.len()),
                                                 )]),
                                             ),
                                             (
                                                 "source_checksum",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!(
-                                                        (&(item).source_checksum).len()
-                                                    ),
+                                                    serde_json::json!((item).source_checksum.len()),
                                                 )]),
                                             ),
                                             (
                                                 "local_version",
-                                                match (&(item).local_version).as_ref() {
+                                                match (item).local_version.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -909,18 +899,16 @@ impl InterfaceContract for UiManagementOutput {
                     "0",
                     mp::object_value(&[
                         ("catalog_version", mp::text(&(_field_0).catalog_version)?),
-                        ("page", serde_json::json!(*(&(_field_0).page))),
-                        ("page_size", serde_json::json!(*(&(_field_0).page_size))),
-                        (
-                            "total_entries",
-                            serde_json::json!(*(&(_field_0).total_entries)),
-                        ),
+                        ("page", serde_json::json!((_field_0).page)),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
+                        ("total_entries", serde_json::json!((_field_0).total_entries)),
                         ("entries", {
-                            if (&(_field_0).entries).len() > 32 {
+                            if (_field_0).entries.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).entries)
+                                (_field_0)
+                                    .entries
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -929,28 +917,28 @@ impl InterfaceContract for UiManagementOutput {
                                                 "name",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).name).len()),
+                                                    serde_json::json!((item).name.len()),
                                                 )]),
                                             ),
                                             (
                                                 "description",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).description).len()),
+                                                    serde_json::json!((item).description.len()),
                                                 )]),
                                             ),
                                             (
                                                 "source",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).source).len()),
+                                                    serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group).len()),
+                                                    serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
@@ -960,15 +948,15 @@ impl InterfaceContract for UiManagementOutput {
                                                         "identity",
                                                         mp::object_value(&[(
                                                             "byte_count",
-                                                            serde_json::json!((&(&(item)
-                                                                .upstream)
-                                                                .identity)
+                                                            serde_json::json!((item)
+                                                                .upstream
+                                                                .identity
                                                                 .len()),
                                                         )]),
                                                     ),
                                                     (
                                                         "version",
-                                                        mp::text(&(&(item).upstream).version)?,
+                                                        mp::text(&(item).upstream.version)?,
                                                     ),
                                                 ]),
                                             ),
@@ -977,16 +965,16 @@ impl InterfaceContract for UiManagementOutput {
                                                 "keywords",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).keywords).len()),
+                                                    serde_json::json!((item).keywords.len()),
                                                 )]),
                                             ),
                                             (
                                                 "catalog_page",
-                                                serde_json::json!(*(&(item).catalog_page)),
+                                                serde_json::json!((item).catalog_page),
                                             ),
                                             (
                                                 "local_version",
-                                                match (&(item).local_version).as_ref() {
+                                                match (item).local_version.as_ref() {
                                                     Some(item) => mp::text(item)?,
                                                     None => serde_json::Value::Null,
                                                 },
@@ -1012,19 +1000,20 @@ impl InterfaceContract for UiManagementOutput {
                             "source_fingerprint",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source_fingerprint).len()),
+                                serde_json::json!((_field_0).source_fingerprint.len()),
                             )]),
                         ),
                         (
                             "update_available",
-                            serde_json::Value::Bool(*(&(_field_0).update_available)),
+                            serde_json::Value::Bool((_field_0).update_available),
                         ),
                         ("groups", {
-                            if (&(_field_0).groups).len() > 32 {
+                            if (_field_0).groups.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).groups)
+                                (_field_0)
+                                    .groups
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -1032,35 +1021,31 @@ impl InterfaceContract for UiManagementOutput {
                                                 "source",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).source).len()),
+                                                    serde_json::json!((item).source.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group).len()),
+                                                    serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
                                                 "remote_records",
-                                                serde_json::json!(*(&(item).remote_records)),
+                                                serde_json::json!((item).remote_records),
                                             ),
                                             (
                                                 "new_or_updated_records",
-                                                serde_json::json!(
-                                                    *(&(item).new_or_updated_records)
-                                                ),
+                                                serde_json::json!((item).new_or_updated_records),
                                             ),
                                             (
                                                 "removed_records",
-                                                serde_json::json!(*(&(item).removed_records)),
+                                                serde_json::json!((item).removed_records),
                                             ),
                                             (
                                                 "update_available",
-                                                serde_json::Value::Bool(
-                                                    *(&(item).update_available),
-                                                ),
+                                                serde_json::Value::Bool((item).update_available),
                                             ),
                                         ]))
                                     })
@@ -1083,14 +1068,14 @@ impl InterfaceContract for UiManagementOutput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "description",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).description).len()),
+                                serde_json::json!((_field_0).description.len()),
                             )]),
                         ),
                         ("import_code", mp::text(&(_field_0).import_code)?),
@@ -1099,14 +1084,14 @@ impl InterfaceContract for UiManagementOutput {
                             "source",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source).len()),
+                                serde_json::json!((_field_0).source.len()),
                             )]),
                         ),
                         (
                             "group",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).group).len()),
+                                serde_json::json!((_field_0).group.len()),
                             )]),
                         ),
                         (
@@ -1116,10 +1101,10 @@ impl InterfaceContract for UiManagementOutput {
                                     "identity",
                                     mp::object_value(&[(
                                         "byte_count",
-                                        serde_json::json!((&(&(_field_0).upstream).identity).len()),
+                                        serde_json::json!((_field_0).upstream.identity.len()),
                                     )]),
                                 ),
-                                ("version", mp::text(&(&(_field_0).upstream).version)?),
+                                ("version", mp::text(&(_field_0).upstream.version)?),
                             ]),
                         ),
                         ("version", mp::text(&(_field_0).version)?),
@@ -1127,33 +1112,33 @@ impl InterfaceContract for UiManagementOutput {
                             "keywords",
                             mp::object_value(&[(
                                 "item_count",
-                                serde_json::json!((&(_field_0).keywords).len()),
+                                serde_json::json!((_field_0).keywords.len()),
                             )]),
                         ),
                         (
                             "catalog_updated_at",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).catalog_updated_at).len()),
+                                serde_json::json!((_field_0).catalog_updated_at.len()),
                             )]),
                         ),
                         (
                             "source_locator",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source_locator).len()),
+                                serde_json::json!((_field_0).source_locator.len()),
                             )]),
                         ),
                         (
                             "source_checksum",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).source_checksum).len()),
+                                serde_json::json!((_field_0).source_checksum.len()),
                             )]),
                         ),
                         (
                             "local_version",
-                            match (&(_field_0).local_version).as_ref() {
+                            match (_field_0).local_version.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -1170,7 +1155,7 @@ impl InterfaceContract for UiManagementOutput {
                     "0",
                     mp::object_value(&[(
                         "synchronized_records",
-                        serde_json::json!(*(&(_field_0).synchronized_records)),
+                        serde_json::json!((_field_0).synchronized_records),
                     )]),
                 ),
             ]),

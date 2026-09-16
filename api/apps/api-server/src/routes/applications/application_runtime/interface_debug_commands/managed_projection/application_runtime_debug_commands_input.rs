@@ -83,7 +83,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                         ),
                         (
                             "document",
-                            match (&(_field_body).document).as_ref() {
+                            match (_field_body).document.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },
@@ -179,7 +179,7 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
                         ),
                         (
                             "document",
-                            match (&(_field_body).document).as_ref() {
+                            match (_field_body).document.as_ref() {
                                 Some(item) => mp::json_summary(item),
                                 None => serde_json::Value::Null,
                             },

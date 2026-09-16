@@ -154,28 +154,28 @@ impl InterfaceContract for ApplicationDocsInput {
                     mp::object_value(&[
                         (
                             "locale",
-                            match (&(_field_query).locale).as_ref() {
+                            match (_field_query).locale.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "offset",
-                            match (&(_field_query).offset).as_ref() {
+                            match (_field_query).offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "limit",
-                            match (&(_field_query).limit).as_ref() {
+                            match (_field_query).limit.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "q",
-                            match (&(_field_query).q).as_ref() {
+                            match (_field_query).q.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
@@ -338,16 +338,17 @@ impl InterfaceContract for ApplicationDocsOutput {
                             "title",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).title).len()),
+                                serde_json::json!((_field_0).title.len()),
                             )]),
                         ),
                         ("version", mp::text(&(_field_0).version)?),
                         ("categories", {
-                            if (&(_field_0).categories).len() > 32 {
+                            if (_field_0).categories.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).categories)
+                                (_field_0)
+                                    .categories
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -356,12 +357,12 @@ impl InterfaceContract for ApplicationDocsOutput {
                                                 "label",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).label).len()),
+                                                    serde_json::json!((item).label.len()),
                                                 )]),
                                             ),
                                             (
                                                 "operation_count",
-                                                serde_json::json!(*(&(item).operation_count)),
+                                                serde_json::json!((item).operation_count),
                                             ),
                                         ]))
                                     })
@@ -384,15 +385,16 @@ impl InterfaceContract for ApplicationDocsOutput {
                             "label",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).label).len()),
+                                serde_json::json!((_field_0).label.len()),
                             )]),
                         ),
                         ("operations", {
-                            if (&(_field_0).operations).len() > 32 {
+                            if (_field_0).operations.len() > 32 {
                                 return None;
                             }
                             serde_json::Value::Array(
-                                (&(_field_0).operations)
+                                (_field_0)
+                                    .operations
                                     .iter()
                                     .map(|item| {
                                         Some(mp::object_value(&[
@@ -402,12 +404,12 @@ impl InterfaceContract for ApplicationDocsOutput {
                                                 "path",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).path).len()),
+                                                    serde_json::json!((item).path.len()),
                                                 )]),
                                             ),
                                             (
                                                 "summary",
-                                                match (&(item).summary).as_ref() {
+                                                match (item).summary.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -417,7 +419,7 @@ impl InterfaceContract for ApplicationDocsOutput {
                                             ),
                                             (
                                                 "description",
-                                                match (&(item).description).as_ref() {
+                                                match (item).description.as_ref() {
                                                     Some(item) => mp::object_value(&[(
                                                         "byte_count",
                                                         serde_json::json!((item).len()),
@@ -429,32 +431,32 @@ impl InterfaceContract for ApplicationDocsOutput {
                                                 "tags",
                                                 mp::object_value(&[(
                                                     "item_count",
-                                                    serde_json::json!((&(item).tags).len()),
+                                                    serde_json::json!((item).tags.len()),
                                                 )]),
                                             ),
                                             (
                                                 "group",
                                                 mp::object_value(&[(
                                                     "byte_count",
-                                                    serde_json::json!((&(item).group).len()),
+                                                    serde_json::json!((item).group.len()),
                                                 )]),
                                             ),
                                             (
                                                 "deprecated",
-                                                serde_json::Value::Bool(*(&(item).deprecated)),
+                                                serde_json::Value::Bool((item).deprecated),
                                             ),
                                         ]))
                                     })
                                     .collect::<Option<Vec<_>>>()?,
                             )
                         }),
-                        ("total", serde_json::json!(*(&(_field_0).total))),
-                        ("offset", serde_json::json!(*(&(_field_0).offset))),
-                        ("limit", serde_json::json!(*(&(_field_0).limit))),
-                        ("has_more", serde_json::Value::Bool(*(&(_field_0).has_more))),
+                        ("total", serde_json::json!((_field_0).total)),
+                        ("offset", serde_json::json!((_field_0).offset)),
+                        ("limit", serde_json::json!((_field_0).limit)),
+                        ("has_more", serde_json::Value::Bool((_field_0).has_more)),
                         (
                             "next_offset",
-                            match (&(_field_0).next_offset).as_ref() {
+                            match (_field_0).next_offset.as_ref() {
                                 Some(item) => serde_json::json!(*(item)),
                                 None => serde_json::Value::Null,
                             },

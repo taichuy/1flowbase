@@ -12,7 +12,10 @@ use uuid::Uuid;
 
 use crate::{
     config::ResolvedOfficialMcpBundleSourceConfig,
-    official_mcp_bundles::{ApiOfficialMcpBundleRegistry, OfficialMcpBundleSourcePort},
+    official_mcp_bundles::{
+        ApiOfficialMcpBundleRegistry, OfficialMcpBundleRegistryDependencies,
+        OfficialMcpBundleSourcePort,
+    },
 };
 
 #[tokio::test]
@@ -262,20 +265,23 @@ fn build_library(
             catalog_url: format!("{base}/catalog.json"),
             github_proxy_url: None,
         },
-        root,
-        installation_repository.clone(),
-        "test-node".into(),
-        actor_user_id,
-        vec![plugin_framework::TrustedPublicKey {
-            key_id: "fixture-key".into(),
-            algorithm: "ed25519".into(),
-            public_key_pem: signing_key
-                .verifying_key()
-                .to_public_key_pem(Default::default())
-                .unwrap(),
-        }],
-        crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
-        Uuid::nil(),
+        OfficialMcpBundleRegistryDependencies {
+            root,
+            installation_repository: installation_repository.clone(),
+            node_id: "test-node".into(),
+            actor_user_id,
+            trusted_public_keys: vec![plugin_framework::TrustedPublicKey {
+                key_id: "fixture-key".into(),
+                algorithm: "ed25519".into(),
+                public_key_pem: signing_key
+                    .verifying_key()
+                    .to_public_key_pem(Default::default())
+                    .unwrap(),
+            }],
+            network_egress:
+                crate::network_egress_client::NetworkEgressHttpClientResolver::direct_for_tests(),
+            workspace_id: Uuid::nil(),
+        },
     );
     (library, installation_repository)
 }

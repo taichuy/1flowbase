@@ -9,9 +9,10 @@ use control_plane::{
 };
 use lifetime::*;
 use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
+#[cfg(test)]
+use runtime_core::runtime_backend::RuntimeManagedCapabilityRequest;
 use runtime_core::runtime_backend::{
     RuntimeArtifactReference, RuntimeBackend, RuntimeExecutionPrincipal, RuntimeManagedActivation,
-    RuntimeManagedCapabilityRequest,
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
@@ -148,7 +149,9 @@ impl ManagedExtensionComposition {
             // A disabled target may no longer appear in the new graph. Lock its assignment and
             // installation too, so removal and a concurrent re-enable cannot cross publication.
             for workspace_id in candidates.keys() {
-                if !expected.contains_key(&(installation_id, *workspace_id)) {
+                if let std::collections::btree_map::Entry::Vacant(e) =
+                    expected.entry((installation_id, *workspace_id))
+                {
                     let lease = self
                         .store
                         .lock_installation_contribution_authority(installation_id, *workspace_id)
@@ -156,10 +159,7 @@ impl ManagedExtensionComposition {
                     let installation = lease
                         .installation(installation_id)
                         .context("missing locked installation")?;
-                    expected.insert(
-                        (installation_id, *workspace_id),
-                        (lease.snapshot().revision, installation.updated_at),
-                    );
+                    e.insert((lease.snapshot().revision, installation.updated_at));
                     lease.release().await?;
                 }
             }
@@ -608,6 +608,7 @@ impl ManagedExtensionComposition {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) async fn execute(
         &self,
         workspace_id: Uuid,

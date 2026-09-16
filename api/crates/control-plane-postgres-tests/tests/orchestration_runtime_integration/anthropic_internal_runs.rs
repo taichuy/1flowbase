@@ -12,7 +12,7 @@ const COMPLETE_SUMMARY_BACKFILL_SQL: &str = include_str!(
 fn before_complete_summary_backfill_migrator() -> Migrator {
     let migrations = sqlx::migrate!("../storage/durable/postgres/migrations")
         .iter()
-        .filter(|migration| migration.version < COMPLETE_SUMMARY_BACKFILL_VERSION)
+        .filter(|migration| migration.version != COMPLETE_SUMMARY_BACKFILL_VERSION)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {

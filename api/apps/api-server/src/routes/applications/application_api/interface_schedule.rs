@@ -85,22 +85,19 @@ impl InterfaceContract for WorkflowScheduleInput {
                 (
                     "body",
                     mp::object_value(&[
-                        (
-                            "enabled",
-                            serde_json::Value::Bool(*(&(_field_body).enabled)),
-                        ),
+                        ("enabled", serde_json::Value::Bool((_field_body).enabled)),
                         (
                             "cron",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).cron).len()),
+                                serde_json::json!((_field_body).cron.len()),
                             )]),
                         ),
                         (
                             "timezone",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).timezone).len()),
+                                serde_json::json!((_field_body).timezone.len()),
                             )]),
                         ),
                         (
@@ -189,38 +186,38 @@ impl InterfaceContract for WorkflowScheduleOutput {
                     "0",
                     match (_field_0).as_ref() {
                         Some(item) => mp::object_value(&[
-                            ("id", serde_json::Value::String((&(item).id).to_string())),
+                            ("id", serde_json::Value::String((item).id.to_string())),
                             (
                                 "workspace_id",
-                                serde_json::Value::String((&(item).workspace_id).to_string()),
+                                serde_json::Value::String((item).workspace_id.to_string()),
                             ),
                             (
                                 "application_id",
-                                serde_json::Value::String((&(item).application_id).to_string()),
+                                serde_json::Value::String((item).application_id.to_string()),
                             ),
-                            ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
+                            ("enabled", serde_json::Value::Bool((item).enabled)),
                             (
                                 "cron",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).cron).len()),
+                                    serde_json::json!((item).cron.len()),
                                 )]),
                             ),
                             (
                                 "timezone",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).timezone).len()),
+                                    serde_json::json!((item).timezone.len()),
                                 )]),
                             ),
                             ("input_payload", mp::json_summary(&(item).input_payload)),
                             (
                                 "created_by",
-                                serde_json::Value::String((&(item).created_by).to_string()),
+                                serde_json::Value::String((item).created_by.to_string()),
                             ),
                             (
                                 "updated_by",
-                                serde_json::Value::String((&(item).updated_by).to_string()),
+                                serde_json::Value::String((item).updated_by.to_string()),
                             ),
                             ("created_at", mp::text(&(item).created_at)?),
                             ("updated_at", mp::text(&(item).updated_at)?),
@@ -234,41 +231,38 @@ impl InterfaceContract for WorkflowScheduleOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        (
-                            "id",
-                            serde_json::Value::String((&(_field_0).id).to_string()),
-                        ),
+                        ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "workspace_id",
-                            serde_json::Value::String((&(_field_0).workspace_id).to_string()),
+                            serde_json::Value::String((_field_0).workspace_id.to_string()),
                         ),
                         (
                             "application_id",
-                            serde_json::Value::String((&(_field_0).application_id).to_string()),
+                            serde_json::Value::String((_field_0).application_id.to_string()),
                         ),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         (
                             "cron",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).cron).len()),
+                                serde_json::json!((_field_0).cron.len()),
                             )]),
                         ),
                         (
                             "timezone",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).timezone).len()),
+                                serde_json::json!((_field_0).timezone.len()),
                             )]),
                         ),
                         ("input_payload", mp::json_summary(&(_field_0).input_payload)),
                         (
                             "created_by",
-                            serde_json::Value::String((&(_field_0).created_by).to_string()),
+                            serde_json::Value::String((_field_0).created_by.to_string()),
                         ),
                         (
                             "updated_by",
-                            serde_json::Value::String((&(_field_0).updated_by).to_string()),
+                            serde_json::Value::String((_field_0).updated_by.to_string()),
                         ),
                         ("created_at", mp::text(&(_field_0).created_at)?),
                         ("updated_at", mp::text(&(_field_0).updated_at)?),

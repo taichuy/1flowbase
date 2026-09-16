@@ -121,11 +121,12 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value(&[("providers", {
-            if (&(self).providers).len() > 32 {
+            if (self).providers.len() > 32 {
                 return None;
             }
             serde_json::Value::Array(
-                (&(self).providers)
+                (self)
+                    .providers
                     .iter()
                     .map(|item| {
                         Some(mp::object_value(&[
@@ -136,12 +137,12 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                 "display_name",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).display_name).len()),
+                                    serde_json::json!((item).display_name.len()),
                                 )]),
                             ),
                             (
                                 "description",
-                                match (&(item).description).as_ref() {
+                                match (item).description.as_ref() {
                                     Some(item) => mp::object_value(&[(
                                         "byte_count",
                                         serde_json::json!((item).len()),
@@ -153,43 +154,44 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                 "runtime_status",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).runtime_status).len()),
+                                    serde_json::json!((item).runtime_status.len()),
                                 )]),
                             ),
                             (
                                 "desired_state",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).desired_state).len()),
+                                    serde_json::json!((item).desired_state.len()),
                                 )]),
                             ),
                             (
                                 "config_ref",
                                 mp::object_value(&[(
                                     "byte_count",
-                                    serde_json::json!((&(item).config_ref).len()),
+                                    serde_json::json!((item).config_ref.len()),
                                 )]),
                             ),
                             (
                                 "contracts",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(item).contracts).len()),
+                                    serde_json::json!((item).contracts.len()),
                                 )]),
                             ),
                             (
                                 "enabled_contracts",
                                 mp::object_value(&[(
                                     "item_count",
-                                    serde_json::json!((&(item).enabled_contracts).len()),
+                                    serde_json::json!((item).enabled_contracts.len()),
                                 )]),
                             ),
                             ("config_schema", {
-                                if (&(item).config_schema).len() > 32 {
+                                if (item).config_schema.len() > 32 {
                                     return None;
                                 }
                                 serde_json::Value::Array(
-                                    (&(item).config_schema)
+                                    (item)
+                                        .config_schema
                                         .iter()
                                         .map(|item| {
                                             Some(mp::object_value(&[
@@ -197,20 +199,20 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                     "key",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!((&(item).key).len()),
+                                                        serde_json::json!((item).key.len()),
                                                     )]),
                                                 ),
                                                 (
                                                     "label",
                                                     mp::object_value(&[(
                                                         "byte_count",
-                                                        serde_json::json!((&(item).label).len()),
+                                                        serde_json::json!((item).label.len()),
                                                     )]),
                                                 ),
                                                 ("field_type", mp::text(&(item).field_type)?),
                                                 (
                                                     "control",
-                                                    match (&(item).control).as_ref() {
+                                                    match (item).control.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -220,7 +222,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "group",
-                                                    match (&(item).group).as_ref() {
+                                                    match (item).group.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -230,14 +232,14 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "order",
-                                                    match (&(item).order).as_ref() {
+                                                    match (item).order.as_ref() {
                                                         Some(item) => serde_json::json!(*(item)),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "advanced",
-                                                    match (&(item).advanced).as_ref() {
+                                                    match (item).advanced.as_ref() {
                                                         Some(item) => {
                                                             serde_json::Value::Bool(*(item))
                                                         }
@@ -246,7 +248,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "required",
-                                                    match (&(item).required).as_ref() {
+                                                    match (item).required.as_ref() {
                                                         Some(item) => {
                                                             serde_json::Value::Bool(*(item))
                                                         }
@@ -255,7 +257,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "send_mode",
-                                                    match (&(item).send_mode).as_ref() {
+                                                    match (item).send_mode.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -265,7 +267,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "enabled_by_default",
-                                                    match (&(item).enabled_by_default).as_ref() {
+                                                    match (item).enabled_by_default.as_ref() {
                                                         Some(item) => {
                                                             serde_json::Value::Bool(*(item))
                                                         }
@@ -274,7 +276,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "description",
-                                                    match (&(item).description).as_ref() {
+                                                    match (item).description.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -284,7 +286,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "placeholder",
-                                                    match (&(item).placeholder).as_ref() {
+                                                    match (item).placeholder.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -294,42 +296,42 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                 ),
                                                 (
                                                     "default_value",
-                                                    match (&(item).default_value).as_ref() {
+                                                    match (item).default_value.as_ref() {
                                                         Some(item) => mp::json_summary(item),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "min",
-                                                    match (&(item).min).as_ref() {
+                                                    match (item).min.as_ref() {
                                                         Some(item) => serde_json::json!(*(item)),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "max",
-                                                    match (&(item).max).as_ref() {
+                                                    match (item).max.as_ref() {
                                                         Some(item) => serde_json::json!(*(item)),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "step",
-                                                    match (&(item).step).as_ref() {
+                                                    match (item).step.as_ref() {
                                                         Some(item) => serde_json::json!(*(item)),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "precision",
-                                                    match (&(item).precision).as_ref() {
+                                                    match (item).precision.as_ref() {
                                                         Some(item) => serde_json::json!(*(item)),
                                                         None => serde_json::Value::Null,
                                                     },
                                                 ),
                                                 (
                                                     "unit",
-                                                    match (&(item).unit).as_ref() {
+                                                    match (item).unit.as_ref() {
                                                         Some(item) => mp::object_value(&[(
                                                             "byte_count",
                                                             serde_json::json!((item).len()),
@@ -341,25 +343,25 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                                                     "options",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!((&(item).options).len()),
+                                                        serde_json::json!((item).options.len()),
                                                     )]),
                                                 ),
                                                 (
                                                     "visible_when",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!(
-                                                            (&(item).visible_when).len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .visible_when
+                                                            .len()),
                                                     )]),
                                                 ),
                                                 (
                                                     "disabled_when",
                                                     mp::object_value(&[(
                                                         "item_count",
-                                                        serde_json::json!(
-                                                            (&(item).disabled_when).len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .disabled_when
+                                                            .len()),
                                                     )]),
                                                 ),
                                             ]))
@@ -370,7 +372,7 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
                             ("config_json", mp::json_summary(&(item).config_json)),
                             (
                                 "restart_required",
-                                serde_json::Value::Bool(*(&(item).restart_required)),
+                                serde_json::Value::Bool((item).restart_required),
                             ),
                         ]))
                     })

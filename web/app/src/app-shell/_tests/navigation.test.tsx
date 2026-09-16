@@ -243,7 +243,7 @@ describe('Navigation', () => {
     fireEvent.click(await screen.findByRole('button', { name: '打开导航' }));
     const drawer = await screen.findByRole('dialog', { name: '1flowbase' });
     expect(
-      within(drawer).getByRole('button', { name: '添加菜单' })
+      await within(drawer).findByRole('button', { name: '添加菜单' })
     ).toBeInTheDocument();
   });
 
@@ -277,7 +277,7 @@ describe('Navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
     expect(nav).toHaveClass('app-shell-navigation');
     expect(within(nav).getByRole('menu')).toHaveClass('app-shell-menu');
-    const addMenuButton = within(nav).getByRole('button', {
+    const addMenuButton = await within(nav).findByRole('button', {
       name: '添加菜单'
     });
     expect(addMenuButton).toHaveClass(

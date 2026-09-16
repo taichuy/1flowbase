@@ -236,7 +236,10 @@ impl ApplicationOrchestrationAdapter {
                             match to_import_response_with(&self.store, self.bootstrap_workspace_id, &locale, imported).await {
                                 Ok(result) => {
                                     response.succeeded_count += 1;
-                                    ApplicationArchiveImportEntryResponse::Succeeded { entry_index, result }
+                                    ApplicationArchiveImportEntryResponse::Succeeded {
+                                        entry_index,
+                                        result: Box::new(result),
+                                    }
                                 }
                                 Err(error) => {
                                     tracing::error!(%entry_index, %application_id, error = %error.0, "Imported application response projection failed");

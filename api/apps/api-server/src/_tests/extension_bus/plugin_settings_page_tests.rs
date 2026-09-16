@@ -47,8 +47,7 @@ fn root_2014_ac_009_registered_settings_page_authority() {
     let error = plan
         .console_operation_registry
         .access_for_console_route("GET", "/api/console/northwind.settings-page/settings")
-        .err()
-        .expect("page-only registration must not authorize an invented API route");
+        .expect_err("page-only registration must not authorize an invented API route");
     assert_eq!(
         error.to_string(),
         "unregistered console route GET /api/console/northwind.settings-page/settings"

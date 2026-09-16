@@ -381,7 +381,7 @@ describe('native block Anchor runtime adapter', () => {
       expect.any(Function)
     );
     expect(layer.isConnected).toBe(false);
-    expect(fixture.scrollOwner.style.position).toBe('static');
+    expect(fixture.scrollOwner).toHaveStyle({ position: 'static' });
   });
 });
 

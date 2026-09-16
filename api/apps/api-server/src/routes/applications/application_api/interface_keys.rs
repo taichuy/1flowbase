@@ -97,12 +97,12 @@ impl InterfaceContract for ApplicationApiKeyInput {
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_body).name).len()),
+                                serde_json::json!((_field_body).name.len()),
                             )]),
                         ),
                         (
                             "expires_at",
-                            match (&(_field_body).expires_at).as_ref() {
+                            match (_field_body).expires_at.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
@@ -213,31 +213,31 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                             .iter()
                             .map(|item| {
                                 Some(mp::object_value(&[
-                                    ("id", serde_json::Value::String((&(item).id).to_string())),
+                                    ("id", serde_json::Value::String((item).id.to_string())),
                                     (
                                         "name",
                                         mp::object_value(&[(
                                             "byte_count",
-                                            serde_json::json!((&(item).name).len()),
+                                            serde_json::json!((item).name.len()),
                                         )]),
                                     ),
                                     (
                                         "creator_user_id",
                                         serde_json::Value::String(
-                                            (&(item).creator_user_id).to_string(),
+                                            (item).creator_user_id.to_string(),
                                         ),
                                     ),
-                                    ("enabled", serde_json::Value::Bool(*(&(item).enabled))),
+                                    ("enabled", serde_json::Value::Bool((item).enabled)),
                                     (
                                         "expires_at",
-                                        match (&(item).expires_at).as_ref() {
+                                        match (item).expires_at.as_ref() {
                                             Some(item) => mp::text(item)?,
                                             None => serde_json::Value::Null,
                                         },
                                     ),
                                     (
                                         "last_used_at",
-                                        match (&(item).last_used_at).as_ref() {
+                                        match (item).last_used_at.as_ref() {
                                             Some(item) => mp::object_value(&[(
                                                 "byte_count",
                                                 serde_json::json!((item).len()),
@@ -258,32 +258,29 @@ impl InterfaceContract for ApplicationApiKeyOutput {
                 (
                     "0",
                     mp::object_value(&[
-                        (
-                            "id",
-                            serde_json::Value::String((&(_field_0).id).to_string()),
-                        ),
+                        ("id", serde_json::Value::String((_field_0).id.to_string())),
                         (
                             "name",
                             mp::object_value(&[(
                                 "byte_count",
-                                serde_json::json!((&(_field_0).name).len()),
+                                serde_json::json!((_field_0).name.len()),
                             )]),
                         ),
                         (
                             "creator_user_id",
-                            serde_json::Value::String((&(_field_0).creator_user_id).to_string()),
+                            serde_json::Value::String((_field_0).creator_user_id.to_string()),
                         ),
-                        ("enabled", serde_json::Value::Bool(*(&(_field_0).enabled))),
+                        ("enabled", serde_json::Value::Bool((_field_0).enabled)),
                         (
                             "expires_at",
-                            match (&(_field_0).expires_at).as_ref() {
+                            match (_field_0).expires_at.as_ref() {
                                 Some(item) => mp::text(item)?,
                                 None => serde_json::Value::Null,
                             },
                         ),
                         (
                             "last_used_at",
-                            match (&(_field_0).last_used_at).as_ref() {
+                            match (_field_0).last_used_at.as_ref() {
                                 Some(item) => mp::object_value(&[(
                                     "byte_count",
                                     serde_json::json!((item).len()),
