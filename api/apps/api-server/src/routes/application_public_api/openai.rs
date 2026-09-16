@@ -1073,12 +1073,13 @@ fn responses_callback_provider_transport(
     native_resume: bool,
     encoded_resume: bool,
 ) -> Result<Option<ProviderTransportPayload>, OpenAiRouteError> {
-    if native_resume {
-        return Ok(Some(envelope.provider_transport_payload()));
-    }
-    if !encoded_resume {
+    if !native_resume && !encoded_resume {
         return Ok(None);
     }
+    // A native callback can still carry older gateway-projected function calls
+    // in its full Responses history. Adapter-owned correlation IDs must never
+    // cross the Provider boundary, regardless of how the current tail was
+    // correlated.
     ProviderTransportPayload::openai_responses(restore_openai_responses_provider_call_ids(
         envelope.raw_body(),
     ))
@@ -1553,10 +1554,7 @@ fn to_openai_responses_response_with_native_items(
     native_items: Option<Vec<Value>>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     let function_call_items = if native_items.is_none() {
-        openai_response_function_call_items(
-            run.tool_calls.as_ref(),
-            callback_task_id_from_required_action(&run),
-        )
+        openai_response_function_call_items(run.tool_calls.as_ref())
     } else {
         None
     };
@@ -1638,10 +1636,7 @@ fn openai_response_message_item(
     })
 }
 
-fn openai_response_function_call_items(
-    tool_calls: Option<&Value>,
-    callback_task_id: Option<Uuid>,
-) -> Option<Vec<Value>> {
+fn openai_response_function_call_items(tool_calls: Option<&Value>) -> Option<Vec<Value>> {
     let calls = external_llm_tool_calls(tool_calls)?;
     let mapped = calls
         .iter()
@@ -1652,16 +1647,11 @@ fn openai_response_function_call_items(
                 .and_then(Value::as_str)
                 .unwrap_or("tool_call")
                 .to_string();
-            let call_id = callback_task_id
-                .map(|callback_task_id| {
-                    encode_openai_callback_tool_call_id(callback_task_id, &original_id)
-                })
-                .unwrap_or_else(|| original_id.clone());
             let arguments = call.get("arguments").cloned().unwrap_or_else(|| json!({}));
             Some(json!({
                 "id": format!("fc_{}", original_id),
                 "type": "function_call",
-                "call_id": call_id,
+                "call_id": original_id,
                 "name": name,
                 "arguments": openai_arguments_string(arguments),
                 "status": "completed"

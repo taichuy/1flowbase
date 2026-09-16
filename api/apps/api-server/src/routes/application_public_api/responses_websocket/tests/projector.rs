@@ -409,6 +409,7 @@ fn reasoning_text_and_tool_facts_keep_order_and_durable_ids() {
     assert_eq!(events[4]["response_id"], response_id);
     assert_eq!(events[6]["response_id"], response_id);
     assert_eq!(events[6]["item"]["id"], "fc_call_weather");
+    assert_eq!(events[6]["item"]["call_id"], "call_weather");
     assert_eq!(events[8]["response"]["id"], response_id);
     assert_eq!(
         events[8]["response"]["previous_response_id"],
