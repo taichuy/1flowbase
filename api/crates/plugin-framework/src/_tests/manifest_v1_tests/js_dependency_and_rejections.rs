@@ -215,10 +215,10 @@ js_dependencies:
 }
 
 #[test]
-fn plugin_manifest_v1_rejects_manifest_version_other_than_one() {
+fn plugin_manifest_v1_rejects_unsupported_manifest_version() {
     let error = parse_plugin_manifest(
         r#"
-manifest_version: 2
+manifest_version: 3
 plugin_id: bad_version@0.1.0
 version: 0.1.0
 publisher_namespace: acme
@@ -236,7 +236,7 @@ binding_targets:
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
 contract_version: 1flowbase.provider/v2
-schema_version: 1flowbase.plugin.manifest/v1
+schema_version: 1flowbase.plugin.manifest/v3
 permissions:
   network: outbound_only
   secrets: provider_instance_only
@@ -251,7 +251,9 @@ node_contributions: []
     )
     .unwrap_err();
 
-    assert!(error.to_string().contains("manifest_version must be 1"));
+    assert!(error
+        .to_string()
+        .contains("manifest_version must be 1 or 2"));
 }
 
 #[test]
