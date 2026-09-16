@@ -175,16 +175,41 @@ pub(crate) async fn run_connection(
         authorization.principal.application_id(),
         ApplicationActivityKind::WebSocketConnection,
     );
+    let owner_id = authorization.transport_owner_id.clone();
+    let terminations = state.provider_runtime.subscribe_transport_terminations();
+    let services = state.provider_runtime.clone();
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
-    run_connection_loop(socket, move |response, frames| {
-        let bridge = bridge.clone();
-        async move { bridge.execute(response, frames).await }
-    })
+    run_connection_loop_with_terminations(
+        socket,
+        move |response, frames| {
+            let bridge = bridge.clone();
+            async move { bridge.execute(response, frames).await }
+        },
+        Some((owner_id.clone(), terminations)),
+    )
     .await;
+    services.mark_transport_owner_orphaned(&owner_id).await;
 }
 
+#[cfg(test)]
 pub(super) async fn run_connection_loop<F, Fut>(socket: WebSocket, execute: F)
 where
+    F: Fn(Value, mpsc::Sender<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
+        + Send
+        + 'static,
+{
+    run_connection_loop_with_terminations(socket, execute, None).await;
+}
+
+async fn run_connection_loop_with_terminations<F, Fut>(
+    socket: WebSocket,
+    execute: F,
+    mut terminations: Option<(
+        String,
+        tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
+    )>,
+) where
     F: Fn(Value, mpsc::Sender<String>) -> Fut,
     Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
         + Send
@@ -210,7 +235,6 @@ where
                         matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
                     });
                     if sender.send(Message::Text(frame)).await.is_err() {
-                        task.abort();
                         break;
                     }
                     terminal_delivered |= terminal;
@@ -234,13 +258,11 @@ where
                     let Some(message) = message else {
                         let action = actor.begin_close();
                         if matches!(action, ConnectionAction::CancelTurn { .. }) {
-                            task.abort();
                             let _ = actor.complete_turn(turn);
                         }
                         break;
                     };
                     let Ok(message) = message else {
-                        task.abort();
                         let action = actor.begin_close();
                         if matches!(action, ConnectionAction::CancelTurn { .. }) {
                             let _ = actor.complete_turn(turn);
@@ -251,14 +273,12 @@ where
                     match message {
                         Message::Ping(payload) => {
                             if sender.send(Message::Pong(payload)).await.is_err() {
-                                task.abort();
                                 break;
                             }
                             active = Some((turn, task, frames));
                         }
                         Message::Pong(_) => active = Some((turn, task, frames)),
                         Message::Close(frame) => {
-                            task.abort();
                             let action = actor.begin_close();
                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                 let _ = actor.complete_turn(turn);
@@ -279,7 +299,6 @@ where
                                     match actor.accept_response(response) {
                                         Ok(_) => active = Some((turn, task, frames)),
                                         Err(error) => {
-                                            task.abort();
                                             let action = actor.begin_close();
                                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                                 let _ = actor.complete_turn(turn);
@@ -296,7 +315,6 @@ where
                                 }
                                 Ok(None) => active = Some((turn, task, frames)),
                                 Err(error) => {
-                                    task.abort();
                                     let action = actor.begin_close();
                                     if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                         let _ = actor.complete_turn(turn);
@@ -311,6 +329,17 @@ where
                         }
                     }
                 }
+                notice = receive_termination(&mut terminations) => {
+                    if let Some(notice) = notice {
+                        send_transport_terminal(&mut sender, &notice.code, true).await;
+                        finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
+                            code: 1011,
+                            reason: Cow::Owned(notice.code.to_string()),
+                        })).await;
+                        break;
+                    }
+                    active = Some((turn, task, frames));
+                }
             }
             continue;
         }
@@ -318,11 +347,26 @@ where
         let message = if let Some(message) = queued_response.take() {
             message
         } else {
-            let Some(Ok(message)) = receiver.next().await else {
-                actor.begin_close();
-                break;
-            };
-            message
+            tokio::select! {
+                message = receiver.next() => {
+                    let Some(Ok(message)) = message else {
+                        actor.begin_close();
+                        break;
+                    };
+                    message
+                }
+                notice = receive_termination(&mut terminations) => {
+                    if let Some(notice) = notice {
+                        send_transport_terminal(&mut sender, &notice.code, false).await;
+                        finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
+                            code: 1011,
+                            reason: Cow::Owned(notice.code.to_string()),
+                        })).await;
+                        break;
+                    }
+                    continue;
+                }
+            }
         };
         match message {
             Message::Ping(payload) => {
@@ -378,6 +422,42 @@ where
             },
         }
     }
+}
+
+async fn receive_termination(
+    terminations: &mut Option<(
+        String,
+        tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
+    )>,
+) -> Option<crate::provider_runtime::TransportTerminationNotice> {
+    let Some((owner_id, receiver)) = terminations.as_mut() else {
+        return std::future::pending().await;
+    };
+    loop {
+        match receiver.recv().await {
+            Ok(notice) if notice.owner_id == *owner_id => return Some(notice),
+            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                return std::future::pending().await
+            }
+        }
+    }
+}
+
+async fn send_transport_terminal(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    code: &str,
+    active: bool,
+) {
+    let frame = if active {
+        serde_json::json!({
+            "type": "response.failed",
+            "response": { "status": "failed", "error": { "code": code, "message": code } }
+        })
+    } else {
+        serde_json::json!({ "type": "error", "code": code, "message": code })
+    };
+    let _ = sender.send(Message::Text(frame.to_string())).await;
 }
 
 fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {

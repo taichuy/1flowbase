@@ -12,8 +12,8 @@ pub use types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, IdentityError, InvocationCompletion,
     InvocationLease, LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot,
     TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration,
-    TransportInstant, TransportOwnerId, TransportRegistryConfig, TransportSessionId,
-    TransportSessionState,
+    TransportInstant, TransportOwnerId, TransportRegistryConfig, TransportRuntimeTargetId,
+    TransportSessionId, TransportSessionState,
 };
 
 #[cfg(test)]

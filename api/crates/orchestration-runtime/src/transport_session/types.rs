@@ -37,6 +37,7 @@ macro_rules! opaque_id {
 
 opaque_id!(TransportSessionId, "transport_session_id");
 opaque_id!(TransportOwnerId, "transport_owner_id");
+opaque_id!(TransportRuntimeTargetId, "transport_runtime_target_id");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TransportInstant(u64);
@@ -107,6 +108,7 @@ pub enum TerminationKind {
     CapacityEvicted,
     ProviderFault,
     ProviderHardMax,
+    OwnerOrphaned,
     OwnerClosed,
     Shutdown,
 }
@@ -115,6 +117,7 @@ pub enum TerminationKind {
 pub struct TerminationReceipt {
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,
+    pub runtime_target_id: TransportRuntimeTargetId,
     pub previous_state: TransportSessionState,
     pub kind: TerminationKind,
     pub terminated_at: TransportInstant,
@@ -135,6 +138,8 @@ pub enum LifecycleEvent {
 pub struct AdmissionRequest {
     pub session_id: TransportSessionId,
     pub owner_id: TransportOwnerId,
+    /// Opaque Runtime Backend target used only for lifecycle control dispatch.
+    pub runtime_target_id: TransportRuntimeTargetId,
     /// The task's absolute deadline. When absent, the configured invocation default is used.
     pub task_deadline: Option<TransportDeadline>,
     /// A Provider-advertised hard deadline, additionally capped by `physical_max_age`.
@@ -204,6 +209,7 @@ pub struct SafeRegistrySnapshot {
 pub struct TransportRegistryConfig {
     pub capacity: usize,
     pub tombstone_capacity: usize,
+    pub tombstone_ttl: Duration,
     pub event_capacity: usize,
     pub logical_max_age: Duration,
     pub invocation_default: Duration,
@@ -221,6 +227,7 @@ impl Default for TransportRegistryConfig {
         Self {
             capacity: 128,
             tombstone_capacity: 256,
+            tombstone_ttl: Duration::from_secs(5 * 60),
             event_capacity: 512,
             logical_max_age: Duration::from_secs(2 * 60 * 60),
             invocation_default: Duration::from_secs(30 * 60),
@@ -239,6 +246,7 @@ impl TransportRegistryConfig {
     pub(crate) fn validate(&self) -> Result<(), RegistryError> {
         let durations = [
             self.logical_max_age,
+            self.tombstone_ttl,
             self.invocation_default,
             self.waiting_tool_lease,
             self.orphan_grace,

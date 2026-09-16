@@ -9,7 +9,7 @@ use std::{
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, LifecycleEvent, RegistryError,
     TerminationKind, TransportClock, TransportInstant, TransportOwnerId, TransportRegistryConfig,
-    TransportSessionId, TransportSessionRegistry, TransportSessionState,
+    TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 
 #[derive(Clone, Default)]
@@ -34,6 +34,7 @@ fn config(capacity: usize) -> TransportRegistryConfig {
     TransportRegistryConfig {
         capacity,
         tombstone_capacity: 4,
+        tombstone_ttl: Duration::from_secs(300),
         event_capacity: 64,
         logical_max_age: Duration::from_secs(200),
         invocation_default: Duration::from_secs(100),
@@ -55,6 +56,7 @@ fn request(value: &str) -> AdmissionRequest {
     AdmissionRequest {
         session_id: session_id(value),
         owner_id: TransportOwnerId::new(format!("owner-{value}")).unwrap(),
+        runtime_target_id: TransportRuntimeTargetId::new(format!("target-{value}")).unwrap(),
         task_deadline: None,
         provider_hard_deadline: None,
     }
@@ -326,4 +328,50 @@ fn termination_event_preserves_the_same_stable_receipt_as_the_tombstone() {
         .unwrap();
     assert_eq!(event, receipt);
     assert_eq!(registry.tombstone(&session_id("receipt")), Some(&receipt));
+}
+
+#[test]
+fn owner_disconnect_marks_inflight_session_orphaned_and_finish_cannot_revive_it() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
+    let admission = request("socket");
+    let owner = admission.owner_id.clone();
+    let fence = registry.admit(admission).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry.begin_invocation(&fence).unwrap();
+
+    assert_eq!(registry.mark_owner_orphaned(&owner), vec![fence.clone()]);
+    registry
+        .finish_invocation(&lease, InvocationCompletion::IdleAffinity)
+        .unwrap();
+
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
+}
+
+#[test]
+fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.orphan_grace = Duration::from_secs(1);
+    settings.tombstone_ttl = Duration::from_secs(2);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let admission = request("orphan-callback");
+    let owner = admission.owner_id.clone();
+    let session = admission.session_id.clone();
+    registry.admit(admission).unwrap();
+    registry.mark_owner_orphaned(&owner);
+
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert_eq!(
+        registry.tombstone(&session).unwrap().kind,
+        TerminationKind::OwnerOrphaned
+    );
+
+    clock.advance(Duration::from_secs(2));
+    registry.maintain();
+    assert!(registry.tombstone(&session).is_none());
 }

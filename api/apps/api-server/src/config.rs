@@ -67,6 +67,8 @@ pub struct ApiConfig {
     pub official_model_pricing_catalog_index_url: String,
     pub model_pricing_bootstrap_root: String,
     pub model_billing_require_provider_usage: bool,
+    pub transport_session_registry:
+        orchestration_runtime::transport_session::TransportRegistryConfig,
     pub official_extension_catalog_sources:
         BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
     pub official_extension_source_connect_timeout: Duration,
@@ -375,6 +377,58 @@ impl ApiConfig {
                 map.get("API_MODEL_BILLING_REQUIRE_PROVIDER_USAGE"),
                 false,
             )?,
+            transport_session_registry:
+                orchestration_runtime::transport_session::TransportRegistryConfig {
+                    capacity: parse_positive_usize(
+                        "API_TRANSPORT_SESSION_CAPACITY",
+                        map.get("API_TRANSPORT_SESSION_CAPACITY"),
+                        128,
+                    )?,
+                    tombstone_capacity: 256,
+                    event_capacity: 512,
+                    logical_max_age: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_LOGICAL_MAX_AGE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_LOGICAL_MAX_AGE_SECONDS"),
+                        Duration::from_secs(2 * 60 * 60),
+                    )?,
+                    invocation_default: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_INVOCATION_DEFAULT_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_INVOCATION_DEFAULT_SECONDS"),
+                        Duration::from_secs(30 * 60),
+                    )?,
+                    waiting_tool_lease: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_WAITING_TOOL_LEASE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_WAITING_TOOL_LEASE_SECONDS"),
+                        Duration::from_secs(55 * 60),
+                    )?,
+                    orphan_grace: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_ORPHAN_GRACE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_ORPHAN_GRACE_SECONDS"),
+                        Duration::from_secs(60),
+                    )?,
+                    idle_affinity_lease: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_IDLE_AFFINITY_LEASE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_IDLE_AFFINITY_LEASE_SECONDS"),
+                        Duration::from_secs(90),
+                    )?,
+                    physical_soft_drain_age: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_PHYSICAL_SOFT_DRAIN_AGE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_PHYSICAL_SOFT_DRAIN_AGE_SECONDS"),
+                        Duration::from_secs(50 * 60),
+                    )?,
+                    physical_max_age: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_PHYSICAL_MAX_AGE_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_PHYSICAL_MAX_AGE_SECONDS"),
+                        Duration::from_secs(58 * 60),
+                    )?,
+                    tombstone_ttl: parse_positive_duration_seconds(
+                        "API_TRANSPORT_SESSION_TOMBSTONE_TTL_SECONDS",
+                        map.get("API_TRANSPORT_SESSION_TOMBSTONE_TTL_SECONDS"),
+                        Duration::from_secs(5 * 60),
+                    )?,
+                    fault_grace: Duration::from_secs(60),
+                    closing_grace: Duration::from_secs(10),
+                },
             official_extension_catalog_sources,
             official_extension_source_connect_timeout: parse_positive_duration_seconds(
                 "API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS",

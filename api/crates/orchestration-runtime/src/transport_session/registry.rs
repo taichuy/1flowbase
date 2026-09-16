@@ -7,7 +7,8 @@ use super::types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, InvocationCompletion, InvocationLease,
     LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot, TerminationKind,
     TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration, TransportInstant,
-    TransportOwnerId, TransportRegistryConfig, TransportSessionId, TransportSessionState,
+    TransportOwnerId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportSessionState,
 };
 
 pub trait TransportClock: Send + Sync {
@@ -42,6 +43,7 @@ impl TransportClock for SystemTransportClock {
 
 struct SessionRecord {
     owner_id: TransportOwnerId,
+    runtime_target_id: TransportRuntimeTargetId,
     generation: TransportGeneration,
     state: TransportSessionState,
     created_at: TransportInstant,
@@ -126,6 +128,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             request.session_id,
             SessionRecord {
                 owner_id: request.owner_id,
+                runtime_target_id: request.runtime_target_id,
                 generation,
                 state: TransportSessionState::Opening,
                 created_at: now,
@@ -235,6 +238,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             TransportSessionState::Draining
                 | TransportSessionState::Faulted
                 | TransportSessionState::Closing
+                | TransportSessionState::Orphaned
         ) {
             return Ok(());
         }
@@ -324,6 +328,65 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .find(|receipt| receipt.fence.session_id == *session_id)
     }
 
+    pub fn fence(&self, session_id: &TransportSessionId) -> Option<TransportFence> {
+        self.sessions.get(session_id).map(|record| TransportFence {
+            session_id: session_id.clone(),
+            generation: record.generation,
+        })
+    }
+
+    pub fn state(&self, fence: &TransportFence) -> Result<TransportSessionState, RegistryError> {
+        Ok(self.record(fence)?.state)
+    }
+
+    pub fn runtime_target_id(
+        &self,
+        fence: &TransportFence,
+    ) -> Result<&TransportRuntimeTargetId, RegistryError> {
+        Ok(&self.record(fence)?.runtime_target_id)
+    }
+
+    pub fn physical_hard_deadline(
+        &self,
+        fence: &TransportFence,
+    ) -> Result<TransportDeadline, RegistryError> {
+        Ok(self.record(fence)?.physical_hard_deadline)
+    }
+
+    pub fn mark_owner_orphaned(&mut self, owner_id: &TransportOwnerId) -> Vec<TransportFence> {
+        let now = self.clock.now();
+        self.maintain_at(now);
+        let fences = self
+            .sessions
+            .iter()
+            .filter(|(_, record)| {
+                &record.owner_id == owner_id
+                    && matches!(
+                        record.state,
+                        TransportSessionState::Active
+                            | TransportSessionState::WaitingTool
+                            | TransportSessionState::IdleAffinity
+                    )
+            })
+            .map(|(session_id, record)| TransportFence {
+                session_id: session_id.clone(),
+                generation: record.generation,
+            })
+            .collect::<Vec<_>>();
+        for fence in &fences {
+            let _ = self.set_state(fence, TransportSessionState::Orphaned, now);
+        }
+        fences
+    }
+
+    pub fn terminate_all(&mut self, kind: TerminationKind) -> Vec<TerminationReceipt> {
+        let now = self.clock.now();
+        let ids = self.sessions.keys().cloned().collect::<Vec<_>>();
+        ids.into_iter()
+            .filter_map(|id| self.terminate_by_id(&id, kind, now))
+            .collect()
+    }
+
     pub fn safe_snapshot(&self) -> SafeRegistrySnapshot {
         let now = self.clock.now();
         let sessions = self
@@ -360,6 +423,11 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     }
 
     fn maintain_at(&mut self, now: TransportInstant) {
+        while self.tombstones.front().is_some_and(|receipt| {
+            now.saturating_duration_since(receipt.terminated_at) >= self.config.tombstone_ttl
+        }) {
+            self.tombstones.pop_front();
+        }
         let expired: Vec<_> = self
             .sessions
             .iter()
@@ -438,6 +506,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                 generation: record.generation,
             },
             owner_id: record.owner_id,
+            runtime_target_id: record.runtime_target_id,
             previous_state: record.state,
             kind,
             terminated_at: now,
@@ -565,6 +634,8 @@ fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<Termina
         .map(|(_, kind)| {
             if kind == DeadlineKind::PhysicalHard {
                 TerminationKind::ProviderHardMax
+            } else if record.state == TransportSessionState::Orphaned {
+                TerminationKind::OwnerOrphaned
             } else {
                 TerminationKind::DeadlineExceeded(kind)
             }

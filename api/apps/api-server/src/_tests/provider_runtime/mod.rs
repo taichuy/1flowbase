@@ -1044,6 +1044,7 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
 #[test]
 fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wires_strict_graph() {
     let consumer = include_str!("../../provider_runtime/mod.rs");
+    let transport_lifecycle = include_str!("../../provider_runtime/transport_session_lifecycle.rs");
     let boot = include_str!("../../lib.rs");
 
     assert!(!consumer.to_ascii_lowercase().contains("openai"));
@@ -1073,7 +1074,13 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
     assert!(boot.contains("ApiRuntimeArtifactResolver::new("));
     assert!(boot.contains("RuntimeBackendSlot::default()"));
     assert!(boot.contains("runtime_backend_slot.bind(runtime_extension_host.clone())"));
-    assert!(boot.contains("ApiRuntimeServices::new_with_runtime_backend("));
+    assert!(boot.contains("ApiRuntimeServices::new_with_runtime_backend_and_transport_config("));
+    assert!(boot.contains("provider_runtime.start_transport_session_scheduler()"));
+    assert!(boot.contains("shutdown_transport_sessions("));
+    assert!(transport_lifecycle.contains("maintain_and_dispatch"));
+    assert!(transport_lifecycle.contains("ProviderTransportSessionAction::Drain"));
+    assert!(transport_lifecycle.contains("ProviderTransportSessionAction::Close"));
+    assert!(transport_lifecycle.contains("close_acknowledged == Some(true)"));
     assert!(boot.contains("Arc::clone(&extension_graph)"));
     assert!(!boot.contains("new_without_model_provider_extension_graph_for_tests"));
 }

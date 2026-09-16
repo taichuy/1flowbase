@@ -24,6 +24,26 @@ const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
+fn provider_execution_deadline_unix_ms(
+    input: &ProviderInvocationInput,
+    now: OffsetDateTime,
+) -> i64 {
+    let now_unix_ms = i64::try_from(now.unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX);
+    input
+        .run_context
+        .get("task_deadline_unix_ms")
+        .and_then(Value::as_i64)
+        .filter(|deadline| *deadline > now_unix_ms)
+        .unwrap_or_else(|| {
+            i64::try_from((now + time::Duration::minutes(30)).unix_timestamp_nanos() / 1_000_000)
+                .unwrap_or(i64::MAX)
+        })
+}
+
+#[cfg(test)]
+#[path = "provider_invoker/_tests/deadline_tests.rs"]
+mod deadline_tests;
+
 fn billing_invocation_id(
     flow_run_id: Uuid,
     node_id: Option<&str>,
@@ -753,6 +773,8 @@ where
         let native_responses_passthrough = input.required_capabilities.contains(
             &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
+        let deadline_unix_ms =
+            provider_execution_deadline_unix_ms(&input, OffsetDateTime::now_utc());
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -765,12 +787,7 @@ where
                         .flow_execution_context
                         .as_ref()
                         .map(|context| context.data_model.actor.user_id),
-                    deadline_unix_ms: i64::try_from(
-                        (OffsetDateTime::now_utc() + time::Duration::minutes(5))
-                            .unix_timestamp_nanos()
-                            / 1_000_000,
-                    )
-                    .unwrap_or(i64::MAX),
+                    deadline_unix_ms,
                 },
                 domain::NetworkEgressConsumerSelector::ModelProviderInstance {
                     instance_id: instance.id,

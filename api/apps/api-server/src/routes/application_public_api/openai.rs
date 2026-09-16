@@ -78,6 +78,13 @@ pub(super) struct OpenAiCredential {
     pub(super) source: &'static str,
 }
 
+pub(crate) fn responses_transport_owner_id(
+    principal: &interface_runtime::ApplicationPrincipal,
+    headers: &HeaderMap,
+) -> Result<String, OpenAiRouteError> {
+    session_context::responses_session_identity(principal, headers)
+}
+
 /// A Generate or tool-resume turn accepted by the same ingress used by HTTP
 /// Responses, before any public transport projection is selected.
 pub(crate) struct PreparedOpenAiResponseTurn {
