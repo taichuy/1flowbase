@@ -6,6 +6,7 @@ import type {
   SchemaBlock,
   SchemaFieldBlock
 } from '../../../shared/schema-ui/v1/contracts/canvas-node-schema';
+import { isValidElementType } from 'react-is';
 import { describe, expect, test, vi } from 'vitest';
 
 import { agentFlowRendererRegistry } from '../schema/agent-flow-renderer-registry';
@@ -93,35 +94,23 @@ describe('agent-flow node schema registry', () => {
   });
 
   test('exposes a real renderer registry for later schema-driven consumers', () => {
-    expect(agentFlowRendererRegistry.fields.text).toBeTypeOf('function');
-    expect(agentFlowRendererRegistry.fields.llm_model).toBeTypeOf('function');
-    expect(agentFlowRendererRegistry.fields.llm_response_format).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.fields.llm_tool_registrations).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.fields.code_source).toBeTypeOf('function');
-    expect(
-      agentFlowRendererRegistry.fields.output_contract_definition
-    ).toBeTypeOf('function');
-    expect(agentFlowRendererRegistry.fields.start_input_fields).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.fields.start_model_list).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.fields.variable_assignment).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.fields.data_model_query).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.dynamicForms.llm_parameters).toBeTypeOf(
-      'function'
-    );
-    expect(agentFlowRendererRegistry.views.summary).toBeTypeOf('function');
-    expect(agentFlowRendererRegistry.views.relations).toBeTypeOf('function');
+    for (const renderer of [
+      agentFlowRendererRegistry.fields.text,
+      agentFlowRendererRegistry.fields.llm_model,
+      agentFlowRendererRegistry.fields.llm_response_format,
+      agentFlowRendererRegistry.fields.llm_tool_registrations,
+      agentFlowRendererRegistry.fields.code_source,
+      agentFlowRendererRegistry.fields.output_contract_definition,
+      agentFlowRendererRegistry.fields.start_input_fields,
+      agentFlowRendererRegistry.fields.start_model_list,
+      agentFlowRendererRegistry.fields.variable_assignment,
+      agentFlowRendererRegistry.fields.data_model_query,
+      agentFlowRendererRegistry.dynamicForms.llm_parameters,
+      agentFlowRendererRegistry.views.summary,
+      agentFlowRendererRegistry.views.relations
+    ]) {
+      expect(isValidElementType(renderer)).toBe(true);
+    }
   });
 
   test('uses a narrow variable assignment editor for Variable Assigner', () => {
