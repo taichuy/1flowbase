@@ -300,6 +300,20 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &PersistWaitingStateInput,
     ) -> anyhow::Result<Option<PersistedWaitingState>>;
+    async fn claim_runtime_event_deliveries(
+        &self,
+        input: &ClaimRuntimeEventDeliveriesInput,
+    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+        let _ = input;
+        anyhow::bail!("claim_runtime_event_deliveries not implemented")
+    }
+    async fn ack_runtime_event_delivery(
+        &self,
+        input: &AckRuntimeEventDeliveryInput,
+    ) -> anyhow::Result<domain::RuntimeEventRecord> {
+        let _ = input;
+        anyhow::bail!("ack_runtime_event_delivery not implemented")
+    }
     async fn acquire_resume_claim(
         &self,
         input: &AcquireResumeClaimInput,

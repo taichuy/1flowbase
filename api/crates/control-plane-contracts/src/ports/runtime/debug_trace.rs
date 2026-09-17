@@ -317,6 +317,9 @@ pub struct PersistWaitingStateInput {
     pub resume_claim_id: Option<Uuid>,
     pub resume_claim_token: Option<Uuid>,
     pub waiting_event: AppendRuntimeEventInput,
+    /// Canonical tool events that become client-executable only after this
+    /// transaction commits. Their payload remains owned by `runtime_events`.
+    pub tool_delivery_events: Vec<AppendRuntimeEventInput>,
     pub kind: PersistWaitingKind,
 }
 
@@ -326,7 +329,31 @@ pub struct PersistedWaitingState {
     pub checkpoint: domain::CheckpointRecord,
     pub callback_task: Option<domain::CallbackTaskRecord>,
     pub waiting_event: domain::RuntimeEventRecord,
+    pub tool_delivery_events: Vec<domain::RuntimeEventRecord>,
     pub recovery_history: domain::RecoveryHistoryRecord,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClaimRuntimeEventDeliveriesInput {
+    pub flow_run_id: Uuid,
+    pub limit: usize,
+    pub lease_seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeEventDeliveryClaim {
+    pub event: domain::RuntimeEventRecord,
+    pub claim_token: Uuid,
+    pub generation: i64,
+    pub lease_expires_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct AckRuntimeEventDeliveryInput {
+    pub event_id: Uuid,
+    pub claim_token: Uuid,
+    pub expected_generation: i64,
+    pub acknowledged_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

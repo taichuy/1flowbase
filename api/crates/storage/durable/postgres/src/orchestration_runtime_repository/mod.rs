@@ -11,26 +11,27 @@ use control_plane_contracts::{
         PublishedRunStreamState,
     },
     ports::{
-        AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
-        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
-        AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
-        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
-        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        AckRuntimeEventDeliveryInput, AcquireResumeClaimInput, AcquireResumeClaimOutput,
+        AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
+        AppendContextVersionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
+        AppendModelFailoverAttemptLedgerInput, AppendProviderInvocationContextInput,
+        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
+        AppendRuntimeItemInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
+        ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
         AttachCompiledPlanToFlowRunInput, BillingRepository, BindInvocationContextInput,
-        CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
-        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
-        ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
-        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
-        CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
-        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
-        DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
-        FailQueuedFlowRunShellInput, FinalizeModelBillingInput,
-        FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+        CallbackResumeContext, CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
+        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
+        ConvertLegacyRuntimeShadowBatchInput, ConvertLegacyRuntimeShadowBatchResult,
+        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
+        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
+        CreditReservation, CreditTransactionRecord, DataModelSideEffectReceiptClaim,
+        DebugVariableCacheEntry, DeleteDebugVariableCacheEntriesInput,
+        DeleteModelProviderRequestLogsInput, FailQueuedFlowRunShellInput,
+        FinalizeModelBillingInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome, FinalizedModelBilling,
         FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
         GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
@@ -43,12 +44,12 @@ use control_plane_contracts::{
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
         ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
         ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
-        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, SettleCreditInput,
-        UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
-        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
-        UpsertDebugVariableCacheEntryInput,
+        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
+        SettleCreditInput, UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput,
+        UpdateFlowRunInput, UpdateFlowRunPayloadsInput, UpdateNodeRunInput,
+        UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
+        UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -68,6 +69,7 @@ use record_mappers::*;
 use sequencing::*;
 
 include!("event_methods.rs");
+include!("delivery_methods.rs");
 include!("artifact_methods.rs");
 include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
@@ -401,6 +403,20 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         inputs: &[AppendRuntimeEventInput],
     ) -> Result<Vec<domain::RuntimeEventRecord>> {
         PgControlPlaneStore::append_runtime_events(self, inputs).await
+    }
+
+    async fn claim_runtime_event_deliveries(
+        &self,
+        input: &ClaimRuntimeEventDeliveriesInput,
+    ) -> Result<Vec<RuntimeEventDeliveryClaim>> {
+        PgControlPlaneStore::claim_runtime_event_deliveries(self, input).await
+    }
+
+    async fn ack_runtime_event_delivery(
+        &self,
+        input: &AckRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::ack_runtime_event_delivery(self, input).await
     }
 
     async fn append_runtime_item(

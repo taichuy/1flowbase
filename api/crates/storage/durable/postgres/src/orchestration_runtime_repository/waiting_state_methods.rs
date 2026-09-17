@@ -167,6 +167,49 @@ impl PgControlPlaneStore {
             }
         };
 
+        let mut tool_delivery_events = Vec::with_capacity(input.tool_delivery_events.len());
+        for delivery in &input.tool_delivery_events {
+            if delivery.flow_run_id != input.flow_run_id
+                || delivery.event_type != "provider_output_item_done"
+            {
+                return Err(anyhow!(
+                    "waiting transaction accepts only same-run provider_output_item_done deliveries"
+                ));
+            }
+            let delivery_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
+            let row = sqlx::query(
+                r#"
+                insert into runtime_events (
+                    id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                    event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                    visibility, durability, delivery_status
+                ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending')
+                returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                          event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                          visibility, durability, created_at
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(input.scope_id)
+            .bind(input.flow_run_id)
+            .bind(delivery.node_run_id)
+            .bind(delivery.span_id)
+            .bind(delivery.parent_span_id)
+            .bind(delivery_sequence)
+            .bind(&delivery.event_type)
+            .bind(delivery.layer.as_str())
+            .bind(delivery.source.as_str())
+            .bind(delivery.trust_level.as_str())
+            .bind(delivery.item_id)
+            .bind(delivery.ledger_ref.as_deref())
+            .bind(&delivery.payload)
+            .bind(delivery.visibility.as_str())
+            .bind(delivery.durability.as_str())
+            .fetch_one(&mut *tx)
+            .await?;
+            tool_delivery_events.push(map_runtime_event_record(row)?);
+        }
+
         let event_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         let event_row = sqlx::query(
             r#"
@@ -282,6 +325,7 @@ impl PgControlPlaneStore {
             checkpoint,
             callback_task,
             waiting_event,
+            tool_delivery_events,
             recovery_history,
         }))
     }

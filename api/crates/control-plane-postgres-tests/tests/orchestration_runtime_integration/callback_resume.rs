@@ -64,6 +64,24 @@ async fn persist_callback_wait(
                 visibility: domain::RuntimeEventVisibility::Workspace,
                 durability: domain::RuntimeEventDurability::Durable,
             },
+            tool_delivery_events: vec![AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node_run.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "provider_output_item_done".into(),
+                layer: domain::RuntimeEventLayer::ProviderRaw,
+                source: domain::RuntimeEventSource::Provider,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({
+                    "output_index": wait_index - 1,
+                    "item": { "type": "function_call", "call_id": format!("call-{wait_index}") }
+                }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::DurableRequired,
+            }],
             kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
                 id: Uuid::now_v7(),
                 callback_kind: "llm_tool_calls".into(),
@@ -80,6 +98,77 @@ async fn persist_callback_wait(
         .await
         .unwrap()
         .expect("the callback wait should win its expected status transition")
+}
+
+#[tokio::test]
+async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    assert_eq!(waiting.tool_delivery_events.len(), 1);
+    assert!(waiting.tool_delivery_events[0].sequence < waiting.waiting_event.sequence);
+
+    let first = store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].event.id, waiting.tool_delivery_events[0].id);
+    assert!(store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .is_empty());
+
+    sqlx::query(
+        "update runtime_events set delivery_lease_expires_at = now() - interval '1 second' where id = $1",
+    )
+    .bind(first[0].event.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let second = store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert_eq!(second[0].generation, first[0].generation + 1);
+    store
+        .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+            event_id: second[0].event.id,
+            claim_token: second[0].claim_token,
+            expected_generation: second[0].generation,
+            acknowledged_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
