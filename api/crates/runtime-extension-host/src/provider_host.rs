@@ -1366,6 +1366,9 @@ pub(crate) fn attach_runtime_stage_timing(
     mapping_ms: u64,
     queue_ms: u64,
 ) -> FrameworkResult<()> {
+    if metadata.is_null() {
+        *metadata = serde_json::json!({});
+    }
     let object = metadata.as_object_mut().ok_or_else(|| {
         PluginFrameworkError::invalid_provider_contract(
             "provider_metadata must be an object for runtime stage timing",

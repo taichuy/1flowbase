@@ -66,6 +66,33 @@ fn c2_runtime_stage_receipt_is_metadata_only() {
     }
 }
 
+#[test]
+fn runtime_stage_timing_normalizes_omitted_provider_metadata() {
+    let mut metadata = Value::Null;
+
+    attach_runtime_stage_timing(&mut metadata, 5, 11).unwrap();
+
+    assert_eq!(
+        metadata[RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY],
+        json!({
+            "schema_version": 1,
+            "mapping_ms": 5,
+            "queue_ms": 11,
+        })
+    );
+}
+
+#[test]
+fn runtime_stage_timing_rejects_non_object_provider_metadata() {
+    for mut metadata in [json!("invalid"), json!(17), json!(["invalid"])] {
+        let error = attach_runtime_stage_timing(&mut metadata, 5, 11).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("provider_metadata must be an object for runtime stage timing"));
+    }
+}
+
 struct TempProviderPackage {
     root: PathBuf,
 }
