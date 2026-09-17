@@ -7,21 +7,23 @@ use control_plane_contracts::{
         ApplicationRepository, AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
         ClaimRuntimeEventDeliveriesInput, ClearModelProviderRequestLogsBatchInput,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CompleteCallbackTaskInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
-        CreateApplicationInput, CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
-        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
-        DeleteModelProviderRequestLogsInput, FinishFlowRunCallbackResumeAttemptInput,
-        FinishResumeClaimInput, FlowRepository, GetApplicationRunMonitoringReportInput,
-        GetRuntimeDebugArtifactInput, LegacyRuntimeShadowExecution, LegacyRuntimeShadowSourceKind,
+        CommitToolCallbackResultsInput, CompleteCallbackTaskInput, CompleteNodeRunInput,
+        ConvertLegacyRuntimeShadowBatchInput, CreateApplicationInput, CreateCallbackTaskInput,
+        CreateCheckpointInput, CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
+        CreateRuntimeDebugArtifactInput, DeleteModelProviderRequestLogsInput,
+        FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput, FlowRepository,
+        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        LegacyRuntimeShadowExecution, LegacyRuntimeShadowSourceKind,
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository,
         PersistWaitingCallbackTaskInput, PersistWaitingKind, PersistWaitingStateInput,
         ProviderRequestLogTask, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, ResumeClaimDisposition, ResumeClaimKind,
-        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
+        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, ToolCallbackResultInput,
+        ToolCallbackRoundDisposition, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -30,7 +32,7 @@ use domain::{
     FlowRunCallbackResumeAttemptStatus, FlowRunMode, FlowRunStatus, NodeRunStatus,
     RecoveryCoordinate, RecoveryStateCode,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use time::{macros::datetime, Duration, OffsetDateTime};

@@ -103,29 +103,65 @@ where
             domain::NodeRunStatus::WaitingCallback,
             "complete_callback_task",
         )?;
-        let claim = self
-            .repository
-            .acquire_resume_claim(&AcquireResumeClaimInput {
-                scope_id: application.workspace_id,
-                application_id: command.application_id,
-                flow_run_id: flow_run.id,
-                checkpoint_id: checkpoint.id,
-                callback_task_id: Some(command.callback_task_id),
-                kind: ResumeClaimKind::Callback,
-                request_payload: command.response_payload.clone(),
-            })
-            .await?;
-        if claim.disposition != ResumeClaimDisposition::Acquired {
-            return Ok(flow_run);
-        }
-        let callback_task = self
-            .repository
-            .complete_callback_task(&CompleteCallbackTaskInput {
-                callback_task_id: command.callback_task_id,
-                response_payload: command.response_payload.clone(),
-                completed_at: OffsetDateTime::now_utc(),
-            })
-            .await?;
+        let (callback_task, claim) = if pending_callback_task.callback_kind == "llm_tool_calls" {
+            let results = command
+                .response_payload
+                .get("tool_results")
+                .and_then(Value::as_array)
+                .ok_or_else(|| anyhow!("llm tool callback response requires tool_results"))?
+                .iter()
+                .cloned()
+                .map(ToolCallbackResultInput::from_payload)
+                .collect::<Result<Vec<_>>>()?;
+            let committed = self
+                .repository
+                .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+                    scope_id: application.workspace_id,
+                    application_id: command.application_id,
+                    flow_run_id: flow_run.id,
+                    checkpoint_id: checkpoint.id,
+                    callback_task_id: command.callback_task_id,
+                    results,
+                })
+                .await?;
+            if committed.disposition != ToolCallbackRoundDisposition::Acquired {
+                return Ok(flow_run);
+            }
+            let claim = committed
+                .claim
+                .ok_or_else(|| anyhow!("acquired tool callback round is missing resume claim"))?;
+            command.response_payload = committed
+                .callback_task
+                .response_payload
+                .clone()
+                .ok_or_else(|| anyhow!("completed tool callback round is missing response"))?;
+            (committed.callback_task, claim)
+        } else {
+            let claim = self
+                .repository
+                .acquire_resume_claim(&AcquireResumeClaimInput {
+                    scope_id: application.workspace_id,
+                    application_id: command.application_id,
+                    flow_run_id: flow_run.id,
+                    checkpoint_id: checkpoint.id,
+                    callback_task_id: Some(command.callback_task_id),
+                    kind: ResumeClaimKind::Callback,
+                    request_payload: command.response_payload.clone(),
+                })
+                .await?;
+            if claim.disposition != ResumeClaimDisposition::Acquired {
+                return Ok(flow_run);
+            }
+            let callback_task = self
+                .repository
+                .complete_callback_task(&CompleteCallbackTaskInput {
+                    callback_task_id: command.callback_task_id,
+                    response_payload: command.response_payload.clone(),
+                    completed_at: OffsetDateTime::now_utc(),
+                })
+                .await?;
+            (callback_task, claim.claim)
+        };
         let result = if callback_task.callback_kind == "data_model_side_effect_confirmation" {
             self.complete_data_model_side_effect_callback(
                 command,
@@ -137,7 +173,7 @@ where
                 &checkpoint,
                 &flow_run,
                 &compiled_plan,
-                &claim.claim,
+                &claim,
             )
             .await
         } else {
@@ -204,8 +240,8 @@ where
                             }),
                         }
                     }),
-                    resume_claim_id: Some(claim.claim.id),
-                    resume_claim_token: Some(claim.claim.claim_token),
+                    resume_claim_id: Some(claim.id),
+                    resume_claim_token: Some(claim.claim_token),
                     tool_delivery_events: execution.tool_delivery_events.clone(),
                 })
                 .await
@@ -214,9 +250,9 @@ where
         };
         self.repository
             .finish_resume_claim(&FinishResumeClaimInput {
-                claim_id: claim.claim.id,
-                claim_token: claim.claim.claim_token,
-                expected_generation: claim.claim.generation,
+                claim_id: claim.id,
+                claim_token: claim.claim_token,
+                expected_generation: claim.generation,
                 status: if result.is_ok() {
                     ResumeClaimStatus::Succeeded
                 } else {

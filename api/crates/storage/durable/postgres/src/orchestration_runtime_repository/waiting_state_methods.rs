@@ -163,7 +163,44 @@ impl PgControlPlaneStore {
                 .bind(&callback.external_ref_payload)
                 .fetch_one(&mut *tx)
                 .await?;
-                Some(map_callback_task_record(row)?)
+                let callback_task = map_callback_task_record(row)?;
+                if callback.callback_kind == "llm_tool_calls" {
+                    let tool_calls = callback
+                        .request_payload
+                        .get("tool_calls")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| anyhow!("llm tool callback request is missing tool_calls"))?;
+                    let mut ids = std::collections::BTreeSet::new();
+                    for (ordinal, tool_call) in tool_calls.iter().enumerate() {
+                        let tool_call_id = tool_call
+                            .get("call_id")
+                            .or_else(|| tool_call.get("id"))
+                            .and_then(Value::as_str)
+                            .filter(|id| !id.is_empty())
+                            .ok_or_else(|| anyhow!("llm tool callback request has an unstable tool call id"))?;
+                        if !ids.insert(tool_call_id) {
+                            return Err(anyhow!("llm tool callback request has duplicate tool call ids"));
+                        }
+                        sqlx::query(
+                            r#"
+                            insert into flow_run_tool_callback_inbox (
+                                id, scope_id, application_id, flow_run_id, callback_task_id,
+                                tool_call_id, tool_ordinal
+                            ) values ($1, $2, $3, $4, $5, $6, $7)
+                            "#,
+                        )
+                        .bind(Uuid::now_v7())
+                        .bind(input.scope_id)
+                        .bind(input.application_id)
+                        .bind(input.flow_run_id)
+                        .bind(callback.id)
+                        .bind(tool_call_id)
+                        .bind(i32::try_from(ordinal).map_err(|_| anyhow!("too many tool calls"))?)
+                        .execute(&mut *tx)
+                        .await?;
+                    }
+                }
+                Some(callback_task)
             }
         };
 

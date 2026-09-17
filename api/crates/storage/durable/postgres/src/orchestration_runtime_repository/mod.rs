@@ -24,14 +24,15 @@ use control_plane_contracts::{
         CallbackResumeContext, CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
         ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
-        ConvertLegacyRuntimeShadowBatchInput, ConvertLegacyRuntimeShadowBatchResult,
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
-        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
-        CreditReservation, CreditTransactionRecord, DataModelSideEffectReceiptClaim,
-        DebugVariableCacheEntry, DeleteDebugVariableCacheEntriesInput,
-        DeleteModelProviderRequestLogsInput, FailQueuedFlowRunShellInput,
-        FinalizeModelBillingInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
+        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
+        CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
+        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
+        FailQueuedFlowRunShellInput, FinalizeModelBillingInput,
+        FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome, FinalizedModelBilling,
         FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
         GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
@@ -45,9 +46,9 @@ use control_plane_contracts::{
         ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
         ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
         RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
-        SettleCreditInput, UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput,
-        UpdateFlowRunInput, UpdateFlowRunPayloadsInput, UpdateNodeRunInput,
-        UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        SettleCreditInput, ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
+        UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
         UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
         UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
@@ -84,6 +85,7 @@ include!("flow_run_callback_resume_attempt_methods.rs");
 include!("storage_foundation_methods.rs");
 include!("legacy_shadow_methods.rs");
 include!("waiting_state_methods.rs");
+include!("tool_callback_inbox_methods.rs");
 include!("resume_claim_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
@@ -508,6 +510,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &FinishResumeClaimInput,
     ) -> Result<ResumeClaimRecord> {
         PgControlPlaneStore::finish_resume_claim(self, input).await
+    }
+
+    async fn commit_tool_callback_results(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+    ) -> Result<CommitToolCallbackResultsOutput> {
+        PgControlPlaneStore::commit_tool_callback_results(self, input).await
     }
 
     async fn append_usage_ledger(

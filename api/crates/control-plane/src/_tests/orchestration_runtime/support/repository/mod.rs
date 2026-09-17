@@ -11,6 +11,7 @@ struct InMemoryOrchestrationRuntimeState {
     node_runs_by_id: HashMap<Uuid, domain::NodeRunRecord>,
     checkpoints_by_id: HashMap<Uuid, domain::CheckpointRecord>,
     callback_tasks_by_id: HashMap<Uuid, domain::CallbackTaskRecord>,
+    tool_callback_inbox_by_round: HashMap<Uuid, Vec<(String, Option<(String, serde_json::Value)>)>>,
     debug_variable_cache_entries_by_key:
         HashMap<(Uuid, Uuid, Uuid, String, String), DebugVariableCacheEntry>,
     events_by_flow_run_id: HashMap<Uuid, Vec<domain::RunEventRecord>>,

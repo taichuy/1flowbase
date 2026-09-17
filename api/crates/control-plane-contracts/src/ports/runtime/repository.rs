@@ -322,6 +322,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &FinishResumeClaimInput,
     ) -> anyhow::Result<ResumeClaimRecord>;
+    async fn commit_tool_callback_results(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+    ) -> anyhow::Result<CommitToolCallbackResultsOutput> {
+        let _ = input;
+        anyhow::bail!("commit_tool_callback_results not implemented")
+    }
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,

@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
 pub struct DebugVariableCacheKey {
@@ -436,4 +437,84 @@ pub struct FinishResumeClaimInput {
     pub status: ResumeClaimStatus,
     pub error_payload: Option<serde_json::Value>,
     pub completed_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCallbackResultInput {
+    pub tool_call_id: String,
+    pub result_payload: serde_json::Value,
+    pub result_fingerprint: String,
+}
+
+impl ToolCallbackResultInput {
+    pub fn from_payload(payload: serde_json::Value) -> anyhow::Result<Self> {
+        let tool_call_id = payload
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("tool callback result is missing tool_call_id"))?
+            .to_string();
+        let canonical = canonical_json(&payload);
+        let result_fingerprint = format!("{:x}", Sha256::digest(canonical.as_bytes()));
+        Ok(Self {
+            tool_call_id,
+            result_payload: payload,
+            result_fingerprint,
+        })
+    }
+}
+
+fn canonical_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Object(object) => {
+            let mut entries = object.iter().collect::<Vec<_>>();
+            entries.sort_by(|left, right| left.0.cmp(right.0));
+            let body = entries
+                .into_iter()
+                .map(|(key, value)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(key).expect("JSON object keys serialize"),
+                        canonical_json(value)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{{{body}}}")
+        }
+        serde_json::Value::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(canonical_json)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        other => serde_json::to_string(other).expect("JSON values serialize"),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CommitToolCallbackResultsInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub checkpoint_id: Uuid,
+    pub callback_task_id: Uuid,
+    pub results: Vec<ToolCallbackResultInput>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCallbackRoundDisposition {
+    WaitingForResults,
+    Acquired,
+    InProgress,
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub struct CommitToolCallbackResultsOutput {
+    pub callback_task: domain::CallbackTaskRecord,
+    pub claim: Option<ResumeClaimRecord>,
+    pub disposition: ToolCallbackRoundDisposition,
 }
