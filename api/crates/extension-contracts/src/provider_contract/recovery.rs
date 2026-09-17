@@ -92,6 +92,7 @@ pub enum CursorBinding {
     Durable,
     ConnectionBound {
         transport_epoch: TransportEpoch,
+        /// Provider-reported source socket incarnation that produced the cursor.
         socket_incarnation: SocketIncarnation,
     },
 }
@@ -145,15 +146,24 @@ impl CursorProvenance {
             return Ok(());
         };
 
-        if receipt.disposition == RecoveryDisposition::SameEpochReconnect
-            && receipt.socket_incarnation != Some(bound_incarnation)
-        {
-            return Err(
-                "same-epoch reconnect must preserve its connection-bound socket incarnation"
-                    .to_string(),
-            );
+        match receipt.disposition {
+            RecoveryDisposition::SameEpochReconnect
+                if receipt
+                    .socket_incarnation
+                    .map_or(true, |actual_incarnation| {
+                        actual_incarnation <= bound_incarnation
+                    }) =>
+            {
+                Err(
+                    "same-epoch reconnect must advance its connection-bound socket incarnation"
+                        .to_string(),
+                )
+            }
+            RecoveryDisposition::PreCommitHttpFallback => {
+                Err("connection-bound cursor cannot use provider HTTP fallback".to_string())
+            }
+            _ => Ok(()),
         }
-        Ok(())
     }
 }
 

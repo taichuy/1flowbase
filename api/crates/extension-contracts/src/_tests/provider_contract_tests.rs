@@ -477,7 +477,7 @@ fn d1_connection_bound_cursor_uses_provider_reported_epoch_and_incarnation() {
             bound_incarnation,
         )),
     };
-    let wrong_incarnation = ProviderRecoveryReceipt {
+    let advanced_incarnation = ProviderRecoveryReceipt {
         attempt: 0,
         transport: RecoveryTransport::AiNativeWebSocket,
         transport_epoch: bound_epoch,
@@ -486,20 +486,43 @@ fn d1_connection_bound_cursor_uses_provider_reported_epoch_and_incarnation() {
         disposition: RecoveryDisposition::SameEpochReconnect,
         reason: RecoveryReason::TransportDisconnected,
     };
-    assert!(wrong_incarnation
+    advanced_incarnation.validate_against(&directive).unwrap();
+
+    let stale_equal_incarnation = ProviderRecoveryReceipt {
+        socket_incarnation: Some(bound_incarnation),
+        ..advanced_incarnation.clone()
+    };
+    assert!(stale_equal_incarnation
         .validate_against(&directive)
         .unwrap_err()
-        .contains("must preserve"));
+        .contains("must advance"));
 
-    let matching_incarnation = ProviderRecoveryReceipt {
-        socket_incarnation: Some(bound_incarnation),
-        ..wrong_incarnation.clone()
+    let stale_lower_incarnation = ProviderRecoveryReceipt {
+        socket_incarnation: Some(SocketIncarnation::new(2).unwrap()),
+        ..advanced_incarnation.clone()
     };
-    matching_incarnation.validate_against(&directive).unwrap();
+    assert!(stale_lower_incarnation
+        .validate_against(&directive)
+        .unwrap_err()
+        .contains("must advance"));
+
+    let connection_bound_http_fallback = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::ProviderHttp,
+        transport_epoch: bound_epoch,
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::PreCommitHttpFallback,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    assert!(connection_bound_http_fallback
+        .validate_against(&directive)
+        .unwrap_err()
+        .contains("cannot use provider HTTP fallback"));
 
     let rebuilt_on_new_socket = ProviderRecoveryReceipt {
         disposition: RecoveryDisposition::OneFullContextRebuild,
-        ..wrong_incarnation
+        ..advanced_incarnation
     };
     rebuilt_on_new_socket.validate_against(&directive).unwrap();
 }
