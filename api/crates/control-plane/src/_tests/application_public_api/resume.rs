@@ -628,6 +628,37 @@ mod tests {
         }
     }
 
+    /// Completes the callback task and finishes the run in the same step,
+    /// like the real runtime does when the last tool result arrives.
+    #[derive(Clone)]
+    struct RunCompletingCallbackConsumer {
+        repository: ApplicationPublicApiTestRepository,
+    }
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for RunCompletingCallbackConsumer {
+        async fn complete_published_callback(
+            &self,
+            input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            let callback_task = self
+                .repository
+                .get_published_callback_task(input.callback_task_id)
+                .await?
+                .expect("callback task fixture should exist");
+            self.repository
+                .complete_callback_task_for_test(input.callback_task_id);
+            self.repository
+                .complete_waiting_callback_published_internal_run(
+                    callback_task.flow_run_id,
+                    json!({"answer":"done"}),
+                    OffsetDateTime::now_utc(),
+                )
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("run should be waiting for the callback"))
+        }
+    }
+
     #[derive(Clone, Default)]
     struct PartialToolCallbackConsumer {
         repository: ApplicationPublicApiTestRepository,
@@ -951,6 +982,43 @@ mod tests {
         );
         assert_eq!(repository.callback_resume_attempts().len(), 1);
         assert_eq!(repository.flow_run_count(), 1);
+    }
+
+    // The last tool result completes the run before the resume audit event
+    // is appended; a sealed run must not turn a succeeded resume into a
+    // failure that leaves the client with a 5xx after its tools already ran.
+    #[tokio::test]
+    async fn completing_tool_callback_succeeds_even_when_the_run_seals_before_audit() {
+        let (repository, _, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({"tool_calls":[{"id":"call_last","name":"exec","arguments":{}}]}),
+        );
+        let consumer = RunCompletingCallbackConsumer {
+            repository: repository.clone(),
+        };
+        repository.seal_terminal_run_events(true);
+        let service = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer);
+        let completed = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{"tool_call_id":"call_last","content":"ok"}]}),
+            ))
+            .await
+            .expect("a resume that completed the run is a success");
+        assert_eq!(
+            completed.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+        assert_eq!(
+            completed.run.status,
+            control_plane::application_public_api::native::NativeRunStatus::Succeeded
+        );
+        let event_types = repository.run_event_types(run.id);
+        assert!(event_types.contains(&"public_run_resume_requested".to_string()));
+        assert!(!event_types.contains(&"public_run_resume_succeeded".to_string()));
     }
 
     #[tokio::test]

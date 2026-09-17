@@ -399,17 +399,33 @@ where
                         },
                     )
                     .await?;
-                self.append_resume_event(
-                    flow_run.id,
-                    Some(callback_task.node_run_id),
-                    "public_run_resume_succeeded",
-                    json!({
-                        "callback_task_id": callback_task.id,
-                        "resume_attempt_id": finished.id,
-                        "source": command.source.as_str(),
-                    }),
-                )
-                .await?;
+                // The attempt is already settled. When this callback completed
+                // the run, the run is terminal and its event log is sealed;
+                // the audit event is then informational, not a failure of the
+                // resume that already succeeded.
+                if let Err(error) = self
+                    .append_resume_event(
+                        flow_run.id,
+                        Some(callback_task.node_run_id),
+                        "public_run_resume_succeeded",
+                        json!({
+                            "callback_task_id": callback_task.id,
+                            "resume_attempt_id": finished.id,
+                            "source": command.source.as_str(),
+                        }),
+                    )
+                    .await
+                {
+                    if !flow_run.status.is_terminal() {
+                        return Err(error);
+                    }
+                    tracing::debug!(
+                        flow_run_id = %flow_run.id,
+                        resume_attempt_id = %finished.id,
+                        error = %error,
+                        "resume audit event skipped on a sealed terminal run"
+                    );
+                }
                 let run = self.native_result_for_flow_run(&flow_run).await?;
                 Ok(ResumePublishedCallbackResult {
                     run,

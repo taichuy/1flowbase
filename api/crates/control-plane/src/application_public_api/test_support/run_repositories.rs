@@ -335,6 +335,14 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
+        if inner.seal_terminal_run_events
+            && inner
+                .flow_runs
+                .get(&input.flow_run_id)
+                .is_some_and(|run| run.status.is_terminal())
+        {
+            return Err(crate::errors::ControlPlaneError::Conflict("flow_run_terminal").into());
+        }
         let events = inner.run_events.entry(input.flow_run_id).or_default();
         let record = domain::RunEventRecord {
             id: Uuid::now_v7(),
