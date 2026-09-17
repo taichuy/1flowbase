@@ -7,9 +7,9 @@ use std::{
 };
 
 use super::{
-    AdmissionRequest, DeadlineKind, InvocationCompletion, LifecycleEvent, RegistryError,
-    TerminationKind, TransportClock, TransportInstant, TransportOwnerId, TransportProviderId,
-    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
+    RegistryError, TerminationKind, TransportClock, TransportInstant, TransportOwnerId,
+    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
     TransportSessionRegistry, TransportSessionState,
 };
 
@@ -59,8 +59,13 @@ fn request(value: &str) -> AdmissionRequest {
         owner_id: TransportOwnerId::new(format!("owner-{value}")).unwrap(),
         provider_id: TransportProviderId::new(format!("provider-{value}")).unwrap(),
         runtime_target_id: TransportRuntimeTargetId::new(format!("target-{value}")).unwrap(),
-        task_deadline: None,
         provider_hard_deadline: None,
+    }
+}
+
+fn invocation_request(deadline_millis: Option<u64>) -> InvocationRequest {
+    InvocationRequest {
+        deadline: deadline_millis.map(TransportInstant::from_millis),
     }
 }
 
@@ -71,9 +76,11 @@ fn fsm_and_single_flight_are_owned_by_the_registry() {
     let fence = registry.admit(request("one")).unwrap();
     registry.activate(&fence).unwrap();
 
-    let invocation = registry.begin_invocation(&fence).unwrap();
+    let invocation = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
     assert_eq!(
-        registry.begin_invocation(&fence),
+        registry.begin_invocation(&fence, invocation_request(None)),
         Err(RegistryError::InflightExists)
     );
     registry
@@ -84,7 +91,9 @@ fn fsm_and_single_flight_are_owned_by_the_registry() {
         TransportSessionState::WaitingTool
     );
 
-    let resumed = registry.begin_invocation(&fence).unwrap();
+    let resumed = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
     assert!(resumed.sequence() > invocation.sequence());
     registry
         .finish_invocation(&resumed, InvocationCompletion::IdleAffinity)
@@ -100,11 +109,23 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
     let clock = FakeClock::default();
     let mut registry = TransportSessionRegistry::new(clock, config(2)).unwrap();
     let original = registry.admit(request("same-logical-id")).unwrap();
+    let owner = registry.safe_snapshot().sessions[0].owner_id.clone();
     registry.activate(&original).unwrap();
+    let completed = registry
+        .begin_invocation(&original, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&completed, InvocationCompletion::Active)
+        .unwrap();
     let replacement = registry.rotate_generation(&original).unwrap();
     assert!(replacement.generation.get() > original.generation.get());
+    assert_eq!(registry.safe_snapshot().sessions[0].owner_id, owner);
     assert!(matches!(
         registry.activate(&original),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert!(matches!(
+        registry.finish_invocation(&completed, InvocationCompletion::Active),
         Err(RegistryError::StaleGeneration { .. })
     ));
 
@@ -121,12 +142,71 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
 }
 
 #[test]
-fn waiting_renewal_is_capped_by_task_and_logical_deadlines() {
+fn completed_invocation_deadline_does_not_bound_a_later_invocation() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.logical_max_age = Duration::from_secs(2 * 60 * 60);
+    settings.invocation_default = Duration::from_secs(30 * 60);
+    settings.waiting_tool_lease = Duration::from_secs(60 * 60);
+    settings.physical_soft_drain_age = Duration::from_secs(80 * 60);
+    settings.physical_max_age = Duration::from_secs(90 * 60);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("long-tool-loop")).unwrap();
+    registry.activate(&fence).unwrap();
+    let first = registry
+        .begin_invocation(&fence, invocation_request(Some(30 * 60 * 1_000)))
+        .unwrap();
+    registry
+        .finish_invocation(&first, InvocationCompletion::WaitingTool)
+        .unwrap();
+
+    clock.advance(Duration::from_secs(30 * 60 + 1));
+    registry.maintain();
+    assert!(registry.tombstone(&session_id("long-tool-loop")).is_none());
+    let second_deadline = 60 * 60 * 1_000;
+    let second = registry
+        .begin_invocation(&fence, invocation_request(Some(second_deadline)))
+        .unwrap();
+    assert!(second.sequence() > first.sequence());
+    assert_eq!(second.deadline().as_millis(), second_deadline);
+}
+
+#[test]
+fn invocation_deadline_is_visible_and_cleared_without_a_session_tombstone() {
     let clock = FakeClock::default();
     let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
-    let mut admission = request("bounded");
-    admission.task_deadline = Some(TransportInstant::from_millis(20_000));
-    let fence = registry.admit(admission).unwrap();
+    let fence = registry.admit(request("invocation-only")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(Some(1_000)))
+        .unwrap();
+    let active = registry.safe_snapshot().sessions.remove(0);
+    assert_eq!(active.invocation_deadline, Some(lease.deadline()));
+    assert_eq!(active.invocation_ttl, Some(Duration::from_secs(1)));
+
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert!(registry.tombstone(&session_id("invocation-only")).is_none());
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].invocation_ttl,
+        Some(Duration::ZERO)
+    );
+    registry
+        .finish_invocation(&lease, InvocationCompletion::WaitingTool)
+        .unwrap();
+    let waiting = registry.safe_snapshot().sessions.remove(0);
+    assert_eq!(waiting.invocation_deadline, None);
+    assert_eq!(waiting.invocation_ttl, None);
+    assert!(waiting.state_ttl > Duration::ZERO);
+}
+
+#[test]
+fn waiting_renewal_is_capped_by_the_logical_deadline() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.logical_max_age = Duration::from_secs(20);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("bounded")).unwrap();
     registry.activate(&fence).unwrap();
     registry
         .transition(&fence, TransportSessionState::WaitingTool)
@@ -134,16 +214,15 @@ fn waiting_renewal_is_capped_by_task_and_logical_deadlines() {
 
     clock.advance(Duration::from_secs(19));
     registry.renew_state_lease(&fence).unwrap();
-    assert_eq!(
-        registry.safe_snapshot().sessions[0].logical_ttl,
-        Duration::from_secs(1)
-    );
+    let snapshot = registry.safe_snapshot();
+    assert_eq!(snapshot.sessions[0].logical_ttl, Duration::from_secs(1));
+    assert_eq!(snapshot.sessions[0].state_ttl, Duration::from_secs(1));
     clock.advance(Duration::from_secs(1));
     registry.maintain();
     assert!(registry.is_empty());
     assert_eq!(
         registry.tombstone(&session_id("bounded")).unwrap().kind,
-        TerminationKind::DeadlineExceeded(DeadlineKind::Task)
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
     );
 }
 
@@ -161,12 +240,40 @@ fn every_non_terminal_state_has_a_finite_lease() {
         let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
         let fence = registry.admit(request(&format!("state-{index}"))).unwrap();
         registry.activate(&fence).unwrap();
-        let lease = registry.begin_invocation(&fence).unwrap();
+        let lease = registry
+            .begin_invocation(&fence, invocation_request(None))
+            .unwrap();
         registry.finish_invocation(&lease, completion).unwrap();
         clock.advance(Duration::from_secs(56));
         registry.maintain();
         assert!(registry.is_empty(), "{completion:?} must expire");
     }
+}
+
+#[test]
+fn waiting_state_lease_expires_independently() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.waiting_tool_lease = Duration::from_secs(1);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("waiting-deadline")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&lease, InvocationCompletion::WaitingTool)
+        .unwrap();
+
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert_eq!(
+        registry
+            .tombstone(&session_id("waiting-deadline"))
+            .unwrap()
+            .kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)
+    );
 }
 
 #[test]
@@ -249,21 +356,22 @@ fn capacity_tie_break_is_deterministic() {
 #[test]
 fn expired_sessions_are_reaped_before_live_eviction() {
     let clock = FakeClock::default();
-    let mut registry = TransportSessionRegistry::new(clock.clone(), config(2)).unwrap();
-    let mut expiring = request("expired");
-    expiring.task_deadline = Some(TransportInstant::from_millis(1_000));
-    registry.admit(expiring).unwrap();
+    let mut settings = config(2);
+    settings.logical_max_age = Duration::from_secs(1);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    registry.admit(request("expired")).unwrap();
+    clock.advance(Duration::from_millis(500));
     let live = registry.admit(request("live-idle")).unwrap();
     registry.activate(&live).unwrap();
     registry
         .transition(&live, TransportSessionState::IdleAffinity)
         .unwrap();
 
-    clock.advance(Duration::from_secs(1));
+    clock.advance(Duration::from_millis(500));
     registry.admit(request("new")).unwrap();
     assert_eq!(
         registry.tombstone(&session_id("expired")).unwrap().kind,
-        TerminationKind::DeadlineExceeded(DeadlineKind::Task)
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
     );
     assert!(registry.tombstone(&session_id("live-idle")).is_none());
 }
@@ -274,7 +382,9 @@ fn only_active_sessions_cause_admission_rejection_without_eviction() {
     let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
     let fence = registry.admit(request("active")).unwrap();
     registry.activate(&fence).unwrap();
-    let lease = registry.begin_invocation(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
 
     let Err(RegistryError::Capacity(rejection)) = registry.admit(request("other")) else {
         panic!("ordinary capacity pressure must reject while the sole session is active");
@@ -348,7 +458,9 @@ fn owner_disconnect_marks_inflight_session_orphaned_and_finish_cannot_revive_it(
     let owner = admission.owner_id.clone();
     let fence = registry.admit(admission).unwrap();
     registry.activate(&fence).unwrap();
-    let lease = registry.begin_invocation(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
 
     assert_eq!(registry.mark_owner_orphaned(&owner), vec![fence.clone()]);
     registry

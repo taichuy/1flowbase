@@ -10,10 +10,10 @@ mod types;
 pub use registry::{SystemTransportClock, TransportClock, TransportSessionRegistry};
 pub use types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, IdentityError, InvocationCompletion,
-    InvocationLease, LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot,
-    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration,
-    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
-    TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
+    InvocationLease, InvocationRequest, LifecycleEvent, RegistryError, SafeRegistrySnapshot,
+    SafeSessionSnapshot, TerminationKind, TerminationReceipt, TransportDeadline, TransportFence,
+    TransportGeneration, TransportInstant, TransportOwnerId, TransportProviderId,
+    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
 };
 
 #[cfg(test)]
