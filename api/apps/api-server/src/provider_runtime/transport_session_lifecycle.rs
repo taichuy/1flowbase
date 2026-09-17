@@ -8,10 +8,11 @@ use std::{
 };
 
 use orchestration_runtime::transport_session::{
-    AdmissionRequest, InvocationCompletion, InvocationLease, InvocationRequest, LifecycleEvent,
-    RegistryError, SafeRegistrySnapshot, SystemTransportClock, TerminationKind, TransportFence,
-    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
-    TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
+    AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationLease, InvocationRequest,
+    LifecycleEvent, RegistryError, SafeRegistrySnapshot, SystemTransportClock, TerminationKind,
+    TransportFence, TransportInstant, TransportOwnerId, TransportProviderId,
+    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
     provider_contract::{
@@ -187,7 +188,7 @@ impl TransportSessionCoordinator {
                 state: ProviderLogicalSessionState::Active,
                 physical_deadline_unix_ms,
             })
-            .map_err(|_| transport_error("transport_session_expired"))?;
+            .map_err(|_| transport_error("transport_session_directive_invalid"))?;
         drop(registry);
         self.dispatch_pending_events_locked().await;
         Ok(Some(PreparedTransportInvocation { lease }))
@@ -478,14 +479,28 @@ fn termination_code(kind: TerminationKind) -> &'static str {
         TerminationKind::ProviderHardMax | TerminationKind::ProviderFault => {
             "provider_connection_max_age"
         }
-        TerminationKind::DeadlineExceeded(_) => "transport_session_expired",
+        TerminationKind::DeadlineExceeded(DeadlineKind::Task) => {
+            "transport_invocation_deadline_exceeded"
+        }
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute) => {
+            "transport_logical_deadline_exceeded"
+        }
+        TerminationKind::DeadlineExceeded(DeadlineKind::StateLease) => {
+            "transport_state_lease_expired"
+        }
+        TerminationKind::DeadlineExceeded(DeadlineKind::PhysicalHard) => {
+            "provider_connection_max_age"
+        }
     }
 }
 
 fn map_registry_admission_error(error: RegistryError) -> anyhow::Error {
     match error {
         RegistryError::Capacity(_) => transport_error("capacity_exceeded"),
-        RegistryError::DeadlineInPast => transport_error("transport_session_expired"),
+        RegistryError::DeadlineInPast => transport_error("provider_connection_max_age"),
+        RegistryError::InflightExists | RegistryError::AlreadyExists => {
+            transport_error("transport_session_busy")
+        }
         _ => transport_error("transport_session_evicted"),
     }
 }
@@ -496,7 +511,17 @@ fn map_registry_use_error(error: RegistryError) -> anyhow::Error {
             transport_error("transport_session_evicted")
         }
         RegistryError::Capacity(_) => transport_error("capacity_exceeded"),
-        _ => transport_error("transport_session_expired"),
+        RegistryError::DeadlineInPast => transport_error("transport_invocation_deadline_exceeded"),
+        RegistryError::InflightExists | RegistryError::InvocationSequenceExhausted => {
+            transport_error("transport_session_busy")
+        }
+        RegistryError::StaleInvocation | RegistryError::NoInflight => {
+            transport_error("transport_session_evicted")
+        }
+        RegistryError::AlreadyExists
+        | RegistryError::InvalidTransition { .. }
+        | RegistryError::GenerationExhausted
+        | RegistryError::InvalidConfig => transport_error("transport_session_evicted"),
     }
 }
 
@@ -511,4 +536,73 @@ fn transport_error(code: &'static str) -> anyhow::Error {
 #[allow(dead_code)]
 fn _assert_runtime_error_is_send(error: RuntimeBackendError) -> RuntimeBackendError {
     error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orchestration_runtime::transport_session::CapacityRejection;
+
+    fn reason(error: anyhow::Error) -> String {
+        error.to_string()
+    }
+
+    #[test]
+    fn termination_reasons_preserve_the_transport_failure_domain() {
+        assert_eq!(
+            termination_code(TerminationKind::DeadlineExceeded(DeadlineKind::Task)),
+            "transport_invocation_deadline_exceeded"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::DeadlineExceeded(
+                DeadlineKind::LogicalAbsolute
+            )),
+            "transport_logical_deadline_exceeded"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)),
+            "transport_state_lease_expired"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::ProviderHardMax),
+            "provider_connection_max_age"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::ProviderFault),
+            "provider_connection_max_age"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::CapacityEvicted),
+            "transport_session_evicted"
+        );
+        assert_eq!(
+            termination_code(TerminationKind::OwnerOrphaned),
+            "transport_session_orphaned"
+        );
+    }
+
+    #[test]
+    fn registry_rejections_have_stable_safe_reasons() {
+        assert!(
+            reason(map_registry_use_error(RegistryError::DeadlineInPast))
+                .contains("transport_invocation_deadline_exceeded")
+        );
+        assert!(
+            reason(map_registry_use_error(RegistryError::InflightExists))
+                .contains("transport_session_busy")
+        );
+        assert!(reason(map_registry_use_error(RegistryError::NotFound))
+            .contains("transport_session_evicted"));
+        assert!(reason(map_registry_admission_error(RegistryError::Capacity(
+            CapacityRejection {
+                capacity: 1,
+                active: 1,
+            }
+        )))
+        .contains("capacity_exceeded"));
+        assert!(
+            reason(map_registry_admission_error(RegistryError::DeadlineInPast))
+                .contains("provider_connection_max_age")
+        );
+    }
 }

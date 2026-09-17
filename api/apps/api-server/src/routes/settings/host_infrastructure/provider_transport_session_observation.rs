@@ -18,23 +18,40 @@ pub(super) fn project(snapshot: SafeRegistrySnapshot) -> Vec<EphemeralEntrySnaps
             let target = session.runtime_target_id.as_str();
             let logical_session = session.fence.session_id.as_str();
             let generation = session.fence.generation.get();
-            let ttl = session.logical_ttl.min(session.physical_ttl);
+            let ttl = session
+                .logical_ttl
+                .min(session.state_ttl)
+                .min(session.physical_ttl);
             let expires_at_ms = observed_at_ms.saturating_add(duration_millis(ttl));
             let metadata = serde_json::json!({
-                "status": state_name(session.state),
-                "owner": session.owner_id.as_str(),
-                "logical_ttl_ms": duration_millis(session.logical_ttl),
-                "physical_ttl_ms": duration_millis(session.physical_ttl),
+                "logical_session": {
+                    "id": logical_session,
+                    "owner": session.owner_id.as_str(),
+                    "ttl_ms": duration_millis(session.logical_ttl),
+                },
+                "state": {
+                    "name": state_name(session.state),
+                    "age_ms": duration_millis(session.state_age),
+                    "ttl_ms": duration_millis(session.state_ttl),
+                    "deadline_kind": deadline_name(session.deadline_kind),
+                    "eviction_priority": session.eviction_priority,
+                },
+                "invocation": {
+                    "active": session.inflight,
+                    "deadline_unix_ms": session.invocation_deadline.map(|deadline| deadline.as_millis()),
+                    "ttl_ms": session.invocation_ttl.map(duration_millis),
+                },
+                "physical_generation": {
+                    "generation": generation,
+                    "downstream_runtime_target_id": target,
+                    "connection_age_ms": duration_millis(session.age),
+                    "ttl_ms": duration_millis(session.physical_ttl),
+                },
+                "handoff": {
+                    "phase": if session.state == TransportSessionState::Draining { "draining" } else { "none" },
+                    "close_acknowledged": null,
+                },
                 "expires_at_unix_ms": expires_at_ms,
-                "generation": generation,
-                "connection_age_ms": duration_millis(session.age),
-                "state_age_ms": duration_millis(session.state_age),
-                "downstream_runtime_target_id": target,
-                "active_invocation": session.inflight,
-                "deadline_kind": deadline_name(session.deadline_kind),
-                "eviction_priority": session.eviction_priority,
-                "close_reason": null,
-                "close_acknowledged": null,
             });
             entry(
                 provider,
@@ -59,20 +76,31 @@ pub(super) fn project(snapshot: SafeRegistrySnapshot) -> Vec<EphemeralEntrySnaps
         let elapsed_ms = observed_at_ms.saturating_sub(receipt.terminated_at.as_millis());
         let remaining_ms = tombstone_ttl_ms.saturating_sub(elapsed_ms);
         let metadata = serde_json::json!({
-            "status": "terminated",
-            "owner": receipt.owner_id.as_str(),
-            "logical_ttl_ms": 0,
-            "physical_ttl_ms": 0,
+            "logical_session": {
+                "id": logical_session,
+                "owner": receipt.owner_id.as_str(),
+            },
+            "state": {
+                "name": "terminated",
+                "previous_name": state_name(receipt.previous_state),
+                "deadline_kind": termination_deadline_name(receipt.kind),
+                "eviction_priority": eviction_priority(receipt.previous_state),
+                "close_reason": termination_name(receipt.kind),
+            },
+            "invocation": {
+                "active": false,
+            },
+            "physical_generation": {
+                "generation": generation,
+                "downstream_runtime_target_id": target,
+                "connection_age_ms": duration_millis(receipt.connection_age),
+            },
+            "handoff": {
+                "phase": "closed",
+                "close_acknowledged": receipt.close_acknowledged,
+            },
             "tombstone_ttl_ms": remaining_ms,
             "expires_at_unix_ms": receipt.terminated_at.as_millis().saturating_add(tombstone_ttl_ms),
-            "generation": generation,
-            "connection_age_ms": duration_millis(receipt.connection_age),
-            "downstream_runtime_target_id": target,
-            "active_invocation": false,
-            "deadline_kind": termination_deadline_name(receipt.kind),
-            "eviction_priority": eviction_priority(receipt.previous_state),
-            "close_reason": termination_name(receipt.kind),
-            "close_acknowledged": receipt.close_acknowledged,
         });
         entry(
             provider,
@@ -161,7 +189,7 @@ fn state_name(state: TransportSessionState) -> &'static str {
 
 fn deadline_name(kind: DeadlineKind) -> &'static str {
     match kind {
-        DeadlineKind::Task => "task",
+        DeadlineKind::Task => "invocation",
         DeadlineKind::LogicalAbsolute => "logical_absolute",
         DeadlineKind::StateLease => "state_lease",
         DeadlineKind::PhysicalHard => "physical_hard",
@@ -202,8 +230,8 @@ fn eviction_priority(state: TransportSessionState) -> Option<u8> {
 mod tests {
     use super::*;
     use orchestration_runtime::transport_session::{
-        AdmissionRequest, TransportClock, TransportInstant, TransportOwnerId, TransportProviderId,
-        TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+        AdmissionRequest, InvocationRequest, TransportClock, TransportInstant, TransportOwnerId,
+        TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
         TransportSessionRegistry,
     };
 
@@ -228,17 +256,32 @@ mod tests {
                 owner_id: TransportOwnerId::new("owner-a").unwrap(),
                 provider_id: TransportProviderId::new("provider-a").unwrap(),
                 runtime_target_id: TransportRuntimeTargetId::new("runtime-target-a").unwrap(),
-                task_deadline: None,
                 provider_hard_deadline: None,
             })
             .unwrap();
         registry.activate(&fence).unwrap();
-        registry.begin_invocation(&fence).unwrap();
+        let lease = registry
+            .begin_invocation(
+                &fence,
+                InvocationRequest {
+                    deadline: Some(TransportInstant::from_millis(25_000)),
+                },
+            )
+            .unwrap();
 
         let entries = project(registry.safe_snapshot());
         assert_eq!(entries[0].inspection_path, ["provider-a", "logical-a", "1"]);
-        assert_eq!(entries[0].ttl_seconds, Some(30));
-        assert_eq!(entries[0].metadata["active_invocation"], true);
+        assert_eq!(entries[0].metadata["logical_session"]["ttl_ms"], 7_200_000);
+        assert_eq!(entries[0].metadata["state"]["ttl_ms"], 7_200_000);
+        assert_eq!(entries[0].metadata["invocation"]["active"], true);
+        assert_eq!(
+            entries[0].metadata["invocation"]["deadline_unix_ms"],
+            lease.deadline().as_millis()
+        );
+        assert_eq!(entries[0].metadata["invocation"]["ttl_ms"], 15_000);
+        assert_eq!(entries[0].metadata["physical_generation"]["generation"], 1);
+        assert_eq!(entries[0].metadata["handoff"]["phase"], "none");
+        assert!(entries[0].metadata["invocation"].get("sequence").is_none());
         let encoded = serde_json::to_string(&entries).unwrap();
         for forbidden in [
             "credential",
@@ -253,5 +296,36 @@ mod tests {
                 "leaked forbidden field {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn projects_tombstone_close_ack_without_inventing_handoff_history() {
+        let clock = FixedClock(TransportInstant::from_millis(10_000));
+        let mut registry =
+            TransportSessionRegistry::new(clock, TransportRegistryConfig::default()).unwrap();
+        let fence = registry
+            .admit(AdmissionRequest {
+                session_id: TransportSessionId::new("logical-a").unwrap(),
+                owner_id: TransportOwnerId::new("owner-a").unwrap(),
+                provider_id: TransportProviderId::new("provider-a").unwrap(),
+                runtime_target_id: TransportRuntimeTargetId::new("runtime-target-a").unwrap(),
+                provider_hard_deadline: None,
+            })
+            .unwrap();
+        registry.activate(&fence).unwrap();
+        registry
+            .terminate(&fence, TerminationKind::OwnerOrphaned)
+            .unwrap();
+        registry.record_close_acknowledgement(&fence, true).unwrap();
+
+        let entries = project(registry.safe_snapshot());
+        assert_eq!(entries[0].metadata["state"]["previous_name"], "active");
+        assert_eq!(
+            entries[0].metadata["state"]["close_reason"],
+            "owner_orphaned"
+        );
+        assert_eq!(entries[0].metadata["handoff"]["phase"], "closed");
+        assert_eq!(entries[0].metadata["handoff"]["close_acknowledged"], true);
+        assert!(entries[0].metadata["invocation"].get("sequence").is_none());
     }
 }
