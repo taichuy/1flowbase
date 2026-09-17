@@ -49,6 +49,7 @@ pub use crate::code_runtime::{
     execute_code_node, CodeInvocationOutput, CodeInvoker, ConsoleLogEntry, QuickJsCodeInvoker,
 };
 
+pub mod ai_native_recovery;
 pub mod branching;
 mod compact_operation;
 mod http_request;
@@ -116,6 +117,7 @@ pub struct ProviderInvocationOutput {
 pub struct ResolvedProviderRoute {
     pub runtime_capabilities: BTreeSet<String>,
     runtime_plugin_id: Option<String>,
+    retry_partition: Option<ai_native_recovery::ProviderRetryPartition>,
     invocation_pin: Arc<dyn Any + Send + Sync>,
 }
 
@@ -138,6 +140,7 @@ impl ResolvedProviderRoute {
         Self {
             runtime_capabilities,
             runtime_plugin_id: None,
+            retry_partition: None,
             invocation_pin: Arc::new(invocation_pin),
         }
     }
@@ -149,6 +152,18 @@ impl ResolvedProviderRoute {
 
     pub fn runtime_plugin_id(&self) -> Option<&str> {
         self.runtime_plugin_id.as_deref()
+    }
+
+    pub fn with_retry_partition(
+        mut self,
+        retry_partition: ai_native_recovery::ProviderRetryPartition,
+    ) -> Self {
+        self.retry_partition = Some(retry_partition);
+        self
+    }
+
+    pub fn retry_partition(&self) -> Option<&ai_native_recovery::ProviderRetryPartition> {
+        self.retry_partition.as_ref()
     }
 
     pub fn invocation_pin<T>(&self) -> Option<&T>

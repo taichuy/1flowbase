@@ -883,6 +883,12 @@ where
             first_runtime_ingress_ms(&runtime_stream_timing),
             max_runtime_flush_ms(&runtime_stream_timing),
         )?;
+        // Keep the typed recovery receipt at the Host-owned metadata surface while wrapping
+        // upstream diagnostics. AI Native must not parse nested Provider Close/cursor payloads.
+        let recovery_receipt = invocation_output
+            .result
+            .recovery_receipt()
+            .map_err(anyhow::Error::msg)?;
         if let Some(account) = self
             .flow_execution_context
             .as_ref()
@@ -900,6 +906,12 @@ where
                 "_1flowbase_runtime_stream_timing": runtime_stream_timing,
                 "_1flowbase_upstream_provider_metadata": provider_metadata,
             });
+        }
+        if let Some(receipt) = recovery_receipt {
+            invocation_output
+                .result
+                .set_recovery_receipt(receipt)
+                .map_err(anyhow::Error::msg)?;
         }
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
         let mut output = orchestration_runtime::execution_engine::ProviderInvocationOutput {
