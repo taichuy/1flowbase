@@ -17,6 +17,8 @@ struct InMemoryOrchestrationRuntimeState {
     events_by_flow_run_id: HashMap<Uuid, Vec<domain::RunEventRecord>>,
     runtime_spans_by_flow_run_id: HashMap<Uuid, Vec<domain::RuntimeSpanRecord>>,
     runtime_events_by_flow_run_id: HashMap<Uuid, Vec<domain::RuntimeEventRecord>>,
+    runtime_delivery_claims: HashMap<Uuid, (Uuid, i64, OffsetDateTime)>,
+    runtime_delivery_acked: std::collections::HashSet<Uuid>,
     runtime_items_by_flow_run_id: HashMap<Uuid, Vec<domain::RuntimeItemRecord>>,
     context_projections_by_flow_run_id: HashMap<Uuid, Vec<domain::ContextProjectionRecord>>,
     canonical_runtime_contents_by_id: HashMap<Uuid, domain::CanonicalRuntimeContentRecord>,

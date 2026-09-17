@@ -24,14 +24,84 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     } = stream;
     let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
     let mut emitted_answer_delta = false;
-    if forward_ordered_typed_events(
+    let mut delivery_claims = match terminal_dependencies
+        .claim_runtime_event_deliveries(initial_run.id)
+        .await
+    {
+        Ok(claims) => claims,
+        Err(error) => {
+            warn!(
+                flow_run_id = %initial_run.id,
+                error = %error,
+                "failed to claim pending Responses tool deliveries"
+            );
+            Vec::new()
+        }
+    };
+    let mut delivered_claim_events = Vec::new();
+    for event in subscription.replay {
+        if is_public_terminal_runtime_event(&event.event_type)
+            && !delivery_claims.is_empty()
+            && forward_pending_delivery_claims(
+                &terminal_dependencies,
+                &initial_run,
+                &sender,
+                &mut delivery_claims,
+                &mut delivered_claim_events,
+            )
+            .await
+        {
+            return;
+        }
+        let matching_claim = delivery_claims
+            .iter()
+            .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
+        if is_committed_tool_delivery(&event) && matching_claim.is_none() {
+            // A committed tool event is projected only by the owner of its
+            // durable delivery claim. An already-ACKed replay must not execute
+            // the client tool a second time.
+            last_forwarded_sequence = last_forwarded_sequence.max(event.sequence);
+            continue;
+        }
+        if forward_ordered_typed_events(
+            &terminal_dependencies,
+            &initial_run,
+            &sender,
+            ignored_waiting_callback_task_id,
+            &mut last_forwarded_sequence,
+            &mut emitted_answer_delta,
+            vec![event],
+        )
+        .await
+        {
+            release_delivery_claims(&terminal_dependencies, &delivery_claims).await;
+            return;
+        }
+        if let Some(index) = matching_claim {
+            let delivery = delivery_claims.remove(index);
+            delivered_claim_events.push((
+                delivery.event.event_type.clone(),
+                delivery.event.payload.clone(),
+            ));
+            if let Err(error) = terminal_dependencies
+                .ack_runtime_event_delivery(&delivery)
+                .await
+            {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    runtime_event_id = %delivery.event.id,
+                    error = %error,
+                    "failed to acknowledge replayed Responses tool delivery"
+                );
+            }
+        }
+    }
+    if forward_pending_delivery_claims(
         &terminal_dependencies,
         &initial_run,
         &sender,
-        ignored_waiting_callback_task_id,
-        &mut last_forwarded_sequence,
-        &mut emitted_answer_delta,
-        subscription.replay,
+        &mut delivery_claims,
+        &mut delivered_claim_events,
     )
     .await
     {
@@ -39,6 +109,64 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     }
 
     while let Some(event) = subscription.live_events.recv().await {
+        if delivered_claim_events.iter().any(|(event_type, payload)| {
+            event_type == &event.event_type && payload == &event.payload
+        }) {
+            last_forwarded_sequence = last_forwarded_sequence.max(event.sequence);
+            continue;
+        }
+        if is_committed_tool_delivery(&event) {
+            let mut claims = match terminal_dependencies
+                .claim_runtime_event_deliveries(initial_run.id)
+                .await
+            {
+                Ok(claims) => claims,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        error = %error,
+                        "failed to claim live Responses tool delivery"
+                    );
+                    continue;
+                }
+            };
+            let Some(index) = claims
+                .iter()
+                .position(|delivery| runtime_delivery_matches_envelope(delivery, &event))
+            else {
+                release_delivery_claims(&terminal_dependencies, &claims).await;
+                continue;
+            };
+            let delivery = claims.remove(index);
+            if forward_ordered_typed_events(
+                &terminal_dependencies,
+                &initial_run,
+                &sender,
+                ignored_waiting_callback_task_id,
+                &mut last_forwarded_sequence,
+                &mut emitted_answer_delta,
+                vec![event],
+            )
+            .await
+            {
+                claims.push(delivery);
+                release_delivery_claims(&terminal_dependencies, &claims).await;
+                return;
+            }
+            if let Err(error) = terminal_dependencies
+                .ack_runtime_event_delivery(&delivery)
+                .await
+            {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    runtime_event_id = %delivery.event.id,
+                    error = %error,
+                    "failed to acknowledge live Responses tool delivery"
+                );
+            }
+            release_delivery_claims(&terminal_dependencies, &claims).await;
+            continue;
+        }
         if forward_ordered_typed_events(
             &terminal_dependencies,
             &initial_run,
@@ -53,6 +181,86 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
             return;
         }
     }
+}
+
+fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
+    event
+        .payload
+        .get("committed_delivery")
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+fn runtime_delivery_matches_envelope(
+    delivery: &RuntimeEventDeliveryClaim,
+    event: &RuntimeEventEnvelope,
+) -> bool {
+    delivery.event.event_type == event.event_type && delivery.event.payload == event.payload
+}
+
+async fn release_delivery_claims(
+    terminal_dependencies: &NativeRunTerminalDependencies,
+    deliveries: &[RuntimeEventDeliveryClaim],
+) {
+    for delivery in deliveries {
+        if let Err(error) = terminal_dependencies
+            .release_runtime_event_delivery(delivery)
+            .await
+        {
+            warn!(
+                flow_run_id = %delivery.event.flow_run_id,
+                runtime_event_id = %delivery.event.id,
+                error = %error,
+                "failed to release unprojected Responses tool delivery"
+            );
+        }
+    }
+}
+
+async fn forward_pending_delivery_claims(
+    terminal_dependencies: &NativeRunTerminalDependencies,
+    initial_run: &NativeRunResult,
+    sender: &mpsc::Sender<CompatibleProjectionInput>,
+    deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
+    delivered_claim_events: &mut Vec<(String, Value)>,
+) -> bool {
+    while !deliveries.is_empty() {
+        let delivery = deliveries.remove(0);
+        let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
+        let mut run = initial_run.clone();
+        if let Some(round_id) = initial_run.metadata.get("response_round_id") {
+            run.metadata["response_round_id"] = round_id.clone();
+        }
+        if sender
+            .send(CompatibleProjectionInput {
+                run_snapshot: run,
+                envelope,
+            })
+            .await
+            .is_err()
+        {
+            let mut unprojected = vec![delivery];
+            unprojected.append(deliveries);
+            release_delivery_claims(terminal_dependencies, &unprojected).await;
+            return true;
+        }
+        delivered_claim_events.push((
+            delivery.event.event_type.clone(),
+            delivery.event.payload.clone(),
+        ));
+        if let Err(error) = terminal_dependencies
+            .ack_runtime_event_delivery(&delivery)
+            .await
+        {
+            warn!(
+                flow_run_id = %delivery.event.flow_run_id,
+                runtime_event_id = %delivery.event.id,
+                error = %error,
+                "failed to acknowledge projected Responses tool delivery"
+            );
+        }
+    }
+    false
 }
 
 async fn forward_ordered_typed_events(
@@ -459,7 +667,6 @@ fn log_compatible_sse_closed(
     );
 }
 
-#[cfg(test)]
 fn durable_record_to_runtime_event_envelope(
     record: domain::RuntimeEventRecord,
 ) -> RuntimeEventEnvelope {
@@ -498,7 +705,6 @@ fn durable_record_to_runtime_event_envelope(
     }
 }
 
-#[cfg(test)]
 fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {
         value
@@ -507,7 +713,6 @@ fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     })
 }
 
-#[cfg(test)]
 fn compat_payload_string(payload: &Value, key: &str) -> Option<String> {
     payload
         .get(key)

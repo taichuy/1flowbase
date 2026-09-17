@@ -373,6 +373,103 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
 }
 
 #[tokio::test]
+async fn committed_tool_delivery_stays_pending_until_protocol_ack() {
+    use plugin_framework::provider_contract::{
+        ProviderFinishReason, ProviderInvocationResult, ProviderOutputItemPhase,
+        ProviderStreamEvent, ProviderToolCall,
+    };
+
+    for fail_delivery_append in [false, true] {
+        let tool_call = ProviderToolCall {
+            id: "call_weather".to_string(),
+            name: "lookup_weather".to_string(),
+            arguments: json!({"city":"Shanghai"}),
+            provider_metadata: json!({}),
+        };
+        let item = json!({
+            "type":"function_call",
+            "id":"item_weather",
+            "call_id":"call_weather",
+            "name":"lookup_weather",
+            "arguments":"{\"city\":\"Shanghai\"}"
+        });
+        let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![
+            crate::ports::ProviderRuntimeInvocationOutput {
+                events: vec![
+                    ProviderStreamEvent::OutputItem {
+                        phase: ProviderOutputItemPhase::Added,
+                        output_index: 0,
+                        item: item.clone(),
+                    },
+                    ProviderStreamEvent::OutputItem {
+                        phase: ProviderOutputItemPhase::Done,
+                        output_index: 0,
+                        item,
+                    },
+                    ProviderStreamEvent::Finish {
+                        reason: ProviderFinishReason::ToolCall,
+                    },
+                ],
+                result: ProviderInvocationResult {
+                    tool_calls: vec![tool_call],
+                    finish_reason: Some(ProviderFinishReason::ToolCall),
+                    provider_metadata: json!({}),
+                    ..ProviderInvocationResult::default()
+                },
+            },
+        ]);
+        let stream =
+            std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+        let service = service.with_runtime_event_stream(stream.clone());
+        let seeded = service.seed_application_with_flow("Delivery Agent").await;
+        let started = service
+            .start_flow_debug_run(StartFlowDebugRunCommand {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                input_payload: json!({"node-start":{"query":"weather"}}),
+                document_snapshot: None,
+                debug_session_id: None,
+            })
+            .await
+            .unwrap();
+        if fail_delivery_append {
+            stream.fail_event_type_once("provider_output_item_done");
+        }
+        let waiting = service
+            .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+                application_id: seeded.application_id,
+                flow_run_id: started.flow_run.id,
+                workspace_id: Uuid::nil(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            waiting.flow_run.status,
+            domain::FlowRunStatus::WaitingCallback,
+            "flow error: {:?}",
+            waiting.flow_run.error_payload
+        );
+
+        let pending = service
+            .claim_runtime_deliveries_for_tests(waiting.flow_run.id)
+            .await;
+        assert_eq!(
+            pending.len(),
+            1,
+            "a process-local append is not a protocol delivery acknowledgement"
+        );
+        assert_eq!(
+            stream
+                .events()
+                .iter()
+                .filter(|event| event.event_type == "provider_output_item_done")
+                .count(),
+            usize::from(!fail_delivery_append)
+        );
+    }
+}
+
+#[tokio::test]
 async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderToolCall, ProviderUsage,

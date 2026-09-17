@@ -43,10 +43,11 @@ use control_plane_contracts::{
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
-        ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
-        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
-        SettleCreditInput, ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
+        ReleaseRuntimeEventDeliveryInput, ReplaceApplicationRunTraceProjectionInput,
+        ReserveCreditInput, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
+        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, RollbackLegacyRuntimeShadowResult,
+        RuntimeContextContentVersion, RuntimeEventDeliveryClaim, SettleCreditInput,
+        ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
         UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
         UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
         UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
@@ -419,6 +420,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AckRuntimeEventDeliveryInput,
     ) -> Result<domain::RuntimeEventRecord> {
         PgControlPlaneStore::ack_runtime_event_delivery(self, input).await
+    }
+
+    async fn release_runtime_event_delivery(
+        &self,
+        input: &ReleaseRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::release_runtime_event_delivery(self, input).await
     }
 
     async fn append_runtime_item(

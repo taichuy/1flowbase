@@ -770,6 +770,107 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         Ok(event)
     }
 
+    async fn claim_runtime_event_deliveries(
+        &self,
+        input: &crate::ports::ClaimRuntimeEventDeliveriesInput,
+    ) -> Result<Vec<crate::ports::RuntimeEventDeliveryClaim>> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let now = OffsetDateTime::now_utc();
+        let events = inner
+            .runtime_events_by_flow_run_id
+            .get(&input.flow_run_id)
+            .cloned()
+            .unwrap_or_default();
+        let mut deliveries = Vec::new();
+        for event in events {
+            if deliveries.len() == input.limit
+                || inner.runtime_delivery_acked.contains(&event.id)
+                || event
+                    .payload
+                    .get("committed_delivery")
+                    .and_then(Value::as_bool)
+                    != Some(true)
+            {
+                continue;
+            }
+            let previous_generation = match inner.runtime_delivery_claims.get(&event.id) {
+                Some((_, generation, lease_expires_at)) if *lease_expires_at > now => continue,
+                Some((_, generation, _)) => *generation,
+                None => 0,
+            };
+            let claim_token = Uuid::now_v7();
+            let generation = previous_generation + 1;
+            let lease_expires_at = now + time::Duration::seconds(input.lease_seconds);
+            inner
+                .runtime_delivery_claims
+                .insert(event.id, (claim_token, generation, lease_expires_at));
+            deliveries.push(crate::ports::RuntimeEventDeliveryClaim {
+                event,
+                claim_token,
+                generation,
+                lease_expires_at,
+            });
+        }
+        Ok(deliveries)
+    }
+
+    async fn ack_runtime_event_delivery(
+        &self,
+        input: &crate::ports::AckRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let owned = inner
+            .runtime_delivery_claims
+            .get(&input.event_id)
+            .is_some_and(|(token, generation, _)| {
+                *token == input.claim_token && *generation == input.expected_generation
+            });
+        if !owned {
+            return Err(crate::errors::ControlPlaneError::Conflict(
+                "runtime_event_delivery_claim_not_owned",
+            )
+            .into());
+        }
+        let event = inner
+            .runtime_events_by_flow_run_id
+            .values()
+            .flatten()
+            .find(|event| event.id == input.event_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("runtime delivery event not found"))?;
+        inner.runtime_delivery_claims.remove(&input.event_id);
+        inner.runtime_delivery_acked.insert(input.event_id);
+        Ok(event)
+    }
+
+    async fn release_runtime_event_delivery(
+        &self,
+        input: &crate::ports::ReleaseRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let owned = inner
+            .runtime_delivery_claims
+            .get(&input.event_id)
+            .is_some_and(|(token, generation, _)| {
+                *token == input.claim_token && *generation == input.expected_generation
+            });
+        if !owned {
+            return Err(crate::errors::ControlPlaneError::Conflict(
+                "runtime_event_delivery_claim_not_owned",
+            )
+            .into());
+        }
+        let event = inner
+            .runtime_events_by_flow_run_id
+            .values()
+            .flatten()
+            .find(|event| event.id == input.event_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("runtime delivery event not found"))?;
+        inner.runtime_delivery_claims.remove(&input.event_id);
+        Ok(event)
+    }
+
     async fn append_runtime_item(
         &self,
         input: &AppendRuntimeItemInput,
@@ -1221,6 +1322,29 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .runtime_events_by_flow_run_id
             .entry(input.flow_run_id)
             .or_default();
+        let mut tool_delivery_events = Vec::with_capacity(input.tool_delivery_events.len());
+        for event in &input.tool_delivery_events {
+            let record = domain::RuntimeEventRecord {
+                id: Uuid::now_v7(),
+                flow_run_id: input.flow_run_id,
+                node_run_id: event.node_run_id,
+                span_id: event.span_id,
+                parent_span_id: event.parent_span_id,
+                sequence: i64::try_from(events.len() + 1)?,
+                event_type: event.event_type.clone(),
+                layer: event.layer,
+                source: event.source,
+                trust_level: event.trust_level,
+                item_id: event.item_id,
+                ledger_ref: event.ledger_ref.clone(),
+                payload: event.payload.clone(),
+                visibility: event.visibility,
+                durability: event.durability,
+                created_at: OffsetDateTime::now_utc(),
+            };
+            events.push(record.clone());
+            tool_delivery_events.push(record);
+        }
         let waiting_event = domain::RuntimeEventRecord {
             id: Uuid::now_v7(),
             flow_run_id: input.flow_run_id,
@@ -1302,29 +1426,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             checkpoint,
             callback_task,
             waiting_event,
-            tool_delivery_events: input
-                .tool_delivery_events
-                .iter()
-                .enumerate()
-                .map(|(index, event)| domain::RuntimeEventRecord {
-                    id: Uuid::now_v7(),
-                    flow_run_id: input.flow_run_id,
-                    node_run_id: event.node_run_id,
-                    span_id: event.span_id,
-                    parent_span_id: event.parent_span_id,
-                    sequence: index as i64 + 1,
-                    event_type: event.event_type.clone(),
-                    layer: event.layer,
-                    source: event.source,
-                    trust_level: event.trust_level,
-                    item_id: event.item_id,
-                    ledger_ref: event.ledger_ref.clone(),
-                    payload: event.payload.clone(),
-                    visibility: event.visibility,
-                    durability: event.durability,
-                    created_at: OffsetDateTime::now_utc(),
-                })
-                .collect(),
+            tool_delivery_events,
             recovery_history,
         }))
     }

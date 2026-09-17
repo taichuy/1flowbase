@@ -13,7 +13,10 @@ use control_plane::{
         FinalizePublishedRunMissingStreamTerminalCommand, OrchestrationRuntimeService,
     },
     ports::{
-        RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
+        AckRuntimeEventDeliveryInput, ClaimRuntimeEventDeliveriesInput,
+        OrchestrationRuntimeRepository, ReleaseRuntimeEventDeliveryInput,
+        RuntimeEventDeliveryClaim, RuntimeEventDurability, RuntimeEventEnvelope,
+        RuntimeEventPayload, RuntimeEventSource,
     },
 };
 use serde_json::{json, Value};
@@ -53,6 +56,48 @@ impl NativeRunTerminalDependencies {
             provider_transport_store,
             runtime_event_stream,
         }
+    }
+
+    pub(crate) async fn claim_runtime_event_deliveries(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+        self.store
+            .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+                flow_run_id,
+                limit: 128,
+                lease_seconds: 30,
+            })
+            .await
+    }
+
+    pub(crate) async fn ack_runtime_event_delivery(
+        &self,
+        delivery: &RuntimeEventDeliveryClaim,
+    ) -> anyhow::Result<()> {
+        self.store
+            .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+                event_id: delivery.event.id,
+                claim_token: delivery.claim_token,
+                expected_generation: delivery.generation,
+                acknowledged_at: time::OffsetDateTime::now_utc(),
+            })
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn release_runtime_event_delivery(
+        &self,
+        delivery: &RuntimeEventDeliveryClaim,
+    ) -> anyhow::Result<()> {
+        self.store
+            .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+                event_id: delivery.event.id,
+                claim_token: delivery.claim_token,
+                expected_generation: delivery.generation,
+            })
+            .await?;
+        Ok(())
     }
 }
 

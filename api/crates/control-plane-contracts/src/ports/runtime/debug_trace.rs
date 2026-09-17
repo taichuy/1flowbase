@@ -357,6 +357,13 @@ pub struct AckRuntimeEventDeliveryInput {
     pub acknowledged_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReleaseRuntimeEventDeliveryInput {
+    pub event_id: Uuid,
+    pub claim_token: Uuid,
+    pub expected_generation: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResumeClaimKind {
     Human,

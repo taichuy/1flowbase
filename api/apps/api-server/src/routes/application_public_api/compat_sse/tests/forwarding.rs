@@ -45,6 +45,213 @@ fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
     )
 }
 
+#[tokio::test]
+async fn typed_responses_stream_claims_orders_deduplicates_and_acks_pending_tool_deliveries() {
+    use control_plane::ports::{AppendRuntimeEventInput, RuntimeEventSubscription};
+
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let payloads = [
+        json!({
+            "committed_delivery": true,
+            "item": {"type":"function_call","call_id":"call-1","name":"first"}
+        }),
+        json!({
+            "committed_delivery": true,
+            "item": {"type":"function_call","call_id":"call-2","name":"second"}
+        }),
+    ];
+    let mut records = Vec::new();
+    for payload in &payloads {
+        let record = state
+            .store
+            .append_runtime_event(&AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: None,
+                span_id: None,
+                parent_span_id: None,
+                event_type: "provider_output_item_done".to_string(),
+                layer: domain::RuntimeEventLayer::ProviderRaw,
+                source: domain::RuntimeEventSource::ProviderPlugin,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: payload.clone(),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            })
+            .await
+            .unwrap();
+        sqlx::query("update runtime_events set delivery_status = 'pending' where id = $1")
+            .bind(record.id)
+            .execute(state.store.pool())
+            .await
+            .unwrap();
+        records.push(record);
+    }
+
+    let replay = vec![RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        RuntimeEventPayload {
+            event_type: "provider_output_item_done".to_string(),
+            source: RuntimeEventSource::Provider,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: false,
+            trace_visible: true,
+            payload: payloads[0].clone(),
+        },
+    )];
+    let (_live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    drop(_live_sender);
+    let (_closure_sender, closure) = tokio::sync::watch::channel(None);
+    let (sender, mut receiver) = mpsc::channel(8);
+    send_subscribed_compatible_typed_event_stream(SubscribedCompatibleTypedEventStream {
+        terminal_dependencies: NativeRunTerminalDependencies::new(
+            state.store.clone(),
+            state.runtime_engine.clone(),
+            state.provider_runtime.clone(),
+            state.provider_secret_master_key.clone(),
+            state.model_billing_require_provider_usage,
+            state.infrastructure.provider_transport_store(),
+            state.runtime_event_stream.clone(),
+        ),
+        initial_run: run.clone(),
+        from_sequence: None,
+        ignored_waiting_callback_task_id: None,
+        subscription: RuntimeEventSubscription {
+            replay,
+            live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live_events),
+            closure,
+        },
+        sender,
+    })
+    .await;
+    let mut forwarded = Vec::new();
+    while let Some(input) = receiver.recv().await {
+        forwarded.push(input.into_parts().1);
+    }
+    assert_eq!(forwarded.len(), 2);
+    assert_eq!(forwarded[0].payload, payloads[0]);
+    assert_eq!(forwarded[1].payload, payloads[1]);
+
+    let statuses = sqlx::query_scalar::<_, String>(
+        "select delivery_status from runtime_events where id = any($1) order by sequence",
+    )
+    .bind(records.iter().map(|record| record.id).collect::<Vec<_>>())
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(statuses, vec!["acked", "acked"]);
+
+    let claims = state
+        .store
+        .claim_runtime_event_deliveries(&control_plane::ports::ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 8,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert!(claims.is_empty(), "acked deliveries must not replay");
+}
+
+#[tokio::test]
+async fn typed_responses_stream_claims_and_acks_a_live_committed_tool_delivery() {
+    use control_plane::ports::{AppendRuntimeEventInput, RuntimeEventSubscription};
+
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let payload = json!({
+        "committed_delivery": true,
+        "item": {"type":"function_call","call_id":"call-live","name":"live"}
+    });
+    let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    let (_closure_sender, closure) = tokio::sync::watch::channel(None);
+    let (sender, mut receiver) = mpsc::channel(8);
+    let forwarding = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: NativeRunTerminalDependencies::new(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.model_billing_require_provider_usage,
+                state.infrastructure.provider_transport_store(),
+                state.runtime_event_stream.clone(),
+            ),
+            initial_run: run.clone(),
+            from_sequence: None,
+            ignored_waiting_callback_task_id: None,
+            subscription: RuntimeEventSubscription {
+                replay: Vec::new(),
+                live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(
+                    live_events,
+                ),
+                closure,
+            },
+            sender,
+        },
+    ));
+    tokio::task::yield_now().await;
+
+    let record = state
+        .store
+        .append_runtime_event(&AppendRuntimeEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "provider_output_item_done".to_string(),
+            layer: domain::RuntimeEventLayer::ProviderRaw,
+            source: domain::RuntimeEventSource::ProviderPlugin,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: payload.clone(),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        })
+        .await
+        .unwrap();
+    sqlx::query("update runtime_events set delivery_status = 'pending' where id = $1")
+        .bind(record.id)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    live_sender
+        .send(RuntimeEventEnvelope::new(
+            run.id,
+            record.sequence,
+            RuntimeEventPayload {
+                event_type: record.event_type.clone(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: false,
+                trace_visible: true,
+                payload: payload.clone(),
+            },
+        ))
+        .unwrap();
+    drop(live_sender);
+    forwarding.await.unwrap();
+
+    let forwarded = receiver.recv().await.expect("live committed delivery");
+    assert_eq!(forwarded.into_parts().1.payload, payload);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "select delivery_status from runtime_events where id = $1",
+        )
+        .bind(record.id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap(),
+        "acked"
+    );
+}
+
 async fn native_sse_body_from_replay(
     base_state: &ApiState,
     run: NativeRunResult,

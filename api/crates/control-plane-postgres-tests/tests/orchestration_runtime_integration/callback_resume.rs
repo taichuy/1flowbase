@@ -159,13 +159,14 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
         .unwrap()
         .is_empty());
 
-    sqlx::query(
-        "update runtime_events set delivery_lease_expires_at = now() - interval '1 second' where id = $1",
-    )
-    .bind(first[0].event.id)
-    .execute(store.pool())
-    .await
-    .unwrap();
+    store
+        .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+            event_id: first[0].event.id,
+            claim_token: first[0].claim_token,
+            expected_generation: first[0].generation,
+        })
+        .await
+        .unwrap();
     let second = store
         .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
             flow_run_id: run.id,

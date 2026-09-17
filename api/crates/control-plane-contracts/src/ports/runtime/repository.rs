@@ -314,6 +314,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = input;
         anyhow::bail!("ack_runtime_event_delivery not implemented")
     }
+    async fn release_runtime_event_delivery(
+        &self,
+        input: &ReleaseRuntimeEventDeliveryInput,
+    ) -> anyhow::Result<domain::RuntimeEventRecord> {
+        let _ = input;
+        anyhow::bail!("release_runtime_event_delivery not implemented")
+    }
     async fn acquire_resume_claim(
         &self,
         input: &AcquireResumeClaimInput,

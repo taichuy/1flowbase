@@ -469,6 +469,7 @@ where
                 .callback_task
                 .ok_or_else(|| anyhow!("persisted waiting callback is missing callback task"))?;
             stream_events.extend(presentation_events);
+            stream_events.extend(tool_delivery_events);
             let assistant_execution = flow_run.run_mode == domain::FlowRunMode::AssistantExecution
                 && wait.callback_kind == "llm_tool_calls";
             // Assistant LLM tool callbacks are completed by the server, so this
@@ -477,7 +478,6 @@ where
                 stream_events.push(waiting_event);
                 close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingCallback);
             }
-            stream_events.extend(tool_delivery_events);
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
             ensure_flow_run_transition(
