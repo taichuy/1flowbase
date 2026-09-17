@@ -10,14 +10,15 @@ use extension_contracts::provider_contract::{
     ProviderCountTokensResult, ProviderGenerateProjectionError,
     ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
     ProviderInvocationResult, ProviderInvocationTerminationKind, ProviderInvocationTimingReceipt,
-    ProviderLogicalSessionState, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
-    ProviderNetworkEgressContext, ProviderNetworkEgressMode, ProviderOutputItemPhase,
-    ProviderOutputProtocolFailure, ProviderPhysicalTransportState, ProviderProjectionErrorCode,
-    ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
-    ProviderRecoveryDirective, ProviderRecoveryReceipt, ProviderResetCreditOperation,
-    ProviderResetCreditResult, ProviderResetCreditRuntimeInput, ProviderRuntimeError,
-    ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-    ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderTransportSessionAction,
+    ProviderInvocationTransportOutcome, ProviderLifecycleAckOutcome, ProviderLogicalSessionState,
+    ProviderMessage, ProviderMessageRole, ProviderNativeTransport, ProviderNetworkEgressContext,
+    ProviderNetworkEgressMode, ProviderOutputItemPhase, ProviderOutputProtocolFailure,
+    ProviderPhysicalTransportState, ProviderProjectionErrorCode, ProviderProjectionFidelity,
+    ProviderProjectionLossCode, ProviderProjectionSource, ProviderRecoveryDirective,
+    ProviderRecoveryReceipt, ProviderResetCreditOperation, ProviderResetCreditResult,
+    ProviderResetCreditRuntimeInput, ProviderRuntimeError, ProviderRuntimeErrorKind,
+    ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
+    ProviderStreamEvent, ProviderToolCall, ProviderTransportSessionAction,
     ProviderTransportSessionCloseReason, ProviderTransportSessionCommand,
     ProviderTransportSessionDirective, ProviderTransportSessionReceipt, ProviderUsage,
     ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation, RecoveryBudget,
@@ -280,6 +281,118 @@ fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
         serde_json::to_value(request).unwrap()["method"],
         "transport_session"
     );
+}
+
+#[test]
+fn transport_outcomes_keep_receipt_generation_fault_and_ack_domains_distinct() {
+    let empty = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    assert_eq!(
+        empty.transport_outcome(7, None).unwrap(),
+        ProviderInvocationTransportOutcome::ReceiptMissing
+    );
+
+    let mut stale = empty.clone();
+    let stale_receipt = ProviderTransportSessionReceipt {
+        generation: 6,
+        reused: true,
+        physical_state: ProviderPhysicalTransportState::Ready,
+        connection_age_ms: 42,
+        ttl_remaining_ms: 100,
+        close_reason: None,
+        close_acknowledged: None,
+    };
+    stale.set_transport_session_receipt(stale_receipt).unwrap();
+    assert_eq!(
+        stale.transport_outcome(7, None).unwrap(),
+        ProviderInvocationTransportOutcome::StaleGeneration {
+            expected_generation: 7,
+            received_generation: 6,
+        }
+    );
+
+    let fault_receipt = ProviderTransportSessionReceipt {
+        generation: 7,
+        reused: true,
+        physical_state: ProviderPhysicalTransportState::Faulted,
+        connection_age_ms: 42,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::TransportFault),
+        close_acknowledged: None,
+    };
+    let mut fault = empty;
+    fault
+        .set_transport_session_receipt(fault_receipt.clone())
+        .unwrap();
+    assert_eq!(
+        fault.transport_outcome(7, None).unwrap(),
+        ProviderInvocationTransportOutcome::PhysicalConnectionFault {
+            generation: 7,
+            state: ProviderPhysicalTransportState::Faulted,
+        }
+    );
+    assert_eq!(
+        fault_receipt.lifecycle_ack_outcome(7).unwrap(),
+        ProviderLifecycleAckOutcome::PhysicalConnectionFault {
+            generation: 7,
+            state: ProviderPhysicalTransportState::Faulted,
+        }
+    );
+
+    let ack_missing = ProviderTransportSessionReceipt {
+        generation: 7,
+        reused: true,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 42,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::RequestedClose),
+        close_acknowledged: None,
+    };
+    assert_eq!(
+        ack_missing.lifecycle_ack_outcome(7).unwrap(),
+        ProviderLifecycleAckOutcome::AcknowledgementMissing
+    );
+    assert_eq!(
+        ack_missing.lifecycle_ack_outcome(8).unwrap(),
+        ProviderLifecycleAckOutcome::StaleGeneration {
+            expected_generation: 8,
+            received_generation: 7,
+        }
+    );
+}
+
+#[test]
+fn legal_http_fallback_is_recovery_not_websocket_ack_or_max_age() {
+    let epoch = TransportEpoch::new(17).unwrap();
+    let directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::durable()),
+    };
+    let recovery = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::ProviderHttp,
+        transport_epoch: epoch,
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::PreCommitHttpFallback,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    result.set_recovery_receipt(recovery.clone()).unwrap();
+
+    assert_eq!(
+        result.transport_outcome(7, Some(&directive)).unwrap(),
+        ProviderInvocationTransportOutcome::HttpFallback { recovery }
+    );
+    assert!(result.transport_session_receipt().unwrap().is_none());
+    assert!(result.transport_outcome(7, None).is_err());
 }
 
 #[test]

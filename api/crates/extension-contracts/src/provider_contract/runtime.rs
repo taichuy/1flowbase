@@ -17,6 +17,44 @@ pub struct ProviderInvocationResult {
 }
 
 impl ProviderInvocationResult {
+    pub fn transport_outcome(
+        &self,
+        expected_generation: u64,
+        recovery_directive: Option<&ProviderRecoveryDirective>,
+    ) -> Result<ProviderInvocationTransportOutcome, String> {
+        if expected_generation == 0 {
+            return Err("expected transport generation must be positive".to_string());
+        }
+        if let Some(recovery) = self.recovery_receipt()? {
+            if recovery.is_pre_commit_http_fallback() {
+                let directive = recovery_directive.ok_or_else(|| {
+                    "provider HTTP fallback requires its recovery directive".to_string()
+                })?;
+                recovery.validate_against(directive)?;
+                return Ok(ProviderInvocationTransportOutcome::HttpFallback { recovery });
+            }
+        }
+
+        let Some(receipt) = self.transport_session_receipt()? else {
+            return Ok(ProviderInvocationTransportOutcome::ReceiptMissing);
+        };
+        if receipt.generation != expected_generation {
+            return Ok(ProviderInvocationTransportOutcome::StaleGeneration {
+                expected_generation,
+                received_generation: receipt.generation,
+            });
+        }
+        if receipt.physical_state != ProviderPhysicalTransportState::Ready {
+            return Ok(
+                ProviderInvocationTransportOutcome::PhysicalConnectionFault {
+                    generation: receipt.generation,
+                    state: receipt.physical_state,
+                },
+            );
+        }
+        Ok(ProviderInvocationTransportOutcome::Ready { receipt })
+    }
+
     pub fn set_recovery_receipt(&mut self, receipt: ProviderRecoveryReceipt) -> Result<(), String> {
         receipt.validate()?;
         let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {
