@@ -46,6 +46,10 @@ impl ProviderInvoker for SequencedTransportInvoker {
             )
         });
         if self.emit_typed_recovery_receipts && retryable_transport_failure {
+            assert!(
+                output.result.provider_metadata.is_object(),
+                "typed recovery receipt fixture requires object provider metadata"
+            );
             let directive: extension_contracts::provider_contract::ProviderRecoveryDirective =
                 serde_json::from_value(
                     input.run_context[extension_contracts::provider_contract::PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
@@ -113,6 +117,7 @@ fn provider_error_output(
         events,
         result: ProviderInvocationResult {
             finish_reason: Some(ProviderFinishReason::Error),
+            provider_metadata: json!({}),
             ..ProviderInvocationResult::default()
         },
         first_token_at: after_first_token.then(OffsetDateTime::now_utc),
