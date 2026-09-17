@@ -1,5 +1,17 @@
 use super::*;
 
+fn committed_provider_output_item_done(
+    node_id: &str,
+    node_run_id: Uuid,
+    output_index: usize,
+    item: Value,
+) -> RuntimeEventPayload {
+    let mut event =
+        debug_stream_events::provider_output_item_done(node_id, node_run_id, output_index, item);
+    event.payload["committed_delivery"] = json!(true);
+    event
+}
+
 #[derive(Default)]
 struct DecodedResponsesStream {
     sequence_numbers: Vec<u64>,
@@ -58,6 +70,37 @@ fn decode_responses_sse(body: &str) -> DecodedResponsesStream {
         }
     }
     decoded
+}
+
+#[test]
+fn responses_tool_done_projects_only_after_committed_delivery() {
+    let run = native_run();
+    let node = Uuid::new_v4();
+    let item = json!({
+        "type": "function_call",
+        "call_id": "call_committed",
+        "name": "exec",
+        "arguments": "{}"
+    });
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
+    let uncommitted = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::provider_output_item_done("llm", node, 0, item.clone()),
+    );
+    assert!(mapper.runtime_event_to_sse(&run, uncommitted).is_empty());
+
+    let committed = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        committed_provider_output_item_done("llm", node, 0, item),
+    );
+    let events = mapper.runtime_event_to_sse(&run, committed);
+    assert_eq!(events.len(), 1);
 }
 
 #[tokio::test]
@@ -239,7 +282,7 @@ async fn transparent_sse_uses_only_provider_responses_and_preserves_utf8_text_id
         RuntimeEventEnvelope::new(
             run.id,
             10,
-            debug_stream_events::provider_output_item_done("llm", node, 0, message),
+            committed_provider_output_item_done("llm", node, 0, message),
         ),
     ));
     run.status = NativeRunStatus::Succeeded;
@@ -384,12 +427,7 @@ async fn responses_projects_typed_mcp_approval_and_keeps_unknown_native_hidden()
         RuntimeEventEnvelope::new(
             run.id,
             9,
-            debug_stream_events::provider_output_item_done(
-                "node-llm",
-                node_run_id,
-                2,
-                approval.clone(),
-            ),
+            committed_provider_output_item_done("node-llm", node_run_id, 2, approval.clone()),
         ),
     ));
     events.extend(mapper.runtime_event_to_sse(
@@ -444,7 +482,7 @@ async fn native_sse_keeps_phase_and_opaque_items_without_answer_mirrors() {
             index,
             item.clone(),
         ));
-        facts.push(debug_stream_events::provider_output_item_done(
+        facts.push(committed_provider_output_item_done(
             "llm",
             node,
             index,

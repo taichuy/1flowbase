@@ -15,6 +15,44 @@ use uuid::Uuid;
 use super::super::projector::ResponsesWebSocketProjector;
 use crate::routes::application_public_api::compat_sse::ResponsesProjectionMode;
 
+fn committed_provider_output_item_done(
+    node_id: &str,
+    node_run_id: Uuid,
+    output_index: usize,
+    item: Value,
+) -> RuntimeEventPayload {
+    let mut event =
+        debug_stream_events::provider_output_item_done(node_id, node_run_id, output_index, item);
+    event.payload["committed_delivery"] = json!(true);
+    event
+}
+
+#[test]
+fn websocket_tool_done_projects_only_after_committed_delivery() {
+    let run = native_run(2079);
+    let node = Uuid::now_v7();
+    let item = json!({
+        "type": "custom_tool_call",
+        "call_id": "call_committed",
+        "name": "exec",
+        "input": "pwd"
+    });
+    let mut projector = transparent_projector("fixture", None);
+    let uncommitted = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        debug_stream_events::provider_output_item_done("llm", node, 0, item.clone()),
+    );
+    assert!(projector.project(&run, uncommitted).unwrap().is_empty());
+
+    let committed = RuntimeEventEnvelope::new(
+        run.id,
+        2,
+        committed_provider_output_item_done("llm", node, 0, item),
+    );
+    assert_eq!(projector.project(&run, committed).unwrap().len(), 1);
+}
+
 fn transparent_projector(
     model: impl Into<String>,
     previous: Option<String>,
@@ -129,12 +167,7 @@ fn frozen_projection_modes_never_mix_sources_and_preserve_utf8_text_identity() {
                 RuntimeEventEnvelope::new(
                     transparent_run.id,
                     10,
-                    debug_stream_events::provider_output_item_done(
-                        "llm",
-                        provider_node,
-                        0,
-                        message,
-                    ),
+                    committed_provider_output_item_done("llm", provider_node, 0, message),
                 ),
             )
             .unwrap(),
@@ -679,7 +712,7 @@ fn typed_mcp_approval_is_visible_and_done_joins_completed_output() {
                 RuntimeEventEnvelope::new(
                     run.id,
                     3,
-                    debug_stream_events::provider_output_item_done(
+                    committed_provider_output_item_done(
                         "node-llm",
                         node_run_id,
                         2,
@@ -765,7 +798,7 @@ fn issue_2028_native_tool_projection_keeps_wire_shape_once() {
                 "openai_responses".into(),
                 json!({"type":"response.output_item.done","item":item}),
             ),
-            debug_stream_events::provider_output_item_done("llm", node, 0, item.clone()),
+            committed_provider_output_item_done("llm", node, 0, item.clone()),
             debug_stream_events::flow_finished(run.id, json!({})),
         ];
         let mut frames = Vec::new();
@@ -820,12 +853,7 @@ fn native_formal_output_preserves_phase_reasoning_and_order_without_text_duplica
                             )
                         }
                         extension_contracts::provider_contract::ProviderOutputItemPhase::Done => {
-                            debug_stream_events::provider_output_item_done(
-                                "llm",
-                                node,
-                                output_index,
-                                item,
-                            )
+                            committed_provider_output_item_done("llm", node, output_index, item)
                         }
                     });
                 }
@@ -884,7 +912,7 @@ fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
             0,
             item.clone(),
         ),
-        debug_stream_events::provider_output_item_done("llm", Uuid::from_u128(42), 0, item.clone()),
+        committed_provider_output_item_done("llm", Uuid::from_u128(42), 0, item.clone()),
     ]
     .into_iter()
     .enumerate()

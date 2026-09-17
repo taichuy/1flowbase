@@ -229,6 +229,16 @@ impl ResponsesWebSocketProjector {
         let Some(item) = envelope.payload.get("item").cloned() else {
             return;
         };
+        if envelope.event_type == "provider_output_item_done"
+            && is_client_executable_item(&item)
+            && envelope
+                .payload
+                .get("committed_delivery")
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            return;
+        }
 
         self.close_output_item(run, events);
         let event_type = match envelope.event_type.as_str() {
@@ -379,6 +389,11 @@ impl ResponsesWebSocketProjector {
         }
         Ok(frames)
     }
+}
+
+fn is_client_executable_item(item: &Value) -> bool {
+    let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+    item_type.ends_with("_call") || item_type == "mcp_approval_request"
 }
 
 fn is_terminal_event(event_type: &str) -> bool {
