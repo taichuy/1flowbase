@@ -614,4 +614,180 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn multi_provider_restart_and_out_of_order_receipts_remain_epoch_fenced() {
+        let mut provider_a =
+            AiNativeRecoveryLedger::new(10_000, 1, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        let mut provider_b =
+            AiNativeRecoveryLedger::new(10_000, 1, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        let a_epoch_before_retry = provider_a.current_epoch();
+        let b_epoch = provider_b.current_epoch();
+        assert_ne!(a_epoch_before_retry, b_epoch);
+
+        let mut bucket = PartitionedRetryTokenBucket::default();
+        let worker_restart_receipt = logical_retry(b_epoch);
+        let a_epoch_before_stale = provider_a.current_epoch();
+        assert_eq!(
+            provider_a
+                .decide_outer_replay(
+                    Some(&worker_restart_receipt),
+                    partition("provider-a"),
+                    1,
+                    &mut bucket,
+                    0,
+                )
+                .decision,
+            OuterReplayDecision::StaleEpochNoop
+        );
+        assert_eq!(provider_a.current_epoch(), a_epoch_before_stale);
+
+        let first_a = logical_retry(a_epoch_before_retry);
+        assert_eq!(
+            provider_a
+                .decide_outer_replay(Some(&first_a), partition("provider-a"), 1, &mut bucket, 0,)
+                .decision,
+            OuterReplayDecision::Retry
+        );
+        let a_epoch_after_retry = provider_a.current_epoch();
+        assert_ne!(a_epoch_after_retry, a_epoch_before_retry);
+
+        // A delayed receipt from the prior socket arrives after the retry. It must not
+        // mutate the current epoch or consume the remaining provider-local state.
+        assert_eq!(
+            provider_a
+                .decide_outer_replay(Some(&first_a), partition("provider-a"), 2, &mut bucket, 1,)
+                .decision,
+            OuterReplayDecision::StaleEpochNoop
+        );
+        assert_eq!(provider_a.current_epoch(), a_epoch_after_retry);
+
+        // Provider B has a distinct partition and remains independently eligible.
+        let first_b = logical_retry(b_epoch);
+        assert_eq!(
+            provider_b
+                .decide_outer_replay(Some(&first_b), partition("provider-b"), 2, &mut bucket, 0,)
+                .decision,
+            OuterReplayDecision::Retry
+        );
+    }
+
+    #[test]
+    fn provider_inner_attempts_precede_outer_attempt_and_do_not_multiply_budget() {
+        let mut ledger =
+            AiNativeRecoveryLedger::new(10_000, 1, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        let mut provider_finished_inner_budget = logical_retry(ledger.current_epoch());
+        provider_finished_inner_budget.attempt = 1;
+        let mut bucket = PartitionedRetryTokenBucket::default();
+
+        let first = ledger.decide_outer_replay(
+            Some(&provider_finished_inner_budget),
+            partition("provider-a"),
+            1,
+            &mut bucket,
+            0,
+        );
+        assert_eq!(first.provider_inner_attempt, Some(1));
+        assert_eq!(first.outer_attempt, 0);
+        assert_eq!(first.decision, OuterReplayDecision::Retry);
+
+        let mut second_inner_budget = logical_retry(ledger.current_epoch());
+        second_inner_budget.attempt = 1;
+        let second = ledger.decide_outer_replay(
+            Some(&second_inner_budget),
+            partition("provider-a"),
+            2,
+            &mut bucket,
+            1,
+        );
+        assert_eq!(second.provider_inner_attempt, Some(1));
+        assert_eq!(second.outer_attempt, 1);
+        assert_eq!(second.decision, OuterReplayDecision::AttemptBudgetExhausted);
+        assert!(second.original_terminal_preserved);
+    }
+
+    #[test]
+    fn post_semantic_reset_and_semantic_terminal_never_select_replay() {
+        let mut committed =
+            AiNativeRecoveryLedger::new(10_000, 2, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        committed.observe_events(&[ProviderStreamEvent::TextDelta {
+            delta: "visible".to_string(),
+        }]);
+        assert!(committed.rotate_epoch_for_configured_replay().is_err());
+        let committed_receipt = logical_retry(committed.current_epoch());
+        let mut bucket = PartitionedRetryTokenBucket::default();
+        assert_eq!(
+            committed
+                .decide_outer_replay(
+                    Some(&committed_receipt),
+                    partition("committed"),
+                    1,
+                    &mut bucket,
+                    0,
+                )
+                .decision,
+            OuterReplayDecision::SemanticCommitted
+        );
+
+        let mut terminal =
+            AiNativeRecoveryLedger::new(10_000, 2, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        terminal.observe_events(&[ProviderStreamEvent::OutputProtocolFailure {
+            failure: extension_contracts::provider_contract::ProviderOutputProtocolFailure {
+                protocol: "openai_responses".to_string(),
+                error_code: "semantic_terminal".to_string(),
+                message: "provider rejected the semantic request".to_string(),
+                retry_feedback: "none".to_string(),
+                provider_details: json!({}),
+            },
+        }]);
+        let terminal_receipt = logical_retry(terminal.current_epoch());
+        assert_eq!(
+            terminal
+                .decide_outer_replay(
+                    Some(&terminal_receipt),
+                    partition("terminal"),
+                    1,
+                    &mut bucket,
+                    0,
+                )
+                .decision,
+            OuterReplayDecision::SemanticTerminal
+        );
+    }
+
+    #[test]
+    fn recovery_observation_is_metadata_only_and_uses_closed_terminology() {
+        let mut ledger =
+            AiNativeRecoveryLedger::new(10_000, 0, true, RecoveryInputMode::SemanticMapped)
+                .unwrap();
+        let receipt = logical_retry(ledger.current_epoch());
+        let mut bucket = PartitionedRetryTokenBucket::default();
+        let observation =
+            ledger.decide_outer_replay(Some(&receipt), partition("provider-a"), 1, &mut bucket, 0);
+        let value = serde_json::to_value(observation).unwrap();
+        assert!(value.get("transport_epoch").is_some());
+        assert!(value["provider_inner_receipt"]
+            .get("socket_incarnation")
+            .is_some());
+        assert!(value.get("provider_final_commit").is_some());
+        assert!(value.get("provider_disposition").is_some());
+        let encoded = value.to_string();
+        for forbidden in [
+            "credential",
+            "api_key",
+            "prompt",
+            "tool_output",
+            "encrypted_content",
+            "raw_cursor",
+            "turn_state",
+            "response_id",
+        ] {
+            assert!(!encoded.contains(forbidden));
+        }
+    }
 }
