@@ -182,6 +182,7 @@ async fn issue_1566_ac_003_all_installation_references_target_the_unified_root()
         "plugin_assignments",
         "plugin_contribution_authorization_revisions",
         "plugin_package_catalog_projection",
+        "plugin_settings_template_defaults",
         "plugin_tasks",
         "plugin_worker_leases",
         "retained_frontend_module_assets",

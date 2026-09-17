@@ -636,7 +636,7 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
         &store,
         workspace.id,
         installation_id,
-        actor.id,
+        actor,
         "Primary",
         vec!["gpt-4o-mini".into()],
     )
@@ -645,7 +645,7 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
         &store,
         workspace.id,
         installation_id,
-        actor.id,
+        actor,
         "Backup",
         vec!["gpt-4.1-mini".into()],
     )
@@ -733,7 +733,7 @@ async fn model_provider_repository_backfills_missing_context_window_override_tok
         &store,
         workspace.id,
         installation_id,
-        actor.id,
+        actor,
         "Legacy",
         vec!["gpt-4o-mini".into(), "gpt-4.1-mini".into()],
     )

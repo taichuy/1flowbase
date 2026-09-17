@@ -180,7 +180,7 @@ async fn root_2014_ac_013_native_selection_unique_exact_target() {
     let f = Fixture::new().await;
     let v1 = f.install("1.0.0").await;
     let v2 = f.install("2.0.0").await;
-    assert_eq!(v1.desired_state, PluginDesiredState::Disabled);
+    assert_eq!(v1.desired_state, PluginDesiredState::PendingRestart);
     assert!(f
         .store
         .list_native_plugin_targets()

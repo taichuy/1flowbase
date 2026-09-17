@@ -512,7 +512,7 @@ where
                 {
                     configured_retries_used += 1;
                     recovery_ledger
-                        .rotate_epoch_for_configured_replay()
+                        .rotate_epoch_for_configured_retry()
                         .map_err(anyhow::Error::msg)?;
                     retry_reason = error_payload
                         .get("error_code")
@@ -768,10 +768,8 @@ where
                 let retry_class = (billing_allows_retry
                     && retry_enabled
                     && provider_error_allows_retry(&provider_error)
-                    && configured_retries_used + 1 < configured_request_count
-                    && recovery_ledger
-                        .allows_configured_replay_at(unix_millis(attempt_finished_at)))
-                .then_some(LlmRetryClass::Configured);
+                    && configured_retries_used + 1 < configured_request_count)
+                    .then_some(LlmRetryClass::Configured);
                 if let Some(retry_class) = retry_class {
                     let automatic_retry_ordinal = automatic_transport_retries_used;
                     match retry_class {
@@ -781,7 +779,7 @@ where
                         LlmRetryClass::Configured => configured_retries_used += 1,
                     }
                     recovery_ledger
-                        .rotate_epoch_for_configured_replay()
+                        .rotate_epoch_for_configured_retry()
                         .map_err(anyhow::Error::msg)?;
                     retry_reason = error_payload
                         .get("error_code")
@@ -1009,7 +1007,6 @@ where
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
                 && configured_retries_used + 1 < configured_request_count
-                && recovery_ledger.allows_configured_replay_at(unix_millis(attempt_finished_at))
                 && !typed_commit_blocks_replay
                 && !provider_recovery_receipt_invalid;
             let retry_class = if ai_native_recovery
@@ -1029,7 +1026,7 @@ where
                     LlmRetryClass::Configured => {
                         configured_retries_used += 1;
                         recovery_ledger
-                            .rotate_epoch_for_configured_replay()
+                            .rotate_epoch_for_configured_retry()
                             .map_err(anyhow::Error::msg)?;
                     }
                 }

@@ -40,3 +40,19 @@ fn c2_clocked_timeline_keeps_ingress_and_flush_calculable() {
         assert!(!serialized.contains(forbidden));
     }
 }
+
+#[test]
+fn c2_gateway_timing_wraps_non_object_metadata_without_discarding_it() {
+    let mut metadata = Value::Null;
+
+    attach_gateway_stage_timing(&mut metadata, 11, Some(37), Some(3)).unwrap();
+
+    assert_eq!(
+        metadata["_1flowbase_upstream_provider_metadata"],
+        Value::Null
+    );
+    assert_eq!(
+        metadata[GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY]["flow_ms"],
+        11
+    );
+}

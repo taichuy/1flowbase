@@ -230,16 +230,7 @@ impl AiNativeRecoveryLedger {
         self.semantic_committed || self.semantic_terminal
     }
 
-    pub const fn allows_configured_replay_at(&self, now_unix_ms: i64) -> bool {
-        !self.semantic_replay_blocked()
-            && self.reproducible
-            && now_unix_ms < self.absolute_deadline_unix_ms
-    }
-
-    pub fn rotate_epoch_for_configured_replay(&mut self) -> Result<(), &'static str> {
-        if self.semantic_replay_blocked() {
-            return Err("committed AI Native invocation cannot rotate for replay");
-        }
+    pub fn rotate_epoch_for_configured_retry(&mut self) -> Result<(), &'static str> {
         self.current_epoch = allocate_transport_epoch()?;
         Ok(())
     }
@@ -710,14 +701,16 @@ mod tests {
     }
 
     #[test]
-    fn post_semantic_reset_and_semantic_terminal_never_select_replay() {
+    fn configured_retry_can_rotate_after_semantic_output_but_automatic_replay_stays_blocked() {
         let mut committed =
             AiNativeRecoveryLedger::new(10_000, 2, true, RecoveryInputMode::SemanticMapped)
                 .unwrap();
         committed.observe_events(&[ProviderStreamEvent::TextDelta {
             delta: "visible".to_string(),
         }]);
-        assert!(committed.rotate_epoch_for_configured_replay().is_err());
+        let epoch_before_configured_retry = committed.current_epoch();
+        committed.rotate_epoch_for_configured_retry().unwrap();
+        assert_ne!(committed.current_epoch(), epoch_before_configured_retry);
         let committed_receipt = logical_retry(committed.current_epoch());
         let mut bucket = PartitionedRetryTokenBucket::default();
         assert_eq!(

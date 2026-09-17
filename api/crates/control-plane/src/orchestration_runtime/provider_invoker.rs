@@ -961,18 +961,24 @@ fn attach_gateway_stage_timing(
     ingress_ms: Option<u64>,
     flush_ms: Option<u64>,
 ) -> Result<()> {
-    let object = metadata
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("provider_metadata must be an object for gateway stage timing"))?;
-    object.insert(
-        GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
-        json!({
-            "schema_version": 1,
-            "ingress_ms": ingress_ms,
-            "flow_ms": flow_ms,
-            "flush_ms": flush_ms,
-        }),
-    );
+    let timing = json!({
+        "schema_version": 1,
+        "ingress_ms": ingress_ms,
+        "flow_ms": flow_ms,
+        "flush_ms": flush_ms,
+    });
+    if let Some(object) = metadata.as_object_mut() {
+        object.insert(
+            GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
+            timing,
+        );
+    } else {
+        let upstream = std::mem::take(metadata);
+        *metadata = json!({
+            GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY: timing,
+            "_1flowbase_upstream_provider_metadata": upstream,
+        });
+    }
     Ok(())
 }
 

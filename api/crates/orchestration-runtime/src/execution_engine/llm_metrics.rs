@@ -643,6 +643,16 @@ pub(super) fn take_provider_observability_metadata(
 ) -> ProviderObservabilityMetadata {
     let mut extracted = ProviderObservabilityMetadata::default();
     while let Some(metadata) = result.provider_metadata.as_object_mut() {
+        let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
+            && (metadata.contains_key(
+                extension_contracts::PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY,
+            ) || metadata.contains_key(
+                extension_contracts::PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY,
+            ) || metadata.contains_key(RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY)
+                || metadata.contains_key(GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY)
+                || metadata.contains_key("_1flowbase_runtime_stream_timing")
+                || metadata.contains_key("_1flowbase_billing")
+                || metadata.contains_key("_1flowbase_user_account"));
         if let Some(value) =
             metadata.remove(extension_contracts::PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY)
         {
@@ -673,10 +683,6 @@ pub(super) fn take_provider_observability_metadata(
         extracted.gateway_stages = metadata
             .remove(GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY)
             .or(extracted.gateway_stages);
-        let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
-            && (metadata.contains_key("_1flowbase_runtime_stream_timing")
-                || metadata.contains_key("_1flowbase_billing")
-                || metadata.contains_key("_1flowbase_user_account"));
         if !is_wrapper {
             break;
         }
@@ -830,6 +836,28 @@ mod provider_stream_timing_tests {
         assert_eq!(observability.billing, Some(billing));
         assert_eq!(observability.user_account, Some(json!("billing-user")));
         assert_eq!(result.provider_metadata, upstream);
+    }
+
+    #[test]
+    fn gateway_timing_wrapper_restores_non_object_upstream_metadata() {
+        let timing = json!({
+            "schema_version": 1,
+            "ingress_ms": 37,
+            "flow_ms": 11,
+            "flush_ms": 3
+        });
+        let mut result = ProviderInvocationResult {
+            provider_metadata: json!({
+                "1flowbase_gateway_provider_stages": timing,
+                "_1flowbase_upstream_provider_metadata": Value::Null
+            }),
+            ..ProviderInvocationResult::default()
+        };
+
+        let observability = take_provider_observability_metadata(&mut result);
+
+        assert_eq!(observability.gateway_stages, Some(timing));
+        assert_eq!(result.provider_metadata, Value::Null);
     }
 
     #[test]

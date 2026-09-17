@@ -164,12 +164,8 @@ async fn seed_store() -> (
     (store, workspace, actor, installation_id)
 }
 
-async fn seed_store_before_main_instance_aggregation() -> (
-    PgControlPlaneStore,
-    domain::WorkspaceRecord,
-    domain::UserRecord,
-    Uuid,
-) {
+async fn seed_store_before_main_instance_aggregation(
+) -> (PgControlPlaneStore, domain::WorkspaceRecord, Uuid, Uuid) {
     let pool = isolated_database().await.connect().await.unwrap();
     for migration_sql in PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS {
         sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
@@ -231,17 +227,19 @@ async fn seed_store_before_main_instance_aggregation() -> (
         })
         .await
         .unwrap();
-    let actor = store
-        .upsert_root_user(
-            workspace.id,
-            "root",
-            "root@example.com",
-            "$argon2id$v=19$m=19456,t=2,p=1$test$test",
-            "Root",
-            "Root",
-        )
-        .await
-        .unwrap();
+    let actor = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into users (id, account, email, password_hash, name, nickname, status)
+        values ($1, $2, $3, 'fixture', 'Upgrade fixture', 'Upgrade fixture', 'active')
+        "#,
+    )
+    .bind(actor)
+    .bind(format!("upgrade-fixture-{}", actor.simple()))
+    .bind(format!("upgrade-fixture-{}@example.com", actor.simple()))
+    .execute(store.pool())
+    .await
+    .unwrap();
     let installation_id = Uuid::now_v7();
     sqlx::query(
         r#"
@@ -285,7 +283,7 @@ async fn seed_store_before_main_instance_aggregation() -> (
     .bind("abc123")
     .bind("missing")
     .bind(json!({}))
-    .bind(actor.id)
+    .bind(actor)
     .execute(store.pool())
     .await
     .unwrap();

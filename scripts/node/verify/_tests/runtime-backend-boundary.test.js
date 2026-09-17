@@ -96,7 +96,7 @@ test('Delivery 1898 projects only the execution port into orchestration', () => 
   assert.doesNotMatch(boot, /let runtime_execution:/u);
   assert.match(
     boot,
-    /ApiRuntimeServices::new_with_runtime_backend\(\s*runtime_backend,\s*Arc::clone\(&extension_graph\),\s*\)/u,
+    /ApiRuntimeServices::new_with_runtime_backend_and_transport_config\(\s*runtime_backend,\s*Arc::clone\(&extension_graph\),\s*config\.transport_session_registry\.clone\(\),\s*\)/u,
   );
   assert.equal((boot.match(/runtime_backend_slot\.backend\(\)\?/gu) ?? []).length, 1);
 });

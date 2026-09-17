@@ -42,7 +42,7 @@ impl From<TransportEpoch> for u64 {
 /// ```compile_fail
 /// use extension_contracts::{SocketIncarnation, TransportEpoch};
 ///
-/// let epoch = TransportEpoch::new(1).unwrap();
+/// let epoch = TransportEpoch::new(1).expect("positive test epoch");
 /// let _incarnation: SocketIncarnation = epoch;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -150,9 +150,7 @@ impl CursorProvenance {
             RecoveryDisposition::SameEpochReconnect
                 if receipt
                     .socket_incarnation
-                    .map_or(true, |actual_incarnation| {
-                        actual_incarnation <= bound_incarnation
-                    }) =>
+                    .is_none_or(|actual_incarnation| actual_incarnation <= bound_incarnation) =>
             {
                 Err(
                     "same-epoch reconnect must advance its connection-bound socket incarnation"
