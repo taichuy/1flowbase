@@ -121,14 +121,10 @@ impl CursorProvenance {
         }
     }
 
-    fn validate_source(
-        self,
-        transport_epoch: TransportEpoch,
-        socket_incarnation: Option<SocketIncarnation>,
-    ) -> Result<(), String> {
+    fn validate_epoch(self, transport_epoch: TransportEpoch) -> Result<(), String> {
         let CursorBinding::ConnectionBound {
             transport_epoch: bound_epoch,
-            socket_incarnation: bound_incarnation,
+            ..
         } = self.binding
         else {
             return Ok(());
@@ -137,9 +133,24 @@ impl CursorProvenance {
         if bound_epoch != transport_epoch {
             return Err("connection-bound cursor cannot cross a transport epoch".to_string());
         }
-        if socket_incarnation != Some(bound_incarnation) {
+        Ok(())
+    }
+
+    fn validate_actual_receipt(self, receipt: &ProviderRecoveryReceipt) -> Result<(), String> {
+        let CursorBinding::ConnectionBound {
+            socket_incarnation: bound_incarnation,
+            ..
+        } = self.binding
+        else {
+            return Ok(());
+        };
+
+        if receipt.disposition == RecoveryDisposition::SameEpochReconnect
+            && receipt.socket_incarnation != Some(bound_incarnation)
+        {
             return Err(
-                "connection-bound cursor must match its provider socket incarnation".to_string(),
+                "same-epoch reconnect must preserve its connection-bound socket incarnation"
+                    .to_string(),
             );
         }
         Ok(())
@@ -201,8 +212,12 @@ pub enum RecoveryPolicy {
 }
 
 impl RecoveryPolicy {
-    pub fn validate(&self, disposition: RecoveryDisposition) -> Result<(), String> {
-        self.budget().validate()?;
+    pub fn validate(&self) -> Result<(), String> {
+        self.budget().validate()
+    }
+
+    fn validate_disposition(&self, disposition: RecoveryDisposition) -> Result<(), String> {
+        self.validate()?;
         if matches!(self, Self::NativeOpaque { .. })
             && disposition == RecoveryDisposition::PreCommitHttpFallback
         {
@@ -218,25 +233,23 @@ impl RecoveryPolicy {
     }
 }
 
+/// Host-owned recovery constraints and initial facts. The Provider chooses and
+/// reports the actual transition in `ProviderRecoveryReceipt`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderRecoveryDirective {
     pub policy: RecoveryPolicy,
     pub transport_epoch: TransportEpoch,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub socket_incarnation: Option<SocketIncarnation>,
-    pub commit_level: CommitLevel,
+    pub initial_commit_level: CommitLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_provenance: Option<CursorProvenance>,
-    pub disposition: RecoveryDisposition,
 }
 
 impl ProviderRecoveryDirective {
     pub fn validate(&self) -> Result<(), String> {
-        validate_commit_disposition(self.commit_level, self.disposition)?;
-        self.policy.validate(self.disposition)?;
+        self.policy.validate()?;
         if let Some(provenance) = self.cursor_provenance {
-            provenance.validate_source(self.transport_epoch, self.socket_incarnation)?;
+            provenance.validate_epoch(self.transport_epoch)?;
         }
         Ok(())
     }
@@ -264,6 +277,7 @@ pub enum RecoveryReason {
     SemanticFailed,
 }
 
+/// Provider-owned result for one recovery transition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderRecoveryReceipt {
@@ -293,6 +307,19 @@ impl ProviderRecoveryReceipt {
                 Err("provider HTTP recovery receipt cannot claim a socket incarnation".to_string())
             }
             _ => Ok(()),
+        }?;
+        match self.disposition {
+            RecoveryDisposition::SameEpochReconnect
+                if self.transport != RecoveryTransport::AiNativeWebSocket =>
+            {
+                Err("same-epoch reconnect requires AI Native WebSocket transport".to_string())
+            }
+            RecoveryDisposition::PreCommitHttpFallback
+                if self.transport != RecoveryTransport::ProviderHttp =>
+            {
+                Err("pre-commit HTTP fallback requires provider HTTP transport".to_string())
+            }
+            _ => Ok(()),
         }
     }
 
@@ -302,17 +329,34 @@ impl ProviderRecoveryReceipt {
         if self.transport_epoch != directive.transport_epoch {
             return Err("recovery receipt cannot cross its directive transport epoch".to_string());
         }
-        if self.commit_level != directive.commit_level || self.disposition != directive.disposition
+        if !directive
+            .initial_commit_level
+            .can_advance_to(self.commit_level)
         {
-            return Err(
-                "recovery receipt commit level and disposition must match its directive"
-                    .to_string(),
-            );
+            return Err("recovery receipt commit level cannot move backwards".to_string());
         }
         if self.attempt >= directive.policy.budget().max_inner_attempts {
             return Err("recovery receipt attempt exceeds its directive budget".to_string());
         }
+        directive.policy.validate_disposition(self.disposition)?;
+        if let Some(provenance) = directive.cursor_provenance {
+            provenance.validate_actual_receipt(self)?;
+        }
         Ok(())
+    }
+}
+
+impl CommitLevel {
+    const fn can_advance_to(self, final_level: Self) -> bool {
+        matches!(
+            (self, final_level),
+            (Self::LifecycleOnly, _)
+                | (
+                    Self::SemanticCommitted,
+                    Self::SemanticCommitted | Self::Terminal
+                )
+                | (Self::Terminal, Self::Terminal)
+        )
     }
 }
 

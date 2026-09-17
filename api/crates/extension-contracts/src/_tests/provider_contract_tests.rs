@@ -329,10 +329,8 @@ fn d1_recovery_directive_round_trips_without_changing_the_legacy_directive() {
     let directive = ProviderRecoveryDirective {
         policy: semantic_mapped_recovery_policy(),
         transport_epoch: epoch,
-        socket_incarnation: Some(incarnation),
-        commit_level: CommitLevel::LifecycleOnly,
+        initial_commit_level: CommitLevel::LifecycleOnly,
         cursor_provenance: Some(CursorProvenance::connection_bound(epoch, incarnation)),
-        disposition: RecoveryDisposition::SameEpochReconnect,
     };
     let legacy = ProviderTransportSessionDirective {
         logical_session_id: "logical_01".into(),
@@ -353,6 +351,12 @@ fn d1_recovery_directive_round_trips_without_changing_the_legacy_directive() {
         input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]["transport_epoch"],
         17
     );
+    assert!(input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+        .get("socket_incarnation")
+        .is_none());
+    assert!(input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+        .get("disposition")
+        .is_none());
     assert_eq!(
         input.run_context[PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY]["generation"],
         41
@@ -364,26 +368,37 @@ fn d1_recovery_directive_round_trips_without_changing_the_legacy_directive() {
 #[test]
 fn d1_recovery_validator_rejects_replay_after_commit_and_native_http_fallback() {
     let epoch = TransportEpoch::new(17).unwrap();
-    for disposition in [
-        RecoveryDisposition::PreCommitHttpFallback,
-        RecoveryDisposition::OneFullContextRebuild,
-        RecoveryDisposition::LogicalInvocationRetry,
+    for (disposition, transport) in [
+        (
+            RecoveryDisposition::PreCommitHttpFallback,
+            RecoveryTransport::ProviderHttp,
+        ),
+        (
+            RecoveryDisposition::OneFullContextRebuild,
+            RecoveryTransport::AiNativeWebSocket,
+        ),
+        (
+            RecoveryDisposition::LogicalInvocationRetry,
+            RecoveryTransport::AiNativeWebSocket,
+        ),
     ] {
-        let directive = ProviderRecoveryDirective {
-            policy: semantic_mapped_recovery_policy(),
+        let receipt = ProviderRecoveryReceipt {
+            attempt: 0,
+            transport,
             transport_epoch: epoch,
-            socket_incarnation: None,
+            socket_incarnation: (transport == RecoveryTransport::AiNativeWebSocket)
+                .then(|| SocketIncarnation::new(1).unwrap()),
             commit_level: CommitLevel::SemanticCommitted,
-            cursor_provenance: Some(CursorProvenance::durable()),
             disposition,
+            reason: RecoveryReason::TransportDisconnected,
         };
-        assert!(directive
+        assert!(receipt
             .validate()
             .unwrap_err()
             .contains("cannot select a replay"));
     }
 
-    let native_http_fallback = ProviderRecoveryDirective {
+    let native_directive = ProviderRecoveryDirective {
         policy: RecoveryPolicy::NativeOpaque {
             budget: RecoveryBudget {
                 max_inner_attempts: 3,
@@ -391,43 +406,102 @@ fn d1_recovery_validator_rejects_replay_after_commit_and_native_http_fallback() 
             },
         },
         transport_epoch: epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::durable()),
+    };
+    let native_http_fallback = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::ProviderHttp,
+        transport_epoch: epoch,
         socket_incarnation: None,
         commit_level: CommitLevel::LifecycleOnly,
-        cursor_provenance: Some(CursorProvenance::durable()),
         disposition: RecoveryDisposition::PreCommitHttpFallback,
+        reason: RecoveryReason::TransportDisconnected,
     };
     assert!(native_http_fallback
-        .validate()
+        .validate_against(&native_directive)
         .unwrap_err()
         .contains("forbids provider HTTP fallback"));
+    let fallback_on_wrong_transport = ProviderRecoveryReceipt {
+        transport: RecoveryTransport::AiNativeWebSocket,
+        socket_incarnation: Some(SocketIncarnation::new(1).unwrap()),
+        ..native_http_fallback.clone()
+    };
+    assert!(fallback_on_wrong_transport
+        .validate()
+        .unwrap_err()
+        .contains("requires provider HTTP transport"));
+
+    let backward = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: epoch,
+        socket_incarnation: Some(SocketIncarnation::new(1).unwrap()),
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::SameEpochReconnect,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    let committed_directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: epoch,
+        initial_commit_level: CommitLevel::SemanticCommitted,
+        cursor_provenance: None,
+    };
+    assert!(backward
+        .validate_against(&committed_directive)
+        .unwrap_err()
+        .contains("cannot move backwards"));
 }
 
 #[test]
-fn d1_connection_bound_cursor_cannot_cross_epoch_or_socket_incarnation() {
+fn d1_connection_bound_cursor_uses_provider_reported_epoch_and_incarnation() {
     let bound_epoch = TransportEpoch::new(8).unwrap();
     let bound_incarnation = SocketIncarnation::new(3).unwrap();
-    let base = ProviderRecoveryDirective {
+    let cross_epoch = ProviderRecoveryDirective {
         policy: semantic_mapped_recovery_policy(),
         transport_epoch: TransportEpoch::new(9).unwrap(),
-        socket_incarnation: Some(bound_incarnation),
-        commit_level: CommitLevel::LifecycleOnly,
+        initial_commit_level: CommitLevel::LifecycleOnly,
         cursor_provenance: Some(CursorProvenance::connection_bound(
             bound_epoch,
             bound_incarnation,
         )),
-        disposition: RecoveryDisposition::SameEpochReconnect,
     };
-    assert!(base.validate().unwrap_err().contains("cannot cross"));
+    assert!(cross_epoch.validate().unwrap_err().contains("cannot cross"));
 
-    let wrong_incarnation = ProviderRecoveryDirective {
+    let directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: bound_epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::connection_bound(
+            bound_epoch,
+            bound_incarnation,
+        )),
+    };
+    let wrong_incarnation = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
         transport_epoch: bound_epoch,
         socket_incarnation: Some(SocketIncarnation::new(4).unwrap()),
-        ..base
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::SameEpochReconnect,
+        reason: RecoveryReason::TransportDisconnected,
     };
     assert!(wrong_incarnation
-        .validate()
+        .validate_against(&directive)
         .unwrap_err()
-        .contains("must match"));
+        .contains("must preserve"));
+
+    let matching_incarnation = ProviderRecoveryReceipt {
+        socket_incarnation: Some(bound_incarnation),
+        ..wrong_incarnation.clone()
+    };
+    matching_incarnation.validate_against(&directive).unwrap();
+
+    let rebuilt_on_new_socket = ProviderRecoveryReceipt {
+        disposition: RecoveryDisposition::OneFullContextRebuild,
+        ..wrong_incarnation
+    };
+    rebuilt_on_new_socket.validate_against(&directive).unwrap();
 }
 
 #[test]
@@ -485,10 +559,8 @@ fn d1_recovery_receipt_is_metadata_only_and_round_trips() {
             },
         },
         transport_epoch: TransportEpoch::new(17).unwrap(),
-        socket_incarnation: Some(SocketIncarnation::new(4).unwrap()),
-        commit_level: CommitLevel::Terminal,
+        initial_commit_level: CommitLevel::LifecycleOnly,
         cursor_provenance: None,
-        disposition: RecoveryDisposition::SemanticTerminal,
     };
     assert!(result
         .recovery_receipt()
