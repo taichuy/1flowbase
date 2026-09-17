@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::routes::application_public_api::{
     compat_sse::ResponsesProjectionMode, llm_tool_visibility::external_llm_tool_call_values,
-    openai::native_response_id, tool_callback_ids::encode_openai_callback_tool_call_id,
+    openai::native_response_id,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -508,7 +508,7 @@ fn failed_response_event(
 }
 
 fn function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
-    let callback_task_id = callback_task_id(payload)?;
+    callback_task_id(payload)?;
     let calls = tool_calls(payload)?;
     let output = calls
         .iter()
@@ -522,7 +522,7 @@ fn function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
             Some(json!({
                 "id": format!("fc_{original_id}"),
                 "type": "function_call",
-                "call_id": encode_openai_callback_tool_call_id(callback_task_id, original_id),
+                "call_id": original_id,
                 "name": name,
                 "arguments": match arguments {
                     Value::String(value) => value,

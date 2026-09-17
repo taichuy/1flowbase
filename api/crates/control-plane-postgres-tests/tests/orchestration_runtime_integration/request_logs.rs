@@ -50,6 +50,7 @@ pub(super) fn request_log(
         finished_at: Some(started_at + Duration::milliseconds(250)),
         time_to_first_token_ms: output_tokens.filter(|v| *v > 0).map(|_| 80),
         total_duration_ms: Some(250),
+        provider_timing_receipt: None,
     }
 }
 

@@ -712,6 +712,43 @@ fn d4_ac_016_native_responses_translation_retains_real_wire_payload_only_in_side
 }
 
 #[test]
+fn issue_2067_generate_false_uses_native_provider_transport_without_rewriting_input() {
+    let prefix = json!([
+        {"type": "additional_tools", "role": "developer", "tools": []},
+        {"type": "message", "role": "developer", "content": [
+            {"type": "input_text", "text": "provider-owned prefix"}
+        ]}
+    ]);
+    let mut translated = translate_response_request(json!({
+        "model": "1flowbase",
+        "input": prefix,
+        "instructions": "prewarm through Provider",
+        "generate": false
+    }))
+    .expect("generate=false must enter the shared native Generate ingress");
+
+    assert!(matches!(
+        translated.request.execution.execution_operation(),
+        domain::AiNativeOperation::Generate(_)
+    ));
+    assert_eq!(
+        translated
+            .request
+            .metadata
+            .responses_transport_requirement(),
+        crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough
+    );
+    let payload = translated
+        .request
+        .metadata
+        .take_provider_transport_payload()
+        .expect("prewarm must reach Provider native transport");
+    assert_eq!(payload.wire_body()["generate"], false);
+    assert_eq!(payload.wire_body()["input"], prefix);
+    assert!(translated.request.history.is_empty());
+}
+
+#[test]
 fn d4_ac_016_native_responses_keeps_opaque_input_item_without_fabricating_history() {
     let mut translated = translate_response_request(json!({
         "model": "1flowbase",

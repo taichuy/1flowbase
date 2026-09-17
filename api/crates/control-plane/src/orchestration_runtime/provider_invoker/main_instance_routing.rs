@@ -136,6 +136,7 @@ where
             .cloned()
             .collect();
         let plugin_id = installation.plugin_id.clone();
+        let retry_partition = provider_retry_partition(&instance, &installation)?;
         Ok(
             orchestration_runtime::execution_engine::ResolvedProviderRoute::new(
                 runtime_capabilities,
@@ -145,9 +146,37 @@ where
                     package,
                 },
             )
-            .with_runtime_plugin_id(plugin_id),
+            .with_runtime_plugin_id(plugin_id)
+            .with_retry_partition(retry_partition),
         )
     }
+}
+
+fn provider_retry_partition(
+    instance: &domain::ModelProviderInstanceRecord,
+    installation: &domain::LocalPluginInstallationRecord,
+) -> Result<orchestration_runtime::execution_engine::ai_native_recovery::ProviderRetryPartition> {
+    use sha2::{Digest, Sha256};
+
+    // The endpoint identity is host-owned runtime placement, not Provider config. In particular,
+    // neither this value nor the credential-owner digest includes config_json or secret material.
+    let endpoint_identity = format!(
+        "{}:{}:{}",
+        installation.plugin_id, installation.id, instance.protocol
+    );
+    let credential_owner_hash = format!(
+        "{:x}",
+        Sha256::digest(format!(
+            "workspace:{}:owner:{}",
+            instance.workspace_id, instance.created_by
+        ))
+    );
+    orchestration_runtime::execution_engine::ai_native_recovery::ProviderRetryPartition::new(
+        instance.id.to_string(),
+        endpoint_identity,
+        credential_owner_hash,
+    )
+    .map_err(|_| ControlPlaneError::InvalidInput("provider_retry_partition").into())
 }
 
 fn main_candidate_matches(

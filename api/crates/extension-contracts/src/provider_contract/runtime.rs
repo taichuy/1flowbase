@@ -16,6 +16,98 @@ pub struct ProviderInvocationResult {
     pub provider_metadata: Value,
 }
 
+impl ProviderInvocationResult {
+    pub fn set_recovery_receipt(&mut self, receipt: ProviderRecoveryReceipt) -> Result<(), String> {
+        receipt.validate()?;
+        let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {
+            "provider_metadata must be an object for a recovery receipt".to_string()
+        })?;
+        metadata.insert(
+            PROVIDER_RECOVERY_RECEIPT_METADATA_KEY.to_string(),
+            serde_json::to_value(receipt).expect("ProviderRecoveryReceipt must always serialize"),
+        );
+        Ok(())
+    }
+
+    pub fn recovery_receipt(&self) -> Result<Option<ProviderRecoveryReceipt>, String> {
+        let Some(value) = self
+            .provider_metadata
+            .as_object()
+            .and_then(|metadata| metadata.get(PROVIDER_RECOVERY_RECEIPT_METADATA_KEY))
+        else {
+            return Ok(None);
+        };
+        let receipt: ProviderRecoveryReceipt = serde_json::from_value(value.clone())
+            .map_err(|_| "provider recovery receipt is invalid".to_string())?;
+        receipt.validate()?;
+        Ok(Some(receipt))
+    }
+
+    pub fn set_invocation_timing_receipt(
+        &mut self,
+        receipt: ProviderInvocationTimingReceipt,
+    ) -> Result<(), String> {
+        receipt.validate()?;
+        let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {
+            "provider_metadata must be an object for an invocation timing receipt".to_string()
+        })?;
+        metadata.insert(
+            PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY.to_string(),
+            serde_json::to_value(receipt)
+                .expect("ProviderInvocationTimingReceipt must always serialize"),
+        );
+        Ok(())
+    }
+
+    pub fn invocation_timing_receipt(
+        &self,
+    ) -> Result<Option<ProviderInvocationTimingReceipt>, String> {
+        let Some(value) = self
+            .provider_metadata
+            .as_object()
+            .and_then(|metadata| metadata.get(PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY))
+        else {
+            return Ok(None);
+        };
+        let receipt: ProviderInvocationTimingReceipt = serde_json::from_value(value.clone())
+            .map_err(|_| "provider invocation timing receipt is invalid".to_string())?;
+        receipt.validate()?;
+        Ok(Some(receipt))
+    }
+
+    pub fn set_transport_session_receipt(
+        &mut self,
+        receipt: ProviderTransportSessionReceipt,
+    ) -> Result<(), String> {
+        receipt.validate()?;
+        let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {
+            "provider_metadata must be an object for a transport session receipt".to_string()
+        })?;
+        metadata.insert(
+            PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY.to_string(),
+            serde_json::to_value(receipt)
+                .expect("ProviderTransportSessionReceipt must always serialize"),
+        );
+        Ok(())
+    }
+
+    pub fn transport_session_receipt(
+        &self,
+    ) -> Result<Option<ProviderTransportSessionReceipt>, String> {
+        let Some(value) = self
+            .provider_metadata
+            .as_object()
+            .and_then(|metadata| metadata.get(PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY))
+        else {
+            return Ok(None);
+        };
+        let receipt: ProviderTransportSessionReceipt = serde_json::from_value(value.clone())
+            .map_err(|_| "physical transport session receipt is invalid".to_string())?;
+        receipt.validate()?;
+        Ok(Some(receipt))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderRuntimeErrorKind {
@@ -24,6 +116,7 @@ pub enum ProviderRuntimeErrorKind {
     ModelNotFound,
     ProviderAffinityMismatch,
     ProviderTransportUnavailable,
+    ProviderTransportAdmissionFailed,
     SemanticCapabilityUnsupported,
     RateLimited,
     ProviderUpstreamError,

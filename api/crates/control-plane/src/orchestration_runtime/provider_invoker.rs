@@ -24,6 +24,26 @@ const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
+fn provider_execution_deadline_unix_ms(
+    input: &ProviderInvocationInput,
+    now: OffsetDateTime,
+) -> i64 {
+    let now_unix_ms = i64::try_from(now.unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX);
+    input
+        .run_context
+        .get("task_deadline_unix_ms")
+        .and_then(Value::as_i64)
+        .filter(|deadline| *deadline > now_unix_ms)
+        .unwrap_or_else(|| {
+            i64::try_from((now + time::Duration::minutes(30)).unix_timestamp_nanos() / 1_000_000)
+                .unwrap_or(i64::MAX)
+        })
+}
+
+#[cfg(test)]
+#[path = "provider_invoker/_tests/deadline_tests.rs"]
+mod deadline_tests;
+
 fn billing_invocation_id(
     flow_run_id: Uuid,
     node_id: Option<&str>,
@@ -753,6 +773,9 @@ where
         let native_responses_passthrough = input.required_capabilities.contains(
             &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
+        let deadline_unix_ms =
+            provider_execution_deadline_unix_ms(&input, OffsetDateTime::now_utc());
+        let flow_ms = bounded_timing_millis(provider_invoke_started.elapsed());
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -765,12 +788,7 @@ where
                         .flow_execution_context
                         .as_ref()
                         .map(|context| context.data_model.actor.user_id),
-                    deadline_unix_ms: i64::try_from(
-                        (OffsetDateTime::now_utc() + time::Duration::minutes(5))
-                            .unix_timestamp_nanos()
-                            / 1_000_000,
-                    )
-                    .unwrap_or(i64::MAX),
+                    deadline_unix_ms,
                 },
                 domain::NetworkEgressConsumerSelector::ModelProviderInstance {
                     instance_id: instance.id,
@@ -855,6 +873,22 @@ where
         }
         let mut invocation_output = invocation_output
             .ok_or_else(|| anyhow!("provider invocation completed without output or error"))?;
+        let runtime_stream_timing = provider_stream_timing
+            .lock()
+            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
+            .clone();
+        attach_gateway_stage_timing(
+            &mut invocation_output.result.provider_metadata,
+            flow_ms,
+            first_runtime_ingress_ms(&runtime_stream_timing),
+            max_runtime_flush_ms(&runtime_stream_timing),
+        )?;
+        // Keep the typed recovery receipt at the Host-owned metadata surface while wrapping
+        // upstream diagnostics. AI Native must not parse nested Provider Close/cursor payloads.
+        let recovery_receipt = invocation_output
+            .result
+            .recovery_receipt()
+            .map_err(anyhow::Error::msg)?;
         if let Some(account) = self
             .flow_execution_context
             .as_ref()
@@ -866,16 +900,18 @@ where
                 "_1flowbase_upstream_provider_metadata": upstream,
             });
         }
-        let runtime_stream_timing = provider_stream_timing
-            .lock()
-            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
-            .clone();
         if !runtime_stream_timing.is_empty() {
             let provider_metadata = std::mem::take(&mut invocation_output.result.provider_metadata);
             invocation_output.result.provider_metadata = json!({
                 "_1flowbase_runtime_stream_timing": runtime_stream_timing,
                 "_1flowbase_upstream_provider_metadata": provider_metadata,
             });
+        }
+        if let Some(receipt) = recovery_receipt {
+            invocation_output
+                .result
+                .set_recovery_receipt(receipt)
+                .map_err(anyhow::Error::msg)?;
         }
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
         let mut output = orchestration_runtime::execution_engine::ProviderInvocationOutput {
@@ -891,6 +927,53 @@ where
         );
         Ok(output)
     }
+}
+
+const GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY: &str = "1flowbase_gateway_provider_stages";
+
+fn bounded_timing_millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(24 * 60 * 60 * 1_000)
+}
+
+fn max_runtime_flush_ms(timeline: &[Value]) -> Option<u64> {
+    timeline
+        .iter()
+        .filter_map(|event| {
+            let ingress = event.get("ingress_ms")?.as_u64()?;
+            let appended = event.get("runtime_append_ms")?.as_u64()?;
+            appended.checked_sub(ingress)
+        })
+        .max()
+}
+
+fn first_runtime_ingress_ms(timeline: &[Value]) -> Option<u64> {
+    timeline
+        .iter()
+        .filter_map(|event| event.get("ingress_ms").and_then(Value::as_u64))
+        .min()
+}
+
+fn attach_gateway_stage_timing(
+    metadata: &mut Value,
+    flow_ms: u64,
+    ingress_ms: Option<u64>,
+    flush_ms: Option<u64>,
+) -> Result<()> {
+    let object = metadata
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("provider_metadata must be an object for gateway stage timing"))?;
+    object.insert(
+        GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
+        json!({
+            "schema_version": 1,
+            "ingress_ms": ingress_ms,
+            "flow_ms": flow_ms,
+            "flush_ms": flush_ms,
+        }),
+    );
+    Ok(())
 }
 
 fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
@@ -1961,6 +2044,10 @@ mod continuation_claim_tests;
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/provider_invoker/credit_command_tests.rs"]
 mod credit_command_tests;
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/provider_invoker/timing_receipt_tests.rs"]
+mod timing_receipt_tests;
 
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/support.rs"]

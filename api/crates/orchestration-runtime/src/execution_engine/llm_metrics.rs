@@ -522,11 +522,113 @@ pub(super) fn attach_provider_stream_timing(attempt: &mut Value, timing: Option<
     attempt.insert("provider_stream_timing".to_string(), timing.clone());
 }
 
+const RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY: &str = "1flowbase_runtime_provider_stages";
+const GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY: &str = "1flowbase_gateway_provider_stages";
+
+fn bounded_stage_value(value: Option<&Value>, field: &str) -> Option<u64> {
+    value
+        .filter(|receipt| receipt.get("schema_version").and_then(Value::as_u64) == Some(1))
+        .and_then(|receipt| receipt.get(field))
+        .and_then(Value::as_u64)
+        .filter(|duration| *duration <= 24 * 60 * 60 * 1_000)
+}
+
+fn stage_receipt(owner: &str, duration_ms: Option<u64>, unavailable: &str) -> Value {
+    json!({
+        "owner": owner,
+        "duration_ms": duration_ms,
+        "availability": if duration_ms.is_some() { "observed" } else { "unavailable" },
+        "unavailable_reason": duration_ms.is_none().then_some(unavailable),
+    })
+}
+
+pub(super) fn attach_provider_timing_receipt(
+    attempt: &mut Value,
+    observability: &ProviderObservabilityMetadata,
+    attempt_index: usize,
+    attempt_status: &str,
+    error_payload: Option<&Value>,
+) {
+    let Some(attempt) = attempt.as_object_mut() else {
+        return;
+    };
+    let runtime = observability.runtime_stages.as_ref();
+    let gateway = observability.gateway_stages.as_ref();
+    let provider = observability.provider_timing.as_ref();
+    let connection = observability.transport_session.as_ref();
+    let connect_ms = provider.and_then(|receipt| receipt.connect_ms);
+    let termination_kind = provider
+        .map(|receipt| match receipt.termination_kind {
+            extension_contracts::ProviderInvocationTerminationKind::Completed => "completed",
+            extension_contracts::ProviderInvocationTerminationKind::UpstreamError => {
+                "upstream_error"
+            }
+            extension_contracts::ProviderInvocationTerminationKind::TransportError => {
+                "transport_error"
+            }
+            extension_contracts::ProviderInvocationTerminationKind::Deadline => "deadline",
+        })
+        .unwrap_or_else(|| {
+            match error_payload
+                .and_then(|payload| payload.get("error_code"))
+                .and_then(Value::as_str)
+            {
+                Some("provider_transport_unavailable" | "endpoint_unreachable") => {
+                    "transport_error"
+                }
+                Some("deadline_exceeded" | "provider_invocation_timeout") => "deadline",
+                Some("empty_response") => "empty_response",
+                Some(_) => "upstream_error",
+                None if attempt_status == "succeeded" => "completed",
+                None => attempt_status,
+            }
+        });
+    let connect_unavailable = if connection.is_some_and(|receipt| receipt.reused) {
+        "reused_connection_no_connect"
+    } else {
+        "provider_receipt_unavailable"
+    };
+    let connection = connection.map(|receipt| {
+        json!({
+            "cold": !receipt.reused,
+            "reused": receipt.reused,
+            "generation": receipt.generation,
+            "connection_age_ms": receipt.connection_age_ms,
+            "ttl_remaining_ms": receipt.ttl_remaining_ms,
+            "physical_state": receipt.physical_state,
+            "close_reason": receipt.close_reason,
+            "close_acknowledged": receipt.close_acknowledged,
+        })
+    });
+    attempt.insert(
+        "provider_timing_receipt".to_string(),
+        json!({
+            "schema_version": 1,
+            "attempt_index": attempt_index,
+            "stages": {
+                "ingress": stage_receipt("ai_native", bounded_stage_value(gateway, "ingress_ms"), "no_provider_event_ingress_observed"),
+                "mapping": stage_receipt("runtime_host", bounded_stage_value(runtime, "mapping_ms"), "runtime_receipt_unavailable"),
+                "flow": stage_receipt("ai_native", bounded_stage_value(gateway, "flow_ms"), "gateway_receipt_unavailable"),
+                "queue": stage_receipt("runtime_host", bounded_stage_value(runtime, "queue_ms"), "runtime_receipt_unavailable"),
+                "connect": stage_receipt("provider", connect_ms, connect_unavailable),
+                "upstream": stage_receipt("provider", provider.map(|receipt| receipt.upstream_ms), "provider_receipt_unavailable"),
+                "flush": stage_receipt("ai_native", bounded_stage_value(gateway, "flush_ms"), "no_stream_event_flush_observed"),
+            },
+            "connection": connection,
+            "termination_kind": termination_kind,
+        }),
+    );
+}
+
 #[derive(Default)]
 pub(super) struct ProviderObservabilityMetadata {
     pub(super) user_account: Option<Value>,
     pub(super) stream_timing: Option<Value>,
     pub(super) billing: Option<Value>,
+    pub(super) provider_timing: Option<extension_contracts::ProviderInvocationTimingReceipt>,
+    pub(super) transport_session: Option<extension_contracts::ProviderTransportSessionReceipt>,
+    pub(super) runtime_stages: Option<Value>,
+    pub(super) gateway_stages: Option<Value>,
 }
 
 pub(super) fn attach_provider_billing(attempt: &mut Value, billing: Option<&Value>) {
@@ -541,6 +643,36 @@ pub(super) fn take_provider_observability_metadata(
 ) -> ProviderObservabilityMetadata {
     let mut extracted = ProviderObservabilityMetadata::default();
     while let Some(metadata) = result.provider_metadata.as_object_mut() {
+        if let Some(value) =
+            metadata.remove(extension_contracts::PROVIDER_INVOCATION_TIMING_RECEIPT_METADATA_KEY)
+        {
+            extracted.provider_timing = serde_json::from_value(value)
+                .ok()
+                .filter(
+                    |receipt: &extension_contracts::ProviderInvocationTimingReceipt| {
+                        receipt.validate().is_ok()
+                    },
+                )
+                .or(extracted.provider_timing);
+        }
+        if let Some(value) =
+            metadata.remove(extension_contracts::PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY)
+        {
+            extracted.transport_session = serde_json::from_value(value)
+                .ok()
+                .filter(
+                    |receipt: &extension_contracts::ProviderTransportSessionReceipt| {
+                        receipt.validate().is_ok()
+                    },
+                )
+                .or(extracted.transport_session);
+        }
+        extracted.runtime_stages = metadata
+            .remove(RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY)
+            .or(extracted.runtime_stages);
+        extracted.gateway_stages = metadata
+            .remove(GATEWAY_PROVIDER_STAGE_TIMING_METADATA_KEY)
+            .or(extracted.gateway_stages);
         let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
             && (metadata.contains_key("_1flowbase_runtime_stream_timing")
                 || metadata.contains_key("_1flowbase_billing")
@@ -698,6 +830,93 @@ mod provider_stream_timing_tests {
         assert_eq!(observability.billing, Some(billing));
         assert_eq!(observability.user_account, Some(json!("billing-user")));
         assert_eq!(result.provider_metadata, upstream);
+    }
+
+    #[test]
+    fn c2_clocked_receipts_project_safe_complete_stage_schema() {
+        let mut result = ProviderInvocationResult {
+            provider_metadata: json!({
+                "1flowbase_gateway_provider_stages": {
+                    "schema_version": 1,
+                    "ingress_ms": 37,
+                    "flow_ms": 11,
+                    "flush_ms": 2
+                },
+                "1flowbase_runtime_provider_stages": {
+                    "schema_version": 1,
+                    "mapping_ms": 3,
+                    "queue_ms": 5
+                },
+                "1flowbase_provider_invocation_timing": {
+                    "schema_version": 1,
+                    "connect_ms": 17,
+                    "upstream_ms": 241,
+                    "termination_kind": "completed"
+                },
+                "1flowbase_physical_transport_session": {
+                    "generation": 7,
+                    "reused": false,
+                    "physical_state": "ready",
+                    "connection_age_ms": 260,
+                    "ttl_remaining_ms": 3_000,
+                },
+                "response_id": "must-remain-upstream-only"
+            }),
+            ..ProviderInvocationResult::default()
+        };
+        let observability = take_provider_observability_metadata(&mut result);
+        let mut attempt = json!({"attempt_index": 2});
+
+        attach_provider_timing_receipt(&mut attempt, &observability, 2, "succeeded", None);
+
+        let receipt = &attempt["provider_timing_receipt"];
+        assert_eq!(receipt["attempt_index"], 2);
+        assert_eq!(receipt["stages"]["ingress"]["duration_ms"], 37);
+        assert_eq!(receipt["stages"]["mapping"]["duration_ms"], 3);
+        assert_eq!(receipt["stages"]["flow"]["duration_ms"], 11);
+        assert_eq!(receipt["stages"]["queue"]["duration_ms"], 5);
+        assert_eq!(receipt["stages"]["connect"]["duration_ms"], 17);
+        assert_eq!(receipt["stages"]["upstream"]["duration_ms"], 241);
+        assert_eq!(receipt["stages"]["flush"]["duration_ms"], 2);
+        assert_eq!(receipt["connection"]["cold"], true);
+        assert_eq!(receipt["connection"]["generation"], 7);
+        assert_eq!(receipt["termination_kind"], "completed");
+        let serialized = serde_json::to_string(receipt).unwrap();
+        for forbidden in [
+            "credential",
+            "api_key",
+            "prompt",
+            "tool_output",
+            "encrypted_content",
+            "cursor",
+            "response_id",
+        ] {
+            assert!(!serialized.contains(forbidden));
+        }
+        assert_eq!(
+            result.provider_metadata["response_id"],
+            "must-remain-upstream-only"
+        );
+    }
+
+    #[test]
+    fn c2_failed_attempt_derives_transport_termination_without_fabricating_stages() {
+        let observability = ProviderObservabilityMetadata::default();
+        let mut attempt = json!({"attempt_index": 1});
+
+        attach_provider_timing_receipt(
+            &mut attempt,
+            &observability,
+            1,
+            "failed",
+            Some(&json!({"error_code": "provider_transport_unavailable"})),
+        );
+
+        let receipt = &attempt["provider_timing_receipt"];
+        assert_eq!(receipt["termination_kind"], "transport_error");
+        assert_eq!(receipt["connection"], Value::Null);
+        assert_eq!(receipt["stages"]["connect"]["duration_ms"], Value::Null);
+        assert_eq!(receipt["stages"]["connect"]["availability"], "unavailable");
     }
 }
 

@@ -335,7 +335,7 @@ fn anthropic_cache_read_input_tokens(usage: &NativeUsage) -> u64 {
 }
 
 pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
-    let callback_task_id = llm_tool_callback_task_id(payload)?;
+    llm_tool_callback_task_id(payload)?;
     let calls = llm_tool_calls(payload)?;
     let output = calls
         .iter()
@@ -350,7 +350,7 @@ pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Opt
             Some(json!({
                 "id": format!("fc_{}", original_id),
                 "type": "function_call",
-                "call_id": encode_openai_callback_tool_call_id(callback_task_id, &original_id),
+                "call_id": original_id,
                 "name": name,
                 "arguments": tool_call_arguments_string(arguments),
                 "status": "completed"

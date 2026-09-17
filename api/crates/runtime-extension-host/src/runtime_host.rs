@@ -490,6 +490,21 @@ impl ProviderRuntimePort for RuntimeExtensionHost {
             .map(|output| output.result)
             .map_err(RuntimeBackendError::from)
     }
+
+    async fn provider_transport_session(
+        &self,
+        target_id: &str,
+        command: extension_contracts::ProviderTransportSessionCommand,
+    ) -> Result<extension_contracts::ProviderTransportSessionReceipt, RuntimeBackendError> {
+        self.ensure_accepting()?;
+        let operation = self
+            .provider_host
+            .read()
+            .await
+            .transport_session_operation(target_id, command)
+            .map_err(RuntimeBackendError::from)?;
+        operation.await.map_err(RuntimeBackendError::from)
+    }
 }
 
 #[async_trait]
@@ -1204,6 +1219,20 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
         }
 
         let task = tokio::spawn(async move {
+            let mut input = request.input;
+            if let Some(mut directive) = input
+                .transport_session_directive()
+                .map_err(RuntimeBackendError::InvalidRequest)?
+            {
+                if let Some(principal) = request.principal.as_ref() {
+                    directive.physical_deadline_unix_ms = directive
+                        .physical_deadline_unix_ms
+                        .min(principal.deadline_unix_ms);
+                    input
+                        .set_transport_session_directive(directive)
+                        .map_err(RuntimeBackendError::InvalidRequest)?;
+                }
+            }
             let (required_sender, required_forwarder) = match sinks.required {
                 Some(sink) => {
                     let (sender, receiver) = mpsc::channel(64);
@@ -1228,7 +1257,7 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
                 let host = provider_host.read().await;
                 host.invoke_stream_with_host_calls_operation(
                     &target_id,
-                    request.input,
+                    input,
                     required_sender,
                     diagnostic_sender,
                     request.principal,

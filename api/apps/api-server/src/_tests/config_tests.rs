@@ -59,6 +59,19 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     );
     assert!(!config.application_build.as_str().contains(".git."));
     assert!(!config.application_build.as_str().contains("unavailable"));
+    let transport = &config.transport_session_registry;
+    assert_eq!(transport.logical_max_age, Duration::from_secs(2 * 60 * 60));
+    assert_eq!(transport.invocation_default, Duration::from_secs(30 * 60));
+    assert_eq!(transport.waiting_tool_lease, Duration::from_secs(55 * 60));
+    assert_eq!(transport.orphan_grace, Duration::from_secs(60));
+    assert_eq!(transport.idle_affinity_lease, Duration::from_secs(90));
+    assert_eq!(
+        transport.physical_soft_drain_age,
+        Duration::from_secs(50 * 60)
+    );
+    assert_eq!(transport.physical_max_age, Duration::from_secs(58 * 60));
+    assert_eq!(transport.capacity, 128);
+    assert_eq!(transport.tombstone_ttl, Duration::from_secs(5 * 60));
 }
 
 #[test]

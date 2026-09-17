@@ -3,8 +3,9 @@ use extension_package_runtime::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
     NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
     ProviderCompactProfile, ProviderInvocationCapability, ProviderResetCreditOperation,
-    ProviderResetCreditResult, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
-    PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
+    ProviderResetCreditResult, ProviderTransportSessionAction, ProviderTransportSessionCommand,
+    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY, PROVIDER_RESET_CREDITS_CAPABILITY,
+    PROVIDER_USAGE_WINDOWS_CAPABILITY,
 };
 use std::{
     fs,
@@ -19,6 +20,27 @@ use tokio::time::sleep;
 
 use crate::package_loader::PackageLoader;
 use crate::stdio_runtime::ProviderWorkerLifecycleState;
+
+#[test]
+fn c2_runtime_stage_receipt_is_metadata_only() {
+    let mut metadata = json!({});
+    attach_runtime_stage_timing(&mut metadata, 3, 7).unwrap();
+    let receipt = &metadata[RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY];
+    assert_eq!(receipt["schema_version"], 1);
+    assert_eq!(receipt["mapping_ms"], 3);
+    assert_eq!(receipt["queue_ms"], 7);
+    let serialized = serde_json::to_string(&metadata).unwrap();
+    for forbidden in [
+        "api_key",
+        "prompt",
+        "tool_output",
+        "encrypted_content",
+        "previous_response_id",
+        "response_id",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
 
 struct TempProviderPackage {
     root: PathBuf,
@@ -1257,6 +1279,43 @@ async fn failed_stateful_worker_is_replaced_on_next_handle_acquisition() {
     assert_eq!(retained_receipt, failed_receipt);
 }
 
+#[tokio::test]
+async fn transport_session_control_uses_stateful_stdio_and_returns_safe_receipt() {
+    let package = TempProviderPackage::new();
+    package.write_stateful_provider_package(
+        "fixture_provider",
+        "fixture_provider",
+        "Fixture Provider",
+    );
+    package.write_lifecycle_worker_runtime();
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let receipt = host
+        .transport_session_operation(
+            &plugin_id,
+            ProviderTransportSessionCommand {
+                logical_session_id: "logical-fixture".into(),
+                generation: 7,
+                action: ProviderTransportSessionAction::Drain,
+                deadline_unix_ms: 4_102_444_800_000,
+            },
+        )
+        .unwrap()
+        .await
+        .unwrap();
+
+    assert_eq!(receipt.generation, 7);
+    assert_eq!(receipt.connection_age_ms, 42);
+    assert_eq!(receipt.close_acknowledged, Some(true));
+    assert!(!serde_json::to_string(&receipt)
+        .unwrap()
+        .contains("logical-fixture"));
+}
+
 #[test]
 fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
     let source = include_str!("../provider_host.rs");
@@ -1265,8 +1324,8 @@ fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
         source
             .matches("PluginExecutionMode::StatefulProviderWorker")
             .count(),
-        2,
-        "non-streaming and streaming are the only stateful dispatch boundaries"
+        3,
+        "unary, streaming, and transport-session control are the stateful dispatch boundaries"
     );
     assert!(source.contains("worker.call(&request).await"));
     assert!(source.contains("worker\n                    .call_streaming_with_limits"));

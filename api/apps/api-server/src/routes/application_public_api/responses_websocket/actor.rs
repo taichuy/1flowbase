@@ -2,7 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -19,7 +19,6 @@ use crate::{app_state::ApiState, runtime_activity::ApplicationActivityKind};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
     Idle,
-    Prewarming,
     Active,
     Cancelling,
     Closed,
@@ -30,7 +29,6 @@ pub(crate) struct TurnId(u64);
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ConnectionAction {
-    Prewarmed { response_id: String },
     StartTurn { turn: TurnId, response: Value },
     CancelTurn { turn: TurnId },
     Close,
@@ -51,8 +49,6 @@ pub(crate) enum ConnectionTransitionError {
     InvalidResponse,
     #[error("response.input must be text or an array when present")]
     InvalidInput,
-    #[error("prewarm response reference is not available on this connection")]
-    UnknownPrewarmResponse,
     #[error("only one response may be active on a connection")]
     ActiveTurnExists,
     #[error("the Responses WebSocket connection is closing")]
@@ -69,7 +65,6 @@ impl ConnectionTransitionError {
             Self::InvalidGenerate => "response.generate must be boolean",
             Self::InvalidResponse => "response must be an object",
             Self::InvalidInput => "response.input must be text or an array",
-            Self::UnknownPrewarmResponse => "prewarm response reference is unavailable",
             Self::ActiveTurnExists => "a response is already active",
             Self::ConnectionClosing => "connection is closing",
         }
@@ -80,21 +75,14 @@ impl ConnectionTransitionError {
 /// this type so none of them can mutate the connection lifecycle directly.
 pub(crate) struct ResponsesConnectionActor {
     state: ConnectionState,
-    prewarmed_response: Option<PrewarmedResponse>,
     active_turn: Option<TurnId>,
     next_turn: u64,
-}
-
-struct PrewarmedResponse {
-    id: String,
-    fields: Map<String, Value>,
 }
 
 impl ResponsesConnectionActor {
     pub(crate) fn new() -> Self {
         Self {
             state: ConnectionState::Idle,
-            prewarmed_response: None,
             active_turn: None,
             next_turn: 1,
         }
@@ -103,13 +91,6 @@ impl ResponsesConnectionActor {
     #[cfg(test)]
     pub(crate) fn state(&self) -> ConnectionState {
         self.state
-    }
-
-    #[cfg(test)]
-    pub(crate) fn prewarmed_response_id(&self) -> Option<&str> {
-        self.prewarmed_response
-            .as_ref()
-            .map(|prewarmed| prewarmed.id.as_str())
     }
 
     pub(crate) fn accept_response(
@@ -126,15 +107,14 @@ impl ResponsesConnectionActor {
             return Err(ConnectionTransitionError::ConnectionClosing);
         }
 
-        let mut response = response
+        let response = response
             .as_object()
             .cloned()
             .ok_or(ConnectionTransitionError::InvalidResponse)?;
-        let generate = match response.remove("generate") {
-            None => true,
-            Some(Value::Bool(generate)) => generate,
+        match response.get("generate") {
+            None | Some(Value::Bool(_)) => {}
             Some(_) => return Err(ConnectionTransitionError::InvalidGenerate),
-        };
+        }
 
         if response
             .get("input")
@@ -143,50 +123,6 @@ impl ResponsesConnectionActor {
             return Err(ConnectionTransitionError::InvalidInput);
         }
 
-        if !generate {
-            let response_id = format!("resp_prewarm_{}", uuid::Uuid::now_v7());
-            self.prewarmed_response = Some(PrewarmedResponse {
-                id: response_id.clone(),
-                fields: response,
-            });
-            self.state = ConnectionState::Prewarming;
-            return Ok(ConnectionAction::Prewarmed { response_id });
-        }
-
-        let prewarm_reference = response
-            .get("previous_response_id")
-            .and_then(Value::as_str)
-            .filter(|id| id.starts_with("resp_prewarm_"));
-        if let Some(reference) = prewarm_reference {
-            let prewarmed = self
-                .prewarmed_response
-                .as_ref()
-                .filter(|prewarmed| prewarmed.id == reference)
-                .ok_or(ConnectionTransitionError::UnknownPrewarmResponse)?;
-            let mut fields = prewarmed.fields.clone();
-            response.remove("previous_response_id");
-            // Codex sends only the new input after a prewarm response. In Responses Lite,
-            // replacing this array would discard additional_tools and base instructions.
-            if let (Some(prefix), Some(delta)) = (fields.get("input"), response.get("input")) {
-                let mut input = Vec::new();
-                for part in [prefix, delta] {
-                    match part {
-                        Value::Array(items) => input.extend(items.iter().cloned()),
-                        Value::String(text) => input.push(serde_json::json!({
-                            "role": "user",
-                            "content": text,
-                        })),
-                        _ => return Err(ConnectionTransitionError::InvalidInput),
-                    }
-                }
-                response.insert("input".to_string(), Value::Array(input));
-            }
-            fields.extend(response);
-            response = fields;
-        }
-        // A full request or ordinary upstream continuation owns its own context.
-        // Only an explicit reference above is allowed to consume prewarm fields.
-        self.prewarmed_response = None;
         let response = Value::Object(response);
         let turn = TurnId(self.next_turn);
         self.next_turn = self.next_turn.saturating_add(1);
@@ -203,7 +139,6 @@ impl ResponsesConnectionActor {
             }
             (ConnectionState::Cancelling, Some(turn)) => ConnectionAction::CancelTurn { turn },
             _ => {
-                self.prewarmed_response = None;
                 self.active_turn = None;
                 self.state = ConnectionState::Closed;
                 ConnectionAction::Close
@@ -226,7 +161,7 @@ impl ResponsesConnectionActor {
                 self.state = ConnectionState::Idle;
                 TurnCompletion::ReturnedToIdle
             }
-            ConnectionState::Idle | ConnectionState::Prewarming => TurnCompletion::IgnoredStaleTurn,
+            ConnectionState::Idle => TurnCompletion::IgnoredStaleTurn,
         }
     }
 }
@@ -240,16 +175,41 @@ pub(crate) async fn run_connection(
         authorization.principal.application_id(),
         ApplicationActivityKind::WebSocketConnection,
     );
+    let owner_id = authorization.transport_owner_id.clone();
+    let terminations = state.provider_runtime.subscribe_transport_terminations();
+    let services = state.provider_runtime.clone();
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
-    run_connection_loop(socket, move |response, frames| {
-        let bridge = bridge.clone();
-        async move { bridge.execute(response, frames).await }
-    })
+    run_connection_loop_with_terminations(
+        socket,
+        move |response, frames| {
+            let bridge = bridge.clone();
+            async move { bridge.execute(response, frames).await }
+        },
+        Some((owner_id.clone(), terminations)),
+    )
     .await;
+    services.mark_transport_owner_orphaned(&owner_id).await;
 }
 
+#[cfg(test)]
 pub(super) async fn run_connection_loop<F, Fut>(socket: WebSocket, execute: F)
 where
+    F: Fn(Value, mpsc::Sender<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
+        + Send
+        + 'static,
+{
+    run_connection_loop_with_terminations(socket, execute, None).await;
+}
+
+async fn run_connection_loop_with_terminations<F, Fut>(
+    socket: WebSocket,
+    execute: F,
+    mut terminations: Option<(
+        String,
+        tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
+    )>,
+) where
     F: Fn(Value, mpsc::Sender<String>) -> Fut,
     Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
         + Send
@@ -266,7 +226,7 @@ where
     );
     let mut active: Option<ActiveTurn> = None;
 
-    'connection: loop {
+    loop {
         if let Some((turn, mut task, mut frames)) = active.take() {
             tokio::select! {
                 biased;
@@ -275,7 +235,6 @@ where
                         matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
                     });
                     if sender.send(Message::Text(frame)).await.is_err() {
-                        task.abort();
                         break;
                     }
                     terminal_delivered |= terminal;
@@ -299,13 +258,11 @@ where
                     let Some(message) = message else {
                         let action = actor.begin_close();
                         if matches!(action, ConnectionAction::CancelTurn { .. }) {
-                            task.abort();
                             let _ = actor.complete_turn(turn);
                         }
                         break;
                     };
                     let Ok(message) = message else {
-                        task.abort();
                         let action = actor.begin_close();
                         if matches!(action, ConnectionAction::CancelTurn { .. }) {
                             let _ = actor.complete_turn(turn);
@@ -316,14 +273,12 @@ where
                     match message {
                         Message::Ping(payload) => {
                             if sender.send(Message::Pong(payload)).await.is_err() {
-                                task.abort();
                                 break;
                             }
                             active = Some((turn, task, frames));
                         }
                         Message::Pong(_) => active = Some((turn, task, frames)),
                         Message::Close(frame) => {
-                            task.abort();
                             let action = actor.begin_close();
                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                 let _ = actor.complete_turn(turn);
@@ -344,7 +299,6 @@ where
                                     match actor.accept_response(response) {
                                         Ok(_) => active = Some((turn, task, frames)),
                                         Err(error) => {
-                                            task.abort();
                                             let action = actor.begin_close();
                                             if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                                 let _ = actor.complete_turn(turn);
@@ -361,7 +315,6 @@ where
                                 }
                                 Ok(None) => active = Some((turn, task, frames)),
                                 Err(error) => {
-                                    task.abort();
                                     let action = actor.begin_close();
                                     if matches!(action, ConnectionAction::CancelTurn { .. }) {
                                         let _ = actor.complete_turn(turn);
@@ -376,6 +329,17 @@ where
                         }
                     }
                 }
+                notice = receive_termination(&mut terminations) => {
+                    if let Some(notice) = notice {
+                        send_transport_terminal(&mut sender, &notice.code, true).await;
+                        finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
+                            code: 1011,
+                            reason: Cow::Owned(notice.code.to_string()),
+                        })).await;
+                        break;
+                    }
+                    active = Some((turn, task, frames));
+                }
             }
             continue;
         }
@@ -383,11 +347,26 @@ where
         let message = if let Some(message) = queued_response.take() {
             message
         } else {
-            let Some(Ok(message)) = receiver.next().await else {
-                actor.begin_close();
-                break;
-            };
-            message
+            tokio::select! {
+                message = receiver.next() => {
+                    let Some(Ok(message)) = message else {
+                        actor.begin_close();
+                        break;
+                    };
+                    message
+                }
+                notice = receive_termination(&mut terminations) => {
+                    if let Some(notice) = notice {
+                        send_transport_terminal(&mut sender, &notice.code, false).await;
+                        finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
+                            code: 1011,
+                            reason: Cow::Owned(notice.code.to_string()),
+                        })).await;
+                        break;
+                    }
+                    continue;
+                }
+            }
         };
         match message {
             Message::Ping(payload) => {
@@ -404,14 +383,6 @@ where
             message => match decode_client_message(message) {
                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
                     match actor.accept_response(response) {
-                        Ok(ConnectionAction::Prewarmed { response_id }) => {
-                            for frame in prewarm_completion_frames(&response_id) {
-                                if sender.send(Message::Text(frame)).await.is_err() {
-                                    actor.begin_close();
-                                    break 'connection;
-                                }
-                            }
-                        }
                         Ok(ConnectionAction::StartTurn { turn, response }) => {
                             let (frame_sender, frame_receiver) = mpsc::channel(1);
                             terminal_delivered = false;
@@ -453,28 +424,40 @@ where
     }
 }
 
-pub(crate) fn prewarm_completion_frames(response_id: &str) -> [String; 2] {
-    [
-        serde_json::json!({
-            "type": "response.created",
-            "response": { "id": response_id }
-        })
-        .to_string(),
-        serde_json::json!({
-            "type": "response.completed",
-            "response": {
-                "id": response_id,
-                "usage": {
-                    "input_tokens": 0,
-                    "input_tokens_details": null,
-                    "output_tokens": 0,
-                    "output_tokens_details": null,
-                    "total_tokens": 0
-                }
+async fn receive_termination(
+    terminations: &mut Option<(
+        String,
+        tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
+    )>,
+) -> Option<crate::provider_runtime::TransportTerminationNotice> {
+    let Some((owner_id, receiver)) = terminations.as_mut() else {
+        return std::future::pending().await;
+    };
+    loop {
+        match receiver.recv().await {
+            Ok(notice) if notice.owner_id == *owner_id => return Some(notice),
+            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                return std::future::pending().await
             }
+        }
+    }
+}
+
+async fn send_transport_terminal(
+    sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    code: &str,
+    active: bool,
+) {
+    let frame = if active {
+        serde_json::json!({
+            "type": "response.failed",
+            "response": { "status": "failed", "error": { "code": code, "message": code } }
         })
-        .to_string(),
-    ]
+    } else {
+        serde_json::json!({ "type": "error", "code": code, "message": code })
+    };
+    let _ = sender.send(Message::Text(frame.to_string())).await;
 }
 
 fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {

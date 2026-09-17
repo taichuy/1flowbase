@@ -6,7 +6,8 @@ use extension_contracts::provider_contract::{
     ProviderCompactResult, ProviderCountTokensError, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
     ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
-    ProviderStreamEvent, ProviderUsageWindowsResult,
+    ProviderStreamEvent, ProviderTransportSessionCommand, ProviderTransportSessionReceipt,
+    ProviderUsageWindowsResult,
 };
 use extension_contracts::{
     DataModelTemplateDescriptor, DataSourceCatalogEntry, DataSourceConfigInput,
@@ -421,6 +422,12 @@ pub trait ProviderRuntimePort: Send + Sync {
         target_id: &str,
         input: ProviderInvocationInput,
     ) -> Result<ProviderCompactResult, RuntimeBackendError>;
+
+    async fn provider_transport_session(
+        &self,
+        target_id: &str,
+        command: ProviderTransportSessionCommand,
+    ) -> Result<ProviderTransportSessionReceipt, RuntimeBackendError>;
 }
 
 #[async_trait]

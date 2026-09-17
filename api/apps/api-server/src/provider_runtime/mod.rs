@@ -65,6 +65,9 @@ use crate::runtime_activity::{
 
 mod distribution_registry;
 mod model_provider_slot;
+mod transport_session_lifecycle;
+
+pub(crate) use transport_session_lifecycle::TransportTerminationNotice;
 
 use distribution_registry::EffectiveProviderDistributionSnapshot;
 
@@ -98,6 +101,7 @@ pub struct ApiRuntimeServices {
     provider_input_pipeline:
         Option<Arc<orchestration_runtime::provider_input_pipeline::ProviderInputPipeline>>,
     provider_distribution_snapshot: Arc<tokio::sync::RwLock<EffectiveProviderDistributionSnapshot>>,
+    transport_sessions: Arc<transport_session_lifecycle::TransportSessionCoordinator>,
 }
 
 #[derive(Clone)]
@@ -212,6 +216,18 @@ impl ApiRuntimeServices {
         runtime_backend: Arc<dyn RuntimeBackend>,
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
+        Self::new_with_runtime_backend_and_transport_config(
+            runtime_backend,
+            extension_graph,
+            orchestration_runtime::transport_session::TransportRegistryConfig::default(),
+        )
+    }
+
+    pub fn new_with_runtime_backend_and_transport_config(
+        runtime_backend: Arc<dyn RuntimeBackend>,
+        extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+        transport_config: orchestration_runtime::transport_session::TransportRegistryConfig,
+    ) -> anyhow::Result<Self> {
         let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
         let provider_input_pipeline = Arc::new(
             orchestration_runtime::provider_input_pipeline::ProviderInputPipeline::from_graph(
@@ -223,6 +239,12 @@ impl ApiRuntimeServices {
             orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(
                 runtime_execution,
             );
+        let transport_sessions = Arc::new(
+            transport_session_lifecycle::TransportSessionCoordinator::new(
+                runtime_backend.clone(),
+                transport_config,
+            )?,
+        );
         Ok(Self {
             managed_composition: None,
             runtime_backend,
@@ -234,6 +256,7 @@ impl ApiRuntimeServices {
             provider_distribution_snapshot: Arc::new(tokio::sync::RwLock::new(
                 EffectiveProviderDistributionSnapshot::builtins()?,
             )),
+            transport_sessions,
         })
     }
 
@@ -261,6 +284,13 @@ impl ApiRuntimeServices {
             orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(
                 runtime_execution,
             );
+        let transport_sessions = Arc::new(
+            transport_session_lifecycle::TransportSessionCoordinator::new(
+                runtime_backend.clone(),
+                orchestration_runtime::transport_session::TransportRegistryConfig::default(),
+            )
+            .expect("test transport registry must initialize"),
+        );
         Self {
             managed_composition: None,
             runtime_backend,
@@ -273,7 +303,32 @@ impl ApiRuntimeServices {
                 EffectiveProviderDistributionSnapshot::builtins()
                     .expect("builtin distribution registry must compile"),
             )),
+            transport_sessions,
         }
+    }
+
+    pub(crate) fn start_transport_session_scheduler(&self) {
+        self.transport_sessions.start();
+    }
+
+    pub(crate) fn subscribe_transport_terminations(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<TransportTerminationNotice> {
+        self.transport_sessions.subscribe()
+    }
+
+    pub(crate) async fn mark_transport_owner_orphaned(&self, owner_id: &str) {
+        self.transport_sessions.mark_owner_orphaned(owner_id).await;
+    }
+
+    pub(crate) async fn transport_session_snapshot(
+        &self,
+    ) -> orchestration_runtime::transport_session::SafeRegistrySnapshot {
+        self.transport_sessions.safe_snapshot().await
+    }
+
+    pub(crate) async fn shutdown_transport_sessions(&self, timeout: std::time::Duration) {
+        self.transport_sessions.shutdown(timeout).await;
     }
 
     pub async fn provider_distribution_definitions(
@@ -1023,7 +1078,12 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             actor_id: context.actor_id.map(|value| value.to_string()),
             deadline_unix_ms: context.deadline_unix_ms,
         };
-        let invocation = self
+        let transport_invocation = self
+            .services
+            .transport_sessions
+            .prepare(&binding.plugin_id, &mut input, &context)
+            .await?;
+        let mut invocation = self
             .services
             .orchestration_backend
             .execute_stream(
@@ -1036,6 +1096,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 result: output.result,
             })
             .map_err(map_runtime_backend_error);
+        if let Some(prepared) = transport_invocation {
+            if let Err(error) = self
+                .services
+                .transport_sessions
+                .finish(prepared, &invocation)
+                .await
+            {
+                invocation = Err(error);
+            }
+        }
         let release = match scope {
             Some(scope) => scope.release().await,
             None => Ok(()),

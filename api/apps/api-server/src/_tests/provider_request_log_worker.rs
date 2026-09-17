@@ -10,9 +10,39 @@ use uuid::Uuid;
 use crate::{
     _tests::support::test_api_state_with_database_url,
     workers::provider_request_logs::{
-        consume_provider_request_log_batch, ProviderRequestLogWorkerOutcome,
+        consume_provider_request_log_batch, safe_provider_timing_log_receipt,
+        ProviderRequestLogWorkerOutcome,
     },
 };
+
+#[test]
+fn c2_provider_timing_log_projection_strips_sensitive_or_unknown_fields() {
+    let projected = safe_provider_timing_log_receipt(&json!({
+        "schema_version": 1,
+        "attempt_index": 4,
+        "stages": {
+            "connect": {"duration_ms": 9, "prompt": "do not log"},
+            "upstream": {"duration_ms": 31, "tool_output": "do not log"}
+        },
+        "connection": {
+            "cold": false,
+            "reused": true,
+            "generation": 8,
+            "connection_age_ms": 100,
+            "response_id": "resp_secret"
+        },
+        "termination_kind": "completed",
+        "api_key": "secret"
+    }))
+    .unwrap();
+
+    assert_eq!(projected["stages"]["connect"]["duration_ms"], 9);
+    assert_eq!(projected["connection"]["generation"], 8);
+    let serialized = serde_json::to_string(&projected).unwrap();
+    for forbidden in ["api_key", "prompt", "tool_output", "response_id", "secret"] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
 
 fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask {
     let started_at = OffsetDateTime::now_utc();
@@ -55,6 +85,11 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         finished_at: Some(started_at + Duration::milliseconds(80)),
         time_to_first_token_ms: Some(25),
         total_duration_ms: Some(80),
+        provider_timing_receipt: Some(json!({
+            "schema_version": 1,
+            "attempt_index": 0,
+            "termination_kind": "completed"
+        })),
     }
 }
 

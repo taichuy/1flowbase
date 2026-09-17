@@ -130,6 +130,43 @@ fn issue_2052_encoded_callback_selects_restored_provider_transport() {
     );
 }
 
+#[test]
+fn issue_2062_native_callback_restores_stale_gateway_ids_before_provider_transport() {
+    let stale_callback_task_id = Uuid::now_v7();
+    let provider_call_id = "call_sFtx4FZ7vOajvx2J4rzlnd5H";
+    let stale_external_call_id =
+        encode_openai_callback_tool_call_id(stale_callback_task_id, provider_call_id);
+    assert_eq!(provider_call_id.len(), 29);
+    assert_eq!(stale_external_call_id.len(), 71);
+
+    let envelope = OpenAiResponsesEnvelope::capture(json!({
+        "model": "gpt-test",
+        "store": false,
+        "input": [
+            {"type": "function_call", "call_id": stale_external_call_id, "name": "exec", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": stale_external_call_id, "output": "old result"},
+            {"type": "custom_tool_call", "call_id": "call_current", "name": "exec", "input": "pwd"},
+            {"type": "custom_tool_call_output", "call_id": "call_current", "output": "workspace"}
+        ]
+    }))
+    .expect("mixed Responses callback envelope should be valid");
+
+    let transport = responses_callback_provider_transport(&envelope, true, false)
+        .expect("native callback should prepare transport")
+        .expect("native callback must retain provider transport");
+
+    assert_eq!(
+        transport.wire_body()["input"][0]["call_id"],
+        provider_call_id
+    );
+    assert_eq!(
+        transport.wire_body()["input"][1]["call_id"],
+        provider_call_id
+    );
+    assert_eq!(transport.wire_body()["input"][2]["call_id"], "call_current");
+    assert_eq!(transport.wire_body()["input"][3]["call_id"], "call_current");
+}
+
 #[tokio::test]
 async fn wp_d1c_compatible_ingress_stages_raw_protocol_context_outside_the_run_payload() {
     const CANARY: &str = "WP-D1C-INGRESS-RAW-CANARY";
@@ -489,7 +526,7 @@ fn openai_response_encodes_callback_task_id_into_tool_call_ids() {
 }
 
 #[test]
-fn openai_responses_response_projects_native_tool_calls_with_encoded_call_id() {
+fn openai_responses_response_preserves_provider_tool_call_id() {
     let callback_task_id = Uuid::from_u128(0xcccccccccccccccccccccccccccccccc);
     let run = NativeRunResult {
         id: Uuid::nil(),
@@ -534,11 +571,8 @@ fn openai_responses_response_projects_native_tool_calls_with_encoded_call_id() {
     );
     let call_id = payload["output"][0]["call_id"]
         .as_str()
-        .expect("call_id should be encoded");
-    assert_eq!(
-        decode_openai_callback_tool_call_id(call_id),
-        Some((callback_task_id, "call_inventory".to_string()))
-    );
+        .expect("call_id should be present");
+    assert_eq!(call_id, "call_inventory");
 }
 
 #[test]
@@ -723,10 +757,7 @@ fn blocking_collector_keeps_canonical_function_tool_fallback() {
     let payload = serde_json::to_value(response).unwrap();
     assert_eq!(payload["status"], "completed");
     assert_eq!(payload["output"][0]["type"], "function_call");
-    assert_eq!(
-        decode_openai_callback_tool_call_id(payload["output"][0]["call_id"].as_str().unwrap()),
-        Some((callback_task_id, "call_inventory".into()))
-    );
+    assert_eq!(payload["output"][0]["call_id"], "call_inventory");
 }
 
 #[test]

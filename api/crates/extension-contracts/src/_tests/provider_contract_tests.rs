@@ -1,23 +1,31 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use extension_contracts::provider_contract::{
-    message_block_required_capabilities, semantic_required_capabilities, ModelDiscoveryMode,
-    NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
-    NativePromptCacheControlType, ProtocolContextEnvelope, ProviderBalanceInfo,
-    ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
+    message_block_required_capabilities, semantic_required_capabilities, CommitLevel,
+    CursorProvenance, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
+    NativePromptCacheControl, NativePromptCacheControlType, ProtocolContextEnvelope,
+    ProviderBalanceInfo, ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensCoverage,
     ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderGenerateProjectionError,
     ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
-    ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
+    ProviderInvocationResult, ProviderInvocationTerminationKind, ProviderInvocationTimingReceipt,
+    ProviderLogicalSessionState, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
     ProviderNetworkEgressContext, ProviderNetworkEgressMode, ProviderOutputItemPhase,
-    ProviderOutputProtocolFailure, ProviderProjectionErrorCode, ProviderProjectionFidelity,
-    ProviderProjectionLossCode, ProviderProjectionSource, ProviderResetCreditOperation,
+    ProviderOutputProtocolFailure, ProviderPhysicalTransportState, ProviderProjectionErrorCode,
+    ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
+    ProviderRecoveryDirective, ProviderRecoveryReceipt, ProviderResetCreditOperation,
     ProviderResetCreditResult, ProviderResetCreditRuntimeInput, ProviderRuntimeError,
     ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-    ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-    ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation,
-    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderTransportSessionAction,
+    ProviderTransportSessionCloseReason, ProviderTransportSessionCommand,
+    ProviderTransportSessionDirective, ProviderTransportSessionReceipt, ProviderUsage,
+    ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation, RecoveryBudget,
+    RecoveryDisposition, RecoveryPolicy, RecoveryReason, RecoveryTransport, SocketIncarnation,
+    TransportEpoch, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
+    PROVIDER_RECOVERY_RECEIPT_METADATA_KEY, PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY,
+    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY,
 };
 use serde_json::json;
 
@@ -184,6 +192,406 @@ fn provider_stdio_contract_uses_snake_case_methods_and_result_payloads() {
     .unwrap();
     assert!(response.ok);
     assert_eq!(response.result[0]["model_id"], "fixture_dynamic");
+}
+
+#[test]
+fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
+    let directive = ProviderTransportSessionDirective {
+        logical_session_id: "logical_01".into(),
+        generation: 41,
+        task_id: "task_01".into(),
+        state: ProviderLogicalSessionState::Waiting,
+        physical_deadline_unix_ms: 1_800_000_000_000,
+    };
+    let mut input = ProviderInvocationInput::default();
+    input
+        .set_transport_session_directive(directive.clone())
+        .unwrap();
+    assert_eq!(
+        input.transport_session_directive().unwrap(),
+        Some(directive)
+    );
+    assert!(input.run_context[PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY]
+        .get("provider_config")
+        .is_none());
+
+    let unknown = json!({
+        "logical_session_id": "logical_01",
+        "generation": 41,
+        "task_id": "task_01",
+        "state": "idle",
+        "physical_deadline_unix_ms": 1_800_000_000_000_i64,
+        "session_key": "must-not-cross"
+    });
+    assert!(serde_json::from_value::<ProviderTransportSessionDirective>(unknown).is_err());
+    let missing_generation = json!({
+        "logical_session_id": "logical_01",
+        "task_id": "task_01",
+        "state": "idle",
+        "physical_deadline_unix_ms": 1_800_000_000_000_i64
+    });
+    assert!(
+        serde_json::from_value::<ProviderTransportSessionDirective>(missing_generation).is_err()
+    );
+    assert!(ProviderTransportSessionCommand {
+        logical_session_id: "contains a space".into(),
+        generation: 1,
+        action: ProviderTransportSessionAction::Drain,
+        deadline_unix_ms: 1,
+    }
+    .validate()
+    .is_err());
+}
+
+#[test]
+fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
+    let receipt = ProviderTransportSessionReceipt {
+        generation: 7,
+        reused: true,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 42,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::RequestedClose),
+        close_acknowledged: Some(true),
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    result
+        .set_transport_session_receipt(receipt.clone())
+        .unwrap();
+    assert_eq!(result.transport_session_receipt().unwrap(), Some(receipt));
+    let value = &result.provider_metadata[PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY];
+    assert!(value.get("logical_session_id").is_none());
+    assert!(value.get("session_key").is_none());
+
+    let request = ProviderStdioRequest {
+        method: ProviderStdioMethod::TransportSession,
+        input: serde_json::to_value(ProviderTransportSessionCommand {
+            logical_session_id: "logical_01".into(),
+            generation: 7,
+            action: ProviderTransportSessionAction::Close,
+            deadline_unix_ms: 1_800_000_000_000,
+        })
+        .unwrap(),
+    };
+    assert_eq!(
+        serde_json::to_value(request).unwrap()["method"],
+        "transport_session"
+    );
+}
+
+#[test]
+fn c2_provider_timing_receipt_is_bounded_typed_and_contains_no_payload() {
+    let receipt = ProviderInvocationTimingReceipt {
+        schema_version: PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION,
+        connect_ms: Some(18),
+        upstream_ms: 243,
+        termination_kind: ProviderInvocationTerminationKind::Completed,
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+
+    result
+        .set_invocation_timing_receipt(receipt.clone())
+        .unwrap();
+
+    assert_eq!(result.invocation_timing_receipt().unwrap(), Some(receipt));
+    let serialized = serde_json::to_string(&result.provider_metadata).unwrap();
+    for forbidden in [
+        "api_key",
+        "prompt",
+        "tool_output",
+        "encrypted_content",
+        "previous_response_id",
+        "response_id",
+    ] {
+        assert!(!serialized.contains(forbidden));
+    }
+}
+
+fn semantic_mapped_recovery_policy() -> RecoveryPolicy {
+    RecoveryPolicy::SemanticMapped {
+        budget: RecoveryBudget {
+            max_inner_attempts: 3,
+            absolute_deadline_unix_ms: 1_800_000_000_000,
+        },
+    }
+}
+
+#[test]
+fn d1_recovery_directive_round_trips_without_changing_the_legacy_directive() {
+    let epoch = TransportEpoch::new(17).unwrap();
+    let incarnation = SocketIncarnation::new(4).unwrap();
+    let directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::connection_bound(epoch, incarnation)),
+    };
+    let legacy = ProviderTransportSessionDirective {
+        logical_session_id: "logical_01".into(),
+        generation: 41,
+        task_id: "task_01".into(),
+        state: ProviderLogicalSessionState::Waiting,
+        physical_deadline_unix_ms: 1_800_000_000_000,
+    };
+    let mut input = ProviderInvocationInput::default();
+    input
+        .set_transport_session_directive(legacy.clone())
+        .unwrap();
+    input.set_recovery_directive(directive.clone()).unwrap();
+
+    assert_eq!(input.recovery_directive().unwrap(), Some(directive));
+    assert_eq!(input.transport_session_directive().unwrap(), Some(legacy));
+    assert_eq!(
+        input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]["transport_epoch"],
+        17
+    );
+    assert!(input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+        .get("socket_incarnation")
+        .is_none());
+    assert!(input.run_context[PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+        .get("disposition")
+        .is_none());
+    assert_eq!(
+        input.run_context[PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY]["generation"],
+        41
+    );
+    assert!(serde_json::from_value::<TransportEpoch>(json!(0)).is_err());
+    assert!(serde_json::from_value::<SocketIncarnation>(json!(0)).is_err());
+}
+
+#[test]
+fn d1_recovery_validator_rejects_replay_after_commit_and_native_http_fallback() {
+    let epoch = TransportEpoch::new(17).unwrap();
+    for (disposition, transport) in [
+        (
+            RecoveryDisposition::PreCommitHttpFallback,
+            RecoveryTransport::ProviderHttp,
+        ),
+        (
+            RecoveryDisposition::OneFullContextRebuild,
+            RecoveryTransport::AiNativeWebSocket,
+        ),
+        (
+            RecoveryDisposition::LogicalInvocationRetry,
+            RecoveryTransport::AiNativeWebSocket,
+        ),
+    ] {
+        let receipt = ProviderRecoveryReceipt {
+            attempt: 0,
+            transport,
+            transport_epoch: epoch,
+            socket_incarnation: (transport == RecoveryTransport::AiNativeWebSocket)
+                .then(|| SocketIncarnation::new(1).unwrap()),
+            commit_level: CommitLevel::SemanticCommitted,
+            disposition,
+            reason: RecoveryReason::TransportDisconnected,
+        };
+        assert!(receipt
+            .validate()
+            .unwrap_err()
+            .contains("cannot select a replay"));
+    }
+
+    let native_directive = ProviderRecoveryDirective {
+        policy: RecoveryPolicy::NativeOpaque {
+            budget: RecoveryBudget {
+                max_inner_attempts: 3,
+                absolute_deadline_unix_ms: 1_800_000_000_000,
+            },
+        },
+        transport_epoch: epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::durable()),
+    };
+    let native_http_fallback = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::ProviderHttp,
+        transport_epoch: epoch,
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::PreCommitHttpFallback,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    assert!(native_http_fallback
+        .validate_against(&native_directive)
+        .unwrap_err()
+        .contains("forbids provider HTTP fallback"));
+    let fallback_on_wrong_transport = ProviderRecoveryReceipt {
+        transport: RecoveryTransport::AiNativeWebSocket,
+        socket_incarnation: Some(SocketIncarnation::new(1).unwrap()),
+        ..native_http_fallback.clone()
+    };
+    assert!(fallback_on_wrong_transport
+        .validate()
+        .unwrap_err()
+        .contains("requires provider HTTP transport"));
+
+    let backward = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: epoch,
+        socket_incarnation: Some(SocketIncarnation::new(1).unwrap()),
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::SameEpochReconnect,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    let committed_directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: epoch,
+        initial_commit_level: CommitLevel::SemanticCommitted,
+        cursor_provenance: None,
+    };
+    assert!(backward
+        .validate_against(&committed_directive)
+        .unwrap_err()
+        .contains("cannot move backwards"));
+}
+
+#[test]
+fn d1_connection_bound_cursor_uses_provider_reported_epoch_and_incarnation() {
+    let bound_epoch = TransportEpoch::new(8).unwrap();
+    let bound_incarnation = SocketIncarnation::new(3).unwrap();
+    let cross_epoch = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: TransportEpoch::new(9).unwrap(),
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::connection_bound(
+            bound_epoch,
+            bound_incarnation,
+        )),
+    };
+    assert!(cross_epoch.validate().unwrap_err().contains("cannot cross"));
+
+    let directive = ProviderRecoveryDirective {
+        policy: semantic_mapped_recovery_policy(),
+        transport_epoch: bound_epoch,
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: Some(CursorProvenance::connection_bound(
+            bound_epoch,
+            bound_incarnation,
+        )),
+    };
+    let advanced_incarnation = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: bound_epoch,
+        socket_incarnation: Some(SocketIncarnation::new(4).unwrap()),
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::SameEpochReconnect,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    advanced_incarnation.validate_against(&directive).unwrap();
+
+    let stale_equal_incarnation = ProviderRecoveryReceipt {
+        socket_incarnation: Some(bound_incarnation),
+        ..advanced_incarnation.clone()
+    };
+    assert!(stale_equal_incarnation
+        .validate_against(&directive)
+        .unwrap_err()
+        .contains("must advance"));
+
+    let stale_lower_incarnation = ProviderRecoveryReceipt {
+        socket_incarnation: Some(SocketIncarnation::new(2).unwrap()),
+        ..advanced_incarnation.clone()
+    };
+    assert!(stale_lower_incarnation
+        .validate_against(&directive)
+        .unwrap_err()
+        .contains("must advance"));
+
+    let connection_bound_http_fallback = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::ProviderHttp,
+        transport_epoch: bound_epoch,
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::PreCommitHttpFallback,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    assert!(connection_bound_http_fallback
+        .validate_against(&directive)
+        .unwrap_err()
+        .contains("cannot use provider HTTP fallback"));
+
+    let rebuilt_on_new_socket = ProviderRecoveryReceipt {
+        disposition: RecoveryDisposition::OneFullContextRebuild,
+        ..advanced_incarnation
+    };
+    rebuilt_on_new_socket.validate_against(&directive).unwrap();
+}
+
+#[test]
+fn d1_recovery_receipt_is_metadata_only_and_round_trips() {
+    let receipt = ProviderRecoveryReceipt {
+        attempt: 2,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: TransportEpoch::new(17).unwrap(),
+        socket_incarnation: Some(SocketIncarnation::new(4).unwrap()),
+        commit_level: CommitLevel::Terminal,
+        disposition: RecoveryDisposition::SemanticTerminal,
+        reason: RecoveryReason::SemanticCompleted,
+    };
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    result.set_recovery_receipt(receipt.clone()).unwrap();
+    assert_eq!(result.recovery_receipt().unwrap(), Some(receipt));
+
+    let value = &result.provider_metadata[PROVIDER_RECOVERY_RECEIPT_METADATA_KEY];
+    assert_eq!(value["attempt"], 2);
+    assert_eq!(value["transport_epoch"], 17);
+    let encoded = serde_json::to_string(value).unwrap();
+    for forbidden in [
+        "credential",
+        "api_key",
+        "prompt",
+        "tool_output",
+        "encrypted_content",
+        "raw_cursor",
+        "turn_state",
+        "response_id",
+    ] {
+        assert!(!encoded.contains(forbidden));
+    }
+
+    let unknown_payload = json!({
+        "attempt": 2,
+        "transport": "ai_native_web_socket",
+        "transport_epoch": 17,
+        "socket_incarnation": 4,
+        "commit_level": "terminal",
+        "disposition": "semantic_terminal",
+        "reason": "semantic_completed",
+        "raw_cursor": "must-not-cross"
+    });
+    assert!(serde_json::from_value::<ProviderRecoveryReceipt>(unknown_payload).is_err());
+
+    let capped_directive = ProviderRecoveryDirective {
+        policy: RecoveryPolicy::SemanticMapped {
+            budget: RecoveryBudget {
+                max_inner_attempts: 2,
+                absolute_deadline_unix_ms: 1_800_000_000_000,
+            },
+        },
+        transport_epoch: TransportEpoch::new(17).unwrap(),
+        initial_commit_level: CommitLevel::LifecycleOnly,
+        cursor_provenance: None,
+    };
+    assert!(result
+        .recovery_receipt()
+        .unwrap()
+        .unwrap()
+        .validate_against(&capped_directive)
+        .unwrap_err()
+        .contains("exceeds its directive budget"));
 }
 
 #[test]

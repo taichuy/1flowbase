@@ -54,6 +54,8 @@ async fn openai_responses_waiting_callback_projects_client_function_call() {
         "{body}"
     );
     assert!(body.contains("\"type\":\"function_call\""), "{body}");
+    assert!(body.contains("\"call_id\":\"call_inventory\""), "{body}");
+    assert!(!body.contains("calltask_"), "{body}");
     assert!(body.contains("\"name\":\"lookup_inventory\""), "{body}");
     assert!(
         body.contains("\"arguments\":\"{\\\"sku\\\":\\\"sku_123\\\"}\""),

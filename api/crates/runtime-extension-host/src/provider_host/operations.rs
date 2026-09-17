@@ -97,11 +97,26 @@ pub(super) fn provider_worker_cleanup_receipt(
     }
 }
 
-pub(super) fn provider_invocation_limits(limits: &PluginRuntimeLimits) -> PluginRuntimeLimits {
+pub(super) fn provider_invocation_limits(
+    limits: &PluginRuntimeLimits,
+    input: &ProviderInvocationInput,
+) -> PluginRuntimeLimits {
     let mut invocation_limits = limits.clone();
     invocation_limits.timeout_ms = limits
         .invoke_timeout_ms
         .or(Some(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS));
+    if let Ok(Some(directive)) = input.transport_session_directive() {
+        let now_ms = OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+        let remaining_ms = i128::from(directive.physical_deadline_unix_ms)
+            .saturating_sub(now_ms)
+            .max(1);
+        let remaining_ms = u64::try_from(remaining_ms).unwrap_or(u64::MAX);
+        invocation_limits.timeout_ms = Some(
+            invocation_limits
+                .timeout_ms
+                .map_or(remaining_ms, |configured| configured.min(remaining_ms)),
+        );
+    }
     invocation_limits
 }
 

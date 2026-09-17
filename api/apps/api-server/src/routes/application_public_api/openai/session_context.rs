@@ -8,6 +8,19 @@ pub(super) fn bind_responses_session_context(
     principal: &interface_runtime::ApplicationPrincipal,
     headers: &HeaderMap,
 ) -> Result<(), OpenAiRouteError> {
+    let identity = responses_session_identity(principal, headers)?;
+    let envelope = context.get_or_insert_with(|| ProtocolContextEnvelope {
+        source_protocol: "openai_responses".into(),
+        ..Default::default()
+    });
+    envelope.headers.insert("session-id".into(), vec![identity]);
+    Ok(())
+}
+
+pub(super) fn responses_session_identity(
+    principal: &interface_runtime::ApplicationPrincipal,
+    headers: &HeaderMap,
+) -> Result<String, OpenAiRouteError> {
     use sha2::{Digest, Sha256};
     let mut parts = vec![
         principal.application_id().to_string(),
@@ -39,10 +52,5 @@ pub(super) fn bind_responses_session_context(
         "{:x}",
         Sha256::digest(serde_json::to_vec(&parts).expect("session identity serializes"))
     );
-    let envelope = context.get_or_insert_with(|| ProtocolContextEnvelope {
-        source_protocol: "openai_responses".into(),
-        ..Default::default()
-    });
-    envelope.headers.insert("session-id".into(), vec![identity]);
-    Ok(())
+    Ok(identity)
 }

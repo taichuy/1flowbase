@@ -8,6 +8,7 @@ use time::OffsetDateTime;
 struct SequencedTransportInvoker {
     outputs: Mutex<VecDeque<ProviderInvocationOutput>>,
     invocation_ids: Arc<Mutex<Vec<String>>>,
+    emit_typed_recovery_receipts: bool,
 }
 
 #[async_trait]
@@ -27,11 +28,52 @@ impl ProviderInvoker for SequencedTransportInvoker {
                     .expect("each attempt must have an invocation id")
                     .clone(),
             );
-        self.outputs
+        let mut output = self
+            .outputs
             .lock()
             .expect("outputs mutex poisoned")
             .pop_front()
-            .ok_or_else(|| anyhow::anyhow!("unexpected provider attempt"))
+            .ok_or_else(|| anyhow::anyhow!("unexpected provider attempt"))?;
+        let retryable_transport_failure = output.events.iter().any(|event| {
+            matches!(
+                event,
+                ProviderStreamEvent::Error { error }
+                    if matches!(
+                        error.kind,
+                        ProviderRuntimeErrorKind::EndpointUnreachable
+                            | ProviderRuntimeErrorKind::ProviderTransportUnavailable
+                    )
+            )
+        });
+        if self.emit_typed_recovery_receipts && retryable_transport_failure {
+            assert!(
+                output.result.provider_metadata.is_object(),
+                "typed recovery receipt fixture requires object provider metadata"
+            );
+            let directive: extension_contracts::provider_contract::ProviderRecoveryDirective =
+                serde_json::from_value(
+                    input.run_context[extension_contracts::provider_contract::PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+                        .clone(),
+                )?;
+            output.result.set_recovery_receipt(
+                extension_contracts::provider_contract::ProviderRecoveryReceipt {
+                    attempt: 1,
+                    transport:
+                        extension_contracts::provider_contract::RecoveryTransport::AiNativeWebSocket,
+                    transport_epoch: directive.transport_epoch,
+                    socket_incarnation: Some(
+                        extension_contracts::provider_contract::SocketIncarnation::new(1)
+                            .unwrap(),
+                    ),
+                    commit_level: extension_contracts::provider_contract::CommitLevel::LifecycleOnly,
+                    disposition:
+                        extension_contracts::provider_contract::RecoveryDisposition::LogicalInvocationRetry,
+                    reason:
+                        extension_contracts::provider_contract::RecoveryReason::TransportDisconnected,
+                },
+            ).map_err(anyhow::Error::msg)?;
+        }
+        Ok(output)
     }
 }
 
@@ -75,6 +117,7 @@ fn provider_error_output(
         events,
         result: ProviderInvocationResult {
             finish_reason: Some(ProviderFinishReason::Error),
+            provider_metadata: json!({}),
             ..ProviderInvocationResult::default()
         },
         first_token_at: after_first_token.then(OffsetDateTime::now_utc),
@@ -90,9 +133,18 @@ fn sequenced_invoker(
         SequencedTransportInvoker {
             outputs: Mutex::new(outputs.into_iter().collect()),
             invocation_ids: invocation_ids.clone(),
+            emit_typed_recovery_receipts: true,
         },
         invocation_ids,
     )
+}
+
+fn sequenced_invoker_without_recovery_receipts(
+    outputs: impl IntoIterator<Item = ProviderInvocationOutput>,
+) -> (SequencedTransportInvoker, Arc<Mutex<Vec<String>>>) {
+    let (mut invoker, invocation_ids) = sequenced_invoker(outputs);
+    invoker.emit_typed_recovery_receipts = false;
+    (invoker, invocation_ids)
 }
 
 fn llm_attempts(outcome: &FlowDebugExecutionOutcome) -> &Vec<Value> {
@@ -122,8 +174,78 @@ async fn endpoint_unreachable_before_first_token_retries_without_node_opt_in() {
     assert_eq!(attempts.len(), 2);
     assert_eq!(attempts[0]["error_code"], json!("endpoint_unreachable"));
     assert_eq!(attempts[0]["failed_after_first_token"], json!(false));
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["provider_inner_attempt"],
+        json!(1)
+    );
+    assert_eq!(attempts[0]["ai_native_recovery"]["outer_attempt"], json!(0));
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["decision"],
+        json!("retry")
+    );
     assert_eq!(attempts[1]["is_retry"], json!(true));
     assert_eq!(attempts[1]["retry_reason"], json!("endpoint_unreachable"));
+    assert_eq!(attempts[1]["status"], json!("succeeded"));
+
+    let ids = invocation_ids
+        .lock()
+        .expect("invocation ids mutex poisoned");
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+}
+
+#[tokio::test]
+async fn endpoint_failure_without_typed_logical_retry_receipt_is_not_replayed() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = sequenced_invoker_without_recovery_receipts([
+        provider_error_output(ProviderRuntimeErrorKind::EndpointUnreachable, false),
+        final_provider_output("must not execute".to_string()),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow failure should remain an execution outcome");
+    let attempts = llm_attempts(&outcome);
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["decision"],
+        json!("missing_typed_receipt")
+    );
+    assert_eq!(
+        invocation_ids
+            .lock()
+            .expect("invocation ids mutex poisoned")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn provider_transport_unavailable_before_first_token_retries_without_node_opt_in() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = sequenced_invoker([
+        provider_error_output(
+            ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+            false,
+        ),
+        final_provider_output("recovered".to_string()),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow should execute");
+    let attempts = llm_attempts(&outcome);
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(
+        attempts[0]["error_code"],
+        json!("provider_transport_unavailable")
+    );
+    assert_eq!(attempts[0]["failed_after_first_token"], json!(false));
+    assert_eq!(attempts[1]["is_retry"], json!(true));
+    assert_eq!(
+        attempts[1]["retry_reason"],
+        json!("provider_transport_unavailable")
+    );
     assert_eq!(attempts[1]["status"], json!("succeeded"));
 
     let ids = invocation_ids
@@ -164,6 +286,7 @@ async fn automatic_transport_retry_budget_exhaustion_keeps_original_error() {
 async fn automatic_transport_retry_rejects_post_token_and_non_endpoint_failures() {
     for output in [
         provider_error_output(ProviderRuntimeErrorKind::EndpointUnreachable, true),
+        provider_error_output(ProviderRuntimeErrorKind::ProviderTransportUnavailable, true),
         provider_error_output(ProviderRuntimeErrorKind::ProviderInvalidResponse, false),
     ] {
         let plan = base_plan();

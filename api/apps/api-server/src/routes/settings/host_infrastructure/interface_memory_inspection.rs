@@ -520,6 +520,7 @@ mod tests {
             task_queue: None,
             event_bus: None,
             runtime_event_stream: None,
+            provider_transport_sessions: None,
             provider_codes: Default::default(),
         };
         let registry = compile_registry(MemoryInspectionInterfaceDependencies {

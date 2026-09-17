@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://1flowbase.local/schemas/provider-timing-benchmark-result-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "benchmark_kind", "max_samples_per_variant", "variants"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "benchmark_kind": { "const": "provider_timing_direct_gateway_ab" },
+    "max_samples_per_variant": { "type": "integer", "minimum": 1, "maximum": 200 },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct", "gateway"],
+      "properties": {
+        "direct": { "$ref": "#/$defs/variant" },
+        "gateway": { "$ref": "#/$defs/variant" }
+      }
+    }
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_count", "p50_ms", "p95_ms"],
+      "properties": {
+        "sample_count": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "p50_ms": { "type": ["number", "null"], "minimum": 0 },
+        "p95_ms": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_count", "metrics"],
+      "properties": {
+        "sample_count": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total", "ingress", "mapping", "flow", "queue", "connect", "upstream", "flush"],
+          "properties": {
+            "total": { "$ref": "#/$defs/summary" },
+            "ingress": { "$ref": "#/$defs/summary" },
+            "mapping": { "$ref": "#/$defs/summary" },
+            "flow": { "$ref": "#/$defs/summary" },
+            "queue": { "$ref": "#/$defs/summary" },
+            "connect": { "$ref": "#/$defs/summary" },
+            "upstream": { "$ref": "#/$defs/summary" },
+            "flush": { "$ref": "#/$defs/summary" }
+          }
+        }
+      }
+    }
+  }
+}

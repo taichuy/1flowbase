@@ -409,6 +409,7 @@ fn reasoning_text_and_tool_facts_keep_order_and_durable_ids() {
     assert_eq!(events[4]["response_id"], response_id);
     assert_eq!(events[6]["response_id"], response_id);
     assert_eq!(events[6]["item"]["id"], "fc_call_weather");
+    assert_eq!(events[6]["item"]["call_id"], "call_weather");
     assert_eq!(events[8]["response"]["id"], response_id);
     assert_eq!(
         events[8]["response"]["previous_response_id"],
@@ -554,6 +555,82 @@ fn provider_native_and_non_presentation_deltas_are_never_body_truth() {
     );
     assert_eq!(canonical[0]["sequence_number"], 0);
     assert_eq!(canonical[1]["delta"], "canonical body");
+}
+
+#[test]
+fn recovery_lifecycle_metadata_never_commits_projection_and_terminal_is_once() {
+    let mut run = native_run(0x2072d400000000000000000000000001);
+    let mut projector = ResponsesWebSocketProjector::new("model".to_string(), None);
+    let lifecycle = RuntimeEventEnvelope::new(
+        run.id,
+        1,
+        RuntimeEventPayload {
+            event_type: "provider_native_event".to_string(),
+            source: RuntimeEventSource::Provider,
+            durability: RuntimeEventDurability::Ephemeral,
+            persist_required: false,
+            trace_visible: true,
+            payload: json!({
+                "transport_epoch": 17,
+                "socket_incarnation": 4,
+                "commit_level": "lifecycle_only",
+                "disposition": "same_epoch_reconnect",
+                "raw_cursor": "must-not-project",
+                "turn_state": "must-not-project"
+            }),
+        },
+    );
+    assert!(projector
+        .project(&run, lifecycle)
+        .expect("typed Provider lifecycle fact must remain diagnostic")
+        .is_empty());
+    assert!(!projector.has_terminal());
+
+    let semantic = decoded(
+        projector
+            .project(&run, answer_text(&run, 2, "visible once"))
+            .expect("AI Native semantic fact must project"),
+    );
+    assert!(semantic
+        .iter()
+        .any(|event| event["type"] == "response.output_text.delta"));
+    let encoded = serde_json::to_string(&semantic).unwrap();
+    for forbidden in ["raw_cursor", "turn_state", "must-not-project"] {
+        assert!(!encoded.contains(forbidden));
+    }
+
+    run.status = NativeRunStatus::Succeeded;
+    let terminal = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    3,
+                    debug_stream_events::flow_finished(run.id, json!({})),
+                ),
+            )
+            .expect("first terminal fact must project"),
+    );
+    assert_eq!(
+        terminal
+            .iter()
+            .filter(|event| event["type"] == "response.completed")
+            .count(),
+        1
+    );
+    assert!(projector.has_terminal());
+    assert!(projector
+        .project(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                4,
+                debug_stream_events::flow_finished(run.id, json!({})),
+            ),
+        )
+        .expect("duplicate terminal fact must be absorbed")
+        .is_empty());
 }
 
 #[test]

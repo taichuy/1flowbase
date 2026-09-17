@@ -648,9 +648,10 @@ async fn app_and_runtime_host_from_config(
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;
     let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
+        ApiRuntimeServices::new_with_runtime_backend_and_transport_config(
             runtime_backend,
             Arc::clone(&extension_graph),
+            config.transport_session_registry.clone(),
         )?
         .with_managed_composition(
             store.clone(),
@@ -907,6 +908,7 @@ async fn app_and_runtime_host_from_config(
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::billing::spawn_billing_worker(state.clone());
+    provider_runtime.start_transport_session_scheduler();
     #[cfg(not(test))]
     spawn_default_ui_component_catalog_bootstrap(
         state.store.clone(),
@@ -1132,6 +1134,9 @@ pub struct ApiRuntimeShutdown {
 }
 impl ApiRuntimeShutdown {
     pub async fn stop(&self) -> Result<()> {
+        self.services
+            .shutdown_transport_sessions(std::time::Duration::from_secs(10))
+            .await;
         self.lifecycle_worker.close();
         self.lifecycle_worker
             .wait(std::time::Duration::from_secs(15))

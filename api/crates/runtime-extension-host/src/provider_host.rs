@@ -8,6 +8,9 @@ use std::{
     },
 };
 
+pub(crate) const RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY: &str =
+    "1flowbase_runtime_provider_stages";
+
 use extension_contracts::{
     PluginDataBinding, PluginDataPermission, PluginDataPort, PluginStorageBinding,
     RUNTIME_HOST_CALL_CAPABILITY_V1,
@@ -23,8 +26,8 @@ use extension_package_runtime::{
         ProviderInvocationResult, ProviderModelDescriptor, ProviderOperationalCapability,
         ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStreamEvent, ProviderUsageWindowsResult, ProviderWireOperation,
-        CURRENT_PROVIDER_CONTRACT,
+        ProviderStreamEvent, ProviderTransportSessionCommand, ProviderTransportSessionReceipt,
+        ProviderUsageWindowsResult, ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
     provider_count_tokens_estimator::estimate_provider_count_tokens,
     PluginRuntimeLimits,
@@ -948,6 +951,50 @@ impl ProviderHost {
         self.invoke_stream_operation(plugin_id, input)?.await
     }
 
+    pub fn transport_session_operation(
+        &self,
+        plugin_id: &str,
+        command: ProviderTransportSessionCommand,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderTransportSessionReceipt>>
+            + Send
+            + 'static,
+    > {
+        command
+            .validate()
+            .map_err(PluginFrameworkError::invalid_provider_contract)?;
+        let loaded = self.loaded_package(plugin_id)?.clone();
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            if loaded.package.manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
+            {
+                return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+                    ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+                    "physical transport sessions require a stateful provider worker",
+                )));
+            }
+            let output = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::TransportSession,
+                serde_json::to_value(command).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(error.to_string())
+                })?,
+            )
+            .await?;
+            let receipt: ProviderTransportSessionReceipt =
+                serde_json::from_value(output).map_err(|error| {
+                    PluginFrameworkError::invalid_provider_contract(format!(
+                        "provider transport session receipt is malformed: {error}"
+                    ))
+                })?;
+            receipt
+                .validate()
+                .map_err(PluginFrameworkError::invalid_provider_contract)?;
+            Ok(receipt)
+        })
+    }
+
     #[cfg(test)]
     pub fn invoke_stream_operation(
         &self,
@@ -1236,13 +1283,17 @@ impl ProviderHost {
             host_calls,
         } = invocation;
 
+        let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
+        let mapping_ms = bounded_stage_millis(mapping_started.elapsed());
         tracing::info!(
             wire_audit = ?input.wire_audit(),
             "provider generate wire prepared"
         );
+        let queue_started = std::time::Instant::now();
         let _lease =
             Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
+        let queue_ms = bounded_stage_millis(queue_started.elapsed());
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
             .await;
         let event_observer = Some(Self::active_stream_event_observer(
@@ -1253,7 +1304,8 @@ impl ProviderHost {
             method: ProviderStdioMethod::Invoke,
             input: prepared_wire.wire_value,
         };
-        let invocation_limits = provider_invocation_limits(&loaded.package.manifest.runtime.limits);
+        let invocation_limits =
+            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input);
         let output = match loaded.package.manifest.execution_mode {
             PluginExecutionMode::ProcessPerCall => {
                 if host_calls.is_some() {
@@ -1295,11 +1347,39 @@ impl ProviderHost {
         prepared_wire
             .translation_receipt
             .attach_to_provider_metadata(&mut result.provider_metadata)?;
+        attach_runtime_stage_timing(&mut result.provider_metadata, mapping_ms, queue_ms)?;
         Ok(ProviderInvokeStreamOutput {
             events: output.events,
             result,
         })
     }
+}
+
+fn bounded_stage_millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(24 * 60 * 60 * 1_000)
+}
+
+pub(crate) fn attach_runtime_stage_timing(
+    metadata: &mut Value,
+    mapping_ms: u64,
+    queue_ms: u64,
+) -> FrameworkResult<()> {
+    let object = metadata.as_object_mut().ok_or_else(|| {
+        PluginFrameworkError::invalid_provider_contract(
+            "provider_metadata must be an object for runtime stage timing",
+        )
+    })?;
+    object.insert(
+        RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "schema_version": 1,
+            "mapping_ms": mapping_ms,
+            "queue_ms": queue_ms,
+        }),
+    );
+    Ok(())
 }
 
 struct PreparedProviderGenerateWire {

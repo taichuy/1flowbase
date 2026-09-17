@@ -1247,10 +1247,7 @@ fn openai_responses_waiting_callback_maps_to_function_call_item() {
     assert_eq!(output[0]["type"], json!("function_call"));
     assert_eq!(output[0]["name"], json!("lookup_inventory"));
     assert_eq!(output[0]["arguments"], json!("{\"sku\":\"sku_123\"}"));
-    assert!(output[0]["call_id"]
-        .as_str()
-        .expect("call id should be encoded")
-        .contains("call_inventory"));
+    assert_eq!(output[0]["call_id"], "call_inventory");
 }
 
 #[test]
