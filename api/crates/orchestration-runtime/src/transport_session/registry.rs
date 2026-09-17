@@ -6,9 +6,9 @@ use std::{
 use super::types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, InvocationCompletion, InvocationLease,
     InvocationRequest, LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot,
-    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration,
-    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
-    TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
+    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportFenceStatus,
+    TransportGeneration, TransportInstant, TransportOwnerId, TransportProviderId,
+    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
 };
 
 pub trait TransportClock: Send + Sync {
@@ -371,6 +371,21 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             session_id: session_id.clone(),
             generation: record.physical.generation,
         })
+    }
+
+    /// Classifies a fence without changing logical or physical session state.
+    pub fn fence_status(&self, fence: &TransportFence) -> TransportFenceStatus {
+        let Some(record) = self.sessions.get(&fence.session_id) else {
+            return TransportFenceStatus::Missing;
+        };
+        if record.physical.generation == fence.generation {
+            TransportFenceStatus::Current
+        } else {
+            TransportFenceStatus::Stale {
+                current: record.physical.generation,
+                received: fence.generation,
+            }
+        }
     }
 
     pub fn state(&self, fence: &TransportFence) -> Result<TransportSessionState, RegistryError> {

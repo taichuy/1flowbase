@@ -10,16 +10,16 @@ use std::{
 use orchestration_runtime::transport_session::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationLease, InvocationRequest,
     LifecycleEvent, RegistryError, SafeRegistrySnapshot, SystemTransportClock, TerminationKind,
-    TransportClock, TransportFence, TransportInstant, TransportOwnerId, TransportProviderId,
-    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportClock, TransportFence, TransportFenceStatus, TransportInstant, TransportOwnerId,
+    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
     TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
     provider_contract::{
-        ProviderInvocationInput, ProviderLogicalSessionState, ProviderPhysicalTransportState,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderTransportSessionAction,
-        ProviderTransportSessionCommand, ProviderTransportSessionDirective,
-        ProviderTransportSessionReceipt,
+        ProviderInvocationInput, ProviderInvocationTransportOutcome, ProviderLifecycleAckOutcome,
+        ProviderLogicalSessionState, ProviderRecoveryDirective, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderTransportSessionAction, ProviderTransportSessionCommand,
+        ProviderTransportSessionDirective, ProviderTransportSessionReceipt,
     },
     PluginFrameworkError,
 };
@@ -46,8 +46,15 @@ struct LifecycleCommand {
     close_fence: Option<TransportFence>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LifecycleDispatchOutcome {
+    Provider(ProviderLifecycleAckOutcome),
+    PhysicalConnectionFault,
+}
+
 pub(crate) struct PreparedTransportInvocation {
     lease: InvocationLease,
+    recovery_directive: Option<ProviderRecoveryDirective>,
 }
 
 #[async_trait::async_trait]
@@ -147,6 +154,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
+        let recovery_directive = input
+            .recovery_directive()
+            .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
         if self.shutdown.load(Ordering::Acquire) {
             return Err(transport_error("transport_session_orphaned"));
         }
@@ -228,7 +238,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .map_err(|_| transport_error("transport_session_directive_invalid"))?;
         drop(registry);
         self.dispatch_pending_events_locked().await;
-        Ok(Some(PreparedTransportInvocation { lease }))
+        Ok(Some(PreparedTransportInvocation {
+            lease,
+            recovery_directive,
+        }))
     }
 
     pub(crate) async fn finish(
@@ -236,19 +249,56 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         prepared: PreparedTransportInvocation,
         result: &anyhow::Result<super::ProviderRuntimeInvocationOutput>,
     ) -> anyhow::Result<()> {
+        let fence_status = self
+            .registry
+            .lock()
+            .await
+            .fence_status(&prepared.lease.fence);
+        if matches!(fence_status, TransportFenceStatus::Stale { .. }) {
+            tracing::warn!(
+                ?fence_status,
+                generation = prepared.lease.fence.generation.get(),
+                "old provider transport generation was fenced without changing current state"
+            );
+            return Err(transport_error("provider_transport_stale_generation"));
+        }
         let completion = match result {
             Ok(output) => {
-                let receipt = output
-                    .result
-                    .transport_session_receipt()
-                    .map_err(|_| transport_error("provider_connection_max_age"))?
-                    .ok_or_else(|| transport_error("provider_connection_max_age"))?;
-                if receipt.generation != prepared.lease.fence.generation.get()
-                    || receipt.physical_state != ProviderPhysicalTransportState::Ready
-                {
-                    self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
-                        .await;
-                    return Err(transport_error("provider_connection_max_age"));
+                let outcome = match output.result.transport_outcome(
+                    prepared.lease.fence.generation.get(),
+                    prepared.recovery_directive.as_ref(),
+                ) {
+                    Ok(outcome) => outcome,
+                    Err(_) => {
+                        self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
+                            .await;
+                        return Err(transport_error("provider_transport_receipt_invalid"));
+                    }
+                };
+                match outcome {
+                    ProviderInvocationTransportOutcome::Ready { .. }
+                    | ProviderInvocationTransportOutcome::HttpFallback { .. } => {}
+                    ProviderInvocationTransportOutcome::ReceiptMissing => {
+                        self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
+                            .await;
+                        return Err(transport_error("provider_transport_receipt_missing"));
+                    }
+                    ProviderInvocationTransportOutcome::StaleGeneration { .. } => {
+                        let registry = self.registry.lock().await;
+                        let status = registry.fence_status(&prepared.lease.fence);
+                        drop(registry);
+                        tracing::warn!(
+                            ?status,
+                            generation = prepared.lease.fence.generation.get(),
+                            "stale provider transport result was fenced without changing session state"
+                        );
+                        return Err(transport_error("provider_transport_stale_generation"));
+                    }
+                    ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {
+                        self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
+                            .await;
+                        return Err(transport_error("provider_physical_connection_fault"));
+                    }
                 }
                 if output.result.tool_calls.is_empty() {
                     InvocationCompletion::IdleAffinity
@@ -353,17 +403,23 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .transport_session(&command.target_id, command.command.clone()),
             )
             .await;
-            let acknowledged = matches!(
-                &result,
-                Ok(Ok(receipt))
-                    if receipt.generation == command.command.generation
-                        && receipt.close_acknowledged == Some(true)
-            );
+            let ack_outcome = match result {
+                Ok(Ok(receipt)) => {
+                    match receipt.lifecycle_ack_outcome(command.command.generation) {
+                        Ok(outcome) => LifecycleDispatchOutcome::Provider(outcome),
+                        Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
+                    }
+                }
+                Ok(Err(_)) | Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
+            };
+            let acknowledged = ack_outcome
+                == LifecycleDispatchOutcome::Provider(ProviderLifecycleAckOutcome::Acknowledged);
             if !acknowledged {
                 tracing::warn!(
                     target_id = %command.target_id,
                     generation = command.command.generation,
-                    "provider transport lifecycle command did not return a matching ACK"
+                    ?ack_outcome,
+                    "provider transport lifecycle command did not return an accepted ACK"
                 );
             }
             if let Some(fence) = &command.close_fence {
@@ -580,8 +636,10 @@ mod tests {
     use super::*;
     use orchestration_runtime::transport_session::CapacityRejection;
     use plugin_framework::provider_contract::{
-        ProtocolContextEnvelope, ProviderCompactProfile, ProviderInvocationResult,
-        ProviderTransportSessionCloseReason, ProviderWireOperation,
+        CommitLevel, CursorProvenance, ProtocolContextEnvelope, ProviderCompactProfile,
+        ProviderInvocationResult, ProviderPhysicalTransportState, ProviderRecoveryReceipt,
+        ProviderTransportSessionCloseReason, ProviderWireOperation, RecoveryBudget,
+        RecoveryDisposition, RecoveryPolicy, RecoveryReason, RecoveryTransport, TransportEpoch,
     };
     use std::{
         collections::BTreeMap,
@@ -726,6 +784,29 @@ mod tests {
         })
     }
 
+    fn output_with_result(
+        result: ProviderInvocationResult,
+    ) -> anyhow::Result<super::super::ProviderRuntimeInvocationOutput> {
+        Ok(super::super::ProviderRuntimeInvocationOutput {
+            events: Vec::new(),
+            result,
+        })
+    }
+
+    fn recovery_directive(epoch: TransportEpoch) -> ProviderRecoveryDirective {
+        ProviderRecoveryDirective {
+            policy: RecoveryPolicy::SemanticMapped {
+                budget: RecoveryBudget {
+                    max_inner_attempts: 2,
+                    absolute_deadline_unix_ms: 2_100_000,
+                },
+            },
+            transport_epoch: epoch,
+            initial_commit_level: CommitLevel::LifecycleOnly,
+            cursor_provenance: Some(CursorProvenance::durable()),
+        }
+    }
+
     fn reason(error: anyhow::Error) -> String {
         error.to_string()
     }
@@ -834,6 +915,174 @@ mod tests {
             snapshot.sessions[0].invocation_ttl,
             Some(Duration::from_millis(89))
         );
+    }
+
+    #[tokio::test]
+    async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fallback() {
+        let clock = FakeClock::new(2_000_000);
+
+        let missing_runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+        let missing_coordinator = TransportSessionCoordinator::new_with_clock(
+            missing_runtime,
+            transport_config(),
+            clock.clone(),
+        )
+        .unwrap();
+        let mut missing_input =
+            invocation_input("missing-receipt", ProviderWireOperation::Generate);
+        let missing = missing_coordinator
+            .prepare("runtime-a", &mut missing_input, &context(2_000_100))
+            .await
+            .unwrap()
+            .unwrap();
+        let missing_error = missing_coordinator
+            .finish(
+                missing,
+                &output_with_result(ProviderInvocationResult::default()),
+            )
+            .await
+            .unwrap_err();
+        assert!(reason(missing_error).contains("provider_transport_receipt_missing"));
+        assert!(missing_coordinator
+            .safe_snapshot()
+            .await
+            .sessions
+            .is_empty());
+
+        let stale_coordinator = TransportSessionCoordinator::new_with_clock(
+            Arc::new(FakeTransportRuntime::new([])),
+            transport_config(),
+            clock.clone(),
+        )
+        .unwrap();
+        let mut stale_input = invocation_input("stale-receipt", ProviderWireOperation::Generate);
+        let stale = stale_coordinator
+            .prepare("runtime-a", &mut stale_input, &context(2_000_100))
+            .await
+            .unwrap()
+            .unwrap();
+        let stale_generation = stale.lease.fence.generation.get();
+        let before_stale = stale_coordinator.safe_snapshot().await;
+        let stale_error = stale_coordinator
+            .finish(stale, &successful_output(stale_generation + 1))
+            .await
+            .unwrap_err();
+        assert!(reason(stale_error).contains("provider_transport_stale_generation"));
+        assert_eq!(stale_coordinator.safe_snapshot().await, before_stale);
+
+        let old_generation_coordinator = TransportSessionCoordinator::new_with_clock(
+            Arc::new(FakeTransportRuntime::new([])),
+            transport_config(),
+            clock.clone(),
+        )
+        .unwrap();
+        let mut old_generation_input =
+            invocation_input("old-generation", ProviderWireOperation::Generate);
+        let old_generation = old_generation_coordinator
+            .prepare("runtime-a", &mut old_generation_input, &context(2_000_100))
+            .await
+            .unwrap()
+            .unwrap();
+        let old_generation_number = old_generation.lease.fence.generation.get();
+        {
+            let mut registry = old_generation_coordinator.registry.lock().await;
+            registry
+                .finish_invocation(&old_generation.lease, InvocationCompletion::Active)
+                .unwrap();
+            let next = registry
+                .rotate_generation(&old_generation.lease.fence)
+                .unwrap();
+            registry.activate(&next).unwrap();
+        }
+        let current_generation = old_generation_coordinator.safe_snapshot().await;
+        let old_generation_error = old_generation_coordinator
+            .finish(old_generation, &successful_output(old_generation_number))
+            .await
+            .unwrap_err();
+        assert!(reason(old_generation_error).contains("provider_transport_stale_generation"));
+        assert_eq!(
+            old_generation_coordinator.safe_snapshot().await,
+            current_generation
+        );
+
+        let fault_runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+        let fault_coordinator = TransportSessionCoordinator::new_with_clock(
+            fault_runtime,
+            transport_config(),
+            clock.clone(),
+        )
+        .unwrap();
+        let mut fault_input = invocation_input("physical-fault", ProviderWireOperation::Generate);
+        let fault = fault_coordinator
+            .prepare("runtime-a", &mut fault_input, &context(2_000_100))
+            .await
+            .unwrap()
+            .unwrap();
+        let mut fault_result = ProviderInvocationResult {
+            provider_metadata: serde_json::json!({}),
+            ..ProviderInvocationResult::default()
+        };
+        fault_result
+            .set_transport_session_receipt(ProviderTransportSessionReceipt {
+                generation: fault.lease.fence.generation.get(),
+                reused: true,
+                physical_state: ProviderPhysicalTransportState::Faulted,
+                connection_age_ms: 1,
+                ttl_remaining_ms: 0,
+                close_reason: Some(ProviderTransportSessionCloseReason::TransportFault),
+                close_acknowledged: None,
+            })
+            .unwrap();
+        let fault_error = fault_coordinator
+            .finish(fault, &output_with_result(fault_result))
+            .await
+            .unwrap_err();
+        assert!(reason(fault_error).contains("provider_physical_connection_fault"));
+        assert!(fault_coordinator.safe_snapshot().await.sessions.is_empty());
+
+        let fallback_coordinator = TransportSessionCoordinator::new_with_clock(
+            Arc::new(FakeTransportRuntime::new([])),
+            transport_config(),
+            clock,
+        )
+        .unwrap();
+        let epoch = TransportEpoch::new(9).unwrap();
+        let directive = recovery_directive(epoch);
+        let mut fallback_input = invocation_input("http-fallback", ProviderWireOperation::Generate);
+        fallback_input
+            .set_recovery_directive(directive.clone())
+            .unwrap();
+        let fallback = fallback_coordinator
+            .prepare("runtime-a", &mut fallback_input, &context(2_000_100))
+            .await
+            .unwrap()
+            .unwrap();
+        let mut fallback_result = ProviderInvocationResult {
+            provider_metadata: serde_json::json!({}),
+            ..ProviderInvocationResult::default()
+        };
+        fallback_result
+            .set_recovery_receipt(ProviderRecoveryReceipt {
+                attempt: 0,
+                transport: RecoveryTransport::ProviderHttp,
+                transport_epoch: epoch,
+                socket_incarnation: None,
+                commit_level: CommitLevel::LifecycleOnly,
+                disposition: RecoveryDisposition::PreCommitHttpFallback,
+                reason: RecoveryReason::TransportDisconnected,
+            })
+            .unwrap();
+        fallback_coordinator
+            .finish(fallback, &output_with_result(fallback_result))
+            .await
+            .unwrap();
+        let fallback_snapshot = fallback_coordinator.safe_snapshot().await;
+        assert_eq!(fallback_snapshot.sessions.len(), 1);
+        assert_eq!(
+            fallback_snapshot.sessions[0].state,
+            TransportSessionState::IdleAffinity
+        );
+        assert!(fallback_snapshot.tombstones.is_empty());
     }
 
     async fn coordinator_at_inflight_soft_drain(

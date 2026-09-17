@@ -8,9 +8,9 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
-    RegistryError, TerminationKind, TransportClock, TransportInstant, TransportOwnerId,
-    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
-    TransportSessionRegistry, TransportSessionState,
+    RegistryError, TerminationKind, TransportClock, TransportFenceStatus, TransportInstant,
+    TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
+    TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 
 #[derive(Clone, Default)]
@@ -120,6 +120,12 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
     let replacement = registry.rotate_generation(&original).unwrap();
     assert!(replacement.generation.get() > original.generation.get());
     assert_eq!(registry.safe_snapshot().sessions[0].owner_id, owner);
+    let before_stale_observation = registry.safe_snapshot();
+    assert!(matches!(
+        registry.fence_status(&original),
+        TransportFenceStatus::Stale { .. }
+    ));
+    assert_eq!(registry.safe_snapshot(), before_stale_observation);
     assert!(matches!(
         registry.activate(&original),
         Err(RegistryError::StaleGeneration { .. })

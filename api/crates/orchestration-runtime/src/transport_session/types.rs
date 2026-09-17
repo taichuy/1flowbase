@@ -84,6 +84,16 @@ pub struct TransportFence {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransportFenceStatus {
+    Current,
+    Stale {
+        current: TransportGeneration,
+        received: TransportGeneration,
+    },
+    Missing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransportSessionState {
     Opening,
     Active,
