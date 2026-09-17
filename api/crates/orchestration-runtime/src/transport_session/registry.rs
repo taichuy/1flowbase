@@ -5,10 +5,10 @@ use std::{
 
 use super::types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, InvocationCompletion, InvocationLease,
-    LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot, TerminationKind,
-    TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration, TransportInstant,
-    TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
-    TransportSessionId, TransportSessionState,
+    InvocationRequest, LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot,
+    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration,
+    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
+    TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
 };
 
 pub trait TransportClock: Send + Sync {
@@ -41,21 +41,34 @@ impl TransportClock for SystemTransportClock {
     }
 }
 
-struct SessionRecord {
+struct LogicalSessionRecord {
     owner_id: TransportOwnerId,
     provider_id: TransportProviderId,
-    runtime_target_id: TransportRuntimeTargetId,
-    generation: TransportGeneration,
     state: TransportSessionState,
     created_at: TransportInstant,
     state_since: TransportInstant,
-    task_deadline: TransportDeadline,
-    logical_absolute_deadline: TransportDeadline,
+    absolute_deadline: TransportDeadline,
     state_deadline: TransportDeadline,
-    physical_soft_deadline: TransportDeadline,
-    physical_hard_deadline: TransportDeadline,
-    inflight: Option<u64>,
+    invocation: Option<InvocationRecord>,
     next_invocation: u64,
+}
+
+struct InvocationRecord {
+    sequence: u64,
+    deadline: TransportDeadline,
+}
+
+struct PhysicalGenerationRecord {
+    runtime_target_id: TransportRuntimeTargetId,
+    generation: TransportGeneration,
+    created_at: TransportInstant,
+    soft_deadline: TransportDeadline,
+    hard_deadline: TransportDeadline,
+}
+
+struct SessionRecord {
+    logical: LogicalSessionRecord,
+    physical: PhysicalGenerationRecord,
 }
 
 pub struct TransportSessionRegistry<C> {
@@ -87,9 +100,6 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             return Err(RegistryError::AlreadyExists);
         }
 
-        let task_deadline = request
-            .task_deadline
-            .unwrap_or_else(|| now.saturating_add(self.config.invocation_default));
         let logical_absolute_deadline = now.saturating_add(self.config.logical_max_age);
         let physical_max_deadline = now.saturating_add(self.config.physical_max_age);
         let physical_hard_deadline = request
@@ -97,7 +107,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .map_or(physical_max_deadline, |deadline| {
                 deadline.min(physical_max_deadline)
             });
-        if task_deadline <= now || physical_hard_deadline <= now {
+        if physical_hard_deadline <= now {
             return Err(RegistryError::DeadlineInPast);
         }
 
@@ -110,14 +120,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     active: self
                         .sessions
                         .values()
-                        .filter(|record| record.state == TransportSessionState::Active)
+                        .filter(|record| record.logical.state == TransportSessionState::Active)
                         .count(),
                 }));
             }
         }
 
         let generation = self.allocate_generation()?;
-        let state_deadline = task_deadline.min(logical_absolute_deadline);
         let physical_soft_deadline = now
             .saturating_add(self.config.physical_soft_drain_age)
             .min(physical_hard_deadline);
@@ -128,20 +137,24 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         self.sessions.insert(
             request.session_id,
             SessionRecord {
-                owner_id: request.owner_id,
-                provider_id: request.provider_id,
-                runtime_target_id: request.runtime_target_id,
-                generation,
-                state: TransportSessionState::Opening,
-                created_at: now,
-                state_since: now,
-                task_deadline,
-                logical_absolute_deadline,
-                state_deadline,
-                physical_soft_deadline,
-                physical_hard_deadline,
-                inflight: None,
-                next_invocation: 1,
+                logical: LogicalSessionRecord {
+                    owner_id: request.owner_id,
+                    provider_id: request.provider_id,
+                    state: TransportSessionState::Opening,
+                    created_at: now,
+                    state_since: now,
+                    absolute_deadline: logical_absolute_deadline,
+                    state_deadline: logical_absolute_deadline,
+                    invocation: None,
+                    next_invocation: 1,
+                },
+                physical: PhysicalGenerationRecord {
+                    runtime_target_id: request.runtime_target_id,
+                    generation,
+                    created_at: now,
+                    soft_deadline: physical_soft_deadline,
+                    hard_deadline: physical_hard_deadline,
+                },
             },
         );
         Ok(fence)
@@ -158,11 +171,11 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<(), RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
-        let from = self.record(fence)?.state;
+        let from = self.record(fence)?.logical.state;
         if !valid_transition(from, to) {
             return Err(RegistryError::InvalidTransition { from, to });
         }
-        if self.record(fence)?.inflight.is_some()
+        if self.record(fence)?.logical.invocation.is_some()
             && !matches!(
                 to,
                 TransportSessionState::Draining
@@ -178,35 +191,42 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     pub fn begin_invocation(
         &mut self,
         fence: &TransportFence,
+        request: InvocationRequest,
     ) -> Result<InvocationLease, RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
+        let default_deadline = now.saturating_add(self.config.invocation_default);
+        let deadline = request.deadline.unwrap_or(default_deadline);
         let record = self.record_mut(fence)?;
-        if record.inflight.is_some() {
+        if deadline <= now {
+            return Err(RegistryError::DeadlineInPast);
+        }
+        if record.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
         }
         if !matches!(
-            record.state,
+            record.logical.state,
             TransportSessionState::Active
                 | TransportSessionState::WaitingTool
                 | TransportSessionState::IdleAffinity
                 | TransportSessionState::Orphaned
         ) {
             return Err(RegistryError::InvalidTransition {
-                from: record.state,
+                from: record.logical.state,
                 to: TransportSessionState::Active,
             });
         }
-        let from = record.state;
-        let sequence = record.next_invocation;
-        record.next_invocation = record
+        let from = record.logical.state;
+        let sequence = record.logical.next_invocation;
+        record.logical.next_invocation = record
+            .logical
             .next_invocation
             .checked_add(1)
             .ok_or(RegistryError::InvocationSequenceExhausted)?;
-        record.inflight = Some(sequence);
-        record.state = TransportSessionState::Active;
-        record.state_since = now;
-        record.state_deadline = record.task_deadline.min(record.logical_absolute_deadline);
+        record.logical.invocation = Some(InvocationRecord { sequence, deadline });
+        record.logical.state = TransportSessionState::Active;
+        record.logical.state_since = now;
+        record.logical.state_deadline = record.logical.absolute_deadline;
         if from != TransportSessionState::Active {
             self.push_event(LifecycleEvent::StateChanged {
                 fence: fence.clone(),
@@ -215,7 +235,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                 at: now,
             });
         }
-        Ok(InvocationLease::new(fence.clone(), sequence))
+        Ok(InvocationLease::new(fence.clone(), sequence, deadline))
     }
 
     pub fn finish_invocation(
@@ -227,16 +247,16 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         self.maintain_at(now);
         let target = completion.state();
         let record = self.record_mut(&lease.fence)?;
-        let Some(sequence) = record.inflight else {
+        let Some(invocation) = record.logical.invocation.as_ref() else {
             return Err(RegistryError::NoInflight);
         };
-        if sequence != lease.sequence() {
+        if invocation.sequence != lease.sequence() || invocation.deadline != lease.deadline() {
             return Err(RegistryError::StaleInvocation);
         }
-        record.inflight = None;
+        record.logical.invocation = None;
         // A soft-drain or close directive wins over a concurrently finishing invocation.
         if matches!(
-            record.state,
+            record.logical.state,
             TransportSessionState::Draining
                 | TransportSessionState::Faulted
                 | TransportSessionState::Closing
@@ -244,9 +264,9 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         ) {
             return Ok(());
         }
-        if !valid_transition(record.state, target) && record.state != target {
+        if !valid_transition(record.logical.state, target) && record.logical.state != target {
             return Err(RegistryError::InvalidTransition {
-                from: record.state,
+                from: record.logical.state,
                 to: target,
             });
         }
@@ -258,7 +278,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         self.maintain_at(now);
         let config = self.config.clone();
         let record = self.record_mut(fence)?;
-        record.state_deadline = capped_state_deadline(&config, record, now);
+        record.logical.state_deadline = capped_state_deadline(&config, record, now);
         Ok(())
     }
 
@@ -272,21 +292,22 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<TransportFence, RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
-        if self.record(fence)?.inflight.is_some() {
+        if self.record(fence)?.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
         }
         let generation = self.allocate_generation()?;
         let config = self.config.clone();
         let record = self.record_mut(fence)?;
-        let from = record.state;
-        record.generation = generation;
-        record.state = TransportSessionState::Opening;
-        record.state_since = now;
-        record.state_deadline = record.task_deadline.min(record.logical_absolute_deadline);
-        record.physical_hard_deadline = now.saturating_add(config.physical_max_age);
-        record.physical_soft_deadline = now
+        let from = record.logical.state;
+        record.physical.generation = generation;
+        record.physical.created_at = now;
+        record.logical.state = TransportSessionState::Opening;
+        record.logical.state_since = now;
+        record.logical.state_deadline = record.logical.absolute_deadline;
+        record.physical.hard_deadline = now.saturating_add(config.physical_max_age);
+        record.physical.soft_deadline = now
             .saturating_add(config.physical_soft_drain_age)
-            .min(record.physical_hard_deadline);
+            .min(record.physical.hard_deadline);
         let next = TransportFence {
             session_id: fence.session_id.clone(),
             generation,
@@ -348,26 +369,26 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     pub fn fence(&self, session_id: &TransportSessionId) -> Option<TransportFence> {
         self.sessions.get(session_id).map(|record| TransportFence {
             session_id: session_id.clone(),
-            generation: record.generation,
+            generation: record.physical.generation,
         })
     }
 
     pub fn state(&self, fence: &TransportFence) -> Result<TransportSessionState, RegistryError> {
-        Ok(self.record(fence)?.state)
+        Ok(self.record(fence)?.logical.state)
     }
 
     pub fn runtime_target_id(
         &self,
         fence: &TransportFence,
     ) -> Result<&TransportRuntimeTargetId, RegistryError> {
-        Ok(&self.record(fence)?.runtime_target_id)
+        Ok(&self.record(fence)?.physical.runtime_target_id)
     }
 
     pub fn physical_hard_deadline(
         &self,
         fence: &TransportFence,
     ) -> Result<TransportDeadline, RegistryError> {
-        Ok(self.record(fence)?.physical_hard_deadline)
+        Ok(self.record(fence)?.physical.hard_deadline)
     }
 
     pub fn mark_owner_orphaned(&mut self, owner_id: &TransportOwnerId) -> Vec<TransportFence> {
@@ -377,9 +398,9 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .sessions
             .iter()
             .filter(|(_, record)| {
-                &record.owner_id == owner_id
+                &record.logical.owner_id == owner_id
                     && matches!(
-                        record.state,
+                        record.logical.state,
                         TransportSessionState::Opening
                             | TransportSessionState::Active
                             | TransportSessionState::WaitingTool
@@ -388,7 +409,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             })
             .map(|(session_id, record)| TransportFence {
                 session_id: session_id.clone(),
-                generation: record.generation,
+                generation: record.physical.generation,
             })
             .collect::<Vec<_>>();
         for fence in &fences {
@@ -413,19 +434,33 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .map(|(session_id, record)| SafeSessionSnapshot {
                 fence: TransportFence {
                     session_id: session_id.clone(),
-                    generation: record.generation,
+                    generation: record.physical.generation,
                 },
-                owner_id: record.owner_id.clone(),
-                provider_id: record.provider_id.clone(),
-                runtime_target_id: record.runtime_target_id.clone(),
-                state: record.state,
-                inflight: record.inflight.is_some(),
-                age: now.saturating_duration_since(record.created_at),
-                state_age: now.saturating_duration_since(record.state_since),
-                logical_ttl: effective_logical_deadline(record).saturating_duration_since(now),
-                physical_ttl: record.physical_hard_deadline.saturating_duration_since(now),
+                owner_id: record.logical.owner_id.clone(),
+                provider_id: record.logical.provider_id.clone(),
+                runtime_target_id: record.physical.runtime_target_id.clone(),
+                state: record.logical.state,
+                inflight: record.logical.invocation.is_some(),
+                age: now.saturating_duration_since(record.logical.created_at),
+                state_age: now.saturating_duration_since(record.logical.state_since),
+                state_ttl: record.logical.state_deadline.saturating_duration_since(now),
+                logical_ttl: record
+                    .logical
+                    .absolute_deadline
+                    .saturating_duration_since(now),
+                invocation_deadline: record
+                    .logical
+                    .invocation
+                    .as_ref()
+                    .map(|invocation| invocation.deadline),
+                invocation_ttl: record
+                    .logical
+                    .invocation
+                    .as_ref()
+                    .map(|invocation| invocation.deadline.saturating_duration_since(now)),
+                physical_ttl: record.physical.hard_deadline.saturating_duration_since(now),
                 deadline_kind: effective_deadline(record).1,
-                eviction_priority: eviction_rank(record.state),
+                eviction_priority: eviction_rank(record.logical.state),
             })
             .collect();
         SafeRegistrySnapshot {
@@ -464,9 +499,9 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .sessions
             .iter()
             .filter(|(_, record)| {
-                now >= record.physical_soft_deadline
+                now >= record.physical.soft_deadline
                     && !matches!(
-                        record.state,
+                        record.logical.state,
                         TransportSessionState::Draining
                             | TransportSessionState::Faulted
                             | TransportSessionState::Closing
@@ -474,7 +509,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             })
             .map(|(id, record)| TransportFence {
                 session_id: id.clone(),
-                generation: record.generation,
+                generation: record.physical.generation,
             })
             .collect();
         for fence in drain {
@@ -486,8 +521,14 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         self.sessions
             .iter()
             .filter_map(|(id, record)| {
-                eviction_rank(record.state)
-                    .map(|rank| (rank, record.state_since, id.clone(), record.generation))
+                eviction_rank(record.logical.state).map(|rank| {
+                    (
+                        rank,
+                        record.logical.state_since,
+                        id.clone(),
+                        record.physical.generation,
+                    )
+                })
             })
             .min()
             .map(|(_, _, id, _)| id)
@@ -501,10 +542,10 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<(), RegistryError> {
         let config = self.config.clone();
         let record = self.record_mut(fence)?;
-        let from = record.state;
-        record.state = to;
-        record.state_since = now;
-        record.state_deadline = capped_state_deadline(&config, record, now);
+        let from = record.logical.state;
+        record.logical.state = to;
+        record.logical.state_since = now;
+        record.logical.state_deadline = capped_state_deadline(&config, record, now);
         if from != to {
             self.push_event(LifecycleEvent::StateChanged {
                 fence: fence.clone(),
@@ -526,15 +567,15 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         let receipt = TerminationReceipt {
             fence: TransportFence {
                 session_id: session_id.clone(),
-                generation: record.generation,
+                generation: record.physical.generation,
             },
-            owner_id: record.owner_id,
-            provider_id: record.provider_id,
-            runtime_target_id: record.runtime_target_id,
-            previous_state: record.state,
+            owner_id: record.logical.owner_id,
+            provider_id: record.logical.provider_id,
+            runtime_target_id: record.physical.runtime_target_id,
+            previous_state: record.logical.state,
             kind,
             terminated_at: now,
-            connection_age: now.saturating_duration_since(record.created_at),
+            connection_age: now.saturating_duration_since(record.physical.created_at),
             close_acknowledged: None,
         };
         self.tombstones.push_back(receipt.clone());
@@ -581,9 +622,9 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
 }
 
 fn ensure_generation(record: &SessionRecord, fence: &TransportFence) -> Result<(), RegistryError> {
-    if record.generation != fence.generation {
+    if record.physical.generation != fence.generation {
         return Err(RegistryError::StaleGeneration {
-            expected: record.generation,
+            expected: record.physical.generation,
             received: fence.generation,
         });
     }
@@ -618,40 +659,31 @@ fn capped_state_deadline(
     record: &SessionRecord,
     now: TransportInstant,
 ) -> TransportDeadline {
-    let lease = match record.state {
+    let lease = match record.logical.state {
         TransportSessionState::Opening | TransportSessionState::Active => {
-            return record.task_deadline.min(record.logical_absolute_deadline);
+            return record.logical.absolute_deadline;
         }
         TransportSessionState::WaitingTool => config.waiting_tool_lease,
         TransportSessionState::IdleAffinity => config.idle_affinity_lease,
         TransportSessionState::Orphaned => config.orphan_grace,
         TransportSessionState::Draining => {
-            record.physical_hard_deadline.saturating_duration_since(now)
+            record.physical.hard_deadline.saturating_duration_since(now)
         }
         TransportSessionState::Faulted => config.fault_grace,
         TransportSessionState::Closing => config.closing_grace,
     };
     now.saturating_add(lease)
-        .min(record.task_deadline)
-        .min(record.logical_absolute_deadline)
-}
-
-fn effective_logical_deadline(record: &SessionRecord) -> TransportDeadline {
-    record
-        .task_deadline
-        .min(record.logical_absolute_deadline)
-        .min(record.state_deadline)
+        .min(record.logical.absolute_deadline)
 }
 
 fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {
     [
-        (record.physical_hard_deadline, DeadlineKind::PhysicalHard),
-        (record.task_deadline, DeadlineKind::Task),
+        (record.physical.hard_deadline, DeadlineKind::PhysicalHard),
         (
-            record.logical_absolute_deadline,
+            record.logical.absolute_deadline,
             DeadlineKind::LogicalAbsolute,
         ),
-        (record.state_deadline, DeadlineKind::StateLease),
+        (record.logical.state_deadline, DeadlineKind::StateLease),
     ]
     .into_iter()
     .min_by_key(|(deadline, kind)| (*deadline, deadline_priority(*kind)))
@@ -660,13 +692,12 @@ fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKin
 
 fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<TerminationKind> {
     let candidates = [
-        (record.physical_hard_deadline, DeadlineKind::PhysicalHard),
-        (record.task_deadline, DeadlineKind::Task),
+        (record.physical.hard_deadline, DeadlineKind::PhysicalHard),
         (
-            record.logical_absolute_deadline,
+            record.logical.absolute_deadline,
             DeadlineKind::LogicalAbsolute,
         ),
-        (record.state_deadline, DeadlineKind::StateLease),
+        (record.logical.state_deadline, DeadlineKind::StateLease),
     ];
     candidates
         .into_iter()
@@ -675,7 +706,7 @@ fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<Termina
         .map(|(_, kind)| {
             if kind == DeadlineKind::PhysicalHard {
                 TerminationKind::ProviderHardMax
-            } else if record.state == TransportSessionState::Orphaned {
+            } else if record.logical.state == TransportSessionState::Orphaned {
                 TerminationKind::OwnerOrphaned
             } else {
                 TerminationKind::DeadlineExceeded(kind)

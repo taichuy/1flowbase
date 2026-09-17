@@ -2,8 +2,9 @@ use super::*;
 use extension_package_runtime::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
     NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
-    ProviderCompactProfile, ProviderInvocationCapability, ProviderResetCreditOperation,
-    ProviderResetCreditResult, ProviderTransportSessionAction, ProviderTransportSessionCommand,
+    ProviderCompactProfile, ProviderInvocationCapability, ProviderLogicalSessionState,
+    ProviderResetCreditOperation, ProviderResetCreditResult, ProviderTransportSessionAction,
+    ProviderTransportSessionCommand, ProviderTransportSessionDirective,
     PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY, PROVIDER_RESET_CREDITS_CAPABILITY,
     PROVIDER_USAGE_WINDOWS_CAPABILITY,
 };
@@ -20,6 +21,29 @@ use tokio::time::sleep;
 
 use crate::package_loader::PackageLoader;
 use crate::stdio_runtime::ProviderWorkerLifecycleState;
+
+#[test]
+fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
+    let limits = PluginRuntimeLimits {
+        invoke_timeout_ms: Some(17_000),
+        ..PluginRuntimeLimits::default()
+    };
+    let mut input = invocation_input("fixture-model");
+    input
+        .set_transport_session_directive(ProviderTransportSessionDirective {
+            logical_session_id: "logical-fixture".into(),
+            generation: 7,
+            task_id: "invocation-7-1".into(),
+            state: ProviderLogicalSessionState::Active,
+            physical_deadline_unix_ms: 1,
+        })
+        .unwrap();
+
+    assert_eq!(
+        provider_invocation_limits(&limits, &input).timeout_ms,
+        Some(17_000)
+    );
+}
 
 #[test]
 fn c2_runtime_stage_receipt_is_metadata_only() {
@@ -39,6 +63,33 @@ fn c2_runtime_stage_receipt_is_metadata_only() {
         "response_id",
     ] {
         assert!(!serialized.contains(forbidden));
+    }
+}
+
+#[test]
+fn runtime_stage_timing_normalizes_omitted_provider_metadata() {
+    let mut metadata = Value::Null;
+
+    attach_runtime_stage_timing(&mut metadata, 5, 11).unwrap();
+
+    assert_eq!(
+        metadata[RUNTIME_PROVIDER_STAGE_TIMING_METADATA_KEY],
+        json!({
+            "schema_version": 1,
+            "mapping_ms": 5,
+            "queue_ms": 11,
+        })
+    );
+}
+
+#[test]
+fn runtime_stage_timing_rejects_non_object_provider_metadata() {
+    for mut metadata in [json!("invalid"), json!(17), json!(["invalid"])] {
+        let error = attach_runtime_stage_timing(&mut metadata, 5, 11).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("provider_metadata must be an object for runtime stage timing"));
     }
 }
 

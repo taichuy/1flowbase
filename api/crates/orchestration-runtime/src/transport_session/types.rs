@@ -147,16 +147,21 @@ pub struct AdmissionRequest {
     pub provider_id: TransportProviderId,
     /// Opaque Runtime Backend target used only for lifecycle control dispatch.
     pub runtime_target_id: TransportRuntimeTargetId,
-    /// The task's absolute deadline. When absent, the configured invocation default is used.
-    pub task_deadline: Option<TransportDeadline>,
     /// A Provider-advertised hard deadline, additionally capped by `physical_max_age`.
     pub provider_hard_deadline: Option<TransportDeadline>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InvocationRequest {
+    /// The current invocation's absolute deadline. When absent, the configured default is used.
+    pub deadline: Option<TransportDeadline>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InvocationLease {
     pub fence: TransportFence,
     sequence: u64,
+    deadline: TransportDeadline,
 }
 
 impl InvocationLease {
@@ -164,8 +169,20 @@ impl InvocationLease {
         self.sequence
     }
 
-    pub(crate) const fn new(fence: TransportFence, sequence: u64) -> Self {
-        Self { fence, sequence }
+    pub const fn deadline(&self) -> TransportDeadline {
+        self.deadline
+    }
+
+    pub(crate) const fn new(
+        fence: TransportFence,
+        sequence: u64,
+        deadline: TransportDeadline,
+    ) -> Self {
+        Self {
+            fence,
+            sequence,
+            deadline,
+        }
     }
 }
 
@@ -202,7 +219,10 @@ pub struct SafeSessionSnapshot {
     pub inflight: bool,
     pub age: Duration,
     pub state_age: Duration,
+    pub state_ttl: Duration,
     pub logical_ttl: Duration,
+    pub invocation_deadline: Option<TransportDeadline>,
+    pub invocation_ttl: Option<Duration>,
     pub physical_ttl: Duration,
     pub deadline_kind: DeadlineKind,
     pub eviction_priority: Option<u8>,
