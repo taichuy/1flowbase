@@ -142,6 +142,68 @@ impl PgControlPlaneStore {
         map_flow_run_callback_resume_attempt_record(&row)
     }
 
+    async fn transition_flow_run_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        from_status: &str,
+        to_status: &str,
+        response_payload: Option<&Value>,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let row = sqlx::query(
+            r#"
+            update flow_run_callback_resume_attempts
+            set status = $3,
+                response_payload = coalesce($4, response_payload),
+                updated_at = now()
+            where id = $1
+              and status = $2
+            returning
+                id,
+                flow_run_id,
+                callback_task_id,
+                source,
+                status,
+                response_payload,
+                idempotency_key,
+                error_payload,
+                created_at,
+                updated_at,
+                completed_at
+            "#,
+        )
+        .bind(attempt_id)
+        .bind(from_status)
+        .bind(to_status)
+        .bind(response_payload)
+        .fetch_optional(self.pool())
+        .await?;
+        row.as_ref()
+            .map(map_flow_run_callback_resume_attempt_record)
+            .transpose()
+    }
+
+    pub async fn claim_flow_run_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: &Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        self.transition_flow_run_callback_resume_attempt(
+            attempt_id,
+            "received",
+            "processing",
+            Some(response_payload),
+        )
+        .await
+    }
+
+    pub async fn park_flow_run_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        self.transition_flow_run_callback_resume_attempt(attempt_id, "processing", "received", None)
+            .await
+    }
+
     pub async fn cancel_flow_run_callback_resume_attempts_for_run(
         &self,
         flow_run_id: Uuid,

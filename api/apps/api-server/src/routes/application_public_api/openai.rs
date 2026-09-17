@@ -1461,9 +1461,13 @@ async fn collect_blocking_native_response(
     // completion owner alive even if the blocking HTTP caller disconnects.
     let completion = tokio::spawn(completion.complete());
     let mut items = None;
+    // A blocking response is written once, after the whole turn is collected;
+    // the tool deliveries are projected together with that single body.
+    let mut deliveries = Vec::new();
     while let Some(event) = events.recv().await {
-        let (_, envelope) = event.into_parts();
+        let (_, envelope, delivery) = event.into_parts();
         collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
+        deliveries.extend(delivery);
     }
     let terminal = completion
         .await
@@ -1513,6 +1517,9 @@ async fn collect_blocking_native_response(
     let response =
         to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
     let _receipt = receipt.projected();
+    for delivery in deliveries {
+        delivery.projected();
+    }
     Ok(response)
 }
 

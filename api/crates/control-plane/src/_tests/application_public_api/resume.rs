@@ -775,9 +775,11 @@ mod tests {
             ))
             .await
             .expect("first tool result should remain at the round barrier");
+        // The round is incomplete, so the single attempt is parked for the
+        // next partial delivery to re-acquire.
         assert_eq!(
             partial.attempt.status,
-            domain::FlowRunCallbackResumeAttemptStatus::Processing
+            domain::FlowRunCallbackResumeAttemptStatus::Received
         );
         assert_eq!(
             repository

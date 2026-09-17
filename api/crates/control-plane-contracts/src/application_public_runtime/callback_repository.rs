@@ -26,6 +26,22 @@ pub trait ApplicationPublishedCallbackAttemptRepository: Send + Sync {
         input: &FinishFlowRunCallbackResumeAttemptInput,
     ) -> Result<domain::FlowRunCallbackResumeAttemptRecord>;
 
+    /// `received` → `processing`: exactly one delivery re-acquires a parked
+    /// tool-round attempt, and the attempt then carries that delivery's
+    /// payload. `None` when the attempt is not parked.
+    async fn claim_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
+
+    /// `processing` → `received`: the delivery finished without completing the
+    /// tool round, so the attempt is parked until further results arrive.
+    async fn park_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
+
     async fn cancel_published_callback_resume_attempts_for_run(
         &self,
         flow_run_id: Uuid,

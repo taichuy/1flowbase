@@ -26,6 +26,8 @@ use control_plane::{
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
+
+use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
 use tracing::warn;
 #[cfg(test)]
 use tracing::{debug, info};
@@ -108,6 +110,8 @@ enum CompatibleTurnAction {
 pub(crate) struct CompatibleProjectionInput {
     run_snapshot: NativeRunResult,
     envelope: RuntimeEventEnvelope,
+    /// Present only for a committed tool delivery; the protocol writer settles it.
+    delivery: Option<RuntimeEventDeliveryReceipt>,
 }
 
 pub(crate) struct CompatibleTypedTurnStream {
@@ -116,8 +120,14 @@ pub(crate) struct CompatibleTypedTurnStream {
 }
 
 impl CompatibleProjectionInput {
-    pub(crate) fn into_parts(self) -> (NativeRunResult, RuntimeEventEnvelope) {
-        (self.run_snapshot, self.envelope)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        NativeRunResult,
+        RuntimeEventEnvelope,
+        Option<RuntimeEventDeliveryReceipt>,
+    ) {
+        (self.run_snapshot, self.envelope, self.delivery)
     }
 }
 

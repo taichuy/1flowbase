@@ -39,7 +39,8 @@ use control_plane_contracts::{
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
-        ListModelProviderRequestLogsPageInput, ListPricingRulesInput, ModelProviderRequestLogsPage,
+        ListModelProviderRequestLogsPageInput, ListPricingRulesInput,
+        MarkRuntimeEventDeliveryUncertainInput, ModelProviderRequestLogsPage,
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
@@ -427,6 +428,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &ReleaseRuntimeEventDeliveryInput,
     ) -> Result<domain::RuntimeEventRecord> {
         PgControlPlaneStore::release_runtime_event_delivery(self, input).await
+    }
+
+    async fn mark_runtime_event_delivery_uncertain(
+        &self,
+        input: &MarkRuntimeEventDeliveryUncertainInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::mark_runtime_event_delivery_uncertain(self, input).await
     }
 
     async fn append_runtime_item(
@@ -1693,6 +1701,26 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         input: &FinishFlowRunCallbackResumeAttemptInput,
     ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {
         PgControlPlaneStore::finish_flow_run_callback_resume_attempt(self, input).await
+    }
+
+    async fn claim_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        PgControlPlaneStore::claim_flow_run_callback_resume_attempt(
+            self,
+            attempt_id,
+            &response_payload,
+        )
+        .await
+    }
+
+    async fn park_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        PgControlPlaneStore::park_flow_run_callback_resume_attempt(self, attempt_id).await
     }
 
     async fn cancel_published_callback_resume_attempts_for_run(

@@ -182,8 +182,15 @@ where
             if existing.source != command.source.as_str() {
                 return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
             }
-            if is_tool_round {
-                return Ok(existing.id);
+            if is_tool_round
+                && context.callback_task.status != domain::CallbackTaskStatus::Completed
+            {
+                // A tool round keeps one durable attempt across partial
+                // deliveries. Only a parked attempt can be re-acquired, and
+                // exactly one concurrent delivery wins that transition.
+                return self
+                    .claim_parked_tool_round_attempt(&existing, &command.response_payload)
+                    .await;
             }
             if matches!(
                 existing.status,
@@ -251,16 +258,20 @@ where
             let existing = existing.ok_or(ControlPlaneError::Conflict(
                 "callback_resume_reservation_missing",
             ))?;
+            // The processing attempt carries the payload of the delivery that
+            // owns it, for tool rounds too (refreshed on every re-acquire).
             if existing.id != reserved_id
-                || (!is_tool_round && existing.response_payload != command.response_payload)
+                || existing.response_payload != command.response_payload
                 || existing.source != command.source.as_str()
             {
                 return Err(
                     ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into(),
                 );
             }
-            if !is_tool_round
-                && existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+            // A settled attempt (or a completed tool round) is an exact
+            // replay: return the recorded outcome without a second consumer call.
+            if existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+                && (!is_tool_round || callback_task.status == domain::CallbackTaskStatus::Completed)
             {
                 return self
                     .resume_existing_attempt(&actor, &callback_task, existing, &command)
@@ -286,7 +297,21 @@ where
                         ControlPlaneError::Conflict("callback_resume_source_conflict").into(),
                     );
                 }
-                existing
+                if callback_task.status == domain::CallbackTaskStatus::Completed {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                        .await;
+                }
+                let claimed_id = self
+                    .claim_parked_tool_round_attempt(&existing, &command.response_payload)
+                    .await?;
+                self.repository
+                    .get_published_callback_resume_attempt(callback_task.id)
+                    .await?
+                    .filter(|attempt| attempt.id == claimed_id)
+                    .ok_or(ControlPlaneError::Conflict(
+                        "callback_resume_reservation_missing",
+                    ))?
             } else {
                 ensure_callback_is_consumable(
                     &flow_run,
@@ -352,6 +377,9 @@ where
                         .await?
                         .ok_or(ControlPlaneError::NotFound("callback_task"))?;
                     if callback_task.status == domain::CallbackTaskStatus::Pending {
+                        // The round is not complete: park the attempt so the
+                        // next partial delivery can re-acquire it.
+                        let attempt = self.park_tool_round_attempt(attempt).await?;
                         let run = self.native_result_for_flow_run(&flow_run).await?;
                         return Ok(ResumePublishedCallbackResult { run, attempt });
                     }
@@ -394,6 +422,9 @@ where
                         .downcast_ref::<ControlPlaneError>()
                         .is_some_and(|error| matches!(error, ControlPlaneError::Conflict(_)))
                 {
+                    // A rejected partial result must not hold the round: park
+                    // the attempt so a correct delivery can still re-acquire it.
+                    let _ = self.park_tool_round_attempt(attempt).await;
                     return Err(error);
                 }
                 let error_payload = json!({ "message": error.to_string() });
@@ -431,6 +462,45 @@ where
                 Err(error)
             }
         }
+    }
+
+    /// One durable attempt per tool round; `received` is the parked state
+    /// between partial deliveries and `processing` is held by exactly one
+    /// in-flight delivery.
+    async fn claim_parked_tool_round_attempt(
+        &self,
+        existing: &domain::FlowRunCallbackResumeAttemptRecord,
+        response_payload: &Value,
+    ) -> Result<Uuid> {
+        match existing.status {
+            domain::FlowRunCallbackResumeAttemptStatus::Received => self
+                .repository
+                .claim_published_callback_resume_attempt(existing.id, response_payload.clone())
+                .await?
+                .map(|attempt| attempt.id)
+                .ok_or_else(|| {
+                    ControlPlaneError::Conflict("callback_resume_already_admitted").into()
+                }),
+            domain::FlowRunCallbackResumeAttemptStatus::Processing => {
+                Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into())
+            }
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+            | domain::FlowRunCallbackResumeAttemptStatus::Failed
+            | domain::FlowRunCallbackResumeAttemptStatus::Cancelled => {
+                Err(ControlPlaneError::Conflict("callback_resume_not_completed").into())
+            }
+        }
+    }
+
+    async fn park_tool_round_attempt(
+        &self,
+        attempt: domain::FlowRunCallbackResumeAttemptRecord,
+    ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {
+        Ok(self
+            .repository
+            .park_published_callback_resume_attempt(attempt.id)
+            .await?
+            .unwrap_or(attempt))
     }
 
     async fn resume_existing_attempt(

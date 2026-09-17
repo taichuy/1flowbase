@@ -364,6 +364,18 @@ pub struct ReleaseRuntimeEventDeliveryInput {
     pub expected_generation: i64,
 }
 
+/// The protocol writer started emitting this delivery and then lost the
+/// transport before it could prove the write. The row leaves the replay set:
+/// the client may already hold an executable tool event, so recovery is
+/// explicit rather than an automatic re-delivery.
+#[derive(Debug, Clone)]
+pub struct MarkRuntimeEventDeliveryUncertainInput {
+    pub event_id: Uuid,
+    pub claim_token: Uuid,
+    pub expected_generation: i64,
+    pub marked_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResumeClaimKind {
     Human,

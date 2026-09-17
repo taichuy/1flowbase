@@ -2,6 +2,7 @@ pub mod anthropic;
 pub(crate) mod callback_adapter;
 pub mod compat_sse;
 pub(crate) mod compatibility_interface;
+pub(crate) mod delivery_receipt;
 pub mod ex;
 pub(crate) mod llm_tool_visibility;
 pub mod native;

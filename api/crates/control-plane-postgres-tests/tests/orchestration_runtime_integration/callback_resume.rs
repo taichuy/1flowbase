@@ -196,6 +196,158 @@ async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
         .is_empty());
 }
 
+#[tokio::test]
+async fn uncertain_tool_delivery_leaves_the_replay_set_and_is_fenced_by_its_claim() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+
+    let claim_input = ClaimRuntimeEventDeliveriesInput {
+        flow_run_id: run.id,
+        limit: 10,
+        lease_seconds: 30,
+    };
+    let claimed = store
+        .claim_runtime_event_deliveries(&claim_input)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    let claim = &claimed[0];
+
+    // A stale claim token cannot settle the row.
+    let stale = store
+        .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+            event_id: claim.event.id,
+            claim_token: Uuid::now_v7(),
+            expected_generation: claim.generation,
+            marked_at: OffsetDateTime::now_utc(),
+        })
+        .await;
+    assert!(stale.is_err());
+
+    store
+        .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+            marked_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let status =
+        sqlx::query_scalar::<_, String>("select delivery_status from runtime_events where id = $1")
+            .bind(waiting.tool_delivery_events[0].id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(status, "uncertain");
+    assert!(
+        store
+            .claim_runtime_event_deliveries(&claim_input)
+            .await
+            .unwrap()
+            .is_empty(),
+        "an uncertain delivery never replays automatically, even after the lease"
+    );
+    // Neither ACK nor release may move an uncertain row: it is settled.
+    assert!(store
+        .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+            acknowledged_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .is_err());
+    assert!(store
+        .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn parked_tool_round_attempt_is_reacquired_by_exactly_one_delivery() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    let callback_task_id = waiting.callback_task.as_ref().unwrap().id;
+
+    let recorded = store
+        .record_flow_run_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+            flow_run_id: run.id,
+            callback_task_id,
+            source: "openai_responses".to_string(),
+            response_payload: json!({"tool_results":[{"tool_call_id":"call-1","content":"a"}]}),
+            idempotency_key: format!("callback_task:{callback_task_id}"),
+        })
+        .await
+        .unwrap();
+    assert!(recorded.inserted);
+    let attempt_id = recorded.attempt.id;
+
+    // Processing cannot be claimed again.
+    assert!(store
+        .claim_flow_run_callback_resume_attempt(attempt_id, &json!({"x":1}))
+        .await
+        .unwrap()
+        .is_none());
+
+    let parked = store
+        .park_flow_run_callback_resume_attempt(attempt_id)
+        .await
+        .unwrap()
+        .expect("processing attempt parks");
+    assert_eq!(
+        parked.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Received
+    );
+
+    let second_payload = json!({"tool_results":[{"tool_call_id":"call-2","content":"b"}]});
+    let store = std::sync::Arc::new(store);
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
+    let mut claims = Vec::new();
+    for _ in 0..4 {
+        let store = store.clone();
+        let barrier = barrier.clone();
+        let payload = second_payload.clone();
+        claims.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .claim_flow_run_callback_resume_attempt(attempt_id, &payload)
+                .await
+                .unwrap()
+        }));
+    }
+    let mut winners = 0;
+    for claim in claims {
+        if let Some(attempt) = claim.await.unwrap() {
+            winners += 1;
+            assert_eq!(
+                attempt.status,
+                domain::FlowRunCallbackResumeAttemptStatus::Processing
+            );
+            assert_eq!(attempt.response_payload, second_payload);
+        }
+    }
+    assert_eq!(winners, 1);
+}
+
 fn tool_result(tool_call_id: &str, content: Value) -> ToolCallbackResultInput {
     ToolCallbackResultInput::from_payload(json!({
         "tool_call_id": tool_call_id,

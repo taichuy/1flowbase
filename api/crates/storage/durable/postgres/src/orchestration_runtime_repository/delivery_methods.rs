@@ -114,4 +114,31 @@ impl PgControlPlaneStore {
         .ok_or(ControlPlaneError::Conflict("runtime_event_delivery_claim_not_owned"))?;
         map_runtime_event_record(row)
     }
+
+    async fn mark_runtime_event_delivery_uncertain(
+        &self,
+        input: &MarkRuntimeEventDeliveryUncertainInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        let row = sqlx::query(
+            r#"
+            update runtime_events
+               set delivery_status = 'uncertain', delivery_uncertain_at = $4
+             where id = $1
+               and delivery_status = 'claimed'
+               and delivery_claim_token = $2
+               and delivery_generation = $3
+            returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                      visibility, durability, created_at
+            "#,
+        )
+        .bind(input.event_id)
+        .bind(input.claim_token)
+        .bind(input.expected_generation)
+        .bind(input.marked_at)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::Conflict("runtime_event_delivery_claim_not_owned"))?;
+        map_runtime_event_record(row)
+    }
 }

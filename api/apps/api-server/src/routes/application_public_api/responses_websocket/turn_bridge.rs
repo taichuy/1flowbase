@@ -112,15 +112,23 @@ pub(super) async fn project_turn(
     // transport shutdown must not drop hooks/receipt or cancel the business run.
     let completion = tokio::spawn(completion.complete());
     while let Some(input) = events.recv().await {
-        let (run_snapshot, envelope) = input.into_parts();
-        for frame in projector
+        let (run_snapshot, envelope, mut delivery) = input.into_parts();
+        // A projection failure drops the receipt before any write: released.
+        let projected = projector
             .project(&run_snapshot, envelope)
-            .map_err(|_| ResponsesTurnBridgeError::ProjectionFailed)?
-        {
+            .map_err(|_| ResponsesTurnBridgeError::ProjectionFailed)?;
+        if let Some(delivery) = delivery.as_mut() {
+            delivery.begin_write();
+        }
+        for frame in projected {
+            // A closed writer drops the receipt after the write started: uncertain.
             frames
                 .send(frame)
                 .await
                 .map_err(|_| ResponsesTurnBridgeError::SocketWriterClosed)?;
+        }
+        if let Some(delivery) = delivery.take() {
+            delivery.projected();
         }
         if projector.has_terminal() {
             let terminal = completion

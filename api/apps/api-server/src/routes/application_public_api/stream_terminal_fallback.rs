@@ -14,9 +14,9 @@ use control_plane::{
     },
     ports::{
         AckRuntimeEventDeliveryInput, ClaimRuntimeEventDeliveriesInput,
-        OrchestrationRuntimeRepository, ReleaseRuntimeEventDeliveryInput,
-        RuntimeEventDeliveryClaim, RuntimeEventDurability, RuntimeEventEnvelope,
-        RuntimeEventPayload, RuntimeEventSource,
+        MarkRuntimeEventDeliveryUncertainInput, OrchestrationRuntimeRepository,
+        ReleaseRuntimeEventDeliveryInput, RuntimeEventDeliveryClaim, RuntimeEventDurability,
+        RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
     },
 };
 use serde_json::{json, Value};
@@ -95,6 +95,21 @@ impl NativeRunTerminalDependencies {
                 event_id: delivery.event.id,
                 claim_token: delivery.claim_token,
                 expected_generation: delivery.generation,
+            })
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn mark_runtime_event_delivery_uncertain(
+        &self,
+        delivery: &RuntimeEventDeliveryClaim,
+    ) -> anyhow::Result<()> {
+        self.store
+            .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+                event_id: delivery.event.id,
+                claim_token: delivery.claim_token,
+                expected_generation: delivery.generation,
+                marked_at: time::OffsetDateTime::now_utc(),
             })
             .await?;
         Ok(())
