@@ -1219,20 +1219,7 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
         }
 
         let task = tokio::spawn(async move {
-            let mut input = request.input;
-            if let Some(mut directive) = input
-                .transport_session_directive()
-                .map_err(RuntimeBackendError::InvalidRequest)?
-            {
-                if let Some(principal) = request.principal.as_ref() {
-                    directive.physical_deadline_unix_ms = directive
-                        .physical_deadline_unix_ms
-                        .min(principal.deadline_unix_ms);
-                    input
-                        .set_transport_session_directive(directive)
-                        .map_err(RuntimeBackendError::InvalidRequest)?;
-                }
-            }
+            let input = request.input;
             let (required_sender, required_forwarder) = match sinks.required {
                 Some(sink) => {
                     let (sender, receiver) = mpsc::channel(64);

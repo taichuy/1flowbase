@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex as StdMutex,
@@ -7,10 +8,10 @@ use std::{
 };
 
 use orchestration_runtime::transport_session::{
-    AdmissionRequest, InvocationCompletion, InvocationLease, LifecycleEvent, RegistryError,
-    SystemTransportClock, TerminationKind, TransportFence, TransportInstant, TransportOwnerId,
-    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
-    TransportSessionRegistry, TransportSessionState,
+    AdmissionRequest, InvocationCompletion, InvocationLease, InvocationRequest, LifecycleEvent,
+    RegistryError, SafeRegistrySnapshot, SystemTransportClock, TerminationKind, TransportFence,
+    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
+    TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
     provider_contract::{
@@ -36,6 +37,7 @@ pub(crate) struct TransportTerminationNotice {
 }
 
 struct LifecycleCommand {
+    fence: TransportFence,
     target_id: String,
     command: ProviderTransportSessionCommand,
     termination: Option<TransportTerminationNotice>,
@@ -53,6 +55,8 @@ pub(crate) struct TransportSessionCoordinator {
     shutdown: AtomicBool,
     shutdown_notify: Notify,
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
+    dispatcher: Mutex<()>,
+    pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
 }
 
 impl TransportSessionCoordinator {
@@ -69,6 +73,8 @@ impl TransportSessionCoordinator {
             shutdown: AtomicBool::new(false),
             shutdown_notify: Notify::new(),
             scheduler: StdMutex::new(None),
+            dispatcher: Mutex::new(()),
+            pending_commands: StdMutex::new(VecDeque::new()),
         })
     }
 
@@ -122,12 +128,15 @@ impl TransportSessionCoordinator {
         ]))?;
         let target = TransportRuntimeTargetId::new(target_id.to_string())?;
         let provider_id = TransportProviderId::new(input.provider_instance_id.clone())?;
-        let task_deadline = u64::try_from(context.deadline_unix_ms)
+        let invocation_deadline = u64::try_from(context.deadline_unix_ms)
             .ok()
             .map(TransportInstant::from_millis);
 
+        let _dispatcher = self.dispatcher.lock().await;
+        self.registry.lock().await.maintain();
+        self.dispatch_pending_events_locked().await;
+
         let mut registry = self.registry.lock().await;
-        registry.maintain();
         let fence = if let Some(fence) = registry.fence(&session_id) {
             let state = registry.state(&fence)?;
             if state == TransportSessionState::Orphaned {
@@ -154,7 +163,6 @@ impl TransportSessionCoordinator {
                     owner_id,
                     provider_id,
                     runtime_target_id: target,
-                    task_deadline,
                     provider_hard_deadline: None,
                 })
                 .map_err(map_registry_admission_error)?;
@@ -162,7 +170,12 @@ impl TransportSessionCoordinator {
             fence
         };
         let lease = registry
-            .begin_invocation(&fence)
+            .begin_invocation(
+                &fence,
+                InvocationRequest {
+                    deadline: invocation_deadline,
+                },
+            )
             .map_err(map_registry_use_error)?;
         let physical_deadline_unix_ms =
             i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis()).unwrap_or(i64::MAX);
@@ -176,7 +189,7 @@ impl TransportSessionCoordinator {
             })
             .map_err(|_| transport_error("transport_session_expired"))?;
         drop(registry);
-        self.dispatch_pending_events().await;
+        self.dispatch_pending_events_locked().await;
         Ok(Some(PreparedTransportInvocation { lease }))
     }
 
@@ -215,6 +228,8 @@ impl TransportSessionCoordinator {
         registry
             .finish_invocation(&prepared.lease, completion)
             .map_err(map_registry_use_error)?;
+        drop(registry);
+        self.dispatch_pending_events().await;
         Ok(())
     }
 
@@ -260,7 +275,12 @@ impl TransportSessionCoordinator {
     }
 
     async fn dispatch_pending_events(&self) {
-        let commands = {
+        let _dispatcher = self.dispatcher.lock().await;
+        self.dispatch_pending_events_locked().await;
+    }
+
+    async fn dispatch_pending_events_locked(&self) {
+        let new_commands = {
             let mut registry = self.registry.lock().await;
             registry
                 .drain_events()
@@ -268,7 +288,27 @@ impl TransportSessionCoordinator {
                 .filter_map(|event| lifecycle_command(&registry, event))
                 .collect::<Vec<_>>()
         };
+        let commands = {
+            let mut pending = self
+                .pending_commands
+                .lock()
+                .expect("transport pending command lock");
+            pending.extend(new_commands);
+            pending.drain(..).collect::<Vec<_>>()
+        };
+        let mut deferred = VecDeque::new();
         for command in commands {
+            if command.command.action == ProviderTransportSessionAction::Drain {
+                let snapshot = self.registry.lock().await.safe_snapshot();
+                match drain_disposition(&snapshot, &command.fence) {
+                    DrainDisposition::Defer => {
+                        deferred.push_back(command);
+                        continue;
+                    }
+                    DrainDisposition::Stale => continue,
+                    DrainDisposition::Ready => {}
+                }
+            }
             let result = tokio::time::timeout(
                 CONTROL_DEADLINE,
                 self.runtime
@@ -279,8 +319,7 @@ impl TransportSessionCoordinator {
                 &result,
                 Ok(Ok(receipt))
                     if receipt.generation == command.command.generation
-                        && (command.termination.is_none()
-                            || receipt.close_acknowledged == Some(true))
+                        && receipt.close_acknowledged == Some(true)
             );
             if !acknowledged {
                 tracing::warn!(
@@ -296,10 +335,67 @@ impl TransportSessionCoordinator {
                     .await
                     .record_close_acknowledgement(fence, acknowledged);
             }
+            if command.command.action == ProviderTransportSessionAction::Drain {
+                if !acknowledged {
+                    deferred.push_back(command);
+                    continue;
+                }
+                let mut registry = self.registry.lock().await;
+                let snapshot = registry.safe_snapshot();
+                if drain_disposition(&snapshot, &command.fence) == DrainDisposition::Ready {
+                    match registry.rotate_generation(&command.fence) {
+                        Ok(next_fence) => {
+                            if let Err(error) = registry.activate(&next_fence) {
+                                tracing::warn!(
+                                    session_id = next_fence.session_id.as_str(),
+                                    generation = next_fence.generation.get(),
+                                    %error,
+                                    "rotated provider transport generation could not be activated"
+                                );
+                            }
+                        }
+                        Err(error) => tracing::warn!(
+                            session_id = command.fence.session_id.as_str(),
+                            generation = command.fence.generation.get(),
+                            %error,
+                            "provider transport generation could not rotate after close ACK"
+                        ),
+                    }
+                }
+            }
             if let Some(notice) = command.termination {
                 let _ = self.notices.send(notice);
             }
         }
+        self.pending_commands
+            .lock()
+            .expect("transport pending command lock")
+            .extend(deferred);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DrainDisposition {
+    Ready,
+    Defer,
+    Stale,
+}
+
+fn drain_disposition(snapshot: &SafeRegistrySnapshot, fence: &TransportFence) -> DrainDisposition {
+    let Some(session) = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.fence == *fence)
+    else {
+        return DrainDisposition::Stale;
+    };
+    if session.state != TransportSessionState::Draining {
+        return DrainDisposition::Stale;
+    }
+    if session.inflight {
+        DrainDisposition::Defer
+    } else {
+        DrainDisposition::Ready
     }
 }
 
@@ -315,6 +411,7 @@ fn lifecycle_command(
                 .as_str()
                 .to_string();
             Some(LifecycleCommand {
+                fence: fence.clone(),
                 target_id,
                 command: ProviderTransportSessionCommand {
                     logical_session_id: fence.session_id.as_str().to_string(),
@@ -327,6 +424,7 @@ fn lifecycle_command(
             })
         }
         LifecycleEvent::Terminated(receipt) => Some(LifecycleCommand {
+            fence: receipt.fence.clone(),
             target_id: receipt.runtime_target_id.as_str().to_string(),
             command: ProviderTransportSessionCommand {
                 logical_session_id: receipt.fence.session_id.as_str().to_string(),

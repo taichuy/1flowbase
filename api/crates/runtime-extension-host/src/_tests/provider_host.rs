@@ -2,8 +2,9 @@ use super::*;
 use extension_package_runtime::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
     NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
-    ProviderCompactProfile, ProviderInvocationCapability, ProviderResetCreditOperation,
-    ProviderResetCreditResult, ProviderTransportSessionAction, ProviderTransportSessionCommand,
+    ProviderCompactProfile, ProviderInvocationCapability, ProviderLogicalSessionState,
+    ProviderResetCreditOperation, ProviderResetCreditResult, ProviderTransportSessionAction,
+    ProviderTransportSessionCommand, ProviderTransportSessionDirective,
     PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY, PROVIDER_RESET_CREDITS_CAPABILITY,
     PROVIDER_USAGE_WINDOWS_CAPABILITY,
 };
@@ -20,6 +21,29 @@ use tokio::time::sleep;
 
 use crate::package_loader::PackageLoader;
 use crate::stdio_runtime::ProviderWorkerLifecycleState;
+
+#[test]
+fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
+    let limits = PluginRuntimeLimits {
+        invoke_timeout_ms: Some(17_000),
+        ..PluginRuntimeLimits::default()
+    };
+    let mut input = invocation_input("fixture-model");
+    input
+        .set_transport_session_directive(ProviderTransportSessionDirective {
+            logical_session_id: "logical-fixture".into(),
+            generation: 7,
+            task_id: "invocation-7-1".into(),
+            state: ProviderLogicalSessionState::Active,
+            physical_deadline_unix_ms: 1,
+        })
+        .unwrap();
+
+    assert_eq!(
+        provider_invocation_limits(&limits, &input).timeout_ms,
+        Some(17_000)
+    );
+}
 
 #[test]
 fn c2_runtime_stage_receipt_is_metadata_only() {
