@@ -1295,6 +1295,31 @@ pub struct ProviderWireAudit {
 impl ProviderInvocationInput {
     pub const NETWORK_EGRESS_CONTEXT_KEY: &'static str = "network_egress";
 
+    pub fn set_recovery_directive(
+        &mut self,
+        directive: ProviderRecoveryDirective,
+    ) -> Result<(), String> {
+        directive.validate()?;
+        self.run_context.insert(
+            PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY.to_string(),
+            serde_json::to_value(directive)
+                .expect("ProviderRecoveryDirective must always serialize"),
+        );
+        Ok(())
+    }
+
+    pub fn recovery_directive(&self) -> Result<Option<ProviderRecoveryDirective>, String> {
+        self.run_context
+            .get(PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY)
+            .map(|value| {
+                let directive: ProviderRecoveryDirective = serde_json::from_value(value.clone())
+                    .map_err(|_| "provider recovery directive is invalid".to_string())?;
+                directive.validate()?;
+                Ok(directive)
+            })
+            .transpose()
+    }
+
     pub fn set_transport_session_directive(
         &mut self,
         directive: ProviderTransportSessionDirective,
@@ -1640,6 +1665,7 @@ impl ProviderInvocationInput {
 
     fn validate_current_provider_operation(&self) -> Result<(), String> {
         self.transport_session_directive()?;
+        self.recovery_directive()?;
         if let Some(envelope) = &self.client_protocol_envelope {
             validate_protocol_context_envelope(envelope)?;
         }
@@ -1969,6 +1995,9 @@ fn undeclared_provider_capabilities(
 
 mod runtime;
 pub use runtime::*;
+
+mod recovery;
+pub use recovery::*;
 
 mod transport_session;
 pub use transport_session::*;
