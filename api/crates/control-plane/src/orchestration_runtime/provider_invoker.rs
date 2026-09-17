@@ -24,6 +24,42 @@ const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
+pub(super) fn committed_tool_delivery_candidate(
+    node_id: &str,
+    node_run_id: Uuid,
+    event: &ProviderStreamEvent,
+) -> Result<Option<crate::ports::RuntimeEventPayload>> {
+    let ProviderStreamEvent::OutputItem {
+        phase: ProviderOutputItemPhase::Done,
+        output_index,
+        item,
+    } = event
+    else {
+        return Ok(None);
+    };
+    let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+    if !item_type.ends_with("_call") {
+        return Ok(None);
+    }
+    if item
+        .get("call_id")
+        .or_else(|| item.get("id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .is_none()
+    {
+        return Err(anyhow!(
+            "provider tool output item is missing a stable call id"
+        ));
+    }
+    Ok(Some(debug_stream_events::provider_output_item_done(
+        node_id,
+        node_run_id,
+        *output_index,
+        item.clone(),
+    )))
+}
+
 fn provider_execution_deadline_unix_ms(
     input: &ProviderInvocationInput,
     now: OffsetDateTime,
@@ -534,11 +570,10 @@ where
             let (diagnostic_sender, mut diagnostic_receiver) =
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let diagnostic_node_id = node_id.clone();
-            let repository_for_events = self.repository.clone();
+            let flow_execution_context_for_task = self.flow_execution_context.clone();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut ingress_sequence = 0_u64;
-                let mut persistence_error = None;
                 while let Some(mut event) = required_receiver.recv().await {
                     ingress_sequence += 1;
                     let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
@@ -555,38 +590,18 @@ where
                         provider_invoke_started,
                     );
                     let canonical_deltas = canonical_writer.write(&event)?;
-                    // The in-memory stream does not commit durable facts. Persist
-                    // canonical completed items before exposing them to clients.
-                    if let (
-                        Some(run_id),
-                        ProviderStreamEvent::OutputItem {
-                            phase: ProviderOutputItemPhase::Done,
-                            output_index,
-                            item,
-                        },
-                    ) = (flow_run_id, &event)
-                    {
-                        let fact = debug_stream_events::provider_output_item_done(
-                            &node_id,
-                            node_run_id,
-                            *output_index,
-                            item.clone(),
-                        );
-                        if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
-                            &repository_for_events,
-                            run_id,
-                            &fact,
-                        )
-                        .await
-                        {
-                            persistence_error.get_or_insert(error);
-                        }
-                    }
-
-                    // Drain canonical usage after a durable write failure, but do not
-                    // expose an output whose required fact failed to commit.
-                    if persistence_error.is_some() {
-                        continue;
+                    let tool_delivery =
+                        committed_tool_delivery_candidate(&node_id, node_run_id, &event)?;
+                    if let Some(delivery) = &tool_delivery {
+                        let context =
+                            flow_execution_context_for_task.as_ref().ok_or_else(|| {
+                                anyhow!("tool delivery requires a flow execution context")
+                            })?;
+                        context
+                            .tool_delivery_events
+                            .lock()
+                            .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?
+                            .push(delivery.clone());
                     }
                     project_canonical_provider_deltas(
                         runtime_event_stream.as_ref(),
@@ -622,7 +637,7 @@ where
                                 phase,
                                 output_index,
                                 item,
-                            } => vec![match phase {
+                            } if tool_delivery.is_none() => vec![match phase {
                                 ProviderOutputItemPhase::Added => {
                                     debug_stream_events::provider_output_item_added(
                                         &node_id,
@@ -640,6 +655,7 @@ where
                                     )
                                 }
                             }],
+                            ProviderStreamEvent::OutputItem { .. } => Vec::new(),
                             ProviderStreamEvent::UsageSnapshot { usage } => {
                                 vec![debug_stream_events::usage_snapshot(
                                     &node_id,
@@ -699,30 +715,32 @@ where
                             "runtime_append_ms": provider_invoke_started.elapsed().as_millis() as u64,
                         }));
                     }
-                    if let Some(sender) = &live_sender {
-                        sender
-                            .send(LiveProviderStreamEvent {
-                                node_id: node_id.clone(),
-                                node_run_id,
-                                event: event.clone(),
-                            })
-                            .await
-                            .map_err(|_| anyhow!("required live provider event writer closed"))?;
+                    if tool_delivery.is_none() {
+                        if let Some(sender) = &live_sender {
+                            sender
+                                .send(LiveProviderStreamEvent {
+                                    node_id: node_id.clone(),
+                                    node_run_id,
+                                    event: event.clone(),
+                                })
+                                .await
+                                .map_err(|_| {
+                                    anyhow!("required live provider event writer closed")
+                                })?;
+                        }
                     }
                 }
                 let completion_deltas = canonical_writer.complete()?;
-                if persistence_error.is_none() {
-                    project_canonical_provider_deltas(
-                        runtime_event_stream.as_ref(),
-                        flow_run_id,
-                        answer_presentation.as_ref(),
-                        &node_id,
-                        node_run_id,
-                        &completion_deltas,
-                    )
-                    .await;
-                }
-                Ok::<_, anyhow::Error>((canonical_writer.into_state(), persistence_error))
+                project_canonical_provider_deltas(
+                    runtime_event_stream.as_ref(),
+                    flow_run_id,
+                    answer_presentation.as_ref(),
+                    &node_id,
+                    node_run_id,
+                    &completion_deltas,
+                )
+                .await;
+                Ok::<_, anyhow::Error>(canonical_writer.into_state())
             }));
             let diagnostic_stream = self.runtime_event_stream.clone();
             let diagnostic_flow_run_id = self.flow_run_id;
@@ -802,7 +820,7 @@ where
         let (canonical_stream_state, forwarding_error) =
             if let Some(handle) = required_forward_handle {
                 match handle.await {
-                    Ok(Ok((state, error))) => (Some(state), error),
+                    Ok(Ok(state)) => (Some(state), None),
                     Ok(Err(error)) => (None, Some(error)),
                     Err(error) => (
                         None,

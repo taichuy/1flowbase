@@ -839,6 +839,7 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
                 waiting_node_resume: None,
                 resume_claim_id: None,
                 resume_claim_token: None,
+                tool_delivery_events: Vec::new(),
             },
         )
         .await

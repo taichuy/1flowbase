@@ -1,4 +1,60 @@
 use super::*;
+use plugin_framework::provider_contract::ProviderOutputItemPhase;
+
+#[test]
+fn provider_tool_done_requires_commit_while_message_done_stays_live() {
+    let node_run_id = Uuid::now_v7();
+    let tool = ProviderStreamEvent::OutputItem {
+        phase: ProviderOutputItemPhase::Done,
+        output_index: 2,
+        item: json!({
+            "type": "function_call",
+            "call_id": "call_bash",
+            "name": "Bash",
+            "arguments": "{}"
+        }),
+    };
+    let message = ProviderStreamEvent::OutputItem {
+        phase: ProviderOutputItemPhase::Done,
+        output_index: 1,
+        item: json!({ "type": "message", "content": [] }),
+    };
+
+    let delivery = super::super::provider_invoker::committed_tool_delivery_candidate(
+        "node-llm",
+        node_run_id,
+        &tool,
+    )
+    .unwrap()
+    .expect("tool done must enter the commit buffer");
+    assert_eq!(delivery.event_type, "provider_output_item_done");
+    assert!(
+        super::super::provider_invoker::committed_tool_delivery_candidate(
+            "node-llm",
+            node_run_id,
+            &message,
+        )
+        .unwrap()
+        .is_none()
+    );
+}
+
+#[test]
+fn provider_tool_done_without_stable_call_id_is_rejected() {
+    let event = ProviderStreamEvent::OutputItem {
+        phase: ProviderOutputItemPhase::Done,
+        output_index: 0,
+        item: json!({ "type": "function_call", "name": "Bash" }),
+    };
+    assert!(
+        super::super::provider_invoker::committed_tool_delivery_candidate(
+            "node-llm",
+            Uuid::now_v7(),
+            &event
+        )
+        .is_err()
+    );
+}
 
 #[tokio::test]
 async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {

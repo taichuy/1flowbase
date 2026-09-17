@@ -206,6 +206,7 @@ where
                     }),
                     resume_claim_id: Some(claim.claim.id),
                     resume_claim_token: Some(claim.claim.claim_token),
+                    tool_delivery_events: execution.tool_delivery_events.clone(),
                 })
                 .await
             }
@@ -394,6 +395,7 @@ where
             }),
             resume_claim_id: Some(resume_claim.id),
             resume_claim_token: Some(resume_claim.claim_token),
+            tool_delivery_events: Vec::new(),
         })
         .await
     }

@@ -19,6 +19,7 @@ fn billing_flow_execution_context(
         user_account: Some("billing-user".to_string()),
         require_provider_usage_for_billing,
         active_node: Mutex::new(None),
+        tool_delivery_events: Mutex::new(Vec::new()),
         data_model: RuntimeDataModelExecutionContext {
             actor,
             application_id: Uuid::nil(),

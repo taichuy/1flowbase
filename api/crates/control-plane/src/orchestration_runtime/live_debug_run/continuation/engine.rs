@@ -116,7 +116,7 @@ where
         None => service.runtime_invoker(application.workspace_id),
     }
     .for_flow_run(flow_run.id)
-    .with_flow_execution_context(flow_execution_context)
+    .with_flow_execution_context(flow_execution_context.clone())
     .with_provider_transport_payload(provider_transport_payload);
     let answer_presentation =
         crate::orchestration_runtime::answer_presentation::AnswerPresentationCursor::from_plan(
@@ -146,6 +146,7 @@ where
         &lifecycle,
     )
     .await?;
+    let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
     let prepared_node_runs = lifecycle.prepared_node_runs()?;
 
     service
@@ -167,6 +168,7 @@ where
             waiting_node_resume: None,
             resume_claim_id: None,
             resume_claim_token: None,
+            tool_delivery_events,
         })
         .await
 }

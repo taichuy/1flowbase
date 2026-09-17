@@ -106,6 +106,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
             waiting_node_resume: None,
             resume_claim_id: None,
             resume_claim_token: None,
+            tool_delivery_events: Vec::new(),
         },
     )
     .await

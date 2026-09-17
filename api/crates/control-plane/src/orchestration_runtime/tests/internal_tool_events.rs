@@ -89,6 +89,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
             waiting_node_resume: None,
             resume_claim_id: None,
             resume_claim_token: None,
+            tool_delivery_events: Vec::new(),
         },
     )
     .await

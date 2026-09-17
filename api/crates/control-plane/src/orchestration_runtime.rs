@@ -34,8 +34,8 @@ use crate::{
         FinishResumeClaimInput, FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
         NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
         ProviderRuntimePort, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
-        ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream,
-        TaskQueue, UpdateFlowRunInput, UpdateNodeRunInput,
+        ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload,
+        RuntimeEventStream, TaskQueue, UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };
@@ -329,7 +329,18 @@ struct RuntimeFlowExecutionContext {
     user_account: Option<String>,
     require_provider_usage_for_billing: bool,
     active_node: Mutex<Option<RuntimeActiveNode>>,
+    tool_delivery_events: Mutex<Vec<RuntimeEventPayload>>,
     data_model: RuntimeDataModelExecutionContext,
+}
+
+impl RuntimeFlowExecutionContext {
+    fn take_tool_delivery_events(&self) -> Result<Vec<RuntimeEventPayload>> {
+        let mut events = self
+            .tool_delivery_events
+            .lock()
+            .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?;
+        Ok(std::mem::take(&mut *events))
+    }
 }
 
 #[derive(Clone)]
@@ -365,6 +376,7 @@ struct ResumeExecutionSegmentOutput {
     prepared_node_runs: PreparedNodeRuns,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+    tool_delivery_events: Vec<RuntimeEventPayload>,
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
@@ -508,6 +520,7 @@ where
             user_account,
             require_provider_usage_for_billing: self.require_provider_usage_for_billing,
             active_node: Mutex::new(active_node),
+            tool_delivery_events: Mutex::new(Vec::new()),
             data_model: RuntimeDataModelExecutionContext {
                 actor,
                 application_id,
@@ -603,7 +616,7 @@ where
         let invoker = self
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
-            .with_flow_execution_context(flow_execution_context);
+            .with_flow_execution_context(flow_execution_context.clone());
         let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
             &input.snapshot.variable_pool,
             input.waiting_node_id,
@@ -700,11 +713,13 @@ where
             &lifecycle,
         )
         .await?;
+        let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
 
         Ok(ResumeExecutionSegmentOutput {
             outcome,
             prepared_node_runs: lifecycle.prepared_node_runs()?,
             answer_presentation,
+            tool_delivery_events,
         })
     }
 
@@ -1333,6 +1348,7 @@ where
                 waiting_node_resume,
                 resume_claim_id: Some(claim.claim.id),
                 resume_claim_token: Some(claim.claim.claim_token),
+                tool_delivery_events: execution.tool_delivery_events.clone(),
             })
             .await
         }

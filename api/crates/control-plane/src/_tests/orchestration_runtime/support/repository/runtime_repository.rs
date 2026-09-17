@@ -1277,6 +1277,29 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             checkpoint,
             callback_task,
             waiting_event,
+            tool_delivery_events: input
+                .tool_delivery_events
+                .iter()
+                .enumerate()
+                .map(|(index, event)| domain::RuntimeEventRecord {
+                    id: Uuid::now_v7(),
+                    flow_run_id: input.flow_run_id,
+                    node_run_id: event.node_run_id,
+                    span_id: event.span_id,
+                    parent_span_id: event.parent_span_id,
+                    sequence: index as i64 + 1,
+                    event_type: event.event_type.clone(),
+                    layer: event.layer,
+                    source: event.source,
+                    trust_level: event.trust_level,
+                    item_id: event.item_id,
+                    ledger_ref: event.ledger_ref.clone(),
+                    payload: event.payload.clone(),
+                    visibility: event.visibility,
+                    durability: event.durability,
+                    created_at: OffsetDateTime::now_utc(),
+                })
+                .collect(),
             recovery_history,
         }))
     }
