@@ -265,6 +265,10 @@ where
     let mut stream_events = persisted_node_traces.stream_events;
     let mut close_reason = None;
 
+    // Buffered tool deliveries are candidates until the llm_tool_calls waiting
+    // state commits them. Any other outcome (a provider fault after the tool
+    // call was generated, a human wait, a terminal) discards them: the client
+    // never received an executable event, so nothing is owed.
     if !tool_delivery_events.is_empty()
         && !matches!(
             &outcome.stop_reason,
@@ -272,9 +276,13 @@ where
                 if wait.callback_kind == "llm_tool_calls"
         )
     {
-        return Err(anyhow!(
-            "tool delivery events require the matching llm_tool_calls waiting state"
-        ));
+        tracing::warn!(
+            flow_run_id = %flow_run.id,
+            discarded = tool_delivery_events.len(),
+            stop_reason = ?std::mem::discriminant(&outcome.stop_reason),
+            "uncommitted tool delivery candidates discarded with a non-tool-wait outcome"
+        );
+        tool_delivery_events.clear();
     }
 
     match &outcome.stop_reason {

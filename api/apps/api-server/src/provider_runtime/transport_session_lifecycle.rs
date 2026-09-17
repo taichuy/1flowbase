@@ -269,7 +269,13 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     prepared.recovery_directive.as_ref(),
                 ) {
                     Ok(outcome) => outcome,
-                    Err(_) => {
+                    Err(reason) => {
+                        tracing::warn!(
+                            generation = prepared.lease.fence.generation.get(),
+                            has_recovery_directive = prepared.recovery_directive.is_some(),
+                            reason = %reason,
+                            "provider transport receipt could not be classified"
+                        );
                         self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
                             .await;
                         return Err(transport_error("provider_transport_receipt_invalid"));
