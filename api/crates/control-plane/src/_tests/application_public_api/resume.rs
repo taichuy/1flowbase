@@ -628,6 +628,47 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct PartialToolCallbackConsumer {
+        repository: ApplicationPublicApiTestRepository,
+        calls: Arc<Mutex<Vec<CompletePublishedCallbackInput>>>,
+    }
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for PartialToolCallbackConsumer {
+        async fn complete_published_callback(
+            &self,
+            input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            self.calls
+                .lock()
+                .expect("partial callback consumer observation lock poisoned")
+                .push(input.clone());
+            let callback_task = self
+                .repository
+                .get_published_callback_task(input.callback_task_id)
+                .await?
+                .expect("callback task fixture should exist");
+            let completes_round = input
+                .response_payload
+                .get("tool_results")
+                .and_then(Value::as_array)
+                .is_some_and(|results| {
+                    results.iter().any(|result| {
+                        result.get("tool_call_id").and_then(Value::as_str) == Some("call_time")
+                    })
+                });
+            if completes_round {
+                self.repository
+                    .complete_callback_task_for_test(input.callback_task_id);
+            }
+            self.repository
+                .get_published_flow_run(callback_task.flow_run_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("published run fixture should exist"))
+        }
+    }
+
     async fn callback_fixture() -> (
         ApplicationPublicApiTestRepository,
         CompletingCallbackConsumer,
@@ -701,6 +742,79 @@ mod tests {
             response_payload,
             response_mode: Some("blocking".to_string()),
         }
+    }
+
+    #[tokio::test]
+    async fn public_tool_callback_accepts_results_in_separate_requests() {
+        let (repository, _, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({
+                "tool_calls": [
+                    {"id":"call_weather","name":"weather","arguments":{}},
+                    {"id":"call_time","name":"time","arguments":{}}
+                ]
+            }),
+        );
+        let consumer = PartialToolCallbackConsumer {
+            repository: repository.clone(),
+            ..PartialToolCallbackConsumer::default()
+        };
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+
+        let partial = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{
+                    "tool_call_id":"call_weather",
+                    "content":"sunny"
+                }]}),
+            ))
+            .await
+            .expect("first tool result should remain at the round barrier");
+        assert_eq!(
+            partial.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Processing
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+
+        let completed = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{
+                    "tool_call_id":"call_time",
+                    "content":"12:00"
+                }]}),
+            ))
+            .await
+            .expect("second tool result should complete the public callback round");
+        assert_eq!(
+            completed.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Completed
+        );
+        assert_eq!(consumer.calls.lock().unwrap().len(), 2);
     }
 
     // #2036: reserve is the pre-stream atomic admission boundary. Competing

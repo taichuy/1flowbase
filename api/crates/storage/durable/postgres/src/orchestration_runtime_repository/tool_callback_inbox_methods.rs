@@ -24,7 +24,7 @@ impl PgControlPlaneStore {
             r#"
             select task.id, task.flow_run_id, task.node_run_id, task.callback_kind, task.status,
                    task.request_payload, task.response_payload, task.external_ref_payload,
-                   task.created_at, task.completed_at
+                   task.created_at, task.completed_at, run.status as flow_run_status
               from flow_run_callback_tasks task
               join flow_runs run on run.id = task.flow_run_id
               join flow_run_checkpoints checkpoint
@@ -42,6 +42,7 @@ impl PgControlPlaneStore {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(ControlPlaneError::Conflict("tool_callback_round_not_owned"))?;
+        let flow_run_status: String = callback_row.get("flow_run_status");
         let callback_task = map_callback_task_record(callback_row)?;
         if callback_task.callback_kind != "llm_tool_calls" {
             return Err(ControlPlaneError::Conflict("tool_callback_round_invalid").into());
@@ -78,6 +79,9 @@ impl PgControlPlaneStore {
         }
         if callback_task.status != domain::CallbackTaskStatus::Pending {
             return Err(ControlPlaneError::Conflict("tool_callback_round_not_pending").into());
+        }
+        if flow_run_status != "waiting_callback" {
+            return Err(ControlPlaneError::Conflict("flow_run_not_waiting_callback").into());
         }
 
         for result in &input.results {

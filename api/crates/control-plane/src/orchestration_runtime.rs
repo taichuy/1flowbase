@@ -211,49 +211,6 @@ fn ensure_data_model_side_effect_confirmation_metadata(
     Ok(())
 }
 
-pub(crate) fn ensure_llm_tool_callback_results_complete(
-    request_payload: &Value,
-    response_payload: &Value,
-) -> Result<()> {
-    let tool_calls = request_payload
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("llm tool callback request is missing tool_calls"))?;
-    let tool_results = response_payload
-        .get("tool_results")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("llm tool callback response requires tool_results"))?;
-    let mut expected_ids = std::collections::BTreeSet::new();
-    let mut received_ids = std::collections::BTreeSet::new();
-
-    for tool_call in tool_calls {
-        let id = tool_call
-            .get("id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("llm tool callback request has tool call without id"))?;
-        expected_ids.insert(id.to_string());
-    }
-    for tool_result in tool_results {
-        let id = tool_result
-            .get("tool_call_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("llm tool callback result is missing tool_call_id"))?;
-        if !expected_ids.contains(id) {
-            return Err(anyhow!("unexpected tool result for {id}"));
-        }
-        if !received_ids.insert(id.to_string()) {
-            return Err(anyhow!("duplicate tool result for {id}"));
-        }
-    }
-    for expected_id in expected_ids {
-        if !received_ids.contains(&expected_id) {
-            return Err(anyhow!("missing tool result for {expected_id}"));
-        }
-    }
-
-    Ok(())
-}
-
 pub async fn persist_runtime_debug_stream_events<R>(
     repository: &R,
     events: Vec<RuntimeEventEnvelope>,

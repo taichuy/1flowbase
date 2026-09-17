@@ -312,7 +312,9 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
 
     assert_eq!(
         waiting_detail.flow_run.status,
-        domain::FlowRunStatus::WaitingCallback
+        domain::FlowRunStatus::WaitingCallback,
+        "flow error: {:?}",
+        waiting_detail.flow_run.error_payload
     );
     let llm_node = node_run(&waiting_detail, "node-llm");
     assert_eq!(llm_node.status, domain::NodeRunStatus::WaitingCallback);
@@ -968,13 +970,13 @@ async fn complete_callback_task_escapes_nul_characters_before_persisting_respons
 }
 
 #[tokio::test]
-async fn complete_llm_tool_callback_rejects_partial_results_without_consuming_task() {
+async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_advancement() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderToolCall, ProviderUsage,
     };
 
-    let service =
-        OrchestrationRuntimeService::for_tests_with_provider_result(ProviderInvocationResult {
+    let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
+        ProviderInvocationResult {
             final_content: Some("need tools".to_string()),
             tool_calls: vec![
                 ProviderToolCall {
@@ -996,7 +998,17 @@ async fn complete_llm_tool_callback_rejects_partial_results_without_consuming_ta
             },
             finish_reason: Some(ProviderFinishReason::ToolCall),
             ..ProviderInvocationResult::default()
-        });
+        },
+        ProviderInvocationResult {
+            final_content: Some("done".to_string()),
+            usage: ProviderUsage {
+                total_tokens: Some(8),
+                ..ProviderUsage::default()
+            },
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..ProviderInvocationResult::default()
+        },
+    ]);
     let seeded = service.seed_application_with_flow("Support Agent").await;
     let detail = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
@@ -1020,29 +1032,118 @@ async fn complete_llm_tool_callback_rejects_partial_results_without_consuming_ta
         .unwrap();
     let callback_task_id = waiting_detail.callback_tasks[0].id;
 
-    let error = service
+    let partial_payload = json!({
+        "tool_results": [
+            {
+                "tool_call_id": "call_weather",
+                "content": "{\"temperature\":21}"
+            }
+        ]
+    });
+    let partial = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id,
+            response_payload: partial_payload.clone(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        partial.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    let callback_task = service.callback_task_for_tests(callback_task_id).await;
+    assert_eq!(callback_task.status, domain::CallbackTaskStatus::Pending);
+
+    let replay = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id,
+            response_payload: partial_payload,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        replay.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+
+    let conflict = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id,
             response_payload: json!({
-                "tool_results": [
-                    {
-                        "tool_call_id": "call_weather",
-                        "content": "{\"temperature\":21}"
-                    }
-                ]
+                "tool_results": [{
+                    "tool_call_id": "call_weather",
+                    "content": "different"
+                }]
             }),
         })
         .await
         .unwrap_err();
-
-    assert!(error
+    assert!(conflict
         .to_string()
-        .contains("missing tool result for call_time"));
-    let callback_task = service.callback_task_for_tests(callback_task_id).await;
-    assert_eq!(callback_task.status, domain::CallbackTaskStatus::Pending);
+        .contains("tool_callback_result_conflict"));
+
+    let final_payload = json!({
+        "tool_results": [{
+            "tool_call_id": "call_time",
+            "content": "12:00"
+        }]
+    });
+    let command = || CompleteCallbackTaskCommand {
+        native_transport: None,
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        callback_task_id,
+        response_payload: final_payload.clone(),
+    };
+    let (left, right) = tokio::join!(
+        service.complete_callback_task(command()),
+        service.complete_callback_task(command())
+    );
+    let left = left.unwrap();
+    let right = right.unwrap();
+    assert!(matches!(
+        (left.flow_run.status, right.flow_run.status),
+        (
+            domain::FlowRunStatus::Succeeded,
+            domain::FlowRunStatus::WaitingCallback
+        ) | (
+            domain::FlowRunStatus::WaitingCallback,
+            domain::FlowRunStatus::Succeeded
+        ) | (
+            domain::FlowRunStatus::Succeeded,
+            domain::FlowRunStatus::Succeeded
+        )
+    ));
+
+    let completed = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            native_transport: None,
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id,
+            response_payload: final_payload,
+        })
+        .await
+        .unwrap();
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert_eq!(
+        completed
+            .node_runs
+            .iter()
+            .filter(|run| run.node_id == "node-llm")
+            .count(),
+        2
+    );
 }
 
 #[tokio::test]

@@ -175,11 +175,15 @@ where
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?
         {
-            if existing.response_payload != command.response_payload {
+            let is_tool_round = context.callback_task.callback_kind == "llm_tool_calls";
+            if !is_tool_round && existing.response_payload != command.response_payload {
                 return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
             }
             if existing.source != command.source.as_str() {
                 return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+            }
+            if is_tool_round {
+                return Ok(existing.id);
             }
             if matches!(
                 existing.status,
@@ -237,6 +241,7 @@ where
         let actor = context.actor;
         let callback_task = context.callback_task;
         let flow_run = context.flow_run;
+        let is_tool_round = callback_task.callback_kind == "llm_tool_calls";
 
         let existing = self
             .repository
@@ -247,45 +252,66 @@ where
                 "callback_resume_reservation_missing",
             ))?;
             if existing.id != reserved_id
-                || existing.response_payload != command.response_payload
+                || (!is_tool_round && existing.response_payload != command.response_payload)
                 || existing.source != command.source.as_str()
             {
                 return Err(
                     ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into(),
                 );
             }
-            if existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+            if !is_tool_round
+                && existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+            {
                 return self
                     .resume_existing_attempt(&actor, &callback_task, existing, &command)
                     .await;
             }
-            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
+            if !is_tool_round {
+                ensure_callback_is_consumable(
+                    &flow_run,
+                    &callback_task,
+                    &command.response_payload,
+                )?;
+            }
             existing
         } else {
             if let Some(existing) = existing {
-                return self
-                    .resume_existing_attempt(&actor, &callback_task, existing, &command)
-                    .await;
+                if !is_tool_round {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                        .await;
+                }
+                if existing.source != command.source.as_str() {
+                    return Err(
+                        ControlPlaneError::Conflict("callback_resume_source_conflict").into(),
+                    );
+                }
+                existing
+            } else {
+                ensure_callback_is_consumable(
+                    &flow_run,
+                    &callback_task,
+                    &command.response_payload,
+                )?;
+                let recorded = self
+                    .repository
+                    .record_published_callback_resume_attempt(
+                        &RecordFlowRunCallbackResumeAttemptInput {
+                            flow_run_id: flow_run.id,
+                            callback_task_id: callback_task.id,
+                            source: command.source.as_str().to_string(),
+                            response_payload: command.response_payload.clone(),
+                            idempotency_key: format!("callback_task:{}", callback_task.id),
+                        },
+                    )
+                    .await?;
+                if !recorded.inserted && !is_tool_round {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, recorded.attempt, &command)
+                        .await;
+                }
+                recorded.attempt
             }
-            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
-            let recorded = self
-                .repository
-                .record_published_callback_resume_attempt(
-                    &RecordFlowRunCallbackResumeAttemptInput {
-                        flow_run_id: flow_run.id,
-                        callback_task_id: callback_task.id,
-                        source: command.source.as_str().to_string(),
-                        response_payload: command.response_payload.clone(),
-                        idempotency_key: format!("callback_task:{}", callback_task.id),
-                    },
-                )
-                .await?;
-            if !recorded.inserted {
-                return self
-                    .resume_existing_attempt(&actor, &callback_task, recorded.attempt, &command)
-                    .await;
-            }
-            recorded.attempt
         };
 
         self.append_resume_event(
@@ -309,12 +335,31 @@ where
                 actor_user_id: actor.creator_user_id,
                 application_id: actor.application_id,
                 callback_task_id: callback_task.id,
-                response_payload: attempt.response_payload.clone(),
+                response_payload: if is_tool_round {
+                    command.response_payload.clone()
+                } else {
+                    attempt.response_payload.clone()
+                },
             })
             .await;
 
         match result {
             Ok(flow_run) => {
+                if is_tool_round {
+                    let callback_task = self
+                        .repository
+                        .get_published_callback_task(callback_task.id)
+                        .await?
+                        .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+                    if callback_task.status == domain::CallbackTaskStatus::Pending {
+                        let run = self.native_result_for_flow_run(&flow_run).await?;
+                        return Ok(ResumePublishedCallbackResult { run, attempt });
+                    }
+                    if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+                        let run = self.native_result_for_flow_run(&flow_run).await?;
+                        return Ok(ResumePublishedCallbackResult { run, attempt });
+                    }
+                }
                 let finished = self
                     .repository
                     .finish_published_callback_resume_attempt(
@@ -344,6 +389,13 @@ where
                 })
             }
             Err(error) => {
+                if is_tool_round
+                    && error
+                        .downcast_ref::<ControlPlaneError>()
+                        .is_some_and(|error| matches!(error, ControlPlaneError::Conflict(_)))
+                {
+                    return Err(error);
+                }
                 let error_payload = json!({ "message": error.to_string() });
                 let _ = self
                     .repository
@@ -615,12 +667,7 @@ fn ensure_callback_is_consumable(
     if callback_task.status != domain::CallbackTaskStatus::Pending {
         return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
     }
-    if callback_task.callback_kind == "llm_tool_calls" {
-        crate::orchestration_runtime::ensure_llm_tool_callback_results_complete(
-            &callback_task.request_payload,
-            response_payload,
-        )?;
-    }
+    let _ = response_payload;
     Ok(())
 }
 

@@ -266,9 +266,12 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
             .as_ref()
             .and_then(|provider_results| provider_results.lock().ok()?.pop_front());
 
-        let result = queued_result
+        let mut result = queued_result
             .or_else(|| self.provider_result.clone())
             .unwrap_or(default_result);
+        if !result.provider_metadata.is_object() {
+            result.provider_metadata = json!({});
+        }
         let events = self
             .provider_events
             .clone()

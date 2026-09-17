@@ -1424,6 +1424,20 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         &self,
         input: &crate::ports::CommitToolCallbackResultsInput,
     ) -> Result<crate::ports::CommitToolCallbackResultsOutput> {
+        if input.results.is_empty() {
+            return Err(anyhow::anyhow!("tool callback results cannot be empty"));
+        }
+        let mut submitted = std::collections::BTreeSet::new();
+        if input
+            .results
+            .iter()
+            .any(|result| !submitted.insert(result.tool_call_id.as_str()))
+        {
+            return Err(crate::errors::ControlPlaneError::Conflict(
+                "tool_callback_result_duplicate",
+            )
+            .into());
+        }
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let callback = inner
             .callback_tasks_by_id
@@ -1432,6 +1446,23 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .ok_or(crate::errors::ControlPlaneError::Conflict(
                 "tool_callback_round_not_owned",
             ))?;
+        let flow_run = inner
+            .flow_runs_by_id
+            .get(&input.flow_run_id)
+            .filter(|run| {
+                run.application_id == input.application_id && callback.flow_run_id == run.id
+            })
+            .ok_or(crate::errors::ControlPlaneError::Conflict(
+                "tool_callback_round_not_owned",
+            ))?;
+        if callback.status == domain::CallbackTaskStatus::Pending
+            && flow_run.status != domain::FlowRunStatus::WaitingCallback
+        {
+            return Err(crate::errors::ControlPlaneError::Conflict(
+                "flow_run_not_waiting_callback",
+            )
+            .into());
+        }
         let rows = inner
             .tool_callback_inbox_by_round
             .get_mut(&input.callback_task_id)

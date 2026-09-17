@@ -61,7 +61,9 @@ where
             }
         };
         let pending_callback_task = &resume_context.callback_task;
-        if pending_callback_task.status != domain::CallbackTaskStatus::Pending {
+        if pending_callback_task.callback_kind != "llm_tool_calls"
+            && pending_callback_task.status != domain::CallbackTaskStatus::Pending
+        {
             return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
         }
         if pending_callback_task.callback_kind == "data_model_side_effect_confirmation" {
@@ -72,38 +74,11 @@ where
             ensure_data_model_side_effect_confirmation_approved(&command.response_payload)?;
             ensure_data_model_side_effect_confirmation_metadata(&actor, confirmation_payload)?;
         }
-        if pending_callback_task.callback_kind == "llm_tool_calls" {
-            ensure_llm_tool_callback_results_complete(
-                &pending_callback_task.request_payload,
-                &command.response_payload,
-            )?;
-        }
         let checkpoint = resume_context.checkpoint;
         let flow_run = resume_context.flow_run;
         let waiting_node = resume_context.waiting_node;
         let base_started_at = resume_context.next_node_started_at;
-        let compiled_plan_id = flow_run
-            .compiled_plan_id
-            .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
-        let compiled_record = self
-            .repository
-            .get_compiled_plan(compiled_plan_id)
-            .await?
-            .ok_or_else(|| anyhow!("compiled plan not found"))?;
-        let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
-            serde_json::from_value(compiled_record.plan.clone())?;
-        ensure_compiled_plan_runnable(&compiled_plan)?;
-        ensure_flow_run_transition(
-            flow_run.status,
-            domain::FlowRunStatus::WaitingCallback,
-            "complete_callback_task",
-        )?;
-        ensure_node_run_transition(
-            waiting_node.status,
-            domain::NodeRunStatus::WaitingCallback,
-            "complete_callback_task",
-        )?;
-        let (callback_task, claim) = if pending_callback_task.callback_kind == "llm_tool_calls" {
+        let committed_tool_round = if pending_callback_task.callback_kind == "llm_tool_calls" {
             let results = command
                 .response_payload
                 .get("tool_results")
@@ -130,38 +105,66 @@ where
             let claim = committed
                 .claim
                 .ok_or_else(|| anyhow!("acquired tool callback round is missing resume claim"))?;
-            command.response_payload = committed
+            let response_payload = committed
                 .callback_task
                 .response_payload
                 .clone()
                 .ok_or_else(|| anyhow!("completed tool callback round is missing response"))?;
-            (committed.callback_task, claim)
+            Some((committed.callback_task, claim, response_payload))
         } else {
-            let claim = self
-                .repository
-                .acquire_resume_claim(&AcquireResumeClaimInput {
-                    scope_id: application.workspace_id,
-                    application_id: command.application_id,
-                    flow_run_id: flow_run.id,
-                    checkpoint_id: checkpoint.id,
-                    callback_task_id: Some(command.callback_task_id),
-                    kind: ResumeClaimKind::Callback,
-                    request_payload: command.response_payload.clone(),
-                })
-                .await?;
-            if claim.disposition != ResumeClaimDisposition::Acquired {
-                return Ok(flow_run);
-            }
-            let callback_task = self
-                .repository
-                .complete_callback_task(&CompleteCallbackTaskInput {
-                    callback_task_id: command.callback_task_id,
-                    response_payload: command.response_payload.clone(),
-                    completed_at: OffsetDateTime::now_utc(),
-                })
-                .await?;
-            (callback_task, claim.claim)
+            None
         };
+        let compiled_plan_id = flow_run
+            .compiled_plan_id
+            .ok_or_else(|| anyhow!("flow run compiled plan is not attached"))?;
+        let compiled_record = self
+            .repository
+            .get_compiled_plan(compiled_plan_id)
+            .await?
+            .ok_or_else(|| anyhow!("compiled plan not found"))?;
+        let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
+            serde_json::from_value(compiled_record.plan.clone())?;
+        ensure_compiled_plan_runnable(&compiled_plan)?;
+        ensure_flow_run_transition(
+            flow_run.status,
+            domain::FlowRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
+        ensure_node_run_transition(
+            waiting_node.status,
+            domain::NodeRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
+        let (callback_task, claim) =
+            if let Some((callback_task, claim, response_payload)) = committed_tool_round {
+                command.response_payload = response_payload;
+                (callback_task, claim)
+            } else {
+                let claim = self
+                    .repository
+                    .acquire_resume_claim(&AcquireResumeClaimInput {
+                        scope_id: application.workspace_id,
+                        application_id: command.application_id,
+                        flow_run_id: flow_run.id,
+                        checkpoint_id: checkpoint.id,
+                        callback_task_id: Some(command.callback_task_id),
+                        kind: ResumeClaimKind::Callback,
+                        request_payload: command.response_payload.clone(),
+                    })
+                    .await?;
+                if claim.disposition != ResumeClaimDisposition::Acquired {
+                    return Ok(flow_run);
+                }
+                let callback_task = self
+                    .repository
+                    .complete_callback_task(&CompleteCallbackTaskInput {
+                        callback_task_id: command.callback_task_id,
+                        response_payload: command.response_payload.clone(),
+                        completed_at: OffsetDateTime::now_utc(),
+                    })
+                    .await?;
+                (callback_task, claim.claim)
+            };
         let result = if callback_task.callback_kind == "data_model_side_effect_confirmation" {
             self.complete_data_model_side_effect_callback(
                 command,

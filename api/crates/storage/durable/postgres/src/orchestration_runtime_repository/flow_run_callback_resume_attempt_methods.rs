@@ -113,7 +113,7 @@ impl PgControlPlaneStore {
                 completed_at = coalesce(completed_at, $4),
                 updated_at = now()
             where id = $1
-              and status in ('processing', 'cancelled')
+              and (status in ('processing', 'cancelled') or status = $2)
             returning
                 id,
                 flow_run_id,
