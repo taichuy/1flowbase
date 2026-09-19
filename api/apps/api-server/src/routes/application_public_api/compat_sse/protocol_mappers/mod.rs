@@ -136,20 +136,23 @@ fn openai_response_runtime_event_to_sse(
                 )
             }),
         )],
-        "flow_failed" => vec![named_sse_payload(
-            "response.failed",
-            json!({
-                "type": "response.failed",
-                "response": openai_response_failed_snapshot(
-                    initial_run,
-                    model,
-                    previous_response_id,
-                    canonical_runtime_error_message(initial_run),
-                    "server_error",
-                    canonical_runtime_error_code(initial_run)
-                )
-            }),
-        )],
+        "flow_failed" => {
+            let mut response = openai_response_failed_snapshot(
+                initial_run,
+                model,
+                previous_response_id,
+                canonical_runtime_error_message(initial_run),
+                "server_error",
+                canonical_runtime_error_code(initial_run),
+            );
+            response["output"] = Value::Array(completed_output_items.to_vec());
+            vec![named_sse_payload(
+                "response.failed",
+                json!({
+                    "type": "response.failed", "response": response
+                }),
+            )]
+        }
         "flow_cancelled" => vec![named_sse_payload(
             "response.failed",
             json!({

@@ -202,7 +202,7 @@ where
     run_connection_loop_with_terminations(socket, execute, None).await;
 }
 
-async fn run_connection_loop_with_terminations<F, Fut>(
+pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: WebSocket,
     execute: F,
     mut terminations: Option<(
@@ -231,6 +231,10 @@ async fn run_connection_loop_with_terminations<F, Fut>(
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
+                    if terminal_delivered {
+                        active = Some((turn, task, frames));
+                        continue;
+                    }
                     let terminal = serde_json::from_str::<Value>(&frame).ok().is_some_and(|event| {
                         matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
                     });
@@ -331,7 +335,9 @@ async fn run_connection_loop_with_terminations<F, Fut>(
                 }
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
-                        send_transport_terminal(&mut sender, &notice.code, true).await;
+                        if !terminal_delivered {
+                            send_transport_terminal(&mut sender, &notice.code, true).await;
+                        }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
                             reason: Cow::Owned(notice.code.to_string()),
@@ -357,7 +363,9 @@ async fn run_connection_loop_with_terminations<F, Fut>(
                 }
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
-                        send_transport_terminal(&mut sender, &notice.code, false).await;
+                        if !terminal_delivered {
+                            send_transport_terminal(&mut sender, &notice.code, false).await;
+                        }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
                             reason: Cow::Owned(notice.code.to_string()),

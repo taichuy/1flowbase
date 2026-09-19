@@ -30,8 +30,9 @@ use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
         ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
-        ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
+        ProviderInvocationInput, ProviderModelDescriptor, ProviderResetCreditOperation,
+        ProviderResetCreditResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderUsageWindowsResult,
     },
     ForwardProxyLease,
@@ -953,6 +954,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     result: output.result,
                 })
                 .map_err(map_runtime_backend_error)
+                .and_then(validate_provider_invocation_output)
         }
         .await;
         trace_provider_operation_boundary(
@@ -997,6 +999,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     result: output.result,
                 })
                 .map_err(map_runtime_backend_error)
+                .and_then(validate_provider_invocation_output)
         }
         .await;
         trace_provider_operation_boundary(
@@ -1095,26 +1098,21 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 events: output.events,
                 result: output.result,
             })
-            .map_err(map_runtime_backend_error);
+            .map_err(map_runtime_backend_error)
+            .and_then(validate_provider_invocation_output);
         if let Some(prepared) = transport_invocation {
-            if let Err(error) = self
+            let completion = self
                 .services
                 .transport_sessions
                 .finish(prepared, &invocation)
-                .await
-            {
-                invocation = Err(error);
-            }
+                .await;
+            invocation = preserve_provider_invocation_outcome(invocation, completion);
         }
         let release = match scope {
             Some(scope) => scope.release().await,
             None => Ok(()),
         };
-        let result = match (invocation, release) {
-            (Err(error), _) => Err(error),
-            (Ok(_), Err(error)) => Err(error),
-            (Ok(output), Ok(())) => Ok(output),
-        };
+        let result = preserve_provider_invocation_outcome(invocation, release);
         finish_runtime_activity(activity, &result);
         result
     }
@@ -1924,6 +1922,60 @@ fn runtime_execution_request(
         principal,
     })
 }
+
+/// Runtime implementations must not turn an error event or error delimiter into
+/// a successful call. Stdio already enforces this; this is the port boundary for
+/// other Runtime Backends and retains the first canonical provider diagnostic.
+fn validate_provider_invocation_output(
+    output: ProviderRuntimeInvocationOutput,
+) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+    if let Some(error) = output.events.iter().find_map(|event| match event {
+        ProviderStreamEvent::Error { error } => Some(error.clone()),
+        _ => None,
+    }) {
+        return Err(PluginFrameworkError::runtime(error).into());
+    }
+    if output.result.finish_reason == Some(ProviderFinishReason::Error)
+        || output.events.iter().any(|event| {
+            matches!(
+                event,
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Error
+                }
+            )
+        })
+    {
+        return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            "provider invocation failed without an error diagnostic",
+        ))
+        .into());
+    }
+    Ok(output)
+}
+
+fn preserve_provider_invocation_outcome(
+    invocation: anyhow::Result<ProviderRuntimeInvocationOutput>,
+    completion: anyhow::Result<()>,
+) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+    match (invocation, completion) {
+        (Err(primary), secondary) => {
+            if secondary.is_err() {
+                // Secondary lifecycle diagnostics contain no provider payload.
+                tracing::warn!(
+                    "provider invocation retained primary error after secondary cleanup failure"
+                );
+            }
+            Err(primary)
+        }
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(output), Ok(())) => Ok(output),
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/invocation_outcome.rs"]
+mod invocation_outcome_tests;
 
 fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {

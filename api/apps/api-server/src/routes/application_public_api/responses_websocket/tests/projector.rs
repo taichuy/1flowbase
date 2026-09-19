@@ -948,3 +948,60 @@ fn native_resumed_websocket_round_preserves_identity_and_tool_items() {
         response_id_from_run_id(run.id)
     );
 }
+
+#[test]
+fn failed_terminal_preserves_committed_output_and_absorbs_late_success() {
+    let mut run = native_run(2085);
+    let node = Uuid::now_v7();
+    let item = json!({"id":"fc_committed","type":"function_call","call_id":"call_committed","name":"exec","arguments":"{}"});
+    let mut projector = transparent_projector("fixture", None);
+    let frames = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    1,
+                    committed_provider_output_item_done("llm", node, 0, item.clone()),
+                ),
+            )
+            .unwrap(),
+    );
+    assert_eq!(frames.len(), 1);
+    run.status = NativeRunStatus::Failed;
+    run.error = Some(NativeError {
+        code: "provider_upstream_error".into(),
+        message: "original provider failure".into(),
+        details: json!({}),
+    });
+    let terminal = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    2,
+                    debug_stream_events::flow_failed(run.id, json!({})),
+                ),
+            )
+            .unwrap(),
+    );
+    assert_eq!(terminal.len(), 1);
+    assert_eq!(terminal[0]["type"], "response.failed");
+    assert_eq!(
+        terminal[0]["response"]["error"]["message"],
+        "original provider failure"
+    );
+    assert_eq!(terminal[0]["response"]["output"], json!([item]));
+    assert!(projector
+        .project(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                3,
+                debug_stream_events::flow_finished(run.id, json!({})),
+            )
+        )
+        .unwrap()
+        .is_empty());
+}

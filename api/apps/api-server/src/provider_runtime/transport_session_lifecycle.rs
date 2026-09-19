@@ -16,11 +16,12 @@ use orchestration_runtime::transport_session::{
 };
 use plugin_framework::{
     provider_contract::{
-        CommitLevel, CursorBinding, ProviderInvocationInput, ProviderInvocationTransportOutcome,
+        CommitLevel, CursorBinding, ProviderInvocationInput,
+        ProviderInvocationTransportClassification, ProviderInvocationTransportOutcome,
         ProviderLifecycleAckOutcome, ProviderLogicalSessionState, ProviderRecoveryDirective,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderTransportSessionAction,
         ProviderTransportSessionCommand, ProviderTransportSessionDirective,
-        ProviderTransportSessionReceipt,
+        ProviderTransportSessionReceipt, ProviderWireOperation, RecoveryTransport,
     },
     PluginFrameworkError,
 };
@@ -55,6 +56,7 @@ enum LifecycleDispatchOutcome {
 
 pub(crate) struct PreparedTransportInvocation {
     lease: InvocationLease,
+    transport: RecoveryTransport,
     recovery_directive: Option<ProviderRecoveryDirective>,
 }
 
@@ -155,6 +157,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
+        let transport = selected_responses_transport(input)?;
         let recovery_directive = input
             .recovery_directive()
             .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
@@ -216,7 +219,13 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     state,
                     TransportSessionState::Draining | TransportSessionState::Closing
                 ) {
-                    return Err(transport_error("provider_connection_max_age"));
+                    return Err(transport_error(
+                        if state == TransportSessionState::Draining {
+                            "provider_connection_draining"
+                        } else {
+                            "provider_connection_closing"
+                        },
+                    ));
                 }
                 fence
             }
@@ -258,6 +267,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         self.dispatch_pending_events_locked().await;
         Ok(Some(PreparedTransportInvocation {
             lease,
+            transport,
             recovery_directive,
         }))
     }
@@ -282,7 +292,8 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         }
         let completion = match result {
             Ok(output) => {
-                let outcome = match output.result.transport_outcome(
+                let classification = match output.result.transport_outcome_for_mode(
+                    prepared.transport,
                     prepared.lease.fence.generation.get(),
                     prepared.recovery_directive.as_ref(),
                 ) {
@@ -298,27 +309,30 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         return Err(transport_error("provider_transport_receipt_invalid"));
                     }
                 };
-                match outcome {
-                    ProviderInvocationTransportOutcome::Ready { .. }
-                    | ProviderInvocationTransportOutcome::HttpFallback { .. } => {}
-                    ProviderInvocationTransportOutcome::ReceiptMissing => {
-                        self.fault_invocation(&prepared.lease).await;
-                        return Err(transport_error("provider_transport_receipt_missing"));
-                    }
-                    ProviderInvocationTransportOutcome::StaleGeneration { .. } => {
-                        let registry = self.registry.lock().await;
-                        let status = registry.fence_status(&prepared.lease.fence);
-                        drop(registry);
-                        tracing::warn!(
+                if let ProviderInvocationTransportClassification::Session(outcome) = classification
+                {
+                    match outcome {
+                        ProviderInvocationTransportOutcome::Ready { .. }
+                        | ProviderInvocationTransportOutcome::HttpFallback { .. } => {}
+                        ProviderInvocationTransportOutcome::ReceiptMissing => {
+                            self.fault_invocation(&prepared.lease).await;
+                            return Err(transport_error("provider_transport_receipt_missing"));
+                        }
+                        ProviderInvocationTransportOutcome::StaleGeneration { .. } => {
+                            let registry = self.registry.lock().await;
+                            let status = registry.fence_status(&prepared.lease.fence);
+                            drop(registry);
+                            tracing::warn!(
                             ?status,
                             generation = prepared.lease.fence.generation.get(),
                             "stale provider transport result was fenced without changing session state"
                         );
-                        return Err(transport_error("provider_transport_stale_generation"));
-                    }
-                    ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {
-                        self.fault_invocation(&prepared.lease).await;
-                        return Err(transport_error("provider_physical_connection_fault"));
+                            return Err(transport_error("provider_transport_stale_generation"));
+                        }
+                        ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {
+                            self.fault_invocation(&prepared.lease).await;
+                            return Err(transport_error("provider_physical_connection_fault"));
+                        }
                     }
                 }
                 if output.result.tool_calls.is_empty() {
@@ -640,6 +654,36 @@ fn validate_fault_successor(
     Ok(())
 }
 
+/// Freeze the transport selected by the invocation configuration before calling
+/// the provider. Node selection wins over the provider-instance setting; `auto`
+/// starts with WS and requires a typed recovery receipt for HTTP fallback. This
+/// follows the paired OpenAI provider contract, never infers HTTP from metadata.
+fn selected_responses_transport(
+    input: &ProviderInvocationInput,
+) -> anyhow::Result<RecoveryTransport> {
+    if input.operation == ProviderWireOperation::Compact {
+        return Ok(RecoveryTransport::ProviderHttp);
+    }
+    match input.model_parameters.get("use_responses_websocket") {
+        Some(serde_json::Value::Bool(true)) => return Ok(RecoveryTransport::AiNativeWebSocket),
+        Some(serde_json::Value::Bool(false)) => return Ok(RecoveryTransport::ProviderHttp),
+        Some(_) => return Err(transport_error("provider_transport_mode_invalid")),
+        None => {}
+    }
+    match input.provider_config.get("transport_mode") {
+        None => Ok(RecoveryTransport::ProviderHttp),
+        Some(serde_json::Value::Null) => Ok(RecoveryTransport::AiNativeWebSocket),
+        Some(serde_json::Value::String(mode)) => match mode.trim().to_ascii_lowercase().as_str() {
+            "http_sse" | "sse" | "http" => Ok(RecoveryTransport::ProviderHttp),
+            "" | "auto" | "responses_websocket" | "websocket" | "ws" => {
+                Ok(RecoveryTransport::AiNativeWebSocket)
+            }
+            _ => Err(transport_error("provider_transport_mode_invalid")),
+        },
+        Some(_) => Err(transport_error("provider_transport_mode_invalid")),
+    }
+}
+
 fn protocol_session_id(input: &ProviderInvocationInput) -> Option<&str> {
     (input.protocol == "openai_responses")
         .then_some(input.client_protocol_envelope.as_ref()?)?
@@ -673,9 +717,8 @@ fn termination_code(kind: TerminationKind) -> &'static str {
         TerminationKind::OwnerOrphaned
         | TerminationKind::OwnerClosed
         | TerminationKind::Shutdown => "transport_session_orphaned",
-        TerminationKind::ProviderHardMax | TerminationKind::ProviderFault => {
-            "provider_connection_max_age"
-        }
+        TerminationKind::ProviderHardMax => "provider_connection_max_age",
+        TerminationKind::ProviderFault => "provider_physical_connection_fault",
         TerminationKind::DeadlineExceeded(DeadlineKind::Task) => {
             "transport_invocation_deadline_exceeded"
         }

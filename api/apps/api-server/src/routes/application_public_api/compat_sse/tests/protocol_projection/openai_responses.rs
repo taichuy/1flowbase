@@ -515,3 +515,64 @@ async fn native_sse_keeps_phase_and_opaque_items_without_answer_mirrors() {
     assert_eq!(decoded.completed_count, 1);
     assert!(decoded.text_deltas.is_empty());
 }
+
+#[tokio::test]
+async fn failed_terminal_preserves_committed_output_and_absorbs_late_success() {
+    let mut run = native_run();
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
+    let item = json!({"id":"fc_committed","type":"function_call","call_id":"call_committed","name":"exec","arguments":"{}"});
+    let committed = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            1,
+            committed_provider_output_item_done("llm", Uuid::now_v7(), 0, item.clone()),
+        ),
+    );
+    assert_eq!(committed.len(), 1);
+    run.status = NativeRunStatus::Failed;
+    run.error = Some(NativeError {
+        code: "provider_upstream_error".into(),
+        message: "original provider failure".into(),
+        details: json!({}),
+    });
+    let terminal = mapper.runtime_event_to_sse(
+        &run,
+        RuntimeEventEnvelope::new(
+            run.id,
+            2,
+            debug_stream_events::flow_failed(run.id, json!({})),
+        ),
+    );
+    assert!(mapper
+        .runtime_event_to_sse(
+            &run,
+            RuntimeEventEnvelope::new(
+                run.id,
+                3,
+                debug_stream_events::flow_finished(run.id, json!({})),
+            )
+        )
+        .is_empty());
+    let response = test_projected_events_response(terminal);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    let frames = body
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str::<Value>(data).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0]["type"], "response.failed");
+    assert_eq!(
+        frames[0]["response"]["error"]["message"],
+        "original provider failure"
+    );
+    assert_eq!(frames[0]["response"]["output"], json!([item]));
+}

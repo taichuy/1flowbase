@@ -105,6 +105,10 @@ fn invocation_input(session_id: &str, operation: ProviderWireOperation) -> Provi
         provider_code: "provider-code".to_string(),
         protocol: "openai_responses".to_string(),
         model: "model-a".to_string(),
+        model_parameters: BTreeMap::from([(
+            "use_responses_websocket".into(),
+            serde_json::json!(true),
+        )]),
         client_protocol_envelope: Some(ProtocolContextEnvelope {
             source_protocol: "openai_responses".to_string(),
             headers: BTreeMap::from([("session-id".to_string(), vec![session_id.to_string()])]),
@@ -195,7 +199,7 @@ fn termination_reasons_preserve_the_transport_failure_domain() {
     );
     assert_eq!(
         termination_code(TerminationKind::ProviderFault),
-        "provider_connection_max_age"
+        "provider_physical_connection_fault"
     );
     assert_eq!(
         termination_code(TerminationKind::CapacityEvicted),
@@ -248,7 +252,10 @@ async fn compaction_successor_reuses_logical_session_without_inheriting_deadline
         .unwrap();
     let first_directive = compact.transport_session_directive().unwrap().unwrap();
     coordinator
-        .finish(first, &successful_output(first_directive.generation))
+        .finish(
+            first,
+            &output_with_result(ProviderInvocationResult::default()),
+        )
         .await
         .unwrap();
 
@@ -589,6 +596,7 @@ async fn physical_fault_successor_keeps_logical_deadline_and_fences_failed_invoc
     assert_eq!(next.lease.deadline().as_millis(), 2_010_000);
     let old = PreparedTransportInvocation {
         lease: failed_lease,
+        transport: RecoveryTransport::AiNativeWebSocket,
         recovery_directive: None,
     };
     assert!(reason(
@@ -756,4 +764,128 @@ fn physical_fault_successor_checks_native_cursor_without_rewriting_payload_or_bu
         directive.policy.budget().absolute_deadline_unix_ms,
         2_000_000
     );
+}
+
+#[test]
+fn execution_mode_is_selected_from_input_not_missing_receipts() {
+    let mut input = invocation_input("mode-selection", ProviderWireOperation::Generate);
+    input.provider_config = serde_json::json!({"transport_mode":"http_sse"});
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::AiNativeWebSocket
+    );
+    input
+        .model_parameters
+        .insert("use_responses_websocket".into(), serde_json::json!(false));
+    input.provider_config = serde_json::json!({"transport_mode":"responses_websocket"});
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::ProviderHttp
+    );
+    input.model_parameters.clear();
+    for mode in ["auto", "responses_websocket", "websocket", "ws", ""] {
+        input.provider_config = serde_json::json!({"transport_mode":mode});
+        assert_eq!(
+            selected_responses_transport(&input).unwrap(),
+            RecoveryTransport::AiNativeWebSocket
+        );
+    }
+    for mode in ["http_sse", "sse", "http"] {
+        input.provider_config = serde_json::json!({"transport_mode":mode});
+        assert_eq!(
+            selected_responses_transport(&input).unwrap(),
+            RecoveryTransport::ProviderHttp
+        );
+    }
+    input.provider_config = serde_json::json!({});
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::ProviderHttp
+    );
+    input.provider_config = serde_json::json!({"transport_mode":null});
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::AiNativeWebSocket
+    );
+    input
+        .model_parameters
+        .insert("use_responses_websocket".into(), serde_json::json!("true"));
+    assert!(selected_responses_transport(&input).is_err());
+    input.operation = ProviderWireOperation::Compact;
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::ProviderHttp
+    );
+}
+
+#[tokio::test]
+async fn selected_http_success_without_websocket_receipt_is_accepted() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([])),
+        transport_config(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let mut input = invocation_input("selected-http", ProviderWireOperation::Generate);
+    input
+        .model_parameters
+        .insert("use_responses_websocket".into(), serde_json::json!(false));
+    let prepared = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(prepared.transport, RecoveryTransport::ProviderHttp);
+    coordinator
+        .finish(
+            prepared,
+            &output_with_result(ProviderInvocationResult::default()),
+        )
+        .await
+        .unwrap();
+    let snapshot = coordinator.safe_snapshot().await;
+    assert_eq!(
+        snapshot.sessions[0].state,
+        TransportSessionState::IdleAffinity
+    );
+    assert!(snapshot.tombstones.is_empty());
+}
+
+#[tokio::test]
+async fn draining_and_closing_are_not_reported_as_hard_max_age() {
+    for (state, expected) in [
+        (
+            TransportSessionState::Draining,
+            "provider_connection_draining",
+        ),
+        (
+            TransportSessionState::Closing,
+            "provider_connection_closing",
+        ),
+    ] {
+        let coordinator = TransportSessionCoordinator::new_with_clock(
+            Arc::new(FakeTransportRuntime::new([])),
+            transport_config(),
+            FakeClock::new(2_000_000),
+        )
+        .unwrap();
+        let mut input = invocation_input("closing-reason", ProviderWireOperation::Generate);
+        let prepared = coordinator
+            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .unwrap()
+            .unwrap();
+        coordinator
+            .registry
+            .lock()
+            .await
+            .transition(&prepared.lease.fence, state)
+            .unwrap();
+        let error = coordinator
+            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .err()
+            .unwrap();
+        assert!(reason(error).contains(expected));
+    }
 }
