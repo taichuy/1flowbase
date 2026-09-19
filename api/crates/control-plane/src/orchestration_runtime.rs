@@ -612,6 +612,11 @@ where
             (Some(_), None) => return Err(anyhow!("ephemeral_continuation_missing")),
             (None, _) => None,
         };
+        let transport = transport.map(|payload| {
+            crate::application_public_api::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+                &input.flow_run.input_payload, payload,
+            )
+        }).transpose()?;
         let mut invoker = invoker
             .with_provider_continuation(if native_resume {
                 None

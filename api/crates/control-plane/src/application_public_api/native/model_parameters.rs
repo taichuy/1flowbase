@@ -11,6 +11,7 @@ use crate::application_public_api::protocol_translation::{
 };
 
 const MODEL_PARAMETERS_PATH: &str = "$.execution.model_parameters";
+const PUBLISHED_REASONING_DEFAULT_EFFORT: &str = "published_reasoning_default_effort";
 const REASONING_PATH: &str = "$.execution.model_parameters.reasoning";
 
 /// Native execution preserves opaque execution options while giving model
@@ -199,6 +200,66 @@ pub struct NativeExecutionModelParameters {
 }
 
 impl NativeExecutionModelParameters {
+    /// This field can only be minted from publication admission, never client sys input.
+    pub(crate) fn freeze_published_reasoning_default(
+        sys: &mut Map<String, Value>,
+        effort: Option<&str>,
+    ) {
+        sys.remove(PUBLISHED_REASONING_DEFAULT_EFFORT);
+        if let Some(effort) = effort {
+            sys.insert(
+                PUBLISHED_REASONING_DEFAULT_EFFORT.to_owned(),
+                Value::String(effort.to_owned()),
+            );
+        }
+    }
+
+    /// Native wire and continuation digests must use the same frozen default.
+    /// Node model parameters are deliberately not consulted here.
+    pub(crate) fn seal_published_reasoning_default(
+        input_payload: &Value,
+        payload: crate::ports::ProviderTransportPayload,
+    ) -> anyhow::Result<crate::ports::ProviderTransportPayload> {
+        let Some(default) = input_payload
+            .get("sys")
+            .and_then(|sys| sys.get(PUBLISHED_REASONING_DEFAULT_EFFORT))
+        else {
+            return Ok(payload);
+        };
+        let default = default
+            .as_str()
+            .filter(|value| valid_reasoning_effort(value))
+            .ok_or_else(|| anyhow::anyhow!("invalid_frozen_published_reasoning_default"))?;
+        if payload
+            .wire_body()
+            .get("reasoning")
+            .and_then(|value| value.as_object())
+            .is_some_and(|reasoning| reasoning.contains_key("effort"))
+        {
+            return Ok(payload);
+        }
+        let affinity = payload.affinity().cloned();
+        let mut body = payload.into_wire_body();
+        let body_object = body
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
+        let reasoning = body_object
+            .entry("reasoning")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if reasoning.is_null() {
+            *reasoning = Value::Object(Map::new());
+        }
+        let reasoning = reasoning
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_reasoning_must_be_object"))?;
+        reasoning.insert("effort".to_owned(), Value::String(default.to_owned()));
+        let sealed = crate::ports::ProviderTransportPayload::openai_responses(body)?;
+        Ok(match affinity {
+            Some(affinity) => sealed.with_affinity(affinity),
+            None => sealed,
+        })
+    }
+
     pub(crate) fn apply_default_effort(&mut self, effort: &str) -> bool {
         let Some(effort) = NativeReasoningEffort::parse(effort) else {
             return false;

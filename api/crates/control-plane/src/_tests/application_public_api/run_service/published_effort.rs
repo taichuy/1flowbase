@@ -179,6 +179,14 @@ async fn increment_published_effort_empty_missing_and_invalid_default_fail_close
                 payload["sys"].get("model_parameters").is_none(),
                 "no default means absent effort remains absent"
             );
+            let raw = control_plane::ports::ProviderTransportPayload::openai_responses(
+                json!({"model":"public-luna", "input":"hello"}),
+            )
+            .unwrap();
+            assert_eq!(
+                control_plane::application_public_api::native::NativeExecutionModelParameters::seal_published_reasoning_default(&payload, raw.clone()).unwrap(),
+                raw,
+            );
         }
     }
     save_model_catalog(&repository, &application, json!(["plain-public-model"])).await;
@@ -223,4 +231,160 @@ async fn increment_published_effort_does_not_infer_a_missing_public_model() {
         .unwrap()
         .unwrap();
     assert!(flow_run.input_payload.get("sys").is_none());
+}
+
+#[tokio::test]
+async fn increment_published_default_reaches_native_wire_and_callback_configuration_digest() {
+    use control_plane::application_public_api::{
+        native::NativeExecutionModelParameters,
+        native_tool_resume::correlate_native_responses_callback,
+    };
+    use control_plane::ports::{ProviderTransportAffinity, ProviderTransportPayload};
+
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Frozen native default wire");
+    let token = issue_key(&harness, application.id).await;
+    save_model_catalog(
+        &repository,
+        &application,
+        json!([model(json!({
+            "default_effort":"medium", "supported_efforts":["medium","max","custom-v2"]
+        }))]),
+    )
+    .await;
+    publish_runnable_application(&repository, application.id).await;
+    let actor = ApplicationApiKeyService::new(repository.clone())
+        .authenticate_bearer_token(&token)
+        .await
+        .unwrap();
+    let service = ApplicationPublishedRunService::new(repository.clone());
+    let affinity = ProviderTransportAffinity::new(
+        "actual-provider",
+        "openai",
+        "openai_responses",
+        "provider-model",
+    );
+
+    for explicit in [None, Some("max"), Some("custom-v2")] {
+        let mut body = json!({"model":"public-luna", "input":[{"role":"user","content":"hello"}],
+            "reasoning":{"summary":"auto"}, "generate":false, "tools":[{"type":"function","name":"read","parameters":{"type":"object"}}]});
+        if let Some(effort) = explicit {
+            body["reasoning"]["effort"] = json!(effort);
+        }
+        let translated = translate_response_request(body.clone()).unwrap();
+        let result = service
+            .start_native_run(CreateNativeRunCommand {
+                bearer_token: token.clone(),
+                protocol: TranslationProtocol::OpenAiResponses,
+                request: translated.request,
+            })
+            .await
+            .unwrap();
+        let flow = repository
+            .get_flow_run(application.id, result.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            flow.input_payload["sys"]["published_reasoning_default_effort"].as_str(),
+            explicit.is_none().then_some("medium")
+        );
+        let raw = ProviderTransportPayload::openai_responses(body.clone())
+            .unwrap()
+            .with_affinity(affinity.clone());
+        let sealed = NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow.input_payload,
+            raw.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            sealed.wire_body()["reasoning"]["effort"],
+            explicit.unwrap_or("medium")
+        );
+        assert_eq!(sealed.wire_body()["reasoning"]["summary"], "auto");
+        assert_eq!(sealed.wire_body()["generate"], false);
+        assert_eq!(sealed.wire_body()["input"], body["input"]);
+        assert_eq!(sealed.affinity(), Some(&affinity));
+        assert_eq!(
+            sealed.size_bytes(),
+            serde_json::to_vec(sealed.wire_body()).unwrap().len()
+        );
+        assert_eq!(
+            NativeExecutionModelParameters::seal_published_reasoning_default(
+                &flow.input_payload,
+                sealed.clone()
+            )
+            .unwrap(),
+            sealed
+        );
+        if explicit.is_none() {
+            assert_ne!(sealed.digest(), raw.digest());
+        } else {
+            assert_eq!(sealed, raw);
+        }
+
+        let response_id = format!("resp-{}", result.id);
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            result.id,
+            json!({
+                "tool_calls":[{"id":"call-read","name":"read"}],
+                "provider_metadata":{"native_response":{
+                    "response_id":response_id,
+                    "configuration_digest":sealed.configuration_digest().unwrap()
+                }}
+            }),
+        );
+        // A newly published default must not rewrite this original callback's frozen intent.
+        save_model_catalog(
+            &repository,
+            &application,
+            json!([model(json!({
+                "default_effort":"custom-v2", "supported_efforts":["medium","max","custom-v2"]
+            }))]),
+        )
+        .await;
+        publish_runnable_application(&repository, application.id).await;
+        let mut resumed = body.clone();
+        resumed["input"] =
+            json!([{"type":"function_call_output","call_id":"call-read","output":"done"}]);
+        resumed["previous_response_id"] = json!(response_id);
+        let (matched, _) = correlate_native_responses_callback(&repository, &actor, &resumed)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(matched.id, callback.id);
+        let resumed_payload = NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow.input_payload,
+            ProviderTransportPayload::openai_responses(resumed.clone())
+                .unwrap()
+                .with_affinity(affinity.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            resumed_payload.configuration_digest().unwrap(),
+            sealed.configuration_digest().unwrap()
+        );
+        assert_eq!(
+            resumed_payload.wire_body()["previous_response_id"],
+            response_id
+        );
+        assert_eq!(resumed_payload.affinity(), Some(&affinity));
+        resumed["reasoning"]["effort"] = json!(if explicit == Some("max") {
+            "medium"
+        } else {
+            "max"
+        });
+        let error = correlate_native_responses_callback(&repository, &actor, &resumed)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+            Some(&control_plane::errors::ControlPlaneError::Conflict(
+                "native_tool_output_configuration_mismatch"
+            ))
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+        repository.complete_callback_task_for_test(callback.id);
+    }
 }

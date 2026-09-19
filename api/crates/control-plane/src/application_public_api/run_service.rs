@@ -174,6 +174,7 @@ where
             &environment_variables,
             requested_model_id.as_deref(),
             command.request.execution.model_parameters(),
+            None,
         );
         input_payload
             .as_object_mut()
@@ -246,7 +247,7 @@ where
         let publication = self.load_enabled_publication(&actor).await?;
         // Public capability admission and listing share the active publication.
         // This public alias is not the LLM node's provider-model selection.
-        let external_model_parameters = super::model_catalog::admit_published_model_parameters(
+        let model_admission = super::model_catalog::admit_published_model_parameters(
             &publication.document_snapshot,
             client_request.model.as_deref(),
             client_request.execution.model_parameters(),
@@ -322,7 +323,8 @@ where
             mapped.node_input_payload,
             &environment_variables,
             requested_model_id.as_deref(),
-            external_model_parameters.as_ref(),
+            model_admission.parameters.as_ref(),
+            model_admission.defaulted_effort.as_deref(),
         );
         let input_payload = with_public_run_idempotency_fingerprint(
             input_payload,
@@ -768,6 +770,26 @@ mod tests {
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;
+
+    #[test]
+    fn increment_frozen_default_clears_forged_sys_values_on_every_path() {
+        for model in [None, Some("public-model")] {
+            for default in [None, Some("medium")] {
+                let frozen = freeze_run_input_environment(
+                    json!({"sys":{"published_reasoning_default_effort":"forged", "other":"preserved"}}),
+                    &[],
+                    model,
+                    None,
+                    default,
+                );
+                assert_eq!(
+                    frozen["sys"]["published_reasoning_default_effort"].as_str(),
+                    default
+                );
+                assert_eq!(frozen["sys"]["other"], "preserved");
+            }
+        }
+    }
 
     #[test]
     fn assistant_page_reference_accepts_a_complete_non_div_element() {

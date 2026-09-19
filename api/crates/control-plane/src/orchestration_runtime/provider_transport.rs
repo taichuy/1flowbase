@@ -115,6 +115,9 @@ where
                 .await?;
             return Err(anyhow!(EPHEMERAL_TRANSPORT_MISSING_ERROR_CODE));
         };
+        let payload = crate::application_public_api::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow_run.input_payload, payload,
+        )?;
         Ok(Some(payload))
     }
 

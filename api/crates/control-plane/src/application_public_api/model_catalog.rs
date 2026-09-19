@@ -117,28 +117,44 @@ fn validate_selected_llm_reasoning(
     Ok(())
 }
 
+pub(crate) struct PublishedModelAdmission {
+    pub(crate) parameters: Option<NativeExecutionModelParameters>,
+    pub(crate) defaulted_effort: Option<String>,
+}
+
 /// Resolve public capability admission from the same snapshot used by model listing.
 /// Missing public model selection does not imply a provider model selection.
 pub(crate) fn admit_published_model_parameters(
     document: &Value,
     model_id: Option<&str>,
     parameters: Option<&NativeExecutionModelParameters>,
-) -> Result<Option<NativeExecutionModelParameters>, super::native::NativeRunValidationError> {
+) -> Result<PublishedModelAdmission, super::native::NativeRunValidationError> {
     use super::native::NativeRunValidationError;
     let Some(model_id) = model_id else {
-        return Ok(parameters.cloned());
+        return Ok(PublishedModelAdmission {
+            parameters: parameters.cloned(),
+            defaulted_effort: None,
+        });
     };
     let selected = extract_agent_model_catalog_from_start_node(document)
         .into_iter()
         .find(|model| model.id == model_id)
         .ok_or(NativeRunValidationError::UnknownModel)?;
     let mut effective = parameters.cloned();
+    let mut defaulted_effort = None;
     if let Some(reasoning) = &selected.reasoning {
         if let Some(default) = &reasoning.default_effort {
             if !reasoning.supported_efforts.contains(default) {
                 return Err(NativeRunValidationError::InvalidPublishedModelConfiguration);
             }
             let parameters = effective.get_or_insert_with(NativeExecutionModelParameters::default);
+            if parameters
+                .reasoning()
+                .and_then(NativeReasoningParameters::effort)
+                .is_none()
+            {
+                defaulted_effort = Some(default.clone());
+            }
             if !parameters.apply_default_effort(default) {
                 return Err(NativeRunValidationError::InvalidPublishedModelConfiguration);
             }
@@ -148,7 +164,10 @@ pub(crate) fn admit_published_model_parameters(
         validate_selected_llm_model_parameters(&selected, parameters)
             .map_err(NativeRunValidationError::UnsupportedModelParameters)?;
     }
-    Ok(effective)
+    Ok(PublishedModelAdmission {
+        parameters: effective,
+        defaulted_effort,
+    })
 }
 
 pub fn extract_agent_model_catalog_from_start_node(document: &Value) -> Vec<AgentModelDescriptor> {
