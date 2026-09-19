@@ -308,17 +308,16 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         if record.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
         }
-        if matches!(
+        if !matches!(
             record.logical.state,
-            TransportSessionState::Orphaned | TransportSessionState::Closing
-        ) || (matches!(
-            record.logical.state,
-            TransportSessionState::Faulted | TransportSessionState::IdleReleased
-        ) && !record
+            TransportSessionState::Faulted
+                | TransportSessionState::IdleReleased
+                | TransportSessionState::Draining
+        ) || !record
             .physical
             .closure_evidence
             .as_ref()
-            .is_some_and(|evidence| evidence.local_released))
+            .is_some_and(|evidence| evidence.local_released)
         {
             return Err(RegistryError::InvalidTransition {
                 from: record.logical.state,

@@ -117,6 +117,14 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
     registry
         .finish_invocation(&completed, InvocationCompletion::Active)
         .unwrap();
+    assert!(registry.rotate_generation(&original).is_err());
+    registry
+        .transition(&original, TransportSessionState::Draining)
+        .unwrap();
+    assert!(registry.rotate_generation(&original).is_err());
+    registry
+        .record_closure_evidence(&original, &released_evidence(&original, 7))
+        .unwrap();
     let replacement = registry.rotate_generation(&original).unwrap();
     assert!(replacement.generation.get() > original.generation.get());
     assert_eq!(registry.safe_snapshot().sessions[0].owner_id, owner);
