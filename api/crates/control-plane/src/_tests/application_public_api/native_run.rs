@@ -15,6 +15,7 @@ use control_plane::application_public_api::{
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
 };
+use control_plane::ports::FlowRepository;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -97,10 +98,40 @@ async fn issue_application_key(
 
 async fn publish_runnable_application(
     harness: &ApplicationPublicApiTestHarness,
-    application_id: Uuid,
+    application: &domain::ApplicationRecord,
     mapping: ApplicationApiMappingConfig,
     owner_user_id: Uuid,
 ) {
+    let application_id = application.id;
+    let repository = harness.repository();
+    let editor_state = repository
+        .get_or_create_editor_state(application.workspace_id, application_id, owner_user_id)
+        .await
+        .unwrap();
+    let mut document = editor_state.draft.document;
+    let start = document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["type"] == "start")
+        .unwrap();
+    // These public aliases are independent of the compiled provider route.
+    // Declare them before publication so read/cancel tests reach their target behavior.
+    start["config"]["model_list"] = json!([
+        {"id": "any-model"},
+        {"id": "pass-through-model"}
+    ]);
+    FlowRepository::save_draft(
+        &repository,
+        application.workspace_id,
+        application_id,
+        owner_user_id,
+        document,
+        domain::FlowChangeKind::Logical,
+        "Declare native run fixture models",
+    )
+    .await
+    .unwrap();
     ApplicationPublicationService::new(harness.repository())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: owner_user_id,
@@ -779,7 +810,7 @@ async fn native_run_with_null_model_target_keeps_model_metadata_out_of_node_inpu
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -845,14 +876,14 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
         issue_application_key(&harness, second_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        first_application.id,
+        &first_application,
         mapping_without_model_target(),
         actor_user_id(),
     )
     .await;
     publish_runnable_application(
         &harness,
-        second_application.id,
+        &second_application,
         mapping_without_model_target(),
         other_user_id(),
     )
@@ -884,7 +915,7 @@ async fn native_run_read_loads_durable_published_flow_run_without_test_only_resu
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -928,7 +959,7 @@ async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
     let other_token = issue_application_key(&harness, other_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -974,14 +1005,14 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         issue_application_key(&harness, second_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        first_application.id,
+        &first_application,
         mapping_without_model_target(),
         actor_user_id(),
     )
     .await;
     publish_runnable_application(
         &harness,
-        second_application.id,
+        &second_application,
         mapping_without_model_target(),
         other_user_id(),
     )
@@ -1042,7 +1073,7 @@ async fn native_run_cancel_cas_miss_reloads_durable_winner_without_second_public
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
