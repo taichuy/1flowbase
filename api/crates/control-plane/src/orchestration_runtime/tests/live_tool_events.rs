@@ -107,6 +107,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
         provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

@@ -115,6 +115,7 @@ async fn complete_callback_task_updates_task_and_requeues_waiting_run() {
 
     let detail = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -162,6 +163,7 @@ async fn complete_callback_task_rejects_terminal_flow_before_claim() {
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,

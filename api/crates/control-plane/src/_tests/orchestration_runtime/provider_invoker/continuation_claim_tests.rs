@@ -153,6 +153,7 @@ fn issue_1743_invoker(
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: Some(store),
         provider_continuation: continuation,

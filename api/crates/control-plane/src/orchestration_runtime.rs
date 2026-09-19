@@ -158,7 +158,11 @@ pub struct ResumeFlowRunCommand {
     pub input_payload: serde_json::Value,
 }
 
+/// Host-private connection context, removed before RuntimeExtension dispatch.
+pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-connection-scope";
+
 pub struct CompleteCallbackTaskCommand {
+    pub transport_connection_scope: Option<String>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
@@ -276,6 +280,7 @@ struct RuntimeProviderInvoker<R, H> {
     flow_execution_context: Option<Arc<RuntimeFlowExecutionContext>>,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+    transport_connection_scope_override: Option<Option<String>>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     provider_continuation: Option<crate::ports::ProviderContinuation>,
@@ -317,6 +322,7 @@ struct RuntimeDataModelExecutionContext {
 }
 
 struct ResumeExecutionSegmentInput<'a> {
+    transport_connection_scope: Option<String>,
     resumed_node_run: Option<crate::ports::CallbackResumeWaitingNode>,
     native_transport: Option<crate::ports::ProviderTransportPayload>,
     response_round_id: Option<Uuid>,
@@ -505,6 +511,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            transport_connection_scope_override: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -533,6 +540,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            transport_connection_scope_override: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -610,7 +618,8 @@ where
             } else {
                 provider_continuation
             })
-            .with_provider_transport_payload(transport);
+            .with_provider_transport_payload(transport)
+            .with_transport_connection_scope_override(input.transport_connection_scope);
         invoker.response_round_id = input.response_round_id;
         invoker.native_user_messages_digest = input
             .snapshot
@@ -1274,6 +1283,7 @@ where
         let result = async {
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
+                    transport_connection_scope: None,
                     resumed_node_run: None,
                     native_transport: None,
                     response_round_id: None,

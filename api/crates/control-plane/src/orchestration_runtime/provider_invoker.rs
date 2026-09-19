@@ -324,6 +324,9 @@ where
         )
         .await?;
 
+        if let Some(scope) = &self.transport_connection_scope_override {
+            apply_transport_connection_scope_override(&mut input, scope.as_deref());
+        }
         self.runtime.compact(&installation, input).await
     }
 
@@ -794,6 +797,9 @@ where
         let deadline_unix_ms =
             provider_execution_deadline_unix_ms(&input, OffsetDateTime::now_utc());
         let flow_ms = bounded_timing_millis(provider_invoke_started.elapsed());
+        if let Some(scope) = &self.transport_connection_scope_override {
+            apply_transport_connection_scope_override(&mut input, scope.as_deref());
+        }
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -1578,6 +1584,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
+            transport_connection_scope_override: self.transport_connection_scope_override.clone(),
             provider_transport_payload: self.provider_transport_payload.clone(),
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: self.provider_continuation.clone(),
@@ -1602,6 +1609,12 @@ where
     ) -> Self {
         let mut invoker = self.clone();
         invoker.answer_presentation = Some(answer_presentation);
+        invoker
+    }
+
+    pub(super) fn with_transport_connection_scope_override(&self, scope: Option<String>) -> Self {
+        let mut invoker = self.clone();
+        invoker.transport_connection_scope_override = Some(scope);
         invoker
     }
 
@@ -2070,3 +2083,28 @@ mod timing_receipt_tests;
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/support.rs"]
 pub(crate) mod test_support;
+
+/// The host consumes this private header before dispatching to the Provider.
+/// Explicit None on an HTTP callback clears a previous WebSocket owner.
+fn apply_transport_connection_scope_override(
+    input: &mut ProviderInvocationInput,
+    scope: Option<&str>,
+) {
+    if let Some(envelope) = input.client_protocol_envelope.as_mut() {
+        envelope
+            .headers
+            .remove(crate::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER);
+    }
+    if let Some(scope) = scope {
+        let envelope = input.client_protocol_envelope.get_or_insert_with(|| {
+            plugin_framework::provider_contract::ProtocolContextEnvelope {
+                source_protocol: input.protocol.clone(),
+                ..Default::default()
+            }
+        });
+        envelope.headers.insert(
+            crate::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER.into(),
+            vec![scope.into()],
+        );
+    }
+}

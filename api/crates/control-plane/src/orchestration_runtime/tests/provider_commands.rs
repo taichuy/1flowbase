@@ -219,6 +219,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
         provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

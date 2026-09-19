@@ -57,6 +57,8 @@ pub enum PublishedCallbackResumeTarget {
 
 #[derive(Debug, Clone)]
 pub struct ResumePublishedCallbackCommand {
+    /// Host-only transport ownership; never accepted from callback JSON.
+    pub transport_connection_scope: Option<String>,
     pub reserved_attempt_id: Option<Uuid>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub bearer_token: String,
@@ -68,6 +70,7 @@ pub struct ResumePublishedCallbackCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompletePublishedCallbackInput {
+    pub transport_connection_scope: Option<String>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
@@ -356,6 +359,7 @@ where
         let result = self
             .consumer
             .complete_published_callback(CompletePublishedCallbackInput {
+                transport_connection_scope: command.transport_connection_scope.clone(),
                 native_transport: command.native_transport.clone(),
                 actor_user_id: actor.creator_user_id,
                 application_id: actor.application_id,
@@ -732,6 +736,7 @@ where
         input: CompletePublishedCallbackInput,
     ) -> Result<domain::FlowRunRecord> {
         self.complete_callback_task_run(CompleteCallbackTaskCommand {
+            transport_connection_scope: input.transport_connection_scope,
             native_transport: input.native_transport,
             actor_user_id: input.actor_user_id,
             application_id: input.application_id,

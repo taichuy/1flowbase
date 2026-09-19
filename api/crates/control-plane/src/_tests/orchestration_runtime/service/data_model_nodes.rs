@@ -248,6 +248,7 @@ async fn orchestration_runtime_data_model_confirmed_callback_executes_write_once
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -280,6 +281,7 @@ async fn orchestration_runtime_data_model_confirmed_callback_executes_write_once
 
     let duplicate_error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -322,6 +324,7 @@ async fn data_model_callback_resume_starts_downstream_node_before_execution() {
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -405,6 +408,7 @@ async fn orchestration_runtime_data_model_confirmed_callback_replays_same_run_re
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -450,6 +454,7 @@ async fn orchestration_runtime_data_model_confirmation_rejects_different_actor()
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: Uuid::now_v7(),
             application_id: seeded.application_id,
@@ -467,6 +472,7 @@ async fn orchestration_runtime_data_model_confirmation_rejects_different_actor()
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            transport_connection_scope: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,

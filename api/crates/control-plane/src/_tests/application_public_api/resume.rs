@@ -139,6 +139,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token,
@@ -188,6 +189,7 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: second_token,
@@ -318,6 +320,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let result =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                transport_connection_scope: Some("host-generated-connection".into()),
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token,
@@ -334,6 +337,10 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
 
     let calls = consumer.calls();
     assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].transport_connection_scope.as_deref(),
+        Some("host-generated-connection")
+    );
     assert_eq!(calls[0].application_id, application.id);
     assert_eq!(calls[0].callback_task_id, callback_task.id);
     assert_eq!(calls[0].response_payload, json!({ "answer": "approved" }));
@@ -448,6 +455,7 @@ async fn callback_resume_preserves_original_compatibility_mode() {
     ] {
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                transport_connection_scope: None,
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token.clone(),
@@ -762,6 +770,7 @@ mod tests {
         response_payload: Value,
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token.to_string(),

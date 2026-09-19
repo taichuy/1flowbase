@@ -71,6 +71,7 @@ fn billing_invoker_with_policy(
             require_provider_usage_for_billing,
         )),
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

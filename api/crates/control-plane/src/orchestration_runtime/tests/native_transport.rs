@@ -22,6 +22,7 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
         provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: Some(
             crate::ports::ProviderTransportPayload::openai_responses(json!({
                 "model": "gpt-5.4-mini",
@@ -105,6 +106,7 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
         provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: Some(
             crate::ports::ProviderTransportPayload::openai_responses(json!({
                 "model": "gpt-5.4-mini",
@@ -188,6 +190,7 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: Some(payload),
         provider_transport_store: None,
         provider_continuation: None,

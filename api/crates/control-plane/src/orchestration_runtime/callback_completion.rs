@@ -187,6 +187,7 @@ where
                 let waiting_node_id = checkpoint_node_id(&checkpoint)?;
                 let execution = self
                     .resume_execution_segment(ResumeExecutionSegmentInput {
+                        transport_connection_scope: command.transport_connection_scope.clone(),
                         resumed_node_run: command
                             .native_transport
                             .as_ref()
@@ -373,6 +374,7 @@ where
             checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint).await?;
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
+                transport_connection_scope: command.transport_connection_scope.clone(),
                 resumed_node_run: command
                     .native_transport
                     .as_ref()
