@@ -64,6 +64,7 @@ struct PhysicalGenerationRecord {
     created_at: TransportInstant,
     soft_deadline: TransportDeadline,
     hard_deadline: TransportDeadline,
+    close_acknowledged: Option<bool>,
 }
 
 struct SessionRecord {
@@ -154,6 +155,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     created_at: now,
                     soft_deadline: physical_soft_deadline,
                     hard_deadline: physical_hard_deadline,
+                    close_acknowledged: None,
                 },
             },
         );
@@ -254,6 +256,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             return Err(RegistryError::StaleInvocation);
         }
         record.logical.invocation = None;
+        // A failed invocation retires a draining physical connection. Other
+        // concurrent close/orphan directives still own their terminal state.
+        if record.logical.state == TransportSessionState::Draining
+            && target == TransportSessionState::Faulted
+        {
+            return self.set_state(&lease.fence, target, now);
+        }
         // A soft-drain or close directive wins over a concurrently finishing invocation.
         if matches!(
             record.logical.state,
@@ -292,8 +301,20 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<TransportFence, RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
-        if self.record(fence)?.logical.invocation.is_some() {
+        let record = self.record(fence)?;
+        if record.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
+        }
+        if matches!(
+            record.logical.state,
+            TransportSessionState::Orphaned | TransportSessionState::Closing
+        ) || (record.logical.state == TransportSessionState::Faulted
+            && record.physical.close_acknowledged != Some(true))
+        {
+            return Err(RegistryError::InvalidTransition {
+                from: record.logical.state,
+                to: TransportSessionState::Opening,
+            });
         }
         let generation = self.allocate_generation()?;
         let config = self.config.clone();
@@ -301,6 +322,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         let from = record.logical.state;
         record.physical.generation = generation;
         record.physical.created_at = now;
+        record.physical.close_acknowledged = None;
         record.logical.state = TransportSessionState::Opening;
         record.logical.state_since = now;
         record.logical.state_deadline = record.logical.absolute_deadline;
@@ -356,6 +378,17 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         fence: &TransportFence,
         acknowledged: bool,
     ) -> Result<(), RegistryError> {
+        // Faulted physical generations retain the logical record and its fixed
+        // deadline. Their close ACK authorizes rotation, never logical readmission.
+        if let Some(record) = self.sessions.get_mut(&fence.session_id) {
+            ensure_generation(record, fence)?;
+            if record.logical.state == TransportSessionState::Faulted {
+                if record.physical.close_acknowledged != Some(true) {
+                    record.physical.close_acknowledged = Some(acknowledged);
+                }
+                return Ok(());
+            }
+        }
         let receipt = self
             .tombstones
             .iter_mut()

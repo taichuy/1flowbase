@@ -533,3 +533,111 @@ fn owner_disconnect_does_not_regress_terminal_path_states_to_orphaned() {
         assert_eq!(registry.state(&fence).unwrap(), terminal_state);
     }
 }
+
+#[test]
+fn physical_fault_rotation_requires_close_ack_and_preserves_logical_deadline_and_sequence() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let first = registry.admit(request("fault-successor")).unwrap();
+    registry.activate(&first).unwrap();
+    let failed = registry
+        .begin_invocation(&first, invocation_request(Some(10_000)))
+        .unwrap();
+    registry
+        .finish_invocation(&failed, InvocationCompletion::Faulted)
+        .unwrap();
+    assert!(matches!(
+        registry.rotate_generation(&first),
+        Err(RegistryError::InvalidTransition { .. })
+    ));
+    registry
+        .record_close_acknowledgement(&first, false)
+        .unwrap();
+    assert!(registry.rotate_generation(&first).is_err());
+    registry.record_close_acknowledgement(&first, true).unwrap();
+    // A duplicate negative ACK cannot revoke an accepted close fact.
+    registry
+        .record_close_acknowledgement(&first, false)
+        .unwrap();
+    clock.advance(Duration::from_secs(1));
+    let second = registry.rotate_generation(&first).unwrap();
+    registry.activate(&second).unwrap();
+    let next = registry
+        .begin_invocation(&second, invocation_request(Some(60_000)))
+        .unwrap();
+    assert!(second.generation > first.generation);
+    assert!(next.sequence() > failed.sequence());
+    assert_eq!(next.deadline().as_millis(), 60_000);
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(199)
+    );
+    let before = registry.safe_snapshot();
+    assert!(matches!(
+        registry.finish_invocation(&failed, InvocationCompletion::Faulted),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert!(matches!(
+        registry.record_close_acknowledgement(&first, true),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert_eq!(registry.safe_snapshot(), before);
+}
+
+#[test]
+fn faulted_invocation_is_terminal_and_expired_fault_lease_cannot_rotate() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("fault-expiry")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::InflightExists)
+    );
+    registry
+        .finish_invocation(&lease, InvocationCompletion::Faulted)
+        .unwrap();
+    assert_eq!(
+        registry.finish_invocation(&lease, InvocationCompletion::Active),
+        Err(RegistryError::NoInflight)
+    );
+    registry.record_close_acknowledgement(&fence, true).unwrap();
+    clock.advance(Duration::from_secs(5));
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::NotFound)
+    );
+    assert_eq!(
+        registry.tombstone(&fence.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)
+    );
+}
+
+#[test]
+fn physical_fault_wins_over_pending_soft_drain_without_replaying_inflight_work() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("drain-fault")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    clock.advance(Duration::from_secs(80));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Draining
+    );
+    registry
+        .finish_invocation(&lease, InvocationCompletion::Faulted)
+        .unwrap();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Faulted
+    );
+    assert!(!registry.safe_snapshot().sessions[0].inflight);
+    assert!(registry.rotate_generation(&fence).is_err());
+}
