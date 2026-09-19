@@ -2232,3 +2232,204 @@ fn native_output_delta_wire_rejects_diagnostic_and_missing_identity() {
         .is_err());
     }
 }
+
+// AC-003/007: execution mode is supplied by the host, never inferred from missing metadata.
+mod transport_outcome_mode_tests {
+    use super::*;
+    use extension_contracts::provider_contract::{
+        ProviderFinishReason, ProviderInvocationTransportClassification as Classification,
+    };
+
+    fn result() -> ProviderInvocationResult {
+        ProviderInvocationResult {
+            finish_reason: Some(ProviderFinishReason::Stop),
+            provider_metadata: json!({}),
+            ..ProviderInvocationResult::default()
+        }
+    }
+
+    fn directive() -> ProviderRecoveryDirective {
+        ProviderRecoveryDirective {
+            policy: semantic_mapped_recovery_policy(),
+            transport_epoch: TransportEpoch::new(17).unwrap(),
+            initial_commit_level: CommitLevel::LifecycleOnly,
+            cursor_provenance: Some(CursorProvenance::durable()),
+        }
+    }
+
+    fn fallback() -> ProviderRecoveryReceipt {
+        ProviderRecoveryReceipt {
+            attempt: 0,
+            transport: RecoveryTransport::ProviderHttp,
+            transport_epoch: TransportEpoch::new(17).unwrap(),
+            socket_incarnation: None,
+            commit_level: CommitLevel::LifecycleOnly,
+            disposition: RecoveryDisposition::PreCommitHttpFallback,
+            reason: RecoveryReason::TransportDisconnected,
+        }
+    }
+
+    fn ready() -> ProviderTransportSessionReceipt {
+        ProviderTransportSessionReceipt {
+            generation: 7,
+            reused: false,
+            physical_state: ProviderPhysicalTransportState::Ready,
+            connection_age_ms: 0,
+            ttl_remaining_ms: 100,
+            close_reason: None,
+            close_acknowledged: None,
+        }
+    }
+
+    #[test]
+    fn direct_http_does_not_require_or_claim_websocket_receipts() {
+        let mut result = result();
+        assert_eq!(
+            result
+                .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, None)
+                .unwrap(),
+            Classification::Http
+        );
+        assert_eq!(
+            result
+                .transport_outcome_for_mode(RecoveryTransport::AiNativeWebSocket, 7, None)
+                .unwrap(),
+            Classification::Session(ProviderInvocationTransportOutcome::ReceiptMissing)
+        );
+        assert!(result.transport_outcome(0, None).is_err());
+        result.set_transport_session_receipt(ready()).unwrap();
+        assert!(result
+            .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, None)
+            .is_err());
+        assert_eq!(
+            result.transport_outcome(7, None).unwrap(),
+            ProviderInvocationTransportOutcome::Ready { receipt: ready() }
+        );
+        assert!(matches!(
+            result.transport_outcome(8, None).unwrap(),
+            ProviderInvocationTransportOutcome::StaleGeneration { .. }
+        ));
+    }
+
+    #[test]
+    fn fallback_requires_mode_authorization_epoch_budget_and_reconstructible_cursor() {
+        let mut result = result();
+        result.set_recovery_receipt(fallback()).unwrap();
+        assert_eq!(
+            result.transport_outcome(7, Some(&directive())).unwrap(),
+            ProviderInvocationTransportOutcome::HttpFallback {
+                recovery: fallback()
+            }
+        );
+        assert!(result.transport_outcome(7, None).is_err());
+        assert!(result
+            .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, Some(&directive()))
+            .is_err());
+        let mut invalid = directive();
+        invalid.transport_epoch = TransportEpoch::new(18).unwrap();
+        assert!(result.transport_outcome(7, Some(&invalid)).is_err());
+        invalid = directive();
+        invalid.policy = RecoveryPolicy::NativeOpaque {
+            budget: *invalid.policy.budget(),
+        };
+        assert!(result.transport_outcome(7, Some(&invalid)).is_err());
+        invalid = directive();
+        invalid.cursor_provenance = Some(CursorProvenance::connection_bound(
+            invalid.transport_epoch,
+            SocketIncarnation::new(1).unwrap(),
+        ));
+        assert!(result.transport_outcome(7, Some(&invalid)).is_err());
+        invalid = directive();
+        invalid.initial_commit_level = CommitLevel::SemanticCommitted;
+        assert!(result.transport_outcome(7, Some(&invalid)).is_err());
+        let mut exhausted = fallback();
+        exhausted.attempt = directive().policy.budget().max_inner_attempts;
+        // A structurally valid receipt can still exceed its invocation's budget.
+        result.set_recovery_receipt(exhausted).unwrap();
+        assert!(result.transport_outcome(7, Some(&directive())).is_err());
+        result.set_recovery_receipt(fallback()).unwrap();
+        let mut stale = ready();
+        stale.generation = 6;
+        result.set_transport_session_receipt(stale).unwrap();
+        assert!(matches!(
+            result.transport_outcome(7, Some(&directive())).unwrap(),
+            ProviderInvocationTransportOutcome::StaleGeneration { .. }
+        ));
+    }
+
+    #[test]
+    fn failed_results_and_timing_never_classify_as_success() {
+        for transport in [
+            RecoveryTransport::ProviderHttp,
+            RecoveryTransport::AiNativeWebSocket,
+        ] {
+            let mut failed = result();
+            failed.finish_reason = Some(ProviderFinishReason::Error);
+            assert!(failed
+                .transport_outcome_for_mode(transport, 7, None)
+                .is_err());
+            for termination_kind in [
+                ProviderInvocationTerminationKind::UpstreamError,
+                ProviderInvocationTerminationKind::TransportError,
+                ProviderInvocationTerminationKind::Deadline,
+            ] {
+                let mut failed = result();
+                failed
+                    .set_invocation_timing_receipt(ProviderInvocationTimingReceipt {
+                        schema_version: PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION,
+                        connect_ms: None,
+                        upstream_ms: 1,
+                        termination_kind,
+                    })
+                    .unwrap();
+                assert!(failed
+                    .transport_outcome_for_mode(transport, 7, None)
+                    .is_err());
+            }
+        }
+        let mut failed = result();
+        failed.finish_reason = Some(ProviderFinishReason::Error);
+        failed.set_recovery_receipt(fallback()).unwrap();
+        assert!(failed.transport_outcome(7, Some(&directive())).is_err());
+    }
+
+    #[test]
+    fn terminal_recovery_failure_and_missing_fallback_cannot_masquerade_as_success() {
+        let mut result = result();
+        let mut recovery = fallback();
+        recovery.commit_level = CommitLevel::Terminal;
+        recovery.disposition = RecoveryDisposition::TerminalInterruption;
+        recovery.reason = RecoveryReason::SemanticFailed;
+        result.set_recovery_receipt(recovery.clone()).unwrap();
+        assert!(result
+            .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, Some(&directive()))
+            .is_err());
+        recovery.disposition = RecoveryDisposition::SemanticTerminal;
+        result.set_recovery_receipt(recovery.clone()).unwrap();
+        assert!(result
+            .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, Some(&directive()))
+            .is_err());
+        for reason in [
+            RecoveryReason::DeadlineExceeded,
+            RecoveryReason::FencingRejected,
+            RecoveryReason::BudgetExhausted,
+        ] {
+            recovery.reason = reason;
+            result.set_recovery_receipt(recovery.clone()).unwrap();
+            assert!(result
+                .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, Some(&directive()))
+                .is_err());
+        }
+        recovery.reason = RecoveryReason::SemanticCompleted;
+        result.set_recovery_receipt(recovery).unwrap();
+        assert_eq!(
+            result
+                .transport_outcome_for_mode(RecoveryTransport::ProviderHttp, 0, Some(&directive()))
+                .unwrap(),
+            Classification::Http
+        );
+        // HTTP success alone is not evidence of authorized WS -> HTTP fallback.
+        result.set_transport_session_receipt(ready()).unwrap();
+        assert!(result.transport_outcome(7, Some(&directive())).is_err());
+    }
+}

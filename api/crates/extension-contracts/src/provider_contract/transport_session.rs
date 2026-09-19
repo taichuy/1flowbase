@@ -130,6 +130,14 @@ pub enum ProviderInvocationTransportOutcome {
     },
 }
 
+/// Execution-mode classification. Session outcomes retain the existing receipt
+/// contract; direct HTTP has no physical WebSocket session to acknowledge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderInvocationTransportClassification {
+    Http,
+    Session(ProviderInvocationTransportOutcome),
+}
+
 /// Typed result of a drain/close lifecycle command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
