@@ -156,7 +156,7 @@ async fn primary_failure_and_control_blocker_are_retained_without_provider_body(
         .await
         .unwrap()
         .unwrap();
-    let primary: anyhow::Result<super::super::ProviderRuntimeInvocationOutput> =
+    let primary: anyhow::Result<control_plane::ports::ProviderRuntimeInvocationOutput> =
         Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
             ProviderRuntimeErrorKind::RateLimited,
             "never-log-private-provider-body",

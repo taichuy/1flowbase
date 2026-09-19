@@ -4,6 +4,8 @@ use extension_contracts::provider_contract::{
     message_block_required_capabilities, semantic_required_capabilities, CommitLevel,
     CursorProvenance, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
     NativePromptCacheControl, NativePromptCacheControlType, ProtocolContextEnvelope,
+    ProviderTransportSessionIdentity, ProviderTransportClosureEvidence,
+    ProviderTransportClosureSource, ProviderTransportNoAckReason, ProviderTransportClosureOutcome,
     ProviderBalanceInfo, ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensCoverage,
     ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,

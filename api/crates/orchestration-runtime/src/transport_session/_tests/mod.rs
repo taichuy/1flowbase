@@ -8,7 +8,7 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
-    RegistryError, TerminationKind, TransportClock, TransportFenceStatus, TransportInstant,
+    RegistryError, TerminationKind, TransportClock, TransportFence, TransportFenceStatus, TransportInstant,
     TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
     TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
