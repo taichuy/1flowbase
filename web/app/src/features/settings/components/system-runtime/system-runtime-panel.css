@@ -12,11 +12,6 @@
   min-width: 0;
 }
 
-.system-runtime-panel__section + .system-runtime-panel__section {
-  padding-top: 24px;
-  border-top: 1px solid var(--border-default);
-}
-
 .system-runtime-panel__section h5.ant-typography {
   margin: 0;
   font-size: 14px;
@@ -27,67 +22,63 @@
   font-size: 15px;
 }
 
-.system-runtime-panel__environment-details .ant-descriptions-view table {
-  table-layout: fixed;
-}
-
-.system-runtime-panel__environment-details .ant-descriptions-item-content {
+.system-runtime-panel__tabs {
   min-width: 0;
 }
 
-.system-runtime-panel__process-memory {
-  display: grid;
-  gap: 2px;
+.system-runtime-panel__process-search {
+  width: 280px;
+  max-width: 100%;
 }
 
-.system-runtime-panel__process-memory-summary {
+.system-runtime-panel__process-tree-layout {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  gap: 24px;
+  min-height: 420px;
 }
 
-.system-runtime-panel__environment-details .ant-typography code {
-  overflow-wrap: anywhere;
+.system-runtime-panel__process-tree-panel {
+  flex: 0 0 320px;
+  min-width: 0;
+  max-height: 460px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  overflow: auto;
 }
 
-.system-runtime-panel__service-list {
-  overflow: hidden;
+.system-runtime-panel__process-detail-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--bg-surface);
 }
 
-.system-runtime-panel__service-row {
-  display: grid;
-  grid-template-columns:
-    minmax(180px, 1.2fr) repeat(3, minmax(130px, 1fr))
-    minmax(150px, 0.9fr);
-  align-items: center;
-  gap: 16px;
-  min-height: 72px;
-  padding: 12px 16px;
+.system-runtime-panel__process-detail {
+  width: 100%;
 }
 
-.system-runtime-panel__service-row + .system-runtime-panel__service-row {
-  border-top: 1px solid var(--border-default);
+.system-runtime-panel__process-detail .ant-descriptions-item-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.system-runtime-panel__service-row
-  > div:not(.system-runtime-panel__service-name) {
-  display: grid;
-  gap: 3px;
+.system-runtime-panel__process-tree {
+  min-width: 0;
 }
 
-.system-runtime-panel__service-name {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.system-runtime-panel__fingerprint {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.system-runtime-panel__process-tree-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .system-runtime-panel__metric-strip {
@@ -193,10 +184,6 @@
   margin: 0;
 }
 
-.system-runtime-panel__process-summary-tag--total {
-  font-weight: 600;
-}
-
 .system-runtime-panel__chart-panel .ant-segmented {
   width: fit-content;
 }
@@ -211,14 +198,6 @@
 }
 
 @media (max-width: 1199px) {
-  .system-runtime-panel__service-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .system-runtime-panel__fingerprint {
-    grid-column: 1 / -1;
-  }
-
   .system-runtime-panel__metric-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -238,17 +217,19 @@
     gap: 20px;
   }
 
-  .system-runtime-panel__section + .system-runtime-panel__section {
-    padding-top: 20px;
+  .system-runtime-panel__process-tree-layout {
+    display: grid;
+    gap: 16px;
+    min-height: 0;
   }
 
-  .system-runtime-panel__service-row,
+  .system-runtime-panel__process-tree-panel {
+    flex: none;
+    max-height: 280px;
+  }
+
   .system-runtime-panel__metric-strip {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .system-runtime-panel__service-row {
-    gap: 12px;
   }
 
   .system-runtime-panel__metric-gauge,

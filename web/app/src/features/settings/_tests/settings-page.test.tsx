@@ -177,7 +177,14 @@ const pluginsApi = vi.hoisted(() => ({
 
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
-  fetchSettingsSystemRuntimeProfile: vi.fn()
+  settingsSystemRuntimeProcessesQueryKey: [
+    'settings',
+    'system-runtime',
+    'processes'
+  ],
+  fetchSettingsSystemRuntimeProfile: vi.fn(),
+  fetchSettingsSystemRuntimeProcesses: vi.fn(),
+  terminateSettingsSystemRuntimeProcess: vi.fn()
 }));
 
 const fileManagementApi = vi.hoisted(() => ({

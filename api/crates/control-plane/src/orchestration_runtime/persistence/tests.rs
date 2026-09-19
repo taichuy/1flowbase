@@ -839,6 +839,7 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
                 waiting_node_resume: None,
                 resume_claim_id: None,
                 resume_claim_token: None,
+                tool_delivery_events: Vec::new(),
             },
         )
         .await
@@ -862,4 +863,107 @@ async fn native_reused_node_persists_distinct_callback_wait_occurrences() {
         .callback_tasks
         .iter()
         .all(|task| task.node_run_id == node.id));
+}
+
+// A provider fault after the tool call was generated must persist as a plain
+// failed run; the buffered tool candidate was never committed or delivered.
+#[tokio::test]
+async fn provider_fault_after_tool_call_discards_uncommitted_candidates() {
+    use crate::orchestration_runtime::{OrchestrationRuntimeService, StartFlowDebugRunCommand};
+    use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+    use orchestration_runtime::execution_state::NodeExecutionFailure;
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service
+        .seed_application_with_flow("provider fault after tool call")
+        .await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start":{"query":"test"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let run = started.flow_run;
+    let node = service
+        .repository
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "node-llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let error_payload = json!({"message":"provider_transport_receipt_invalid"});
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
+            node_id: node.node_id.clone(),
+            node_alias: "LLM".into(),
+            error_payload: error_payload.clone(),
+        }),
+        variable_pool: Map::new(),
+        checkpoint_snapshot: None,
+        operation_terminal: None,
+        node_traces: vec![trace(&node.node_id, json!({}), Some(error_payload.clone()))],
+    };
+    let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
+    let candidate = crate::orchestration_runtime::debug_stream_events::provider_output_item_done(
+        &node.node_id,
+        node.id,
+        0,
+        json!({"type":"custom_tool_call","call_id":"call-lost","name":"exec","input":"pwd"}),
+    );
+    let persisted = super::persist_flow_debug_outcome(
+        &service.repository,
+        super::PersistFlowDebugOutcomeInput {
+            scope_id: Uuid::nil(),
+            application_name: "provider fault after tool call",
+            task_queue: None,
+            application_id: seeded.application_id,
+            flow_run: &run,
+            compiled_plan: None,
+            outcome: &outcome,
+            prepared_node_runs: Some(&prepared),
+            answer_presentation: None,
+            trigger_event_type: "fixture",
+            trigger_event_payload: json!({}),
+            base_started_at: OffsetDateTime::now_utc(),
+            waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
+            tool_delivery_events: vec![candidate],
+        },
+    )
+    .await
+    .expect("a provider fault persists as a failed run, not an invariant error");
+    assert_eq!(persisted.flow_run.status, domain::FlowRunStatus::Failed);
+    assert_eq!(
+        persisted
+            .flow_run
+            .error_payload
+            .as_ref()
+            .map(|e| e["message"].clone()),
+        Some(json!("provider_transport_receipt_invalid"))
+    );
+    assert!(
+        !persisted
+            .stream_events
+            .iter()
+            .any(|event| event.event_type == "provider_output_item_done"),
+        "an uncommitted tool candidate must not be streamed"
+    );
+    let detail = service
+        .repository
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(detail.callback_tasks.is_empty());
 }

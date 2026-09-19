@@ -30,8 +30,9 @@ use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
         ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
-        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
-        ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
+        ProviderInvocationInput, ProviderModelDescriptor, ProviderResetCreditOperation,
+        ProviderResetCreditResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderUsageWindowsResult,
     },
     ForwardProxyLease,
@@ -67,7 +68,9 @@ mod distribution_registry;
 mod model_provider_slot;
 mod transport_session_lifecycle;
 
-pub(crate) use transport_session_lifecycle::TransportTerminationNotice;
+pub(crate) use transport_session_lifecycle::{
+    TransportConnectionScope, TransportTerminationNotice,
+};
 
 use distribution_registry::EffectiveProviderDistributionSnapshot;
 
@@ -317,8 +320,12 @@ impl ApiRuntimeServices {
         self.transport_sessions.subscribe()
     }
 
-    pub(crate) async fn mark_transport_owner_orphaned(&self, owner_id: &str) {
-        self.transport_sessions.mark_owner_orphaned(owner_id).await;
+    pub(crate) fn open_transport_connection_scope(&self) -> Arc<TransportConnectionScope> {
+        self.transport_sessions.open_connection_scope()
+    }
+
+    pub(crate) async fn close_transport_connection_scope(&self, scope: &TransportConnectionScope) {
+        self.transport_sessions.close_connection_scope(scope).await;
     }
 
     pub(crate) async fn transport_session_snapshot(
@@ -885,6 +892,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
+        let mut invocation = input.into_invocation();
+        transport_session_lifecycle::take_transport_connection_scope(&mut invocation);
+        let input = ProviderCountTokensInput::from_invocation(invocation);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.as_invocation().provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -916,8 +926,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn compact(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -935,8 +946,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn invoke_stream(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -953,6 +965,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     result: output.result,
                 })
                 .map_err(map_runtime_backend_error)
+                .and_then(validate_provider_invocation_output)
         }
         .await;
         trace_provider_operation_boundary(
@@ -972,9 +985,10 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn invoke_stream_with_live_events(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -997,6 +1011,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     result: output.result,
                 })
                 .map_err(map_runtime_backend_error)
+                .and_then(validate_provider_invocation_output)
         }
         .await;
         trace_provider_operation_boundary(
@@ -1095,26 +1110,21 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 events: output.events,
                 result: output.result,
             })
-            .map_err(map_runtime_backend_error);
+            .map_err(map_runtime_backend_error)
+            .and_then(validate_provider_invocation_output);
         if let Some(prepared) = transport_invocation {
-            if let Err(error) = self
+            let completion = self
                 .services
                 .transport_sessions
                 .finish(prepared, &invocation)
-                .await
-            {
-                invocation = Err(error);
-            }
+                .await;
+            invocation = preserve_provider_invocation_outcome(invocation, completion);
         }
         let release = match scope {
             Some(scope) => scope.release().await,
             None => Ok(()),
         };
-        let result = match (invocation, release) {
-            (Err(error), _) => Err(error),
-            (Ok(_), Err(error)) => Err(error),
-            (Ok(output), Ok(())) => Ok(output),
-        };
+        let result = preserve_provider_invocation_outcome(invocation, release);
         finish_runtime_activity(activity, &result);
         result
     }
@@ -1924,6 +1934,60 @@ fn runtime_execution_request(
         principal,
     })
 }
+
+/// Runtime implementations must not turn an error event or error delimiter into
+/// a successful call. Stdio already enforces this; this is the port boundary for
+/// other Runtime Backends and retains the first canonical provider diagnostic.
+fn validate_provider_invocation_output(
+    output: ProviderRuntimeInvocationOutput,
+) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+    if let Some(error) = output.events.iter().find_map(|event| match event {
+        ProviderStreamEvent::Error { error } => Some(error.clone()),
+        _ => None,
+    }) {
+        return Err(PluginFrameworkError::runtime(error).into());
+    }
+    if output.result.finish_reason == Some(ProviderFinishReason::Error)
+        || output.events.iter().any(|event| {
+            matches!(
+                event,
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Error
+                }
+            )
+        })
+    {
+        return Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            "provider invocation failed without an error diagnostic",
+        ))
+        .into());
+    }
+    Ok(output)
+}
+
+fn preserve_provider_invocation_outcome(
+    invocation: anyhow::Result<ProviderRuntimeInvocationOutput>,
+    completion: anyhow::Result<()>,
+) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+    match (invocation, completion) {
+        (Err(primary), secondary) => {
+            if secondary.is_err() {
+                // Secondary lifecycle diagnostics contain no provider payload.
+                tracing::warn!(
+                    "provider invocation retained primary error after secondary cleanup failure"
+                );
+            }
+            Err(primary)
+        }
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(output), Ok(())) => Ok(output),
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/invocation_outcome.rs"]
+mod invocation_outcome_tests;
 
 fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {

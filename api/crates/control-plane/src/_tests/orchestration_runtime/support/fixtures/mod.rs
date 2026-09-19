@@ -625,6 +625,22 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         .expect("runtime events should be readable")
     }
 
+    pub async fn claim_runtime_deliveries_for_tests(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Vec<crate::ports::RuntimeEventDeliveryClaim> {
+        OrchestrationRuntimeRepository::claim_runtime_event_deliveries(
+            &self.repository,
+            &crate::ports::ClaimRuntimeEventDeliveriesInput {
+                flow_run_id,
+                limit: 128,
+                lease_seconds: 30,
+            },
+        )
+        .await
+        .expect("runtime event deliveries should be claimable")
+    }
+
     pub fn list_run_events(&self, flow_run_id: Uuid) -> Vec<domain::RunEventRecord> {
         self.repository.events_for_flow_run(flow_run_id)
     }

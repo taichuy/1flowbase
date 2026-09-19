@@ -392,6 +392,163 @@ async fn root_1998_normal_bridge_delivers_terminal_and_finalizes_once() {
     completed_once(observed, InterfaceInvocationTerminal::Completed).await;
 }
 
+fn committed_tool_claim(run: &NativeRunResult) -> control_plane::ports::RuntimeEventDeliveryClaim {
+    let mut event = debug_stream_events::provider_output_item_done(
+        "llm",
+        Uuid::now_v7(),
+        0,
+        json!({"type":"function_call","call_id":"call-ws","name":"shell","arguments":"{}"}),
+    );
+    event.payload["committed_delivery"] = json!(true);
+    control_plane::ports::RuntimeEventDeliveryClaim {
+        event: domain::RuntimeEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: run.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            sequence: 1,
+            event_type: event.event_type,
+            layer: domain::RuntimeEventLayer::ProviderRaw,
+            source: domain::RuntimeEventSource::ProviderPlugin,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: event.payload,
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+            created_at: time::OffsetDateTime::now_utc(),
+        },
+        claim_token: Uuid::now_v7(),
+        generation: 1,
+        lease_expires_at: time::OffsetDateTime::now_utc(),
+    }
+}
+
+fn committed_tool_event(
+    run: &NativeRunResult,
+    claim: &control_plane::ports::RuntimeEventDeliveryClaim,
+) -> RuntimeEventEnvelope {
+    RuntimeEventEnvelope::new(
+        run.id,
+        claim.event.sequence,
+        control_plane::ports::RuntimeEventPayload {
+            event_type: claim.event.event_type.clone(),
+            source: control_plane::ports::RuntimeEventSource::Provider,
+            durability: control_plane::ports::RuntimeEventDurability::DurableRequired,
+            persist_required: false,
+            trace_visible: true,
+            payload: claim.event.payload.clone(),
+        },
+    )
+}
+
+fn transparent_ws_projector() -> ResponsesWebSocketProjector {
+    ResponsesWebSocketProjector::with_mode(
+        "model".into(),
+        None,
+        crate::routes::application_public_api::compat_sse::ResponsesProjectionMode::TransparentProviderResponses,
+    )
+}
+
+// AC-002: the WebSocket writer settles the durable tool delivery from the
+// real frame write, never from the internal enqueue.
+#[tokio::test]
+async fn issue_2079_websocket_writer_acks_tool_delivery_only_after_frames_are_written() {
+    use crate::routes::application_public_api::delivery_receipt::{
+        RuntimeEventDeliveryReceipt, RuntimeEventDeliveryVerdict,
+    };
+    let (publisher, invocation, observed) = invocation().await;
+    let (events, completion) = invocation.into_parts();
+    let (frames, mut received) = mpsc::channel(8);
+    let mut run = run();
+    run.status = NativeRunStatus::Succeeded;
+    let claim = committed_tool_claim(&run);
+    let (receipt, probe) = RuntimeEventDeliveryReceipt::probe(claim.clone());
+    publisher
+        .emit(CompatibilityStreamEvent::with_delivery(
+            run.clone(),
+            committed_tool_event(&run, &claim),
+            Some(receipt),
+        ))
+        .await
+        .unwrap();
+    publisher
+        .emit(CompatibilityStreamEvent::new(
+            run.clone(),
+            RuntimeEventEnvelope::new(
+                run.id,
+                2,
+                debug_stream_events::flow_finished(run.id, json!({})),
+            ),
+        ))
+        .await
+        .unwrap();
+    publisher
+        .finish(InterfaceStreamTerminal::Completed(
+            CompatibilityBlockingOutput(run),
+        ))
+        .await
+        .unwrap();
+    project_turn(events, completion, transparent_ws_projector(), frames)
+        .await
+        .expect("tool item and terminal both project");
+    let mut types = Vec::new();
+    while let Some(frame) = received.recv().await {
+        let frame: Value = serde_json::from_str(&frame).unwrap();
+        types.push(frame["type"].as_str().unwrap().to_string());
+    }
+    assert!(
+        types.iter().any(|kind| kind == "response.output_item.done"),
+        "tool item must be written: {types:?}"
+    );
+    assert_eq!(
+        probe.verdict().await,
+        Some(RuntimeEventDeliveryVerdict::Projected)
+    );
+    completed_once(observed, InterfaceInvocationTerminal::Completed).await;
+}
+
+#[tokio::test]
+async fn issue_2079_closed_websocket_writer_marks_tool_delivery_uncertain() {
+    use crate::routes::application_public_api::delivery_receipt::{
+        RuntimeEventDeliveryReceipt, RuntimeEventDeliveryVerdict,
+    };
+    let (publisher, invocation, observed) = invocation().await;
+    let (events, completion) = invocation.into_parts();
+    let (frames, received) = mpsc::channel(8);
+    drop(received);
+    let run = run();
+    let claim = committed_tool_claim(&run);
+    let (receipt, probe) = RuntimeEventDeliveryReceipt::probe(claim.clone());
+    publisher
+        .emit(CompatibilityStreamEvent::with_delivery(
+            run.clone(),
+            committed_tool_event(&run, &claim),
+            Some(receipt),
+        ))
+        .await
+        .unwrap();
+    let result = project_turn(events, completion, transparent_ws_projector(), frames).await;
+    assert!(matches!(
+        result,
+        Err(ResponsesTurnBridgeError::SocketWriterClosed)
+    ));
+    // The frame write was attempted against a dead socket: the client may or
+    // may not hold the tool call, so the delivery must not replay blindly.
+    assert_eq!(
+        probe.verdict().await,
+        Some(RuntimeEventDeliveryVerdict::Uncertain)
+    );
+    publisher
+        .finish(InterfaceStreamTerminal::Completed(
+            CompatibilityBlockingOutput(run),
+        ))
+        .await
+        .unwrap();
+    completed_once(observed, InterfaceInvocationTerminal::Completed).await;
+}
+
 #[tokio::test]
 async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completion() {
     use super::super::actor::run_connection_loop;
@@ -636,6 +793,81 @@ async fn issue_2028_sse_terminal_closes_delivery_without_waiting_for_producer_dr
         assert!(
             received.recv().await.is_none(),
             "SSE sender must close after the independent receipt"
+        );
+        completed_once(observed, InterfaceInvocationTerminal::Completed).await;
+        drop(publisher);
+    }
+}
+
+// AC-002 (SSE lane): the SSE writer ACKs a tool delivery only after the
+// frames reached the response sender; a closed sender leaves it uncertain.
+#[tokio::test]
+async fn issue_2079_sse_writer_settles_tool_delivery_from_the_real_write() {
+    use crate::routes::application_public_api::{
+        compat_sse::{openai_responses_interface_projection_with_mode, ResponsesProjectionMode},
+        compatibility_interface::project_compatibility_stream,
+        delivery_receipt::{RuntimeEventDeliveryReceipt, RuntimeEventDeliveryVerdict},
+    };
+    for writer_closed in [false, true] {
+        let (publisher, invocation, observed) = invocation().await;
+        let (frames, mut received) = mpsc::channel(8);
+        if writer_closed {
+            received.close();
+        }
+        let mut run = run();
+        run.status = NativeRunStatus::Succeeded;
+        let claim = committed_tool_claim(&run);
+        let (receipt, probe) = RuntimeEventDeliveryReceipt::probe(claim.clone());
+        publisher
+            .emit(CompatibilityStreamEvent::with_delivery(
+                run.clone(),
+                committed_tool_event(&run, &claim),
+                Some(receipt),
+            ))
+            .await
+            .unwrap();
+        publisher
+            .emit(CompatibilityStreamEvent::new(
+                run.clone(),
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    2,
+                    debug_stream_events::flow_finished(run.id, json!({})),
+                ),
+            ))
+            .await
+            .unwrap();
+        publisher
+            .finish(InterfaceStreamTerminal::Completed(
+                CompatibilityBlockingOutput(run),
+            ))
+            .await
+            .unwrap();
+        let (events, completion) = invocation.into_parts();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            project_compatibility_stream(
+                events,
+                completion,
+                openai_responses_interface_projection_with_mode(
+                    "model".into(),
+                    None,
+                    ResponsesProjectionMode::TransparentProviderResponses,
+                ),
+                frames,
+            ),
+        )
+        .await
+        .expect("SSE projection completes");
+        let expected = if writer_closed {
+            RuntimeEventDeliveryVerdict::Uncertain
+        } else {
+            RuntimeEventDeliveryVerdict::Projected
+        };
+        assert_eq!(
+            probe.verdict().await,
+            Some(expected),
+            "writer_closed={writer_closed}"
         );
         completed_once(observed, InterfaceInvocationTerminal::Completed).await;
         drop(publisher);

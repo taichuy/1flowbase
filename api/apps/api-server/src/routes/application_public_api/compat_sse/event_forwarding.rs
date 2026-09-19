@@ -1,4 +1,7 @@
 use super::*;
+use crate::routes::application_public_api::delivery_receipt::{
+    RuntimeEventDeliveryReceipt, RuntimeEventDeliverySettler,
+};
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) terminal_dependencies: NativeRunTerminalDependencies,
@@ -9,8 +12,30 @@ pub(super) struct SubscribedCompatibleTypedEventStream {
     pub(super) sender: mpsc::Sender<CompatibleProjectionInput>,
 }
 
+/// Forwards cursor-ordered facts to the protocol projector. Committed tool
+/// deliveries are claimed here, but their durable ACK is settled only from the
+/// protocol writer's receipt; this task waits for every receipt to settle.
 pub(super) async fn send_subscribed_compatible_typed_event_stream(
     stream: SubscribedCompatibleTypedEventStream,
+) {
+    let settler = RuntimeEventDeliverySettler::spawn(stream.terminal_dependencies.clone());
+    forward_subscribed_typed_events(stream, &settler).await;
+    settler.settled().await;
+}
+
+struct TypedForwarding<'a> {
+    terminal_dependencies: &'a NativeRunTerminalDependencies,
+    initial_run: &'a NativeRunResult,
+    sender: &'a mpsc::Sender<CompatibleProjectionInput>,
+    settler: &'a RuntimeEventDeliverySettler,
+    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+    last_forwarded_sequence: i64,
+    emitted_answer_delta: bool,
+}
+
+async fn forward_subscribed_typed_events(
+    stream: SubscribedCompatibleTypedEventStream,
+    settler: &RuntimeEventDeliverySettler,
 ) {
     // The only synthesized typed facts are canonical answer deltas recovered
     // from a durable terminal snapshot when the live lane did not deliver them.
@@ -22,16 +47,70 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
         mut subscription,
         sender,
     } = stream;
-    let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
-    let mut emitted_answer_delta = false;
-    if forward_ordered_typed_events(
-        &terminal_dependencies,
-        &initial_run,
-        &sender,
+    let mut forwarding = TypedForwarding {
+        terminal_dependencies: &terminal_dependencies,
+        initial_run: &initial_run,
+        sender: &sender,
+        settler,
         ignored_waiting_callback_task_id,
-        &mut last_forwarded_sequence,
-        &mut emitted_answer_delta,
-        subscription.replay,
+        last_forwarded_sequence: from_sequence.unwrap_or(0),
+        emitted_answer_delta: false,
+    };
+    let mut delivery_claims = match terminal_dependencies
+        .claim_runtime_event_deliveries(initial_run.id)
+        .await
+    {
+        Ok(claims) => claims,
+        Err(error) => {
+            warn!(
+                flow_run_id = %initial_run.id,
+                error = %error,
+                "failed to claim pending Responses tool deliveries"
+            );
+            Vec::new()
+        }
+    };
+    let mut delivered_claim_events = Vec::new();
+    for event in subscription.replay {
+        if is_public_terminal_runtime_event(&event.event_type)
+            && !delivery_claims.is_empty()
+            && forward_pending_delivery_claims(
+                &mut forwarding,
+                &mut delivery_claims,
+                &mut delivered_claim_events,
+            )
+            .await
+        {
+            return;
+        }
+        let matching_claim = delivery_claims
+            .iter()
+            .position(|delivery| runtime_delivery_matches_envelope(delivery, &event));
+        if is_committed_tool_delivery(&event) && matching_claim.is_none() {
+            // A committed tool event is projected only by the owner of its
+            // durable delivery claim. An already-ACKed replay must not execute
+            // the client tool a second time.
+            forwarding.last_forwarded_sequence =
+                forwarding.last_forwarded_sequence.max(event.sequence);
+            continue;
+        }
+        let receipt = matching_claim.map(|index| {
+            let delivery = delivery_claims.remove(index);
+            delivered_claim_events.push((
+                delivery.event.event_type.clone(),
+                delivery.event.payload.clone(),
+            ));
+            settler.receipt(delivery)
+        });
+        if forward_ordered_typed_events(&mut forwarding, vec![(event, receipt)]).await {
+            release_delivery_claims(settler, delivery_claims);
+            return;
+        }
+    }
+    if forward_pending_delivery_claims(
+        &mut forwarding,
+        &mut delivery_claims,
+        &mut delivered_claim_events,
     )
     .await
     {
@@ -39,52 +118,139 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     }
 
     while let Some(event) = subscription.live_events.recv().await {
-        if forward_ordered_typed_events(
-            &terminal_dependencies,
-            &initial_run,
-            &sender,
-            ignored_waiting_callback_task_id,
-            &mut last_forwarded_sequence,
-            &mut emitted_answer_delta,
-            vec![event],
-        )
-        .await
-        {
+        if delivered_claim_events.iter().any(|(event_type, payload)| {
+            event_type == &event.event_type && payload == &event.payload
+        }) {
+            forwarding.last_forwarded_sequence =
+                forwarding.last_forwarded_sequence.max(event.sequence);
+            continue;
+        }
+        if is_committed_tool_delivery(&event) {
+            let mut claims = match terminal_dependencies
+                .claim_runtime_event_deliveries(initial_run.id)
+                .await
+            {
+                Ok(claims) => claims,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        error = %error,
+                        "failed to claim live Responses tool delivery"
+                    );
+                    continue;
+                }
+            };
+            let Some(index) = claims
+                .iter()
+                .position(|delivery| runtime_delivery_matches_envelope(delivery, &event))
+            else {
+                release_delivery_claims(settler, claims);
+                continue;
+            };
+            let delivery = claims.remove(index);
+            release_delivery_claims(settler, claims);
+            let receipt = settler.receipt(delivery);
+            if forward_ordered_typed_events(&mut forwarding, vec![(event, Some(receipt))]).await {
+                return;
+            }
+            continue;
+        }
+        if forward_ordered_typed_events(&mut forwarding, vec![(event, None)]).await {
             return;
         }
     }
 }
 
-async fn forward_ordered_typed_events(
-    terminal_dependencies: &NativeRunTerminalDependencies,
-    initial_run: &NativeRunResult,
-    sender: &mpsc::Sender<CompatibleProjectionInput>,
-    ignored_waiting_callback_task_id: Option<uuid::Uuid>,
-    last_forwarded_sequence: &mut i64,
-    emitted_answer_delta: &mut bool,
-    events: Vec<RuntimeEventEnvelope>,
+fn is_committed_tool_delivery(event: &RuntimeEventEnvelope) -> bool {
+    event
+        .payload
+        .get("committed_delivery")
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+fn runtime_delivery_matches_envelope(
+    delivery: &RuntimeEventDeliveryClaim,
+    event: &RuntimeEventEnvelope,
 ) -> bool {
-    for event in events {
+    delivery.event.event_type == event.event_type && delivery.event.payload == event.payload
+}
+
+fn release_delivery_claims(
+    settler: &RuntimeEventDeliverySettler,
+    deliveries: Vec<RuntimeEventDeliveryClaim>,
+) {
+    for delivery in deliveries {
+        settler.release(delivery);
+    }
+}
+
+async fn forward_pending_delivery_claims(
+    forwarding: &mut TypedForwarding<'_>,
+    deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
+    delivered_claim_events: &mut Vec<(String, Value)>,
+) -> bool {
+    while !deliveries.is_empty() {
+        let delivery = deliveries.remove(0);
+        let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
+        let mut run = forwarding.initial_run.clone();
+        if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
+            run.metadata["response_round_id"] = round_id.clone();
+        }
+        delivered_claim_events.push((
+            delivery.event.event_type.clone(),
+            delivery.event.payload.clone(),
+        ));
+        let receipt = forwarding.settler.receipt(delivery);
+        if forwarding
+            .sender
+            .send(CompatibleProjectionInput {
+                run_snapshot: run,
+                envelope,
+                delivery: Some(receipt),
+            })
+            .await
+            .is_err()
+        {
+            // The dropped input releases its own receipt; only the claims that
+            // never became receipts still need an explicit release.
+            release_delivery_claims(forwarding.settler, std::mem::take(deliveries));
+            return true;
+        }
+    }
+    false
+}
+
+async fn forward_ordered_typed_events(
+    forwarding: &mut TypedForwarding<'_>,
+    events: Vec<(RuntimeEventEnvelope, Option<RuntimeEventDeliveryReceipt>)>,
+) -> bool {
+    for (event, receipt) in events {
         let Some(event) = take_ordered_compatible_event(
             event,
-            last_forwarded_sequence,
-            ignored_waiting_callback_task_id,
+            &mut forwarding.last_forwarded_sequence,
+            forwarding.ignored_waiting_callback_task_id,
         ) else {
+            if let Some(receipt) = receipt {
+                // The client cursor is already past this committed fact; the
+                // client has consumed it and it must not replay.
+                receipt.projected();
+            }
             continue;
         };
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let mut run = if terminal {
             let run = match load_durable_native_run_for_terminal_projection_with_dependencies(
-                terminal_dependencies,
-                initial_run,
+                forwarding.terminal_dependencies,
+                forwarding.initial_run,
             )
             .await
             {
                 Ok(run) => run,
                 Err(error) => {
                     warn!(
-                        flow_run_id = %initial_run.id,
-                        application_id = %initial_run.application_id,
+                        flow_run_id = %forwarding.initial_run.id,
+                        application_id = %forwarding.initial_run.application_id,
                         error = %error,
                         "typed public terminal blocked because durable run reload failed"
                     );
@@ -93,40 +259,44 @@ async fn forward_ordered_typed_events(
             };
             if !durable_native_run_matches_terminal(&run, &event.event_type) {
                 warn!(
-                    flow_run_id = %initial_run.id,
+                    flow_run_id = %forwarding.initial_run.id,
                     durable_status = ?run.status,
                     event_type = %event.event_type,
                     "typed public terminal blocked because durable status does not match"
                 );
                 continue;
             }
-            if !*emitted_answer_delta {
+            if !forwarding.emitted_answer_delta {
                 for answer_event in durable_canonical_partial_runtime_events_from_native_run(&run) {
-                    if sender
+                    if forwarding
+                        .sender
                         .send(CompatibleProjectionInput {
                             run_snapshot: run.clone(),
                             envelope: answer_event,
+                            delivery: None,
                         })
                         .await
                         .is_err()
                     {
                         return true;
                     }
-                    *emitted_answer_delta = true;
+                    forwarding.emitted_answer_delta = true;
                 }
             }
             run
         } else {
-            initial_run.clone()
+            forwarding.initial_run.clone()
         };
-        if let Some(round_id) = initial_run.metadata.get("response_round_id") {
+        if let Some(round_id) = forwarding.initial_run.metadata.get("response_round_id") {
             run.metadata["response_round_id"] = round_id.clone();
         }
-        *emitted_answer_delta |= is_answer_presentation_delta(&event);
-        if sender
+        forwarding.emitted_answer_delta |= is_answer_presentation_delta(&event);
+        if forwarding
+            .sender
             .send(CompatibleProjectionInput {
                 run_snapshot: run,
                 envelope: event,
+                delivery: receipt,
             })
             .await
             .is_err()
@@ -459,7 +629,6 @@ fn log_compatible_sse_closed(
     );
 }
 
-#[cfg(test)]
 fn durable_record_to_runtime_event_envelope(
     record: domain::RuntimeEventRecord,
 ) -> RuntimeEventEnvelope {
@@ -498,7 +667,6 @@ fn durable_record_to_runtime_event_envelope(
     }
 }
 
-#[cfg(test)]
 fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {
         value
@@ -507,7 +675,6 @@ fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     })
 }
 
-#[cfg(test)]
 fn compat_payload_string(payload: &Value, key: &str) -> Option<String> {
     payload
         .get(key)

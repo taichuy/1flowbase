@@ -102,3 +102,62 @@ async fn generate_false_executes_bridge_and_standard_continuation_stays_provider
     .await
     .expect("prewarm and continuation must complete within the bounded test window");
 }
+
+#[tokio::test]
+async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() {
+    use super::super::actor::run_connection_loop_with_terminations;
+    use crate::provider_runtime::TransportTerminationNotice;
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        use orchestration_runtime::transport_session::*;
+        let mut registry = TransportSessionRegistry::new(SystemTransportClock::default(), TransportRegistryConfig::default()).unwrap();
+        let fence = registry.admit(AdmissionRequest {
+            session_id: TransportSessionId::new("terminal-fixture").unwrap(),
+            owner_id: TransportOwnerId::new("owner-fixture").unwrap(),
+            provider_id: TransportProviderId::new("provider").unwrap(),
+            runtime_target_id: TransportRuntimeTargetId::new("runtime").unwrap(),
+            provider_hard_deadline: None,
+        }).unwrap();
+        registry.activate(&fence).unwrap();
+        let lease = registry.begin_invocation(&fence, InvocationRequest::default()).unwrap();
+        let scope = crate::provider_runtime::TransportConnectionScope::for_test(lease.clone());
+        let route_scope = scope.clone();
+        let (notices, _) = tokio::sync::broadcast::channel(4);
+        let route_notices = notices.clone();
+        let finish = Arc::new(tokio::sync::Notify::new());
+        let route_finish = finish.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = Router::new().route("/ws", get(move |upgrade: WebSocketUpgrade| {
+            let termination = route_notices.subscribe();
+            let finish = route_finish.clone();
+            let scope = route_scope.clone();
+            async move {
+                upgrade.on_upgrade(move |socket| {
+                    run_connection_loop_with_terminations(socket, move |_, frames| {
+                        let finish = finish.clone();
+                        async move {
+                            frames.send(json!({"type":"response.failed","response":{"status":"failed","error":{"code":"original-provider-error"}}}).to_string()).await.unwrap();
+                            frames.send(json!({"type":"response.completed","response":{"status":"completed"}}).to_string()).await.unwrap();
+                            finish.notified().await;
+                            Ok::<_, ResponsesTurnBridgeError>(())
+                        }
+                    }, Some((scope, termination)))
+                })
+            }
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}/ws")).await.unwrap();
+        socket.send(Message::Text(json!({"type":"response.create","model":"model","input":[]}).to_string())).await.unwrap();
+        let first: Value = serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        assert_eq!(first["type"], "response.failed");
+        assert_eq!(first["response"]["error"]["code"], "original-provider-error");
+        // Receiving the first terminal is the causal barrier before physical close.
+        notices.send(TransportTerminationNotice { owner_id:"owner-fixture".into(), fence, invocation_sequence:Some(lease.sequence()), connection_scope_id:Some(scope.id().into()), code:"provider_connection_max_age" }).unwrap();
+        assert!(matches!(socket.next().await.unwrap().unwrap(), Message::Close(_)), "close must not append another success or failure terminal");
+        let _ = socket.close(None).await;
+        finish.notify_one();
+        server.abort();
+        let _ = server.await;
+    }).await.expect("terminal-once fixture must finish within its bound");
+}

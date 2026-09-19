@@ -13,6 +13,30 @@ async fn persist_callback_wait(
     parent_context_version_id: Option<Uuid>,
     resume_claim: Option<(Uuid, Uuid)>,
 ) -> control_plane_contracts::ports::PersistedWaitingState {
+    persist_callback_wait_with_tool_count(
+        store,
+        seeded,
+        run,
+        node_run,
+        wait_index,
+        parent_context_version_id,
+        resume_claim,
+        1,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn persist_callback_wait_with_tool_count(
+    store: &PgControlPlaneStore,
+    seeded: &RuntimeSeedState,
+    run: &domain::FlowRunRecord,
+    node_run: &domain::NodeRunRecord,
+    wait_index: usize,
+    parent_context_version_id: Option<Uuid>,
+    resume_claim: Option<(Uuid, Uuid)>,
+    tool_count: usize,
+) -> control_plane_contracts::ports::PersistedWaitingState {
     let (resume_claim_id, resume_claim_token) = resume_claim.unzip();
     store
         .persist_waiting_state(&PersistWaitingStateInput {
@@ -64,15 +88,33 @@ async fn persist_callback_wait(
                 visibility: domain::RuntimeEventVisibility::Workspace,
                 durability: domain::RuntimeEventDurability::Durable,
             },
+            tool_delivery_events: vec![AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node_run.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "provider_output_item_done".into(),
+                layer: domain::RuntimeEventLayer::ProviderRaw,
+                source: domain::RuntimeEventSource::ProviderPlugin,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({
+                    "output_index": wait_index - 1,
+                    "item": { "type": "function_call", "call_id": format!("call-{wait_index}") }
+                }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            }],
             kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
                 id: Uuid::now_v7(),
                 callback_kind: "llm_tool_calls".into(),
                 request_payload: json!({
-                    "tool_calls": [{
-                        "id": format!("call-{wait_index}"),
+                    "tool_calls": (0..tool_count).map(|index| json!({
+                        "id": format!("call-{wait_index}-{index}"),
                         "name": "Bash",
-                        "arguments": { "command": format!("step-{wait_index}") }
-                    }]
+                        "arguments": { "command": format!("step-{wait_index}-{index}") }
+                    })).collect::<Vec<_>>()
                 }),
                 external_ref_payload: None,
             }),
@@ -80,6 +122,368 @@ async fn persist_callback_wait(
         .await
         .unwrap()
         .expect("the callback wait should win its expected status transition")
+}
+
+#[tokio::test]
+async fn committed_tool_delivery_is_durably_claimed_released_and_acked() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    assert_eq!(waiting.tool_delivery_events.len(), 1);
+    assert!(waiting.tool_delivery_events[0].sequence < waiting.waiting_event.sequence);
+
+    let first = store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].event.id, waiting.tool_delivery_events[0].id);
+    assert!(store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .is_empty());
+
+    store
+        .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+            event_id: first[0].event.id,
+            claim_token: first[0].claim_token,
+            expected_generation: first[0].generation,
+        })
+        .await
+        .unwrap();
+    let second = store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap();
+    assert_eq!(second[0].generation, first[0].generation + 1);
+    store
+        .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+            event_id: second[0].event.id,
+            claim_token: second[0].claim_token,
+            expected_generation: second[0].generation,
+            acknowledged_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .claim_runtime_event_deliveries(&ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run.id,
+            limit: 10,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn uncertain_tool_delivery_leaves_the_replay_set_and_is_fenced_by_its_claim() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+
+    let claim_input = ClaimRuntimeEventDeliveriesInput {
+        flow_run_id: run.id,
+        limit: 10,
+        lease_seconds: 30,
+    };
+    let claimed = store
+        .claim_runtime_event_deliveries(&claim_input)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    let claim = &claimed[0];
+
+    // A stale claim token cannot settle the row.
+    let stale = store
+        .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+            event_id: claim.event.id,
+            claim_token: Uuid::now_v7(),
+            expected_generation: claim.generation,
+            marked_at: OffsetDateTime::now_utc(),
+        })
+        .await;
+    assert!(stale.is_err());
+
+    store
+        .mark_runtime_event_delivery_uncertain(&MarkRuntimeEventDeliveryUncertainInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+            marked_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let status =
+        sqlx::query_scalar::<_, String>("select delivery_status from runtime_events where id = $1")
+            .bind(waiting.tool_delivery_events[0].id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(status, "uncertain");
+    assert!(
+        store
+            .claim_runtime_event_deliveries(&claim_input)
+            .await
+            .unwrap()
+            .is_empty(),
+        "an uncertain delivery never replays automatically, even after the lease"
+    );
+    // Neither ACK nor release may move an uncertain row: it is settled.
+    assert!(store
+        .ack_runtime_event_delivery(&AckRuntimeEventDeliveryInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+            acknowledged_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .is_err());
+    assert!(store
+        .release_runtime_event_delivery(&ReleaseRuntimeEventDeliveryInput {
+            event_id: claim.event.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn parked_tool_round_attempt_is_reacquired_by_exactly_one_delivery() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 10:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    let callback_task_id = waiting.callback_task.as_ref().unwrap().id;
+
+    let recorded = store
+        .record_flow_run_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+            flow_run_id: run.id,
+            callback_task_id,
+            source: "openai_responses".to_string(),
+            response_payload: json!({"tool_results":[{"tool_call_id":"call-1","content":"a"}]}),
+            idempotency_key: format!("callback_task:{callback_task_id}"),
+        })
+        .await
+        .unwrap();
+    assert!(recorded.inserted);
+    let attempt_id = recorded.attempt.id;
+
+    // Processing cannot be claimed again.
+    assert!(store
+        .claim_flow_run_callback_resume_attempt(attempt_id, &json!({"x":1}))
+        .await
+        .unwrap()
+        .is_none());
+
+    let parked = store
+        .park_flow_run_callback_resume_attempt(attempt_id)
+        .await
+        .unwrap()
+        .expect("processing attempt parks");
+    assert_eq!(
+        parked.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Received
+    );
+
+    let second_payload = json!({"tool_results":[{"tool_call_id":"call-2","content":"b"}]});
+    let store = std::sync::Arc::new(store);
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(4));
+    let mut claims = Vec::new();
+    for _ in 0..4 {
+        let store = store.clone();
+        let barrier = barrier.clone();
+        let payload = second_payload.clone();
+        claims.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .claim_flow_run_callback_resume_attempt(attempt_id, &payload)
+                .await
+                .unwrap()
+        }));
+    }
+    let mut winners = 0;
+    for claim in claims {
+        if let Some(attempt) = claim.await.unwrap() {
+            winners += 1;
+            assert_eq!(
+                attempt.status,
+                domain::FlowRunCallbackResumeAttemptStatus::Processing
+            );
+            assert_eq!(attempt.response_payload, second_payload);
+        }
+    }
+    assert_eq!(winners, 1);
+}
+
+fn tool_result(tool_call_id: &str, content: Value) -> ToolCallbackResultInput {
+    ToolCallbackResultInput::from_payload(json!({
+        "tool_call_id": tool_call_id,
+        "content": content,
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn tool_callback_inbox_replays_same_result_conflicts_on_difference_and_waits_for_round() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 11:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting =
+        persist_callback_wait_with_tool_count(&store, &seeded, &run, &node_run, 1, None, None, 2)
+            .await;
+    let callback = waiting.callback_task.unwrap();
+    let input = |results| CommitToolCallbackResultsInput {
+        scope_id: seeded.workspace_id,
+        application_id: seeded.application_id,
+        flow_run_id: run.id,
+        checkpoint_id: waiting.checkpoint.id,
+        callback_task_id: callback.id,
+        results,
+    };
+
+    let first = store
+        .commit_tool_callback_results(&input(vec![tool_result("call-1-0", json!("A"))]))
+        .await
+        .unwrap();
+    assert_eq!(
+        first.disposition,
+        ToolCallbackRoundDisposition::WaitingForResults
+    );
+    assert_eq!(first.callback_task.status, CallbackTaskStatus::Pending);
+
+    let replay = store
+        .commit_tool_callback_results(&input(vec![tool_result("call-1-0", json!("A"))]))
+        .await
+        .unwrap();
+    assert_eq!(
+        replay.disposition,
+        ToolCallbackRoundDisposition::WaitingForResults
+    );
+    let conflict = store
+        .commit_tool_callback_results(&input(vec![tool_result("call-1-0", json!("different"))]))
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        conflict.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict("tool_callback_result_conflict"))
+    ));
+
+    let completed = store
+        .commit_tool_callback_results(&input(vec![tool_result("call-1-1", json!("B"))]))
+        .await
+        .unwrap();
+    assert_eq!(
+        completed.disposition,
+        ToolCallbackRoundDisposition::Acquired
+    );
+    assert_eq!(
+        completed.callback_task.status,
+        CallbackTaskStatus::Completed
+    );
+    let claim = completed.claim.unwrap();
+    let stale = store
+        .finish_resume_claim(&FinishResumeClaimInput {
+            claim_id: claim.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation + 1,
+            status: ResumeClaimStatus::Succeeded,
+            error_payload: None,
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        stale.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict("resume_claim_not_owned"))
+    ));
+}
+
+#[tokio::test]
+async fn concurrent_identical_tool_results_have_one_round_advancement_owner() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-17 11:30:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    let callback = waiting.callback_task.unwrap();
+    let input = CommitToolCallbackResultsInput {
+        scope_id: seeded.workspace_id,
+        application_id: seeded.application_id,
+        flow_run_id: run.id,
+        checkpoint_id: waiting.checkpoint.id,
+        callback_task_id: callback.id,
+        results: vec![tool_result("call-1-0", json!("same"))],
+    };
+    let barrier = Arc::new(Barrier::new(2));
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let store = store.clone();
+        let input = input.clone();
+        let barrier = barrier.clone();
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store.commit_tool_callback_results(&input).await.unwrap()
+        }));
+    }
+    let mut dispositions = Vec::new();
+    for handle in handles {
+        dispositions.push(handle.await.unwrap().disposition);
+    }
+    dispositions.sort_by_key(|disposition| match disposition {
+        ToolCallbackRoundDisposition::Acquired => 0,
+        ToolCallbackRoundDisposition::Completed => 1,
+        ToolCallbackRoundDisposition::InProgress => 2,
+        ToolCallbackRoundDisposition::WaitingForResults => 3,
+    });
+    assert_eq!(
+        dispositions,
+        vec![
+            ToolCallbackRoundDisposition::Acquired,
+            ToolCallbackRoundDisposition::Completed
+        ]
+    );
 }
 
 #[tokio::test]

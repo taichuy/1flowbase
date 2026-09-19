@@ -63,6 +63,7 @@ struct ApplicationPublicApiTestRepositoryInner {
     next_workflow_schedule_ordinal: u128,
     api_key_last_used_write_counts: HashMap<Uuid, usize>,
     fail_mark_api_key_used: bool,
+    seal_terminal_run_events: bool,
     published_generate_manifest_capabilities: Option<BTreeSet<ProviderInvocationCapability>>,
     published_generate_capability_checks: usize,
     published_generate_capability_profiles: Vec<AiNativeGenerateProfile>,
@@ -213,6 +214,14 @@ impl ApplicationPublicApiTestRepository {
             .get(&api_key_id)
             .copied()
             .unwrap_or_default()
+    }
+
+    /// Mirror Postgres: a terminal run rejects further run events.
+    pub fn seal_terminal_run_events(&self, seal: bool) {
+        self.inner
+            .lock()
+            .expect("application public api test repo mutex poisoned")
+            .seal_terminal_run_events = seal;
     }
 
     pub fn fail_mark_api_key_used(&self, fail: bool) {

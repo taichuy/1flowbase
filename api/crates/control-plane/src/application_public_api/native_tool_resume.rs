@@ -172,7 +172,11 @@ where
             return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into());
         }
     }
-    let transport = ProviderTransportPayload::openai_responses(request.clone())?;
+    let transport =
+        super::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow_run.input_payload,
+            ProviderTransportPayload::openai_responses(request.clone())?,
+        )?;
     if let Some(expected) = metadata.get("user_messages_digest").and_then(Value::as_str) {
         if let Some(actual) = transport.user_messages_digest()? {
             if actual != expected {

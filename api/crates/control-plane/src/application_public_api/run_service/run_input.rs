@@ -13,17 +13,19 @@ pub(crate) fn freeze_run_input_environment(
     variables: &[domain::ApplicationEnvironmentVariable],
     requested_model_id: Option<&str>,
     external_model_parameters: Option<&NativeExecutionModelParameters>,
+    defaulted_effort: Option<&str>,
 ) -> Value {
     let mut payload = input_payload.as_object().cloned().unwrap_or_default();
     payload.insert(
         "env".to_string(),
         Value::Object(application_environment_variable_payload(variables)),
     );
+    let mut sys = payload
+        .remove("sys")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    NativeExecutionModelParameters::freeze_published_reasoning_default(&mut sys, defaulted_effort);
     if requested_model_id.is_some() || external_model_parameters.is_some() {
-        let mut sys = payload
-            .remove("sys")
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default();
         if let Some(requested_model_id) = requested_model_id {
             sys.insert(
                 "requested_model_id".to_string(),
@@ -36,6 +38,8 @@ pub(crate) fn freeze_run_input_environment(
                 model_parameters.canonical_value(),
             );
         }
+    }
+    if !sys.is_empty() {
         payload.insert("sys".to_string(), Value::Object(sys));
     }
     Value::Object(payload)

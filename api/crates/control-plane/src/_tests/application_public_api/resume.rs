@@ -139,6 +139,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token,
@@ -188,6 +189,7 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: second_token,
@@ -318,6 +320,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let result =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                transport_connection_scope: Some("host-generated-connection".into()),
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token,
@@ -334,6 +337,10 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
 
     let calls = consumer.calls();
     assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].transport_connection_scope.as_deref(),
+        Some("host-generated-connection")
+    );
     assert_eq!(calls[0].application_id, application.id);
     assert_eq!(calls[0].callback_task_id, callback_task.id);
     assert_eq!(calls[0].response_payload, json!({ "answer": "approved" }));
@@ -448,6 +455,7 @@ async fn callback_resume_preserves_original_compatibility_mode() {
     ] {
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                transport_connection_scope: None,
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token.clone(),
@@ -628,6 +636,78 @@ mod tests {
         }
     }
 
+    /// Completes the callback task and finishes the run in the same step,
+    /// like the real runtime does when the last tool result arrives.
+    #[derive(Clone)]
+    struct RunCompletingCallbackConsumer {
+        repository: ApplicationPublicApiTestRepository,
+    }
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for RunCompletingCallbackConsumer {
+        async fn complete_published_callback(
+            &self,
+            input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            let callback_task = self
+                .repository
+                .get_published_callback_task(input.callback_task_id)
+                .await?
+                .expect("callback task fixture should exist");
+            self.repository
+                .complete_callback_task_for_test(input.callback_task_id);
+            self.repository
+                .complete_waiting_callback_published_internal_run(
+                    callback_task.flow_run_id,
+                    json!({"answer":"done"}),
+                    OffsetDateTime::now_utc(),
+                )
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("run should be waiting for the callback"))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct PartialToolCallbackConsumer {
+        repository: ApplicationPublicApiTestRepository,
+        calls: Arc<Mutex<Vec<CompletePublishedCallbackInput>>>,
+    }
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for PartialToolCallbackConsumer {
+        async fn complete_published_callback(
+            &self,
+            input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            self.calls
+                .lock()
+                .expect("partial callback consumer observation lock poisoned")
+                .push(input.clone());
+            let callback_task = self
+                .repository
+                .get_published_callback_task(input.callback_task_id)
+                .await?
+                .expect("callback task fixture should exist");
+            let completes_round = input
+                .response_payload
+                .get("tool_results")
+                .and_then(Value::as_array)
+                .is_some_and(|results| {
+                    results.iter().any(|result| {
+                        result.get("tool_call_id").and_then(Value::as_str) == Some("call_time")
+                    })
+                });
+            if completes_round {
+                self.repository
+                    .complete_callback_task_for_test(input.callback_task_id);
+            }
+            self.repository
+                .get_published_flow_run(callback_task.flow_run_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("published run fixture should exist"))
+        }
+    }
+
     async fn callback_fixture() -> (
         ApplicationPublicApiTestRepository,
         CompletingCallbackConsumer,
@@ -690,6 +770,7 @@ mod tests {
         response_payload: Value,
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token.to_string(),
@@ -701,6 +782,81 @@ mod tests {
             response_payload,
             response_mode: Some("blocking".to_string()),
         }
+    }
+
+    #[tokio::test]
+    async fn public_tool_callback_accepts_results_in_separate_requests() {
+        let (repository, _, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({
+                "tool_calls": [
+                    {"id":"call_weather","name":"weather","arguments":{}},
+                    {"id":"call_time","name":"time","arguments":{}}
+                ]
+            }),
+        );
+        let consumer = PartialToolCallbackConsumer {
+            repository: repository.clone(),
+            ..PartialToolCallbackConsumer::default()
+        };
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+
+        let partial = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{
+                    "tool_call_id":"call_weather",
+                    "content":"sunny"
+                }]}),
+            ))
+            .await
+            .expect("first tool result should remain at the round barrier");
+        // The round is incomplete, so the single attempt is parked for the
+        // next partial delivery to re-acquire.
+        assert_eq!(
+            partial.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Received
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+
+        let completed = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{
+                    "tool_call_id":"call_time",
+                    "content":"12:00"
+                }]}),
+            ))
+            .await
+            .expect("second tool result should complete the public callback round");
+        assert_eq!(
+            completed.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Completed
+        );
+        assert_eq!(consumer.calls.lock().unwrap().len(), 2);
     }
 
     // #2036: reserve is the pre-stream atomic admission boundary. Competing
@@ -835,6 +991,43 @@ mod tests {
         );
         assert_eq!(repository.callback_resume_attempts().len(), 1);
         assert_eq!(repository.flow_run_count(), 1);
+    }
+
+    // The last tool result completes the run before the resume audit event
+    // is appended; a sealed run must not turn a succeeded resume into a
+    // failure that leaves the client with a 5xx after its tools already ran.
+    #[tokio::test]
+    async fn completing_tool_callback_succeeds_even_when_the_run_seals_before_audit() {
+        let (repository, _, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({"tool_calls":[{"id":"call_last","name":"exec","arguments":{}}]}),
+        );
+        let consumer = RunCompletingCallbackConsumer {
+            repository: repository.clone(),
+        };
+        repository.seal_terminal_run_events(true);
+        let service = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer);
+        let completed = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[{"tool_call_id":"call_last","content":"ok"}]}),
+            ))
+            .await
+            .expect("a resume that completed the run is a success");
+        assert_eq!(
+            completed.attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+        );
+        assert_eq!(
+            completed.run.status,
+            control_plane::application_public_api::native::NativeRunStatus::Succeeded
+        );
+        let event_types = repository.run_event_types(run.id);
+        assert!(event_types.contains(&"public_run_resume_requested".to_string()));
+        assert!(!event_types.contains(&"public_run_resume_succeeded".to_string()));
     }
 
     #[tokio::test]

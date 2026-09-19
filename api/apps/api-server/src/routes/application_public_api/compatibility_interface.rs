@@ -19,6 +19,8 @@ use control_plane::{
 };
 use control_plane_contracts::application_public_runtime::ApplicationPublishedFlowRunRepository;
 use domain::AiNativeOperation;
+
+use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
 use interface_runtime::{
     ApplicationPrincipal, AuthenticationAdapterReference, AuthorizationAdapterReference,
     AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
@@ -114,6 +116,7 @@ pub(crate) struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
 pub(crate) struct CompatibilityStreamEvent {
     run: NativeRunResult,
     envelope: RuntimeEventEnvelope,
+    delivery: Option<RuntimeEventDeliveryReceipt>,
 }
 
 pub(crate) struct CompatibilityTypedStreamInvocation {
@@ -139,12 +142,35 @@ impl CompatibilityTypedStreamInvocation {
 }
 
 impl CompatibilityStreamEvent {
+    #[cfg(test)]
     pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
-        Self { run, envelope }
+        Self {
+            run,
+            envelope,
+            delivery: None,
+        }
     }
 
-    pub(crate) fn into_parts(self) -> (NativeRunResult, RuntimeEventEnvelope) {
-        (self.run, self.envelope)
+    pub(crate) fn with_delivery(
+        run: NativeRunResult,
+        envelope: RuntimeEventEnvelope,
+        delivery: Option<RuntimeEventDeliveryReceipt>,
+    ) -> Self {
+        Self {
+            run,
+            envelope,
+            delivery,
+        }
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        NativeRunResult,
+        RuntimeEventEnvelope,
+        Option<RuntimeEventDeliveryReceipt>,
+    ) {
+        (self.run, self.envelope, self.delivery)
     }
 }
 
@@ -266,7 +292,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         let dependencies = self.0.clone();
         let actor = application_actor(principal);
         Box::pin(async move {
-            let (request, protocol, provider_transport) = match input.command {
+            let (mut request, protocol, provider_transport) = match input.command {
                 CompatibilityInvocationCommand::Start {
                     request,
                     protocol,
@@ -283,6 +309,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     .map_err(CompatibilityBlockingTargetError);
                 }
             };
+            let transport_connection_scope = request.metadata.take_transport_connection_scope();
             let protocol_context = request.client_protocol_envelope.clone();
             let operation = provider_transport
                 .as_ref()
@@ -317,6 +344,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 actor,
                 run,
                 provider_transport_slot,
+                transport_connection_scope,
             )
             .await
             .map(CompatibilityBlockingOutput)
@@ -348,10 +376,11 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         Box::pin(async move {
             let typed = match input.command {
                 CompatibilityInvocationCommand::Start {
-                    request,
+                    mut request,
                     protocol,
                     provider_transport,
                 } => {
+                    let transport_connection_scope = request.metadata.take_transport_connection_scope();
                     let protocol_context = request.client_protocol_envelope.clone();
                     let operation = provider_transport
                         .as_ref()
@@ -390,6 +419,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         dependencies,
                         run,
                         provider_transport_slot,
+                        transport_connection_scope,
                         actor,
                     )
                     .await
@@ -412,10 +442,12 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
             tokio::spawn(async move {
                 let mut terminal_run = initial_run;
                 while let Some(event) = events.recv().await {
-                    let (run, envelope) = event.into_parts();
+                    let (run, envelope, delivery) = event.into_parts();
                     terminal_run = run.clone();
                     if publisher
-                        .emit(CompatibilityStreamEvent::new(run, envelope))
+                        .emit(CompatibilityStreamEvent::with_delivery(
+                            run, envelope, delivery,
+                        ))
                         .await
                         .is_err()
                     {
@@ -945,13 +977,28 @@ pub(super) async fn project_compatibility_stream(
     let completion = tokio::spawn(completion.complete());
     let mut projection_open = true;
     while let Some(event) = events.recv().await {
-        let (run, envelope) = event.into_parts();
+        let (run, envelope, mut delivery) = event.into_parts();
         let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
-        for event in projection.runtime_event_to_sse(&run, envelope) {
-            if projection_open && sender.send(event).await.is_err() {
-                projection_open = false;
+        let frames = projection.runtime_event_to_sse(&run, envelope);
+        if projection_open {
+            if let Some(delivery) = delivery.as_mut() {
+                delivery.begin_write();
+            }
+            for frame in frames {
+                if sender.send(frame).await.is_err() {
+                    projection_open = false;
+                    break;
+                }
             }
         }
+        if projection_open {
+            if let Some(delivery) = delivery.take() {
+                delivery.projected();
+            }
+        }
+        // A closed projection drops the receipt: released when no write
+        // started, uncertain when the transport failed mid-write.
+        drop(delivery);
         if terminal {
             break;
         }

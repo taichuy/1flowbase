@@ -832,3 +832,28 @@ fn blocking_collector_projects_canonical_callback_completion() {
         "Inventory confirmed"
     );
 }
+
+#[test]
+fn external_protocol_context_cannot_claim_host_transport_connection_scope() {
+    let key = control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER;
+    let mut headers = HeaderMap::new();
+    headers.insert(key, "forged-from-http".parse().unwrap());
+    headers.insert("session-id", "legitimate-client-session".parse().unwrap());
+    let translated = ProtocolContextEnvelope {
+        source_protocol: "openai_responses".into(),
+        headers: BTreeMap::from([(key.into(), vec!["forged-from-body".into()])]),
+        ..Default::default()
+    };
+    let captured = openai_protocol_context_from_ingress(
+        ClientProtocolIngressPolicy::OpenAiResponses,
+        None,
+        &headers,
+        Some(translated),
+    )
+    .unwrap();
+    assert!(!captured.headers.contains_key(key));
+    assert_eq!(
+        captured.headers["session-id"],
+        vec!["legitimate-client-session"]
+    );
+}

@@ -205,10 +205,16 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
                 .await
                 .map_err(native_error)
                 .map_err(ApplicationNativeRunTargetError)?;
-            execute_blocking_native_run_for_actor_with_dependencies(dependencies, actor, run, None)
-                .await
-                .map(ApplicationNativeRunOutput)
-                .map_err(ApplicationNativeRunTargetError)
+            execute_blocking_native_run_for_actor_with_dependencies(
+                dependencies,
+                actor,
+                run,
+                None,
+                None,
+            )
+            .await
+            .map(ApplicationNativeRunOutput)
+            .map_err(ApplicationNativeRunTargetError)
         })
     }
 
@@ -614,6 +620,21 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             "invalid_mapping",
             "application public API mapping is invalid",
         ),
+        NativeRunValidationError::UnknownModel => NativeApiError::new(
+            StatusCode::BAD_REQUEST,
+            "unknown_model",
+            "model is not declared by the active publication",
+        ),
+        NativeRunValidationError::UnsupportedModelParameters(_) => NativeApiError::new(
+            StatusCode::BAD_REQUEST,
+            "unsupported_model_parameters",
+            "model parameters are not supported by the published model",
+        ),
+        NativeRunValidationError::InvalidPublishedModelConfiguration => NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid_published_model_configuration",
+            "published model reasoning configuration is invalid",
+        ),
         NativeRunValidationError::InvalidToolResults(message) => {
             NativeApiError::new(StatusCode::BAD_REQUEST, "tool_results", message)
         }
@@ -804,6 +825,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    transport_connection_scope: Option<String>,
 ) -> Result<NativeRunResult, NativeApiError> {
     let _execution_activity = dependencies.runtime_activity.start(
         run.application_id,
@@ -820,6 +842,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
                 application_id: run.application_id,
                 flow_run_id: run.id,
                 provider_transport_slot,
+                transport_connection_scope,
             }),
     )
     .await;
@@ -1199,6 +1222,7 @@ async fn start_native_run_event_channel_with_dependencies(
                 application_id: background_run.application_id,
                 flow_run_id: background_run.id,
                 provider_transport_slot: None,
+                transport_connection_scope: None,
             }),
         )
         .await

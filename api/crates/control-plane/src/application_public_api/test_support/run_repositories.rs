@@ -335,6 +335,14 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
             .inner
             .lock()
             .expect("application public api test repo mutex poisoned");
+        if inner.seal_terminal_run_events
+            && inner
+                .flow_runs
+                .get(&input.flow_run_id)
+                .is_some_and(|run| run.status.is_terminal())
+        {
+            return Err(crate::errors::ControlPlaneError::Conflict("flow_run_terminal").into());
+        }
         let events = inner.run_events.entry(input.flow_run_id).or_default();
         let record = domain::RunEventRecord {
             id: Uuid::now_v7(),
@@ -747,6 +755,31 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         Ok(attempt.clone())
     }
 
+    async fn claim_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: serde_json::Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        self.transition_callback_resume_attempt(
+            attempt_id,
+            domain::FlowRunCallbackResumeAttemptStatus::Received,
+            domain::FlowRunCallbackResumeAttemptStatus::Processing,
+            Some(response_payload),
+        )
+    }
+
+    async fn park_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        self.transition_callback_resume_attempt(
+            attempt_id,
+            domain::FlowRunCallbackResumeAttemptStatus::Processing,
+            domain::FlowRunCallbackResumeAttemptStatus::Received,
+            None,
+        )
+    }
+
     async fn cancel_published_callback_resume_attempts_for_run(
         &self,
         flow_run_id: Uuid,
@@ -855,5 +888,36 @@ impl native::NativeRunRepository for ApplicationPublicApiTestRepository {
             .native_runs
             .get(&run_id)
             .cloned())
+    }
+}
+
+impl ApplicationPublicApiTestRepository {
+    fn transition_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        from_status: domain::FlowRunCallbackResumeAttemptStatus,
+        to_status: domain::FlowRunCallbackResumeAttemptStatus,
+        response_payload: Option<serde_json::Value>,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let Some(attempt) = inner
+            .callback_resume_attempts
+            .values_mut()
+            .find(|attempt| attempt.id == attempt_id)
+        else {
+            return Ok(None);
+        };
+        if attempt.status != from_status {
+            return Ok(None);
+        }
+        attempt.status = to_status;
+        if let Some(response_payload) = response_payload {
+            attempt.response_payload = response_payload;
+        }
+        attempt.updated_at = OffsetDateTime::now_utc();
+        Ok(Some(attempt.clone()))
     }
 }

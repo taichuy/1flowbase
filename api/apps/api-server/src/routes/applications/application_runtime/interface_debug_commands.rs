@@ -499,6 +499,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                         .await?,
                 )
                 .complete_callback_task(CompleteCallbackTaskCommand {
+                    transport_connection_scope: None,
                     native_transport: None,
                     actor_user_id: actor.user_id,
                     application_id,

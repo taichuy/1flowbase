@@ -106,6 +106,54 @@ pub struct ProviderTransportSessionReceipt {
     pub close_acknowledged: Option<bool>,
 }
 
+/// Host-side classification of a provider invocation's physical transport facts.
+///
+/// HTTP fallback is deliberately a recovery outcome, not a synthetic WebSocket
+/// receipt. This keeps connection ACK and recovery semantics in separate domains.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderInvocationTransportOutcome {
+    Ready {
+        receipt: ProviderTransportSessionReceipt,
+    },
+    ReceiptMissing,
+    StaleGeneration {
+        expected_generation: u64,
+        received_generation: u64,
+    },
+    PhysicalConnectionFault {
+        generation: u64,
+        state: ProviderPhysicalTransportState,
+    },
+    HttpFallback {
+        recovery: ProviderRecoveryReceipt,
+    },
+}
+
+/// Execution-mode classification. Session outcomes retain the existing receipt
+/// contract; direct HTTP has no physical WebSocket session to acknowledge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderInvocationTransportClassification {
+    Http,
+    Session(ProviderInvocationTransportOutcome),
+}
+
+/// Typed result of a drain/close lifecycle command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderLifecycleAckOutcome {
+    Acknowledged,
+    AcknowledgementMissing,
+    StaleGeneration {
+        expected_generation: u64,
+        received_generation: u64,
+    },
+    PhysicalConnectionFault {
+        generation: u64,
+        state: ProviderPhysicalTransportState,
+    },
+}
+
 impl ProviderTransportSessionReceipt {
     pub fn validate(&self) -> Result<(), String> {
         if self.generation == 0 {
@@ -120,6 +168,33 @@ impl ProviderTransportSessionReceipt {
             return Err("transport session close ACK requires a close reason".into());
         }
         Ok(())
+    }
+
+    pub fn lifecycle_ack_outcome(
+        &self,
+        expected_generation: u64,
+    ) -> Result<ProviderLifecycleAckOutcome, String> {
+        self.validate()?;
+        if expected_generation == 0 {
+            return Err("expected transport generation must be positive".to_string());
+        }
+        if self.generation != expected_generation {
+            return Ok(ProviderLifecycleAckOutcome::StaleGeneration {
+                expected_generation,
+                received_generation: self.generation,
+            });
+        }
+        if self.physical_state == ProviderPhysicalTransportState::Faulted {
+            return Ok(ProviderLifecycleAckOutcome::PhysicalConnectionFault {
+                generation: self.generation,
+                state: self.physical_state,
+            });
+        }
+        Ok(if self.close_acknowledged == Some(true) {
+            ProviderLifecycleAckOutcome::Acknowledged
+        } else {
+            ProviderLifecycleAckOutcome::AcknowledgementMissing
+        })
     }
 }
 

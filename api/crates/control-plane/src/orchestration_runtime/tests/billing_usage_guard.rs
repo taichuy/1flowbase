@@ -19,6 +19,7 @@ fn billing_flow_execution_context(
         user_account: Some("billing-user".to_string()),
         require_provider_usage_for_billing,
         active_node: Mutex::new(None),
+        tool_delivery_events: Mutex::new(Vec::new()),
         data_model: RuntimeDataModelExecutionContext {
             actor,
             application_id: Uuid::nil(),
@@ -70,6 +71,7 @@ fn billing_invoker_with_policy(
             require_provider_usage_for_billing,
         )),
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

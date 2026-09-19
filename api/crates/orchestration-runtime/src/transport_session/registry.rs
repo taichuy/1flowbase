@@ -6,9 +6,9 @@ use std::{
 use super::types::{
     AdmissionRequest, CapacityRejection, DeadlineKind, InvocationCompletion, InvocationLease,
     InvocationRequest, LifecycleEvent, RegistryError, SafeRegistrySnapshot, SafeSessionSnapshot,
-    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportGeneration,
-    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
-    TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
+    TerminationKind, TerminationReceipt, TransportDeadline, TransportFence, TransportFenceStatus,
+    TransportGeneration, TransportInstant, TransportOwnerId, TransportProviderId,
+    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId, TransportSessionState,
 };
 
 pub trait TransportClock: Send + Sync {
@@ -64,6 +64,7 @@ struct PhysicalGenerationRecord {
     created_at: TransportInstant,
     soft_deadline: TransportDeadline,
     hard_deadline: TransportDeadline,
+    close_acknowledged: Option<bool>,
 }
 
 struct SessionRecord {
@@ -154,6 +155,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     created_at: now,
                     soft_deadline: physical_soft_deadline,
                     hard_deadline: physical_hard_deadline,
+                    close_acknowledged: None,
                 },
             },
         );
@@ -254,6 +256,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             return Err(RegistryError::StaleInvocation);
         }
         record.logical.invocation = None;
+        // A failed invocation retires a draining physical connection. Other
+        // concurrent close/orphan directives still own their terminal state.
+        if record.logical.state == TransportSessionState::Draining
+            && target == TransportSessionState::Faulted
+        {
+            return self.set_state(&lease.fence, target, now);
+        }
         // A soft-drain or close directive wins over a concurrently finishing invocation.
         if matches!(
             record.logical.state,
@@ -292,8 +301,22 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<TransportFence, RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
-        if self.record(fence)?.logical.invocation.is_some() {
+        let record = self.record(fence)?;
+        if record.logical.invocation.is_some() {
             return Err(RegistryError::InflightExists);
+        }
+        if matches!(
+            record.logical.state,
+            TransportSessionState::Orphaned | TransportSessionState::Closing
+        ) || (matches!(
+            record.logical.state,
+            TransportSessionState::Faulted | TransportSessionState::IdleReleased
+        ) && record.physical.close_acknowledged != Some(true))
+        {
+            return Err(RegistryError::InvalidTransition {
+                from: record.logical.state,
+                to: TransportSessionState::Opening,
+            });
         }
         let generation = self.allocate_generation()?;
         let config = self.config.clone();
@@ -301,6 +324,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         let from = record.logical.state;
         record.physical.generation = generation;
         record.physical.created_at = now;
+        record.physical.close_acknowledged = None;
         record.logical.state = TransportSessionState::Opening;
         record.logical.state_since = now;
         record.logical.state_deadline = record.logical.absolute_deadline;
@@ -356,6 +380,20 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         fence: &TransportFence,
         acknowledged: bool,
     ) -> Result<(), RegistryError> {
+        // Faulted physical generations retain the logical record and its fixed
+        // deadline. Their close ACK authorizes rotation, never logical readmission.
+        if let Some(record) = self.sessions.get_mut(&fence.session_id) {
+            ensure_generation(record, fence)?;
+            if matches!(
+                record.logical.state,
+                TransportSessionState::Faulted | TransportSessionState::IdleReleased
+            ) {
+                if record.physical.close_acknowledged != Some(true) {
+                    record.physical.close_acknowledged = Some(acknowledged);
+                }
+                return Ok(());
+            }
+        }
         let receipt = self
             .tombstones
             .iter_mut()
@@ -371,6 +409,21 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             session_id: session_id.clone(),
             generation: record.physical.generation,
         })
+    }
+
+    /// Classifies a fence without changing logical or physical session state.
+    pub fn fence_status(&self, fence: &TransportFence) -> TransportFenceStatus {
+        let Some(record) = self.sessions.get(&fence.session_id) else {
+            return TransportFenceStatus::Missing;
+        };
+        if record.physical.generation == fence.generation {
+            TransportFenceStatus::Current
+        } else {
+            TransportFenceStatus::Stale {
+                current: record.physical.generation,
+                received: fence.generation,
+            }
+        }
     }
 
     pub fn state(&self, fence: &TransportFence) -> Result<TransportSessionState, RegistryError> {
@@ -389,6 +442,37 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         fence: &TransportFence,
     ) -> Result<TransportDeadline, RegistryError> {
         Ok(self.record(fence)?.physical.hard_deadline)
+    }
+
+    /// Disconnect exactly the invocation still attached to this socket.
+    pub fn mark_invocation_orphaned(
+        &mut self,
+        lease: &InvocationLease,
+    ) -> Result<(), RegistryError> {
+        let now = self.clock.now();
+        self.maintain_at(now);
+        let record = self.record(&lease.fence)?;
+        let invocation = record
+            .logical
+            .invocation
+            .as_ref()
+            .ok_or(RegistryError::NoInflight)?;
+        if invocation.sequence != lease.sequence() || invocation.deadline != lease.deadline() {
+            return Err(RegistryError::StaleInvocation);
+        }
+        if !matches!(
+            record.logical.state,
+            TransportSessionState::Opening
+                | TransportSessionState::Active
+                | TransportSessionState::WaitingTool
+                | TransportSessionState::IdleAffinity
+        ) {
+            return Err(RegistryError::InvalidTransition {
+                from: record.logical.state,
+                to: TransportSessionState::Orphaned,
+            });
+        }
+        self.set_state(&lease.fence, TransportSessionState::Orphaned, now)
     }
 
     pub fn mark_owner_orphaned(&mut self, owner_id: &TransportOwnerId) -> Vec<TransportFence> {
@@ -492,7 +576,24 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .filter_map(|(id, record)| expired_kind(record, now).map(|kind| (id.clone(), kind)))
             .collect();
         for (session_id, kind) in expired {
-            self.terminate_by_id(&session_id, kind, now);
+            let record = &self.sessions[&session_id];
+            if kind == TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)
+                && record.logical.state == TransportSessionState::IdleAffinity
+                && record.logical.invocation.is_none()
+                && now < record.logical.absolute_deadline
+                && now < record.physical.hard_deadline
+            {
+                let fence = TransportFence {
+                    session_id,
+                    generation: record.physical.generation,
+                };
+                // Releasing an affinity socket does not terminate the logical session.
+                // The close ACK and successor authorization still gate rotation.
+                self.set_state(&fence, TransportSessionState::IdleReleased, now)
+                    .expect("the idle release fence was read from the current registry");
+            } else {
+                self.terminate_by_id(&session_id, kind, now);
+            }
         }
 
         let drain: Vec<_> = self
@@ -503,6 +604,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     && !matches!(
                         record.logical.state,
                         TransportSessionState::Draining
+                            | TransportSessionState::IdleReleased
                             | TransportSessionState::Faulted
                             | TransportSessionState::Closing
                     )
@@ -649,8 +751,9 @@ fn valid_transition(from: TransportSessionState, to: TransportSessionState) -> b
         ) | (
             State::WaitingTool | State::IdleAffinity | State::Orphaned,
             State::Active | State::Orphaned | State::Draining | State::Faulted | State::Closing
-        ) | (State::Draining, State::Faulted | State::Closing)
-            | (State::Faulted, State::Closing)
+        ) | (State::IdleAffinity, State::IdleReleased)
+            | (State::Draining, State::Faulted | State::Closing)
+            | (State::Faulted | State::IdleReleased, State::Closing)
     )
 }
 
@@ -660,7 +763,9 @@ fn capped_state_deadline(
     now: TransportInstant,
 ) -> TransportDeadline {
     let lease = match record.logical.state {
-        TransportSessionState::Opening | TransportSessionState::Active => {
+        TransportSessionState::Opening
+        | TransportSessionState::Active
+        | TransportSessionState::IdleReleased => {
             return record.logical.absolute_deadline;
         }
         TransportSessionState::WaitingTool => config.waiting_tool_lease,
@@ -677,6 +782,12 @@ fn capped_state_deadline(
 }
 
 fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKind) {
+    if record.logical.state == TransportSessionState::IdleReleased {
+        return (
+            record.logical.absolute_deadline,
+            DeadlineKind::LogicalAbsolute,
+        );
+    }
     [
         (record.physical.hard_deadline, DeadlineKind::PhysicalHard),
         (
@@ -691,6 +802,11 @@ fn effective_deadline(record: &SessionRecord) -> (TransportDeadline, DeadlineKin
 }
 
 fn expired_kind(record: &SessionRecord, now: TransportInstant) -> Option<TerminationKind> {
+    if record.logical.state == TransportSessionState::IdleReleased {
+        return (now >= record.logical.absolute_deadline).then_some(
+            TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute),
+        );
+    }
     let candidates = [
         (record.physical.hard_deadline, DeadlineKind::PhysicalHard),
         (
@@ -726,7 +842,7 @@ fn deadline_priority(kind: DeadlineKind) -> u8 {
 fn eviction_rank(state: TransportSessionState) -> Option<u8> {
     match state {
         TransportSessionState::Orphaned => Some(0),
-        TransportSessionState::IdleAffinity => Some(1),
+        TransportSessionState::IdleAffinity | TransportSessionState::IdleReleased => Some(1),
         TransportSessionState::Draining => Some(2),
         TransportSessionState::WaitingTool => Some(3),
         TransportSessionState::Opening

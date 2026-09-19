@@ -82,6 +82,7 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
     pub(super) waiting_node_resume: Option<WaitingNodeResumeUpdate>,
     pub(super) resume_claim_id: Option<Uuid>,
     pub(super) resume_claim_token: Option<Uuid>,
+    pub(super) tool_delivery_events: Vec<crate::ports::RuntimeEventPayload>,
 }
 
 pub(super) struct PersistedFlowDebugOutcome {
@@ -178,6 +179,7 @@ where
         waiting_node_resume,
         resume_claim_id,
         resume_claim_token,
+        mut tool_delivery_events,
     } = input;
     let presentation_events = match (compiled_plan, prepared_node_runs) {
         (Some(plan), Some(prepared_node_runs)) => {
@@ -263,6 +265,26 @@ where
     let mut stream_events = persisted_node_traces.stream_events;
     let mut close_reason = None;
 
+    // Buffered tool deliveries are candidates until the llm_tool_calls waiting
+    // state commits them. Any other outcome (a provider fault after the tool
+    // call was generated, a human wait, a terminal) discards them: the client
+    // never received an executable event, so nothing is owed.
+    if !tool_delivery_events.is_empty()
+        && !matches!(
+            &outcome.stop_reason,
+            orchestration_runtime::execution_state::ExecutionStopReason::WaitingCallback(wait)
+                if wait.callback_kind == "llm_tool_calls"
+        )
+    {
+        tracing::warn!(
+            flow_run_id = %flow_run.id,
+            discarded = tool_delivery_events.len(),
+            stop_reason = ?std::mem::discriminant(&outcome.stop_reason),
+            "uncommitted tool delivery candidates discarded with a non-tool-wait outcome"
+        );
+        tool_delivery_events.clear();
+    }
+
     match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
             let snapshot = outcome
@@ -310,6 +332,7 @@ where
                     resume_claim_id,
                     resume_claim_token,
                     waiting_event: waiting_event_input,
+                    tool_delivery_events: Vec::new(),
                     kind: PersistWaitingKind::Human,
                 })
                 .await?;
@@ -382,6 +405,31 @@ where
                 waiting_event.source,
                 waiting_event.payload.clone(),
             );
+            if wait.callback_kind != "llm_tool_calls" && !tool_delivery_events.is_empty() {
+                return Err(anyhow!(
+                    "tool delivery events require an llm_tool_calls callback round"
+                ));
+            }
+            for event in &mut tool_delivery_events {
+                event.payload["committed_delivery"] = json!(true);
+                event.persist_required = false;
+            }
+            let tool_delivery_inputs = tool_delivery_events
+                .iter()
+                .map(|event| {
+                    runtime_event_persister::build_runtime_event_input(
+                        flow_run.id,
+                        event
+                            .payload
+                            .get("node_run_id")
+                            .and_then(Value::as_str)
+                            .and_then(|value| Uuid::parse_str(value).ok()),
+                        event.event_type.clone(),
+                        event.source,
+                        event.payload.clone(),
+                    )
+                })
+                .collect();
             let updated = repository
                 .persist_waiting_state(&PersistWaitingStateInput {
                     checkpoint_id: Uuid::now_v7(),
@@ -404,6 +452,7 @@ where
                     resume_claim_id,
                     resume_claim_token,
                     waiting_event: waiting_event_input,
+                    tool_delivery_events: tool_delivery_inputs,
                     kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
                         id: callback_task_id,
                         callback_kind: wait.callback_kind.clone(),
@@ -428,6 +477,7 @@ where
                 .callback_task
                 .ok_or_else(|| anyhow!("persisted waiting callback is missing callback task"))?;
             stream_events.extend(presentation_events);
+            stream_events.extend(tool_delivery_events);
             let assistant_execution = flow_run.run_mode == domain::FlowRunMode::AssistantExecution
                 && wait.callback_kind == "llm_tool_calls";
             // Assistant LLM tool callbacks are completed by the server, so this

@@ -57,6 +57,8 @@ pub enum PublishedCallbackResumeTarget {
 
 #[derive(Debug, Clone)]
 pub struct ResumePublishedCallbackCommand {
+    /// Host-only transport ownership; never accepted from callback JSON.
+    pub transport_connection_scope: Option<String>,
     pub reserved_attempt_id: Option<Uuid>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub bearer_token: String,
@@ -68,6 +70,7 @@ pub struct ResumePublishedCallbackCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompletePublishedCallbackInput {
+    pub transport_connection_scope: Option<String>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
@@ -175,11 +178,22 @@ where
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?
         {
-            if existing.response_payload != command.response_payload {
+            let is_tool_round = context.callback_task.callback_kind == "llm_tool_calls";
+            if !is_tool_round && existing.response_payload != command.response_payload {
                 return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
             }
             if existing.source != command.source.as_str() {
                 return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+            }
+            if is_tool_round
+                && context.callback_task.status != domain::CallbackTaskStatus::Completed
+            {
+                // A tool round keeps one durable attempt across partial
+                // deliveries. Only a parked attempt can be re-acquired, and
+                // exactly one concurrent delivery wins that transition.
+                return self
+                    .claim_parked_tool_round_attempt(&existing, &command.response_payload)
+                    .await;
             }
             if matches!(
                 existing.status,
@@ -237,6 +251,7 @@ where
         let actor = context.actor;
         let callback_task = context.callback_task;
         let flow_run = context.flow_run;
+        let is_tool_round = callback_task.callback_kind == "llm_tool_calls";
 
         let existing = self
             .repository
@@ -246,6 +261,8 @@ where
             let existing = existing.ok_or(ControlPlaneError::Conflict(
                 "callback_resume_reservation_missing",
             ))?;
+            // The processing attempt carries the payload of the delivery that
+            // owns it, for tool rounds too (refreshed on every re-acquire).
             if existing.id != reserved_id
                 || existing.response_payload != command.response_payload
                 || existing.source != command.source.as_str()
@@ -254,38 +271,75 @@ where
                     ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into(),
                 );
             }
-            if existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+            // A settled attempt (or a completed tool round) is an exact
+            // replay: return the recorded outcome without a second consumer call.
+            if existing.status != domain::FlowRunCallbackResumeAttemptStatus::Processing
+                && (!is_tool_round || callback_task.status == domain::CallbackTaskStatus::Completed)
+            {
                 return self
                     .resume_existing_attempt(&actor, &callback_task, existing, &command)
                     .await;
             }
-            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
+            if !is_tool_round {
+                ensure_callback_is_consumable(
+                    &flow_run,
+                    &callback_task,
+                    &command.response_payload,
+                )?;
+            }
             existing
         } else {
             if let Some(existing) = existing {
-                return self
-                    .resume_existing_attempt(&actor, &callback_task, existing, &command)
-                    .await;
+                if !is_tool_round {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                        .await;
+                }
+                if existing.source != command.source.as_str() {
+                    return Err(
+                        ControlPlaneError::Conflict("callback_resume_source_conflict").into(),
+                    );
+                }
+                if callback_task.status == domain::CallbackTaskStatus::Completed {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, existing, &command)
+                        .await;
+                }
+                let claimed_id = self
+                    .claim_parked_tool_round_attempt(&existing, &command.response_payload)
+                    .await?;
+                self.repository
+                    .get_published_callback_resume_attempt(callback_task.id)
+                    .await?
+                    .filter(|attempt| attempt.id == claimed_id)
+                    .ok_or(ControlPlaneError::Conflict(
+                        "callback_resume_reservation_missing",
+                    ))?
+            } else {
+                ensure_callback_is_consumable(
+                    &flow_run,
+                    &callback_task,
+                    &command.response_payload,
+                )?;
+                let recorded = self
+                    .repository
+                    .record_published_callback_resume_attempt(
+                        &RecordFlowRunCallbackResumeAttemptInput {
+                            flow_run_id: flow_run.id,
+                            callback_task_id: callback_task.id,
+                            source: command.source.as_str().to_string(),
+                            response_payload: command.response_payload.clone(),
+                            idempotency_key: format!("callback_task:{}", callback_task.id),
+                        },
+                    )
+                    .await?;
+                if !recorded.inserted && !is_tool_round {
+                    return self
+                        .resume_existing_attempt(&actor, &callback_task, recorded.attempt, &command)
+                        .await;
+                }
+                recorded.attempt
             }
-            ensure_callback_is_consumable(&flow_run, &callback_task, &command.response_payload)?;
-            let recorded = self
-                .repository
-                .record_published_callback_resume_attempt(
-                    &RecordFlowRunCallbackResumeAttemptInput {
-                        flow_run_id: flow_run.id,
-                        callback_task_id: callback_task.id,
-                        source: command.source.as_str().to_string(),
-                        response_payload: command.response_payload.clone(),
-                        idempotency_key: format!("callback_task:{}", callback_task.id),
-                    },
-                )
-                .await?;
-            if !recorded.inserted {
-                return self
-                    .resume_existing_attempt(&actor, &callback_task, recorded.attempt, &command)
-                    .await;
-            }
-            recorded.attempt
         };
 
         self.append_resume_event(
@@ -305,16 +359,39 @@ where
         let result = self
             .consumer
             .complete_published_callback(CompletePublishedCallbackInput {
+                transport_connection_scope: command.transport_connection_scope.clone(),
                 native_transport: command.native_transport.clone(),
                 actor_user_id: actor.creator_user_id,
                 application_id: actor.application_id,
                 callback_task_id: callback_task.id,
-                response_payload: attempt.response_payload.clone(),
+                response_payload: if is_tool_round {
+                    command.response_payload.clone()
+                } else {
+                    attempt.response_payload.clone()
+                },
             })
             .await;
 
         match result {
             Ok(flow_run) => {
+                if is_tool_round {
+                    let callback_task = self
+                        .repository
+                        .get_published_callback_task(callback_task.id)
+                        .await?
+                        .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+                    if callback_task.status == domain::CallbackTaskStatus::Pending {
+                        // The round is not complete: park the attempt so the
+                        // next partial delivery can re-acquire it.
+                        let attempt = self.park_tool_round_attempt(attempt).await?;
+                        let run = self.native_result_for_flow_run(&flow_run).await?;
+                        return Ok(ResumePublishedCallbackResult { run, attempt });
+                    }
+                    if attempt.status != domain::FlowRunCallbackResumeAttemptStatus::Processing {
+                        let run = self.native_result_for_flow_run(&flow_run).await?;
+                        return Ok(ResumePublishedCallbackResult { run, attempt });
+                    }
+                }
                 let finished = self
                     .repository
                     .finish_published_callback_resume_attempt(
@@ -326,17 +403,33 @@ where
                         },
                     )
                     .await?;
-                self.append_resume_event(
-                    flow_run.id,
-                    Some(callback_task.node_run_id),
-                    "public_run_resume_succeeded",
-                    json!({
-                        "callback_task_id": callback_task.id,
-                        "resume_attempt_id": finished.id,
-                        "source": command.source.as_str(),
-                    }),
-                )
-                .await?;
+                // The attempt is already settled. When this callback completed
+                // the run, the run is terminal and its event log is sealed;
+                // the audit event is then informational, not a failure of the
+                // resume that already succeeded.
+                if let Err(error) = self
+                    .append_resume_event(
+                        flow_run.id,
+                        Some(callback_task.node_run_id),
+                        "public_run_resume_succeeded",
+                        json!({
+                            "callback_task_id": callback_task.id,
+                            "resume_attempt_id": finished.id,
+                            "source": command.source.as_str(),
+                        }),
+                    )
+                    .await
+                {
+                    if !flow_run.status.is_terminal() {
+                        return Err(error);
+                    }
+                    tracing::debug!(
+                        flow_run_id = %flow_run.id,
+                        resume_attempt_id = %finished.id,
+                        error = %error,
+                        "resume audit event skipped on a sealed terminal run"
+                    );
+                }
                 let run = self.native_result_for_flow_run(&flow_run).await?;
                 Ok(ResumePublishedCallbackResult {
                     run,
@@ -344,6 +437,16 @@ where
                 })
             }
             Err(error) => {
+                if is_tool_round
+                    && error
+                        .downcast_ref::<ControlPlaneError>()
+                        .is_some_and(|error| matches!(error, ControlPlaneError::Conflict(_)))
+                {
+                    // A rejected partial result must not hold the round: park
+                    // the attempt so a correct delivery can still re-acquire it.
+                    let _ = self.park_tool_round_attempt(attempt).await;
+                    return Err(error);
+                }
                 let error_payload = json!({ "message": error.to_string() });
                 let _ = self
                     .repository
@@ -379,6 +482,45 @@ where
                 Err(error)
             }
         }
+    }
+
+    /// One durable attempt per tool round; `received` is the parked state
+    /// between partial deliveries and `processing` is held by exactly one
+    /// in-flight delivery.
+    async fn claim_parked_tool_round_attempt(
+        &self,
+        existing: &domain::FlowRunCallbackResumeAttemptRecord,
+        response_payload: &Value,
+    ) -> Result<Uuid> {
+        match existing.status {
+            domain::FlowRunCallbackResumeAttemptStatus::Received => self
+                .repository
+                .claim_published_callback_resume_attempt(existing.id, response_payload.clone())
+                .await?
+                .map(|attempt| attempt.id)
+                .ok_or_else(|| {
+                    ControlPlaneError::Conflict("callback_resume_already_admitted").into()
+                }),
+            domain::FlowRunCallbackResumeAttemptStatus::Processing => {
+                Err(ControlPlaneError::Conflict("callback_resume_already_admitted").into())
+            }
+            domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+            | domain::FlowRunCallbackResumeAttemptStatus::Failed
+            | domain::FlowRunCallbackResumeAttemptStatus::Cancelled => {
+                Err(ControlPlaneError::Conflict("callback_resume_not_completed").into())
+            }
+        }
+    }
+
+    async fn park_tool_round_attempt(
+        &self,
+        attempt: domain::FlowRunCallbackResumeAttemptRecord,
+    ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {
+        Ok(self
+            .repository
+            .park_published_callback_resume_attempt(attempt.id)
+            .await?
+            .unwrap_or(attempt))
     }
 
     async fn resume_existing_attempt(
@@ -594,6 +736,7 @@ where
         input: CompletePublishedCallbackInput,
     ) -> Result<domain::FlowRunRecord> {
         self.complete_callback_task_run(CompleteCallbackTaskCommand {
+            transport_connection_scope: input.transport_connection_scope,
             native_transport: input.native_transport,
             actor_user_id: input.actor_user_id,
             application_id: input.application_id,
@@ -615,12 +758,7 @@ fn ensure_callback_is_consumable(
     if callback_task.status != domain::CallbackTaskStatus::Pending {
         return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
     }
-    if callback_task.callback_kind == "llm_tool_calls" {
-        crate::orchestration_runtime::ensure_llm_tool_callback_results_complete(
-            &callback_task.request_payload,
-            response_payload,
-        )?;
-    }
+    let _ = response_payload;
     Ok(())
 }
 

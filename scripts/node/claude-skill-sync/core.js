@@ -4,6 +4,7 @@ const path = require('node:path');
 const DEFAULT_SOURCE = path.join('.agents', 'skills');
 const DEFAULT_TARGET = path.join('.claude', 'skills');
 const SKILL_FILE_NAME = 'SKILL.md';
+const SHARED_DIR_NAME = '_shared';
 
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
@@ -14,6 +15,7 @@ function usage() {
 
 默认行为：
   将 .agents/skills 下的技能转换到 .claude/skills/<技能名>/SKILL.md
+  同时镜像 .agents/skills/_shared 到 .claude/skills/_shared，保证 skill 内 ../_shared 引用可解析
 
 选项：
   --source <dir>  源目录，默认 .agents/skills
@@ -211,6 +213,17 @@ function copySkillSupportFiles(sourceSkillDir, targetSkillDir) {
   fs.cpSync(sourceSkillDir, targetSkillDir, { recursive: true });
 }
 
+function syncSharedDir(sourceDir, targetDir) {
+  const sourceSharedDir = path.join(sourceDir, SHARED_DIR_NAME);
+  if (!fs.existsSync(sourceSharedDir)) {
+    return null;
+  }
+
+  const targetSharedDir = path.join(targetDir, SHARED_DIR_NAME);
+  copySkillSupportFiles(sourceSharedDir, targetSharedDir);
+  return targetSharedDir;
+}
+
 function syncClaudeSkills({
   repoRoot = getRepoRoot(),
   source = DEFAULT_SOURCE,
@@ -234,9 +247,12 @@ function syncClaudeSkills({
     skillNames.push(name);
   }
 
+  const sharedDir = syncSharedDir(sourceDir, targetDir);
+
   return {
     count: skillNames.length,
     skillNames,
+    sharedDir,
     sourceDir,
     targetDir,
   };
@@ -261,6 +277,9 @@ async function main(argv = process.argv.slice(2)) {
       ', '
     )}`
   );
+  if (result.sharedDir) {
+    log(`已镜像共享目录到 ${path.relative(repoRoot, result.sharedDir)}`);
+  }
   return 0;
 }
 
@@ -268,6 +287,7 @@ module.exports = {
   DEFAULT_SOURCE,
   DEFAULT_TARGET,
   SKILL_FILE_NAME,
+  SHARED_DIR_NAME,
   convertSkillSourceToClaudeSkill,
   copySkillSupportFiles,
   extractFrontMatter,
@@ -280,5 +300,6 @@ module.exports = {
   parseSkillSource,
   resolveWorkspacePaths,
   syncClaudeSkills,
+  syncSharedDir,
   main,
 };

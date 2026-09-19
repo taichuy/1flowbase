@@ -87,6 +87,7 @@ test('syncClaudeSkills writes each converted skill into .claude/skills/<name>/SK
 
   assert.equal(result.count, 1);
   assert.deepEqual(result.skillNames, ['backend-development']);
+  assert.equal(result.sharedDir, null);
   assert.equal(fs.existsSync(targetFile), true);
   assert.equal(fs.existsSync(targetReferenceFile), true);
   assert.equal(
@@ -105,4 +106,43 @@ test('syncClaudeSkills writes each converted skill into .claude/skills/<name>/SK
     ].join('\n')
   );
   assert.equal(fs.readFileSync(targetReferenceFile, 'utf8'), '# API Design\n');
+  assert.equal(fs.existsSync(path.join(repoRoot, '.claude', 'skills', '_shared')), false);
+});
+
+test('syncClaudeSkills mirrors _shared so ../_shared references resolve, without counting it as a skill', () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-claude-skill-sync-shared-'));
+  const sourceSkillsDir = path.join(repoRoot, '.agents', 'skills');
+  const sourceSkillDir = path.join(sourceSkillsDir, 'frontend-development');
+  const sourceSharedDir = path.join(sourceSkillsDir, '_shared');
+
+  fs.mkdirSync(sourceSkillDir, { recursive: true });
+  fs.mkdirSync(sourceSharedDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sourceSkillDir, 'SKILL.md'),
+    [
+      '---',
+      'name: frontend-development',
+      'description: Use when building web pages',
+      '---',
+      '',
+      'See [design-rules](../_shared/design-rules.md).',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  fs.writeFileSync(path.join(sourceSharedDir, 'design-rules.md'), '# Design Rules\n', 'utf8');
+
+  const result = syncClaudeSkills({ repoRoot });
+  const targetSkillFile = path.join(repoRoot, '.claude', 'skills', 'frontend-development', 'SKILL.md');
+  const targetSharedFile = path.join(repoRoot, '.claude', 'skills', '_shared', 'design-rules.md');
+
+  assert.equal(result.count, 1);
+  assert.deepEqual(result.skillNames, ['frontend-development']);
+  assert.equal(result.sharedDir, path.join(repoRoot, '.claude', 'skills', '_shared'));
+  assert.equal(fs.existsSync(path.join(repoRoot, '.claude', 'skills', '_shared', 'SKILL.md')), false);
+  assert.equal(
+    fs.existsSync(path.resolve(path.dirname(targetSkillFile), '..', '_shared', 'design-rules.md')),
+    true
+  );
+  assert.equal(fs.readFileSync(targetSharedFile, 'utf8'), '# Design Rules\n');
 });

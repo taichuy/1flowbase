@@ -163,9 +163,89 @@ impl PgControlPlaneStore {
                 .bind(&callback.external_ref_payload)
                 .fetch_one(&mut *tx)
                 .await?;
-                Some(map_callback_task_record(row)?)
+                let callback_task = map_callback_task_record(row)?;
+                if callback.callback_kind == "llm_tool_calls" {
+                    let tool_calls = callback
+                        .request_payload
+                        .get("tool_calls")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| anyhow!("llm tool callback request is missing tool_calls"))?;
+                    let mut ids = std::collections::BTreeSet::new();
+                    for (ordinal, tool_call) in tool_calls.iter().enumerate() {
+                        let tool_call_id = tool_call
+                            .get("call_id")
+                            .or_else(|| tool_call.get("id"))
+                            .and_then(Value::as_str)
+                            .filter(|id| !id.is_empty())
+                            .ok_or_else(|| anyhow!("llm tool callback request has an unstable tool call id"))?;
+                        if !ids.insert(tool_call_id) {
+                            return Err(anyhow!("llm tool callback request has duplicate tool call ids"));
+                        }
+                        sqlx::query(
+                            r#"
+                            insert into flow_run_tool_callback_inbox (
+                                id, scope_id, application_id, flow_run_id, callback_task_id,
+                                tool_call_id, tool_ordinal
+                            ) values ($1, $2, $3, $4, $5, $6, $7)
+                            "#,
+                        )
+                        .bind(Uuid::now_v7())
+                        .bind(input.scope_id)
+                        .bind(input.application_id)
+                        .bind(input.flow_run_id)
+                        .bind(callback.id)
+                        .bind(tool_call_id)
+                        .bind(i32::try_from(ordinal).map_err(|_| anyhow!("too many tool calls"))?)
+                        .execute(&mut *tx)
+                        .await?;
+                    }
+                }
+                Some(callback_task)
             }
         };
+
+        let mut tool_delivery_events = Vec::with_capacity(input.tool_delivery_events.len());
+        for delivery in &input.tool_delivery_events {
+            if delivery.flow_run_id != input.flow_run_id
+                || delivery.event_type != "provider_output_item_done"
+            {
+                return Err(anyhow!(
+                    "waiting transaction accepts only same-run provider_output_item_done deliveries"
+                ));
+            }
+            let delivery_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
+            let row = sqlx::query(
+                r#"
+                insert into runtime_events (
+                    id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                    event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                    visibility, durability, delivery_status
+                ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending')
+                returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
+                          event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                          visibility, durability, created_at
+                "#,
+            )
+            .bind(Uuid::now_v7())
+            .bind(input.scope_id)
+            .bind(input.flow_run_id)
+            .bind(delivery.node_run_id)
+            .bind(delivery.span_id)
+            .bind(delivery.parent_span_id)
+            .bind(delivery_sequence)
+            .bind(&delivery.event_type)
+            .bind(delivery.layer.as_str())
+            .bind(delivery.source.as_str())
+            .bind(delivery.trust_level.as_str())
+            .bind(delivery.item_id)
+            .bind(delivery.ledger_ref.as_deref())
+            .bind(&delivery.payload)
+            .bind(delivery.visibility.as_str())
+            .bind(delivery.durability.as_str())
+            .fetch_one(&mut *tx)
+            .await?;
+            tool_delivery_events.push(map_runtime_event_record(row)?);
+        }
 
         let event_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         let event_row = sqlx::query(
@@ -282,6 +362,7 @@ impl PgControlPlaneStore {
             checkpoint,
             callback_task,
             waiting_event,
+            tool_delivery_events,
             recovery_history,
         }))
     }

@@ -19,6 +19,7 @@ fn invoker(repository: Repository) -> RuntimeProviderInvoker<Repository, ()> {
         provider_install_root: None,
         flow_execution_context: None,
         answer_presentation: None,
+        transport_connection_scope_override: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

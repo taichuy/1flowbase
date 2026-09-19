@@ -287,9 +287,10 @@ pub(crate) fn cpu_metrics(
         if elapsed <= 0.0 {
             return None;
         }
-        let limit_cores = snapshot.cpu_limit_cores.unwrap_or(host_limit).max(0.01);
+        // Every scope is normalised to the whole machine: `100%` means all
+        // logical CPUs are busy, regardless of the cgroup quota.
         let used_seconds = current.saturating_sub(previous) as f64 / 1_000_000.0;
-        Some((used_seconds / elapsed / limit_cores * 100.0, limit_cores))
+        Some(used_seconds / elapsed / host_limit * 100.0)
     });
 
     let (scope_kind, limit_cores, usage_percent) = if let Some(snapshot) = cgroup_scope {
@@ -297,7 +298,7 @@ pub(crate) fn cpu_metrics(
         (
             RuntimeMetricScopeKind::Cgroup,
             limit,
-            cgroup_measurement.map(|(usage, _)| usage.clamp(0.0, 100.0)),
+            cgroup_measurement.map(|usage| usage.clamp(0.0, 100.0)),
         )
     } else {
         (

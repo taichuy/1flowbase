@@ -19,6 +19,7 @@ pub struct RecordingRuntimeEventStream {
     close_calls: Mutex<Vec<(Uuid, RuntimeEventCloseReason)>>,
     closed_runs: Mutex<HashSet<Uuid>>,
     fail_next_append: Mutex<bool>,
+    fail_event_type_once: Mutex<Option<String>>,
     fail_next_close: Mutex<bool>,
     append_barrier: Mutex<Option<Arc<tokio::sync::Barrier>>>,
     terminal_claim: Mutex<()>,
@@ -51,6 +52,14 @@ impl RecordingRuntimeEventStream {
             .fail_next_append
             .lock()
             .expect("runtime event stream append-failure lock should be available") = true;
+    }
+
+    pub fn fail_event_type_once(&self, event_type: &str) {
+        *self
+            .fail_event_type_once
+            .lock()
+            .expect("runtime event stream typed-failure lock should be available") =
+            Some(event_type.to_string());
     }
 
     pub fn fail_next_close(&self) {
@@ -88,6 +97,19 @@ impl RuntimeEventStream for RecordingRuntimeEventStream {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> Result<RuntimeEventEnvelope> {
+        let should_fail_event_type = self
+            .fail_event_type_once
+            .lock()
+            .expect("runtime event stream typed-failure lock should be available")
+            .as_deref()
+            == Some(event.event_type.as_str());
+        if should_fail_event_type {
+            self.fail_event_type_once
+                .lock()
+                .expect("runtime event stream typed-failure lock should be available")
+                .take();
+            anyhow::bail!("simulated typed runtime event stream append failure");
+        }
         if std::mem::take(
             &mut *self
                 .fail_next_append

@@ -544,7 +544,7 @@ fn native_adapter_rejects_context_window_as_runtime_model_parameter() {
 }
 
 #[tokio::test]
-async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_node() {
+async fn start_native_run_rejects_unknown_public_model_before_creating_a_run() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Published Native Unknown App");
@@ -568,18 +568,10 @@ async fn start_native_run_defers_requested_model_validation_to_the_selected_llm_
             ),
         })
         .await
-        .expect("the workflow must select its LLM node before model capability validation");
-    let flow_run = repository
-        .get_published_flow_run(result.id)
-        .await
-        .unwrap()
-        .expect("published flow run should be durable");
-
-    assert_eq!(result.metadata["model"], json!("missing-model"));
-    assert_eq!(
-        flow_run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
-        json!("high")
-    );
+        .unwrap_err();
+    assert_eq!(result, NativeRunValidationError::UnknownModel);
+    assert_eq!(repository.flow_run_count(), 0);
+    assert_eq!(repository.conversation_count(), 0);
 }
 
 #[tokio::test]
@@ -823,7 +815,7 @@ async fn same_idempotency_key_cannot_replay_a_run_created_through_another_protoc
 }
 
 #[tokio::test]
-async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_normalized_runtime() {
+async fn typed_reasoning_effort_preserves_exact_intent_and_idempotency() {
     let harness = ApplicationPublicApiTestHarness::new();
     let repository = harness.repository();
     let application = harness.seed_application(actor_user_id(), "Typed Reasoning Effort App");
@@ -851,11 +843,11 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         })
         .await
         .unwrap();
-    let spaced = service
+    let low = service
         .start_native_run(CreateNativeRunCommand {
             protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token.clone(),
-            request: request_with_effort("spaced-effort", " high "),
+            request: request_with_effort("low-effort", "low"),
         })
         .await
         .unwrap();
@@ -863,13 +855,13 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
         .start_native_run(CreateNativeRunCommand {
             protocol: control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
             bearer_token: token,
-            request: request_with_effort("normal-effort", " high "),
+            request: request_with_effort("normal-effort", "low"),
         })
         .await
         .unwrap_err();
 
     assert_eq!(conflict, NativeRunValidationError::IdempotencyConflict);
-    for run_id in [normal.id, spaced.id] {
+    for (run_id, effort) in [(normal.id, "high"), (low.id, "low")] {
         let run = repository
             .get_flow_run(application.id, run_id)
             .await
@@ -877,7 +869,7 @@ async fn typed_reasoning_effort_preserves_idempotency_spelling_but_freezes_norma
             .expect("typed reasoning run should be durable");
         assert_eq!(
             run.input_payload["sys"]["model_parameters"]["reasoning"]["effort"],
-            json!("high")
+            json!(effort)
         );
         assert!(run.input_payload["node-start"]
             .get("reasoning_effort")

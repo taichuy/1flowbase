@@ -17,6 +17,115 @@ pub struct ProviderInvocationResult {
 }
 
 impl ProviderInvocationResult {
+    /// Classify a successful invocation using the host-selected execution mode.
+    /// `expected_generation` applies only to WebSocket execution. Primary runtime
+    /// errors must be handled before calling this receipt validator.
+    pub fn transport_outcome_for_mode(
+        &self,
+        transport: RecoveryTransport,
+        expected_generation: u64,
+        recovery_directive: Option<&ProviderRecoveryDirective>,
+    ) -> Result<ProviderInvocationTransportClassification, String> {
+        if self.finish_reason == Some(ProviderFinishReason::Error) {
+            return Err(
+                "failed provider invocation cannot have a successful transport outcome".into(),
+            );
+        }
+        if self.invocation_timing_receipt()?.is_some_and(|timing| {
+            timing.termination_kind != ProviderInvocationTerminationKind::Completed
+        }) {
+            return Err("failed provider timing cannot have a successful transport outcome".into());
+        }
+        let recovery = self.recovery_receipt()?;
+        if let Some(recovery) = &recovery {
+            let directive = recovery_directive.ok_or_else(|| {
+                "provider recovery receipt requires its recovery directive".to_string()
+            })?;
+            recovery.validate_against(directive)?;
+            if recovery.disposition == RecoveryDisposition::TerminalInterruption
+                || matches!(
+                    recovery.reason,
+                    RecoveryReason::SemanticFailed
+                        | RecoveryReason::DeadlineExceeded
+                        | RecoveryReason::FencingRejected
+                        | RecoveryReason::BudgetExhausted
+                )
+            {
+                return Err("failed recovery cannot have a successful transport outcome".into());
+            }
+        }
+        let receipt = self.transport_session_receipt()?;
+        if transport == RecoveryTransport::ProviderHttp {
+            if receipt.is_some() {
+                return Err(
+                    "direct HTTP invocation cannot claim a WebSocket session receipt".into(),
+                );
+            }
+            if recovery.as_ref().is_some_and(|recovery| {
+                recovery.transport != RecoveryTransport::ProviderHttp
+                    || recovery.is_pre_commit_http_fallback()
+            }) {
+                return Err(
+                    "direct HTTP invocation cannot claim WebSocket recovery or fallback".into(),
+                );
+            }
+            return Ok(ProviderInvocationTransportClassification::Http);
+        }
+        if expected_generation == 0 {
+            return Err("expected transport generation must be positive".to_string());
+        }
+        if let Some(receipt) = &receipt {
+            if receipt.generation != expected_generation {
+                return Ok(ProviderInvocationTransportClassification::Session(
+                    ProviderInvocationTransportOutcome::StaleGeneration {
+                        expected_generation,
+                        received_generation: receipt.generation,
+                    },
+                ));
+            }
+        }
+        if let Some(recovery) = recovery {
+            if recovery.is_pre_commit_http_fallback() {
+                return Ok(ProviderInvocationTransportClassification::Session(
+                    ProviderInvocationTransportOutcome::HttpFallback { recovery },
+                ));
+            }
+            if recovery.transport != RecoveryTransport::AiNativeWebSocket {
+                return Err("WebSocket invocation requires explicit HTTP fallback evidence".into());
+            }
+        }
+        let outcome = match receipt {
+            None => ProviderInvocationTransportOutcome::ReceiptMissing,
+            Some(receipt) if receipt.physical_state != ProviderPhysicalTransportState::Ready => {
+                ProviderInvocationTransportOutcome::PhysicalConnectionFault {
+                    generation: receipt.generation,
+                    state: receipt.physical_state,
+                }
+            }
+            Some(receipt) => ProviderInvocationTransportOutcome::Ready { receipt },
+        };
+        Ok(ProviderInvocationTransportClassification::Session(outcome))
+    }
+
+    /// Existing session-only entry point. All validation shares the mode-aware
+    /// implementation so consumers may migrate without changing the wire enum.
+    pub fn transport_outcome(
+        &self,
+        expected_generation: u64,
+        recovery_directive: Option<&ProviderRecoveryDirective>,
+    ) -> Result<ProviderInvocationTransportOutcome, String> {
+        match self.transport_outcome_for_mode(
+            RecoveryTransport::AiNativeWebSocket,
+            expected_generation,
+            recovery_directive,
+        )? {
+            ProviderInvocationTransportClassification::Session(outcome) => Ok(outcome),
+            ProviderInvocationTransportClassification::Http => {
+                unreachable!("WebSocket classification always returns a session outcome")
+            }
+        }
+    }
+
     pub fn set_recovery_receipt(&mut self, receipt: ProviderRecoveryReceipt) -> Result<(), String> {
         receipt.validate()?;
         let metadata = self.provider_metadata.as_object_mut().ok_or_else(|| {

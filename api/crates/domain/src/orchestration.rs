@@ -249,6 +249,14 @@ impl FlowRunStatus {
             Self::Cancelled => "cancelled",
         }
     }
+
+    /// A terminal run no longer accepts events or state transitions.
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Succeeded | Self::Incomplete | Self::Failed | Self::Cancelled
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -15,6 +15,7 @@ use control_plane::application_public_api::{
     run_service::{ApplicationPublishedRunControlRepository, ApplicationPublishedRunService},
     ApplicationPublicApiTestHarness,
 };
+use control_plane::ports::FlowRepository;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -97,10 +98,40 @@ async fn issue_application_key(
 
 async fn publish_runnable_application(
     harness: &ApplicationPublicApiTestHarness,
-    application_id: Uuid,
+    application: &domain::ApplicationRecord,
     mapping: ApplicationApiMappingConfig,
     owner_user_id: Uuid,
 ) {
+    let application_id = application.id;
+    let repository = harness.repository();
+    let editor_state = repository
+        .get_or_create_editor_state(application.workspace_id, application_id, owner_user_id)
+        .await
+        .unwrap();
+    let mut document = editor_state.draft.document;
+    let start = document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["type"] == "start")
+        .unwrap();
+    // These public aliases are independent of the compiled provider route.
+    // Declare them before publication so read/cancel tests reach their target behavior.
+    start["config"]["model_list"] = json!([
+        {"id": "any-model"},
+        {"id": "pass-through-model"}
+    ]);
+    FlowRepository::save_draft(
+        &repository,
+        application.workspace_id,
+        application_id,
+        owner_user_id,
+        document,
+        domain::FlowChangeKind::Logical,
+        "Declare native run fixture models",
+    )
+    .await
+    .unwrap();
     ApplicationPublicationService::new(harness.repository())
         .publish_active_version(PublishApplicationCommand {
             actor_user_id: owner_user_id,
@@ -478,7 +509,7 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
                 "requested_context_window": 1000000,
                 "reasoning": {
                     "mode": "adaptive",
-                    "effort": " high ",
+                    "effort": "high",
                     "budget_tokens": 2048
                 }
             }
@@ -515,7 +546,7 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
         (
             "$.execution.model_parameters.reasoning.effort",
             "$.execution.model_parameters.reasoning.effort",
-            TranslationDecisionKind::Normalized,
+            TranslationDecisionKind::Exact,
         ),
         (
             "$.execution.model_parameters.reasoning.budget_tokens",
@@ -580,7 +611,7 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
             TranslationSafeRepresentation::Present,
         ),
         (
-            json!({"reasoning": {"effort": "turbo"}}),
+            json!({"reasoning": {"effort": " high "}}),
             "$.execution.model_parameters.reasoning.effort",
             TranslationSafeRepresentation::Present,
         ),
@@ -779,7 +810,7 @@ async fn native_run_with_null_model_target_keeps_model_metadata_out_of_node_inpu
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -845,14 +876,14 @@ async fn native_run_read_rejects_run_created_by_different_application_api_key() 
         issue_application_key(&harness, second_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        first_application.id,
+        &first_application,
         mapping_without_model_target(),
         actor_user_id(),
     )
     .await;
     publish_runnable_application(
         &harness,
-        second_application.id,
+        &second_application,
         mapping_without_model_target(),
         other_user_id(),
     )
@@ -884,7 +915,7 @@ async fn native_run_read_loads_durable_published_flow_run_without_test_only_resu
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -928,7 +959,7 @@ async fn native_run_read_resolves_provider_response_id_within_api_key_scope() {
     let other_token = issue_application_key(&harness, other_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -974,14 +1005,14 @@ async fn native_run_cancel_verifies_ownership_and_marks_published_run_cancelled(
         issue_application_key(&harness, second_application.id, other_user_id()).await;
     publish_runnable_application(
         &harness,
-        first_application.id,
+        &first_application,
         mapping_without_model_target(),
         actor_user_id(),
     )
     .await;
     publish_runnable_application(
         &harness,
-        second_application.id,
+        &second_application,
         mapping_without_model_target(),
         other_user_id(),
     )
@@ -1042,7 +1073,7 @@ async fn native_run_cancel_cas_miss_reloads_durable_winner_without_second_public
     let token = issue_application_key(&harness, application.id, actor_user_id()).await;
     publish_runnable_application(
         &harness,
-        application.id,
+        &application,
         mapping_without_model_target(),
         actor_user_id(),
     )
@@ -1434,5 +1465,26 @@ fn d2_f1_native_defined_container_receipts_remain_unique_on_nested_rejection() {
             .collect::<Vec<_>>();
         assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
         assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+}
+
+#[test]
+fn increment_effort_native_preserves_extensions_and_rejects_malformed_values() {
+    for effort in [json!("max"), json!("ultra"), json!("custom-v2")] {
+        let translated = translate_native_run_request(json!({"query":"hello", "execution":{"model_parameters":{"reasoning":{"effort":effort}}}})).unwrap();
+        let value = serde_json::to_value(translated.request.execution).unwrap();
+        assert_eq!(value["model_parameters"]["reasoning"]["effort"], effort);
+    }
+    for effort in [
+        json!(""),
+        json!(" max"),
+        json!("max "),
+        json!(7),
+        json!(null),
+        json!({}),
+        json!("x".repeat(129)),
+        json!("a\nb"),
+    ] {
+        assert!(translate_native_run_request(json!({"query":"hello", "execution":{"model_parameters":{"reasoning":{"effort":effort}}}})).is_err());
     }
 }

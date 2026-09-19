@@ -30,12 +30,14 @@ use crate::{
     ports::{
         AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
         ApplicationRepository, BillingRepository, CacheStore, CallbackResumeWaitingNode,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
-        FinishResumeClaimInput, FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
-        NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
-        ProviderRuntimePort, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
-        ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream,
-        TaskQueue, UpdateFlowRunInput, UpdateNodeRunInput,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
+        CompleteCallbackTaskInput, FinishResumeClaimInput, FlowRepository,
+        ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
+        OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
+        ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus,
+        RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
+        TaskQueue, ToolCallbackResultInput, ToolCallbackRoundDisposition, UpdateFlowRunInput,
+        UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };
@@ -122,6 +124,8 @@ pub struct ContinueFlowDebugRunCommand {
 }
 
 pub struct StartPublishedFlowRunCommand {
+    /// Private host execution state; never stored in the flow input or protocol envelope.
+    pub transport_connection_scope: Option<String>,
     pub application_id: Uuid,
     pub flow_run_id: Uuid,
     pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
@@ -156,7 +160,11 @@ pub struct ResumeFlowRunCommand {
     pub input_payload: serde_json::Value,
 }
 
+/// Host-private connection context, removed before RuntimeExtension dispatch.
+pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-connection-scope";
+
 pub struct CompleteCallbackTaskCommand {
+    pub transport_connection_scope: Option<String>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
@@ -204,49 +212,6 @@ fn ensure_data_model_side_effect_confirmation_metadata(
         return Err(anyhow!(
             "DATA_MODEL_SIDE_EFFECT_CONFIRMATION_EXPIRED: data_model write confirmation expired"
         ));
-    }
-
-    Ok(())
-}
-
-pub(crate) fn ensure_llm_tool_callback_results_complete(
-    request_payload: &Value,
-    response_payload: &Value,
-) -> Result<()> {
-    let tool_calls = request_payload
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("llm tool callback request is missing tool_calls"))?;
-    let tool_results = response_payload
-        .get("tool_results")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("llm tool callback response requires tool_results"))?;
-    let mut expected_ids = std::collections::BTreeSet::new();
-    let mut received_ids = std::collections::BTreeSet::new();
-
-    for tool_call in tool_calls {
-        let id = tool_call
-            .get("id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("llm tool callback request has tool call without id"))?;
-        expected_ids.insert(id.to_string());
-    }
-    for tool_result in tool_results {
-        let id = tool_result
-            .get("tool_call_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("llm tool callback result is missing tool_call_id"))?;
-        if !expected_ids.contains(id) {
-            return Err(anyhow!("unexpected tool result for {id}"));
-        }
-        if !received_ids.insert(id.to_string()) {
-            return Err(anyhow!("duplicate tool result for {id}"));
-        }
-    }
-    for expected_id in expected_ids {
-        if !received_ids.contains(&expected_id) {
-            return Err(anyhow!("missing tool result for {expected_id}"));
-        }
     }
 
     Ok(())
@@ -317,6 +282,7 @@ struct RuntimeProviderInvoker<R, H> {
     flow_execution_context: Option<Arc<RuntimeFlowExecutionContext>>,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+    transport_connection_scope_override: Option<Option<String>>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     provider_continuation: Option<crate::ports::ProviderContinuation>,
@@ -329,7 +295,18 @@ struct RuntimeFlowExecutionContext {
     user_account: Option<String>,
     require_provider_usage_for_billing: bool,
     active_node: Mutex<Option<RuntimeActiveNode>>,
+    tool_delivery_events: Mutex<Vec<RuntimeEventPayload>>,
     data_model: RuntimeDataModelExecutionContext,
+}
+
+impl RuntimeFlowExecutionContext {
+    fn take_tool_delivery_events(&self) -> Result<Vec<RuntimeEventPayload>> {
+        let mut events = self
+            .tool_delivery_events
+            .lock()
+            .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?;
+        Ok(std::mem::take(&mut *events))
+    }
 }
 
 #[derive(Clone)]
@@ -347,6 +324,7 @@ struct RuntimeDataModelExecutionContext {
 }
 
 struct ResumeExecutionSegmentInput<'a> {
+    transport_connection_scope: Option<String>,
     resumed_node_run: Option<crate::ports::CallbackResumeWaitingNode>,
     native_transport: Option<crate::ports::ProviderTransportPayload>,
     response_round_id: Option<Uuid>,
@@ -365,6 +343,7 @@ struct ResumeExecutionSegmentOutput {
     prepared_node_runs: PreparedNodeRuns,
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
+    tool_delivery_events: Vec<RuntimeEventPayload>,
 }
 
 pub struct OrchestrationRuntimeService<R, H> {
@@ -508,6 +487,7 @@ where
             user_account,
             require_provider_usage_for_billing: self.require_provider_usage_for_billing,
             active_node: Mutex::new(active_node),
+            tool_delivery_events: Mutex::new(Vec::new()),
             data_model: RuntimeDataModelExecutionContext {
                 actor,
                 application_id,
@@ -533,6 +513,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            transport_connection_scope_override: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -561,6 +542,7 @@ where
             provider_install_root: self.provider_install_root.clone(),
             flow_execution_context: None,
             answer_presentation: None,
+            transport_connection_scope_override: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -603,7 +585,7 @@ where
         let invoker = self
             .runtime_invoker(input.application.workspace_id)
             .for_flow_run(input.flow_run.id)
-            .with_flow_execution_context(flow_execution_context);
+            .with_flow_execution_context(flow_execution_context.clone());
         let provider_continuation = if orchestration_runtime::execution_engine::pending_llm_tool_callback_requires_ephemeral_provider_continuation(
             &input.snapshot.variable_pool,
             input.waiting_node_id,
@@ -632,13 +614,19 @@ where
             (Some(_), None) => return Err(anyhow!("ephemeral_continuation_missing")),
             (None, _) => None,
         };
+        let transport = transport.map(|payload| {
+            crate::application_public_api::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+                &input.flow_run.input_payload, payload,
+            )
+        }).transpose()?;
         let mut invoker = invoker
             .with_provider_continuation(if native_resume {
                 None
             } else {
                 provider_continuation
             })
-            .with_provider_transport_payload(transport);
+            .with_provider_transport_payload(transport)
+            .with_transport_connection_scope_override(input.transport_connection_scope);
         invoker.response_round_id = input.response_round_id;
         invoker.native_user_messages_digest = input
             .snapshot
@@ -700,11 +688,13 @@ where
             &lifecycle,
         )
         .await?;
+        let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
 
         Ok(ResumeExecutionSegmentOutput {
             outcome,
             prepared_node_runs: lifecycle.prepared_node_runs()?,
             answer_presentation,
+            tool_delivery_events,
         })
     }
 
@@ -1028,6 +1018,7 @@ where
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
+            command.transport_connection_scope,
         )
         .await
     }
@@ -1037,6 +1028,7 @@ where
         application_id: Uuid,
         flow_run_id: Uuid,
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
+        transport_connection_scope: Option<String>,
     ) -> Result<domain::ApplicationRunDetail>
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
@@ -1149,17 +1141,13 @@ where
         let provider_transport_payload = self
             .resolve_provider_transport_payload(&running, provider_transport_slot)
             .await?;
-        let result = match provider_transport_payload {
-            Some(payload) => {
-                live_debug_run::continue_flow_debug_run_with_provider_transport(
-                    self,
-                    continuation,
-                    payload,
-                )
-                .await
-            }
-            None => self.continue_flow_debug_run(continuation).await,
-        };
+        let result = live_debug_run::continue_flow_debug_run_with_provider_transport(
+            self,
+            continuation,
+            provider_transport_payload,
+            transport_connection_scope,
+        )
+        .await;
         if let Some(slot_id) = provider_transport_slot {
             self.delete_provider_transport_slot(slot_id).await;
         }
@@ -1300,6 +1288,7 @@ where
         let result = async {
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
+                    transport_connection_scope: None,
                     resumed_node_run: None,
                     native_transport: None,
                     response_round_id: None,
@@ -1333,6 +1322,7 @@ where
                 waiting_node_resume,
                 resume_claim_id: Some(claim.claim.id),
                 resume_claim_token: Some(claim.claim.claim_token),
+                tool_delivery_events: execution.tool_delivery_events.clone(),
             })
             .await
         }

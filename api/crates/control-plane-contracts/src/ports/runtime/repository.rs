@@ -300,6 +300,34 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &PersistWaitingStateInput,
     ) -> anyhow::Result<Option<PersistedWaitingState>>;
+    async fn claim_runtime_event_deliveries(
+        &self,
+        input: &ClaimRuntimeEventDeliveriesInput,
+    ) -> anyhow::Result<Vec<RuntimeEventDeliveryClaim>> {
+        let _ = input;
+        anyhow::bail!("claim_runtime_event_deliveries not implemented")
+    }
+    async fn ack_runtime_event_delivery(
+        &self,
+        input: &AckRuntimeEventDeliveryInput,
+    ) -> anyhow::Result<domain::RuntimeEventRecord> {
+        let _ = input;
+        anyhow::bail!("ack_runtime_event_delivery not implemented")
+    }
+    async fn release_runtime_event_delivery(
+        &self,
+        input: &ReleaseRuntimeEventDeliveryInput,
+    ) -> anyhow::Result<domain::RuntimeEventRecord> {
+        let _ = input;
+        anyhow::bail!("release_runtime_event_delivery not implemented")
+    }
+    async fn mark_runtime_event_delivery_uncertain(
+        &self,
+        input: &MarkRuntimeEventDeliveryUncertainInput,
+    ) -> anyhow::Result<domain::RuntimeEventRecord> {
+        let _ = input;
+        anyhow::bail!("mark_runtime_event_delivery_uncertain not implemented")
+    }
     async fn acquire_resume_claim(
         &self,
         input: &AcquireResumeClaimInput,
@@ -308,6 +336,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &FinishResumeClaimInput,
     ) -> anyhow::Result<ResumeClaimRecord>;
+    async fn commit_tool_callback_results(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+    ) -> anyhow::Result<CommitToolCallbackResultsOutput> {
+        let _ = input;
+        anyhow::bail!("commit_tool_callback_results not implemented")
+    }
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,

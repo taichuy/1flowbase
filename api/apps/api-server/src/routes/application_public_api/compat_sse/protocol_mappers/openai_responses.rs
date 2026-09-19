@@ -130,6 +130,16 @@ impl OpenAiResponseStreamMapper {
         let Some(item) = envelope.payload.get("item").cloned() else {
             return true;
         };
+        if envelope.event_type == "provider_output_item_done"
+            && is_client_executable_item(&item)
+            && envelope
+                .payload
+                .get("committed_delivery")
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            return true;
+        }
 
         self.close_output_item(initial_run, events);
         events.push(self.event(
@@ -234,4 +244,9 @@ impl OpenAiResponseStreamMapper {
         }
         events
     }
+}
+
+fn is_client_executable_item(item: &Value) -> bool {
+    let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+    item_type.ends_with("_call") || item_type == "mcp_approval_request"
 }

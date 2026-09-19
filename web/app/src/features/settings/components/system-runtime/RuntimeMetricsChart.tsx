@@ -16,10 +16,7 @@ export interface RuntimeMetricPoint {
   capturedAt: number;
   cpuUsagePercent: number | null;
   environmentMemoryUsagePercent: number | null;
-  hostRelatedProcessBytes: number | null;
-  hostRelatedProcessCount: number | null;
   targetRelatedProcessBytes: number;
-  targetRelatedProcessCount: number;
   rootProcessBytes: number;
   networkReceivedBytesPerSecond: number | null;
   networkTransmittedBytesPerSecond: number | null;
@@ -75,14 +72,6 @@ function seriesFor(
   }
   if (kind === 'process_memory') {
     return [
-      {
-        name: i18nText('settings', 'auto.host_related_process_total'),
-        type: 'line' as const,
-        smooth: true,
-        showSymbol: false,
-        connectNulls: false,
-        data: points.map((point) => megabytes(point.hostRelatedProcessBytes))
-      },
       {
         name: i18nText('settings', 'auto.runtime_target_process_tree', {
           value1: targetLabel

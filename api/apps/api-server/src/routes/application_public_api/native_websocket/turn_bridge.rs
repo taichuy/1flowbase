@@ -198,6 +198,7 @@ impl NativeTurnBridge {
         frames: mpsc::Sender<String>,
     ) -> Result<(), NativeTurnBridgeError> {
         let command = ResumePublishedCallbackCommand {
+            transport_connection_scope: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: String::new(),
@@ -270,15 +271,21 @@ impl NativeTurnBridge {
         let (_initial_run, mut events) = stream.into_parts();
         let mut projector = NativeWebSocketProjector::new(request_id, visibility);
         while let Some(input) = events.recv().await {
-            let (run, envelope) = input.into_parts();
-            if let Some(frame) = projector
+            let (run, envelope, mut delivery) = input.into_parts();
+            let frame = projector
                 .project(&run, envelope)
-                .map_err(|error| Self::rejected("projection_failed", error.to_string()))?
-            {
+                .map_err(|error| Self::rejected("projection_failed", error.to_string()))?;
+            if let Some(frame) = frame {
+                if let Some(delivery) = delivery.as_mut() {
+                    delivery.begin_write();
+                }
                 frames
                     .send(frame)
                     .await
                     .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
+            }
+            if let Some(delivery) = delivery.take() {
+                delivery.projected();
             }
             if projector.has_terminal() {
                 return Ok(());
@@ -299,7 +306,7 @@ impl NativeTurnBridge {
         let mut projector = NativeWebSocketProjector::new(request_id.clone(), visibility);
         let mut accepted = false;
         while let Some(input) = events.recv().await {
-            let (run, envelope) = input.into_parts();
+            let (run, envelope, mut delivery) = input.into_parts();
             if emit_accepted && !accepted {
                 frames
                     .send(
@@ -315,14 +322,20 @@ impl NativeTurnBridge {
                     .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
                 accepted = true;
             }
-            if let Some(frame) = projector
+            let frame = projector
                 .project(&run, envelope)
-                .map_err(|error| Self::rejected("projection_failed", error.to_string()))?
-            {
+                .map_err(|error| Self::rejected("projection_failed", error.to_string()))?;
+            if let Some(frame) = frame {
+                if let Some(delivery) = delivery.as_mut() {
+                    delivery.begin_write();
+                }
                 frames
                     .send(frame)
                     .await
                     .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
+            }
+            if let Some(delivery) = delivery.take() {
+                delivery.projected();
             }
             if projector.has_terminal() {
                 let terminal = completion

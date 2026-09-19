@@ -360,7 +360,7 @@ node scripts/node/cli/mock-ui-sync.js --source web --target tmp/mock-ui --port 3
 
 ### `node scripts/node/cli/claude-skill-sync.js [选项]`
 
-将 `.agents/skills` 同步为 Claude 可识别的 `.claude/skills/<name>/SKILL.md` 结构。
+将 `.agents/skills` 同步为 Claude 可识别的 `.claude/skills/<name>/SKILL.md` 结构，并镜像 `.agents/skills/_shared`，保证 skill 内 `../_shared/*.md` 引用在镜像中可解析。`.claude/skills` 是本地消费镜像，不提交；新克隆或调整 `.agents/skills` 后重新执行。
 
 ```bash
 node scripts/node/cli/claude-skill-sync.js

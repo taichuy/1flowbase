@@ -383,7 +383,12 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     ),
     core_simple_settings(
         "system.system-runtime",
-        &["system.release_status.view", "system.runtime_profile.view"],
+        &[
+            "system.release_status.view",
+            "system.runtime_profile.view",
+            "system.runtime_processes.view",
+            "system.runtime_process.terminate",
+        ],
     ),
     core_simple_settings(
         "system.backups",
@@ -494,6 +499,8 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "ui_management.templates.list",
     "ui_management.templates.publish",
     "ui_management.templates.update",
+    // Terminating a process is a new destructive action; no historic view grant authorizes it.
+    "system.runtime_process.terminate",
 ];
 
 pub(super) const AUTHENTICATED_OPERATION_EVIDENCE: &str =

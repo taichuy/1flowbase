@@ -69,3 +69,5 @@ docs/private/*
 docs/ziliao/*
 .codex/*
 deploy/*
+# .dsh 是本机 harness/MCP 配置，含本地凭证，永不提交
+.dsh/

@@ -560,6 +560,21 @@ async fn persist_waiting_state_rolls_back_run_checkpoint_and_event_on_recovery_f
                 visibility: domain::RuntimeEventVisibility::Workspace,
                 durability: domain::RuntimeEventDurability::Durable,
             },
+            tool_delivery_events: vec![AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node_run.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "provider_output_item_done".into(),
+                layer: domain::RuntimeEventLayer::ProviderRaw,
+                source: domain::RuntimeEventSource::ProviderPlugin,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({ "item": { "type": "function_call", "call_id": "call-1" } }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            }],
             kind: PersistWaitingKind::Human,
         })
         .await;

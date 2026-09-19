@@ -11,6 +11,7 @@ use crate::application_public_api::protocol_translation::{
 };
 
 const MODEL_PARAMETERS_PATH: &str = "$.execution.model_parameters";
+const PUBLISHED_REASONING_DEFAULT_EFFORT: &str = "published_reasoning_default_effort";
 const REASONING_PATH: &str = "$.execution.model_parameters.reasoning";
 
 /// Native execution preserves opaque execution options while giving model
@@ -191,7 +192,7 @@ impl std::ops::Index<&str> for NativeExecution {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeExecutionModelParameters {
     max_output_tokens: Option<NonZeroU64>,
     requested_context_window: Option<NonZeroU64>,
@@ -199,6 +200,94 @@ pub struct NativeExecutionModelParameters {
 }
 
 impl NativeExecutionModelParameters {
+    /// This field can only be minted from publication admission, never client sys input.
+    pub(crate) fn freeze_published_reasoning_default(
+        sys: &mut Map<String, Value>,
+        effort: Option<&str>,
+    ) {
+        sys.remove(PUBLISHED_REASONING_DEFAULT_EFFORT);
+        if let Some(effort) = effort {
+            sys.insert(
+                PUBLISHED_REASONING_DEFAULT_EFFORT.to_owned(),
+                Value::String(effort.to_owned()),
+            );
+        }
+    }
+
+    /// Native wire and continuation digests must use the same frozen default.
+    /// Node model parameters are deliberately not consulted here.
+    pub(crate) fn seal_published_reasoning_default(
+        input_payload: &Value,
+        payload: crate::ports::ProviderTransportPayload,
+    ) -> anyhow::Result<crate::ports::ProviderTransportPayload> {
+        let Some(default) = input_payload
+            .get("sys")
+            .and_then(|sys| sys.get(PUBLISHED_REASONING_DEFAULT_EFFORT))
+        else {
+            return Ok(payload);
+        };
+        let default = default
+            .as_str()
+            .filter(|value| valid_reasoning_effort(value))
+            .ok_or_else(|| anyhow::anyhow!("invalid_frozen_published_reasoning_default"))?;
+        if payload
+            .wire_body()
+            .get("reasoning")
+            .and_then(|value| value.as_object())
+            .is_some_and(|reasoning| reasoning.contains_key("effort"))
+        {
+            return Ok(payload);
+        }
+        let affinity = payload.affinity().cloned();
+        let mut body = payload.into_wire_body();
+        let body_object = body
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
+        let reasoning = body_object
+            .entry("reasoning")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if reasoning.is_null() {
+            *reasoning = Value::Object(Map::new());
+        }
+        let reasoning = reasoning
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_reasoning_must_be_object"))?;
+        reasoning.insert("effort".to_owned(), Value::String(default.to_owned()));
+        let sealed = crate::ports::ProviderTransportPayload::openai_responses(body)?;
+        Ok(match affinity {
+            Some(affinity) => sealed.with_affinity(affinity),
+            None => sealed,
+        })
+    }
+
+    pub(crate) fn needs_default_effort(&self) -> bool {
+        self.reasoning.as_ref().is_none_or(|reasoning| {
+            reasoning.effective_mode() != NativeReasoningMode::Disabled
+                && reasoning.effort.is_none()
+        })
+    }
+
+    pub(crate) fn apply_default_effort(&mut self, effort: &str) -> bool {
+        let Some(effort) = NativeReasoningEffort::parse(effort) else {
+            return false;
+        };
+        // Explicit disabled intent takes precedence over an application default.
+        if !self.needs_default_effort() {
+            return true;
+        }
+        let reasoning = self
+            .reasoning
+            .get_or_insert_with(|| NativeReasoningParameters {
+                mode: None,
+                effort: None,
+                budget_tokens: None,
+            });
+        if reasoning.effort.is_none() {
+            reasoning.effort = Some(effort);
+        }
+        true
+    }
+
     fn from_value(value: &Value) -> Result<Self, NativeModelParameterParseError> {
         let object = value.as_object().ok_or_else(|| {
             NativeModelParameterParseError::present(
@@ -356,13 +445,13 @@ impl NativeReasoningParameters {
                 let value = value.as_str().ok_or_else(|| {
                     NativeModelParameterParseError::present(
                         format!("{REASONING_PATH}.effort"),
-                        "reasoning.effort must be a supported non-empty string",
+                        "reasoning.effort must be a non-empty string of at most 128 bytes without surrounding whitespace or control characters",
                     )
                 })?;
                 Some(NativeReasoningEffort::parse(value).ok_or_else(|| {
                     NativeModelParameterParseError::present(
                         format!("{REASONING_PATH}.effort"),
-                        "reasoning.effort must be a supported non-empty string",
+                        "reasoning.effort must be a non-empty string of at most 128 bytes without surrounding whitespace or control characters",
                     )
                 })?)
             }
@@ -447,61 +536,26 @@ impl NativeReasoningMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct NativeReasoningEffort {
-    wire_spelling: String,
-    normalized: NativeReasoningEffortKind,
+struct NativeReasoningEffort(String);
+
+/// Wire syntax only; supported values belong to the published model descriptor.
+pub(crate) fn valid_reasoning_effort(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
 }
 
 impl NativeReasoningEffort {
-    fn parse(wire_spelling: &str) -> Option<Self> {
-        let normalized = NativeReasoningEffortKind::parse(wire_spelling.trim())?;
-        Some(Self {
-            wire_spelling: wire_spelling.to_string(),
-            normalized,
-        })
+    fn parse(value: &str) -> Option<Self> {
+        valid_reasoning_effort(value).then(|| Self(value.to_owned()))
     }
 
     fn normalized(&self) -> &str {
-        self.normalized.as_str()
+        &self.0
     }
-
     fn wire_spelling(&self) -> &str {
-        &self.wire_spelling
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NativeReasoningEffortKind {
-    Minimal,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl NativeReasoningEffortKind {
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "minimal" => Some(Self::Minimal),
-            "low" => Some(Self::Low),
-            "medium" => Some(Self::Medium),
-            "high" => Some(Self::High),
-            "xhigh" => Some(Self::Xhigh),
-            "max" => Some(Self::Max),
-            _ => None,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Minimal => "minimal",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh => "xhigh",
-            Self::Max => "max",
-        }
+        &self.0
     }
 }
 
@@ -700,8 +754,8 @@ fn record_native_model_parameter_receipts(
         report.record(
             &path,
             Some(&path),
-            TranslationDecisionKind::Normalized,
-            Some("reasoning effort is normalized before runtime use"),
+            TranslationDecisionKind::Exact,
+            None,
             TranslationSafeRepresentation::Present,
         );
     }

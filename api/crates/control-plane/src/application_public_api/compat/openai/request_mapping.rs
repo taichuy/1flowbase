@@ -221,9 +221,14 @@ pub(super) fn openai_reasoning(
     };
     let effort = effort
         .as_str()
-        .filter(|value| matches!(*value, "minimal" | "low" | "medium" | "high" | "xhigh"))
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 128
+                && value.trim() == *value
+                && !value.chars().any(char::is_control)
+        })
         .ok_or_else(|| {
-            OpenAiCompatError::invalid("reasoning", "unsupported reasoning effort")
+            OpenAiCompatError::invalid("reasoning", "invalid reasoning effort format")
                 .with_report(report.clone())
         })?;
     report.record(

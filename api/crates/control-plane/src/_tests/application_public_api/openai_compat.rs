@@ -1321,3 +1321,34 @@ fn k1_remote_profiles_do_not_fallback_to_local_summary_on_mismatched_evidence() 
         TranslationDecisionKind::Rejected
     ));
 }
+
+#[test]
+fn increment_effort_openai_shared_mapping_preserves_extensions_and_rejects_format() {
+    for effort in [json!("max"), json!("ultra"), json!("custom-v2")] {
+        let responses = translate_response_request(
+            json!({"model":"public-model","input":"hello","reasoning":{"effort":effort}}),
+        )
+        .unwrap();
+        let chat = translate_chat_completion_request(json!({"model":"public-model","messages":[{"role":"user","content":"hello"}],"reasoning_effort":effort})).unwrap();
+        for translated in [responses, chat] {
+            let execution = serde_json::to_value(translated.request.execution).unwrap();
+            assert_eq!(execution["model_parameters"]["reasoning"]["effort"], effort);
+        }
+    }
+    for effort in [
+        json!(""),
+        json!(" max"),
+        json!("max "),
+        json!(7),
+        json!(null),
+        json!({}),
+        json!("x".repeat(129)),
+        json!("a\nb"),
+    ] {
+        assert!(translate_response_request(
+            json!({"model":"public-model","input":"hello","reasoning":{"effort":effort}})
+        )
+        .is_err());
+        assert!(translate_chat_completion_request(json!({"model":"public-model","messages":[{"role":"user","content":"hello"}],"reasoning_effort":effort})).is_err());
+    }
+}

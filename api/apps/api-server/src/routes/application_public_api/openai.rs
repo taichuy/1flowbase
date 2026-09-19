@@ -440,6 +440,7 @@ async fn create_response_for_endpoint(
             body,
             endpoint,
             delivery: OpenAiResponseDelivery::Http,
+            transport_connection_scope: None,
         },
         None,
     )
@@ -461,6 +462,7 @@ pub(crate) async fn prepare_typed_response_turn(
     principal: interface_runtime::ApplicationPrincipal,
     headers: HeaderMap,
     body: Bytes,
+    transport_connection_scope: String,
 ) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
     match dispatch_response_for_endpoint(
         state,
@@ -471,6 +473,7 @@ pub(crate) async fn prepare_typed_response_turn(
             body,
             endpoint: OpenAiResponsesEndpoint::Responses,
             delivery: OpenAiResponseDelivery::TypedEvents,
+            transport_connection_scope: Some(transport_connection_scope),
         },
         Some(principal),
     )
@@ -493,6 +496,7 @@ struct OpenAiResponseDispatchRequest {
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
+    transport_connection_scope: Option<String>,
 }
 
 async fn dispatch_response_for_endpoint(
@@ -507,6 +511,7 @@ async fn dispatch_response_for_endpoint(
         body,
         endpoint,
         delivery,
+        transport_connection_scope,
     } = request;
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
@@ -668,6 +673,7 @@ async fn dispatch_response_for_endpoint(
             );
             let uses_native_transport = native_transport.is_some();
             command.native_transport = native_transport;
+            command.transport_connection_scope = transport_connection_scope.clone();
             match compat_sse::prepare_compatible_resume_for_actor(
                 state.clone(),
                 application_actor.clone(),
@@ -803,6 +809,11 @@ async fn dispatch_response_for_endpoint(
             &headers,
         )?;
     }
+    // Keep socket ownership outside the canonical envelope and its durable/ephemeral
+    // protocol-context storage. It is applied only at the host Provider boundary.
+    request
+        .metadata
+        .set_transport_connection_scope(transport_connection_scope);
     let operation = *request.execution.execution_operation();
     attach_compact_provider_transport_payload(
         &mut request,
@@ -1225,7 +1236,13 @@ fn openai_protocol_context_from_ingress(
             form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
         ),
     );
-    merge_client_protocol_envelopes(policy, captured, translated)
+    let mut envelope = merge_client_protocol_envelopes(policy, captured, translated);
+    if let Some(envelope) = envelope.as_mut() {
+        envelope
+            .headers
+            .remove(control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER);
+    }
+    envelope
 }
 
 fn parse_openai_json_body(
@@ -1282,6 +1299,7 @@ fn openai_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        transport_connection_scope: None,
         reserved_attempt_id: None,
         native_transport: None,
         bearer_token: bearer_token.to_string(),
@@ -1461,9 +1479,13 @@ async fn collect_blocking_native_response(
     // completion owner alive even if the blocking HTTP caller disconnects.
     let completion = tokio::spawn(completion.complete());
     let mut items = None;
+    // A blocking response is written once, after the whole turn is collected;
+    // the tool deliveries are projected together with that single body.
+    let mut deliveries = Vec::new();
     while let Some(event) = events.recv().await {
-        let (_, envelope) = event.into_parts();
+        let (_, envelope, delivery) = event.into_parts();
         collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
+        deliveries.extend(delivery);
     }
     let terminal = completion
         .await
@@ -1513,6 +1535,9 @@ async fn collect_blocking_native_response(
     let response =
         to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
     let _receipt = receipt.projected();
+    for delivery in deliveries {
+        delivery.projected();
+    }
     Ok(response)
 }
 

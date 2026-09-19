@@ -180,6 +180,7 @@ fn state_name(state: TransportSessionState) -> &'static str {
         TransportSessionState::Active => "active",
         TransportSessionState::WaitingTool => "waiting_tool",
         TransportSessionState::IdleAffinity => "idle_affinity",
+        TransportSessionState::IdleReleased => "idle_released",
         TransportSessionState::Orphaned => "orphaned",
         TransportSessionState::Draining => "draining",
         TransportSessionState::Faulted => "faulted",
@@ -219,7 +220,7 @@ fn termination_name(kind: TerminationKind) -> &'static str {
 fn eviction_priority(state: TransportSessionState) -> Option<u8> {
     match state {
         TransportSessionState::Orphaned => Some(0),
-        TransportSessionState::IdleAffinity => Some(1),
+        TransportSessionState::IdleAffinity | TransportSessionState::IdleReleased => Some(1),
         TransportSessionState::Draining => Some(2),
         TransportSessionState::WaitingTool => Some(3),
         _ => None,

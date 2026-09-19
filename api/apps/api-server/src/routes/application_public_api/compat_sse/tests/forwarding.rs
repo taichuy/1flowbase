@@ -45,6 +45,271 @@ fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
     )
 }
 
+async fn seed_pending_committed_delivery(
+    state: &ApiState,
+    run: &NativeRunResult,
+    payload: serde_json::Value,
+) -> domain::RuntimeEventRecord {
+    use control_plane::ports::AppendRuntimeEventInput;
+    let record = state
+        .store
+        .append_runtime_event(&AppendRuntimeEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "provider_output_item_done".to_string(),
+            layer: domain::RuntimeEventLayer::ProviderRaw,
+            source: domain::RuntimeEventSource::ProviderPlugin,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload,
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        })
+        .await
+        .unwrap();
+    sqlx::query("update runtime_events set delivery_status = 'pending' where id = $1")
+        .bind(record.id)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    record
+}
+
+fn committed_delivery_payload(call_id: &str) -> serde_json::Value {
+    json!({
+        "committed_delivery": true,
+        "item": {"type":"function_call","call_id":call_id,"name":call_id}
+    })
+}
+
+fn committed_delivery_envelope(
+    run_id: Uuid,
+    sequence: i64,
+    payload: serde_json::Value,
+) -> RuntimeEventEnvelope {
+    RuntimeEventEnvelope::new(
+        run_id,
+        sequence,
+        RuntimeEventPayload {
+            event_type: "provider_output_item_done".to_string(),
+            source: RuntimeEventSource::Provider,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: false,
+            trace_visible: true,
+            payload,
+        },
+    )
+}
+
+fn spawn_typed_stream(
+    state: &Arc<ApiState>,
+    run: &NativeRunResult,
+    replay: Vec<RuntimeEventEnvelope>,
+    live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    sender: mpsc::Sender<CompatibleProjectionInput>,
+) -> tokio::task::JoinHandle<()> {
+    use control_plane::ports::RuntimeEventSubscription;
+    let (closure_sender, closure) = tokio::sync::watch::channel(None);
+    let state = Arc::clone(state);
+    let run = run.clone();
+    tokio::spawn(async move {
+        let _closure_sender = closure_sender;
+        send_subscribed_compatible_typed_event_stream(SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: NativeRunTerminalDependencies::new(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.model_billing_require_provider_usage,
+                state.infrastructure.provider_transport_store(),
+                state.runtime_event_stream.clone(),
+            ),
+            initial_run: run.clone(),
+            from_sequence: None,
+            ignored_waiting_callback_task_id: None,
+            subscription: RuntimeEventSubscription {
+                replay,
+                live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(
+                    live_events,
+                ),
+                closure,
+            },
+            sender,
+        })
+        .await
+    })
+}
+
+async fn delivery_statuses(state: &ApiState, ids: &[Uuid]) -> Vec<String> {
+    sqlx::query_scalar::<_, String>(
+        "select delivery_status from runtime_events where id = any($1) order by sequence",
+    )
+    .bind(ids.to_vec())
+    .fetch_all(state.store.pool())
+    .await
+    .unwrap()
+}
+
+async fn claimable_delivery_count(state: &ApiState, run_id: Uuid) -> usize {
+    state
+        .store
+        .claim_runtime_event_deliveries(&control_plane::ports::ClaimRuntimeEventDeliveriesInput {
+            flow_run_id: run_id,
+            limit: 8,
+            lease_seconds: 30,
+        })
+        .await
+        .unwrap()
+        .len()
+}
+
+// AC-002: the durable ACK is settled by the protocol writer's receipt, not
+// by the internal enqueue. A projected receipt ACKs; a receipt dropped before
+// any write releases the claim; a receipt dropped mid-write is uncertain and
+// never replays automatically.
+#[tokio::test]
+async fn typed_responses_stream_claims_orders_deduplicates_and_acks_projected_tool_deliveries() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let payloads = [
+        committed_delivery_payload("call-1"),
+        committed_delivery_payload("call-2"),
+    ];
+    let mut records = Vec::new();
+    for payload in &payloads {
+        records.push(seed_pending_committed_delivery(&state, &run, payload.clone()).await);
+    }
+    let replay = vec![committed_delivery_envelope(run.id, 1, payloads[0].clone())];
+    let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    drop(live_sender);
+    let (sender, mut receiver) = mpsc::channel(8);
+    let forwarding = spawn_typed_stream(&state, &run, replay, live_events, sender);
+    let mut forwarded = Vec::new();
+    while let Some(input) = receiver.recv().await {
+        let (_, envelope, receipt) = input.into_parts();
+        let receipt = receipt.expect("committed delivery carries a receipt");
+        assert_eq!(receipt.event_id(), Some(records[forwarded.len()].id));
+        receipt.projected();
+        forwarded.push(envelope);
+    }
+    forwarding.await.unwrap();
+    assert_eq!(forwarded.len(), 2);
+    assert_eq!(forwarded[0].payload, payloads[0]);
+    assert_eq!(forwarded[1].payload, payloads[1]);
+
+    let ids = records.iter().map(|record| record.id).collect::<Vec<_>>();
+    assert_eq!(
+        delivery_statuses(&state, &ids).await,
+        vec!["acked", "acked"]
+    );
+    assert_eq!(
+        claimable_delivery_count(&state, run.id).await,
+        0,
+        "acked deliveries must not replay"
+    );
+}
+
+#[tokio::test]
+async fn typed_responses_stream_releases_a_tool_delivery_dropped_before_any_write() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let record =
+        seed_pending_committed_delivery(&state, &run, committed_delivery_payload("call-drop"))
+            .await;
+    let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    drop(live_sender);
+    let (sender, mut receiver) = mpsc::channel(8);
+    let forwarding = spawn_typed_stream(&state, &run, Vec::new(), live_events, sender);
+    let input = receiver
+        .recv()
+        .await
+        .expect("pending delivery is forwarded");
+    let (_, _, receipt) = input.into_parts();
+    drop(receipt);
+    assert!(receiver.recv().await.is_none());
+    forwarding.await.unwrap();
+
+    assert_eq!(
+        delivery_statuses(&state, &[record.id]).await,
+        vec!["pending"]
+    );
+    assert_eq!(
+        claimable_delivery_count(&state, run.id).await,
+        1,
+        "an unprojected delivery replays on the next stream"
+    );
+}
+
+#[tokio::test]
+async fn typed_responses_stream_marks_a_tool_delivery_lost_mid_write_uncertain() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let record =
+        seed_pending_committed_delivery(&state, &run, committed_delivery_payload("call-uncertain"))
+            .await;
+    let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    drop(live_sender);
+    let (sender, mut receiver) = mpsc::channel(8);
+    let forwarding = spawn_typed_stream(&state, &run, Vec::new(), live_events, sender);
+    let input = receiver
+        .recv()
+        .await
+        .expect("pending delivery is forwarded");
+    let (_, _, receipt) = input.into_parts();
+    let mut receipt = receipt.expect("committed delivery carries a receipt");
+    receipt.begin_write();
+    drop(receipt);
+    assert!(receiver.recv().await.is_none());
+    forwarding.await.unwrap();
+
+    assert_eq!(
+        delivery_statuses(&state, &[record.id]).await,
+        vec!["uncertain"]
+    );
+    assert_eq!(
+        claimable_delivery_count(&state, run.id).await,
+        0,
+        "an uncertain delivery must not replay automatically"
+    );
+}
+
+#[tokio::test]
+async fn typed_responses_stream_claims_and_acks_a_live_committed_tool_delivery() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let payload = committed_delivery_payload("call-live");
+    let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+    let (sender, mut receiver) = mpsc::channel(8);
+    let forwarding = spawn_typed_stream(&state, &run, Vec::new(), live_events, sender);
+    tokio::task::yield_now().await;
+
+    let record = seed_pending_committed_delivery(&state, &run, payload.clone()).await;
+    live_sender
+        .send(committed_delivery_envelope(
+            run.id,
+            record.sequence,
+            payload.clone(),
+        ))
+        .unwrap();
+    drop(live_sender);
+
+    let forwarded = receiver.recv().await.expect("live committed delivery");
+    let (_, envelope, receipt) = forwarded.into_parts();
+    assert_eq!(envelope.payload, payload);
+    receipt
+        .expect("live committed delivery carries a receipt")
+        .projected();
+    forwarding.await.unwrap();
+    assert_eq!(delivery_statuses(&state, &[record.id]).await, vec!["acked"]);
+}
+
 async fn native_sse_body_from_replay(
     base_state: &ApiState,
     run: NativeRunResult,
@@ -470,8 +735,10 @@ fn typed_projection_input_keeps_runtime_identity_and_canonical_envelope() {
     let input = CompatibleProjectionInput {
         run_snapshot: run.clone(),
         envelope: envelope.clone(),
+        delivery: None,
     };
-    let (run_snapshot, projected_envelope) = input.into_parts();
+    let (run_snapshot, projected_envelope, delivery) = input.into_parts();
+    assert!(delivery.is_none());
 
     assert_eq!(run_snapshot.id, run.id);
     assert_eq!(projected_envelope, envelope);
@@ -646,6 +913,7 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         assistant_client_sessions: base_state.assistant_client_sessions.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         runtime_host_system: base_state.runtime_host_system.clone(),
+        runtime_process_sampler: base_state.runtime_process_sampler.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),
@@ -761,6 +1029,7 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         assistant_client_sessions: base_state.assistant_client_sessions.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         runtime_host_system: base_state.runtime_host_system.clone(),
+        runtime_process_sampler: base_state.runtime_process_sampler.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),

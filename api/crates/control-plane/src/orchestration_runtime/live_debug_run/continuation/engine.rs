@@ -14,6 +14,7 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     command: &ContinueFlowDebugRunCommand,
     live_provider_events: Option<LiveProviderStreamEventSender>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
+    transport_connection_scope: Option<String>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::BillingRepository
@@ -116,8 +117,9 @@ where
         None => service.runtime_invoker(application.workspace_id),
     }
     .for_flow_run(flow_run.id)
-    .with_flow_execution_context(flow_execution_context)
-    .with_provider_transport_payload(provider_transport_payload);
+    .with_flow_execution_context(flow_execution_context.clone())
+    .with_provider_transport_payload(provider_transport_payload)
+    .with_transport_connection_scope_override(transport_connection_scope);
     let answer_presentation =
         crate::orchestration_runtime::answer_presentation::AnswerPresentationCursor::from_plan(
             &compiled_plan,
@@ -146,6 +148,7 @@ where
         &lifecycle,
     )
     .await?;
+    let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
     let prepared_node_runs = lifecycle.prepared_node_runs()?;
 
     service
@@ -167,6 +170,7 @@ where
             waiting_node_resume: None,
             resume_claim_id: None,
             resume_claim_token: None,
+            tool_delivery_events,
         })
         .await
 }

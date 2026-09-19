@@ -169,7 +169,9 @@ async fn publish_runnable_application(
 }
 
 async fn issue_key(harness: &ApplicationPublicApiTestHarness, application_id: Uuid) -> String {
-    ApplicationApiKeyService::new(harness.repository())
+    let repository = harness.repository();
+    let service = ApplicationApiKeyService::new(repository.clone());
+    let token = service
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor_user_id(),
             application_id,
@@ -178,7 +180,52 @@ async fn issue_key(harness: &ApplicationPublicApiTestHarness, application_id: Uu
         })
         .await
         .unwrap()
-        .token
+        .token;
+    let actor = service.authenticate_bearer_token(&token).await.unwrap();
+    let application = repository
+        .get_application(actor.workspace_id, application_id)
+        .await
+        .unwrap()
+        .unwrap();
+    // Shared run fixtures must publish their public aliases. These aliases are
+    // deliberately different from the frozen LLM provider model.
+    save_model_catalog(
+        &repository,
+        &application,
+        json!(["public-model/pass-through", "claude-compatible-custom"]),
+    )
+    .await;
+    token
+}
+
+async fn save_model_catalog(
+    repository: &ApplicationPublicApiTestRepository,
+    application: &domain::ApplicationRecord,
+    models: serde_json::Value,
+) {
+    let editor_state = repository
+        .get_or_create_editor_state(application.workspace_id, application.id, actor_user_id())
+        .await
+        .unwrap();
+    let mut document = editor_state.draft.document;
+    let start = document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["type"] == "start")
+        .unwrap();
+    start["config"]["model_list"] = models;
+    FlowRepository::save_draft(
+        repository,
+        application.workspace_id,
+        application.id,
+        actor_user_id(),
+        document,
+        domain::FlowChangeKind::Logical,
+        "Configure public model fixture",
+    )
+    .await
+    .unwrap();
 }
 
 async fn save_start_model_catalog(
@@ -237,3 +284,5 @@ mod anthropic_parent_callbacks;
 mod native_results;
 mod native_start;
 mod publication_guards;
+
+mod published_effort;

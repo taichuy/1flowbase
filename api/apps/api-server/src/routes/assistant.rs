@@ -775,6 +775,7 @@ pub(super) async fn launch_assistant_execution(
         let result = async {
             let detail = runtime
                 .start_published_flow_run(StartPublishedFlowRunCommand {
+                    transport_connection_scope: None,
                     application_id: execution.application_id,
                     flow_run_id: execution.flow_run_id,
                     provider_transport_slot: None,
@@ -899,6 +900,7 @@ pub(crate) async fn execute_assistant_run(
     .with_provider_request_log_queue(dependencies.task_queue.clone());
     let detail = runtime
         .start_published_flow_run(StartPublishedFlowRunCommand {
+            transport_connection_scope: None,
             application_id: execution.application_id,
             flow_run_id: execution.flow_run_id,
             provider_transport_slot: None,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{header::ACCEPT_LANGUAGE, HeaderMap},
     Json, Router,
 };
@@ -19,7 +19,7 @@ use crate::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
     },
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
     runtime_profile_client::RuntimeProfileSnapshotCache,
 };
 
@@ -38,6 +38,10 @@ pub(crate) enum SystemInterfaceInput {
         query_locale: Option<String>,
         explicit_header_locale: Option<String>,
         accept_language: Option<String>,
+    },
+    ProcessList,
+    TerminateProcess {
+        pid: u32,
     },
 }
 impl InterfaceContract for SystemInterfaceInput {
@@ -59,6 +63,13 @@ impl InterfaceContract for SystemInterfaceInput {
                     "accept_language",
                     serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ProcessList")),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("TerminateProcess")),
+                ("pid", serde_json::json!({"type":"integer"})),
             ]),
         ]))
     }
@@ -105,6 +116,17 @@ impl InterfaceContract for SystemInterfaceInput {
                     },
                 ),
             ]),
+            Self::ProcessList => mp::object_value(&[(
+                "variant",
+                serde_json::Value::String("ProcessList".to_owned()),
+            )]),
+            Self::TerminateProcess { pid: _field_pid } => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("TerminateProcess".to_owned()),
+                ),
+                ("pid", serde_json::json!(_field_pid)),
+            ]),
         })
     }
 
@@ -114,6 +136,8 @@ impl InterfaceContract for SystemInterfaceInput {
 pub(crate) enum SystemInterfaceOutput {
     ReleaseStatus(ConsoleReleaseStatusResponse),
     RuntimeProfile(SystemRuntimeProfileResponse),
+    ProcessList(SystemRuntimeProcessListResponse),
+    ProcessTermination(SystemProcessTerminationResponse),
 }
 impl InterfaceContract for SystemInterfaceOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -290,6 +314,29 @@ impl InterfaceContract for SystemInterfaceOutput {
                             "runtime_targets",
                             serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema(&[("target_id",mp::text_schema()), ("reachable",serde_json::json!({"type":"boolean"})), ("host_fingerprint",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("metrics",serde_json::json!({"anyOf": [mp::object_schema(&[("captured_at_unix_milliseconds",serde_json::json!({"type":"integer"})), ("sample_interval_milliseconds",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}))]), {"type":"null"}]}))])}),
                         ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ProcessList")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("process_total", serde_json::json!({"type":"integer"})),
+                        (
+                            "processes",
+                            serde_json::json!({"type":"array","maxItems":256,"items":mp::object_schema(&[("pid",serde_json::json!({"type":"integer"})), ("parent_pid",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("name",mp::text_schema()), ("command",serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]})), ("user",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("status",mp::text_schema()), ("cpu_usage_percent",serde_json::json!({"type":"number"})), ("memory_bytes",serde_json::json!({"type":"integer"})), ("memory_usage_percent",serde_json::json!({"type":"number"})), ("start_time_unix_seconds",serde_json::json!({"type":"integer"})), ("terminable",serde_json::json!({"type":"boolean"})), ("backend_process",serde_json::json!({"type":"boolean"}))])}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ProcessTermination")),
+                (
+                    "0",
+                    mp::object_schema(&[
+                        ("pid", serde_json::json!({"type":"integer"})),
+                        ("outcome", mp::text_schema()),
                     ]),
                 ),
             ]),
@@ -779,6 +826,50 @@ impl InterfaceContract for SystemInterfaceOutput {
                     ),
                 ])
             }
+            Self::ProcessList(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ProcessList".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("process_total", serde_json::json!((_field_0).process_total)),
+                        ("processes", {
+                            if (_field_0).processes.len() > 256 {
+                                return None;
+                            }
+                            serde_json::Value::Array((_field_0).processes.iter().map(|item| Some(mp::object_value(&[
+                                ("pid", serde_json::json!((item).pid)),
+                                ("parent_pid", match (item).parent_pid.as_ref() { Some(value) => serde_json::json!(*(value)), None => serde_json::Value::Null }),
+                                ("name", mp::text(&(item).name)?),
+                                ("command", match (item).command.as_ref() { Some(value) => mp::object_value(&[("byte_count", serde_json::json!((value).len()))]), None => serde_json::Value::Null }),
+                                ("user", match (item).user.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }),
+                                ("status", mp::text(&(item).status)?),
+                                ("cpu_usage_percent", serde_json::json!((item).cpu_usage_percent)),
+                                ("memory_bytes", serde_json::json!((item).memory_bytes)),
+                                ("memory_usage_percent", serde_json::json!((item).memory_usage_percent)),
+                                ("start_time_unix_seconds", serde_json::json!((item).start_time_unix_seconds)),
+                                ("terminable", serde_json::Value::Bool((item).terminable)),
+                                ("backend_process", serde_json::Value::Bool((item).backend_process)),
+                            ]))).collect::<Option<Vec<_>>>()?)
+                        }),
+                    ]),
+                ),
+            ]),
+            Self::ProcessTermination(_field_0) => mp::object_value(&[
+                (
+                    "variant",
+                    serde_json::Value::String("ProcessTermination".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value(&[
+                        ("pid", serde_json::json!((_field_0).pid)),
+                        ("outcome", mp::text(&(_field_0).outcome)?),
+                    ]),
+                ),
+            ]),
         })
     }
 
@@ -791,6 +882,7 @@ pub(crate) struct SystemInterfaceDependencies {
     pub(crate) api_node_id: String,
     pub(crate) provider_install_root: String,
     pub(crate) host_extension_dropin_root: String,
+    pub(crate) process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
     pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 struct SystemInterfaceAdapter(SystemInterfaceDependencies);
@@ -850,6 +942,38 @@ impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for Syste
                         ),
                     ))
                 }
+                SystemInterfaceInput::ProcessList => {
+                    let process_sampler = Arc::clone(&self.0.process_sampler);
+                    let process_snapshot =
+                        tokio::task::spawn_blocking(move || process_sampler.collect())
+                            .await
+                            .map_err(ApiError::from)
+                            .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::ProcessList(
+                        SystemRuntimeProcessListResponse {
+                            process_total: process_snapshot.total,
+                            processes: process_snapshot
+                                .processes
+                                .into_iter()
+                                .map(SystemProcessResponse::from)
+                                .collect(),
+                        },
+                    ))
+                }
+                SystemInterfaceInput::TerminateProcess { pid } => {
+                    let process_sampler = Arc::clone(&self.0.process_sampler);
+                    let outcome =
+                        tokio::task::spawn_blocking(move || process_sampler.terminate(pid))
+                            .await
+                            .map_err(ApiError::from)
+                            .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::ProcessTermination(
+                        SystemProcessTerminationResponse {
+                            pid,
+                            outcome: termination_outcome_label(outcome).to_owned(),
+                        },
+                    ))
+                }
             }
         })
     }
@@ -875,6 +999,20 @@ pub(crate) fn compile_registry(
             method: "GET",
             path: "/api/console/system/release-status",
             mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_processes.view",
+            binding_id: "http.console.system.runtime-processes.get.v1",
+            method: "GET",
+            path: "/api/console/system/runtime-processes",
+            mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_process.terminate",
+            binding_id: "http.console.system.runtime-profile.process-terminate.post.v1",
+            method: "POST",
+            path: "/api/console/system/runtime-profile/processes/{pid}/terminate",
+            mutating: true,
         },
     ];
     console_interface::compile_registry(
@@ -1140,6 +1278,47 @@ pub struct SystemRuntimeHostResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct SystemProcessResponse {
+    pub pid: u32,
+    pub parent_pid: Option<u32>,
+    pub name: String,
+    pub command: Option<String>,
+    pub user: Option<String>,
+    pub status: String,
+    pub cpu_usage_percent: f32,
+    pub memory_bytes: u64,
+    pub memory_usage_percent: f32,
+    pub start_time_unix_seconds: u64,
+    pub terminable: bool,
+    pub backend_process: bool,
+}
+
+impl From<runtime_profile::RuntimeProcessSample> for SystemProcessResponse {
+    fn from(value: runtime_profile::RuntimeProcessSample) -> Self {
+        Self {
+            pid: value.pid,
+            parent_pid: value.parent_pid,
+            name: value.name,
+            command: value.command,
+            user: value.user,
+            status: value.status,
+            cpu_usage_percent: value.cpu_usage_percent,
+            memory_bytes: value.memory_bytes,
+            memory_usage_percent: value.memory_usage_percent,
+            start_time_unix_seconds: value.start_time_unix_seconds,
+            terminable: value.terminable,
+            backend_process: value.backend_process,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SystemProcessTerminationResponse {
+    pub pid: u32,
+    pub outcome: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SystemRuntimeProfileResponse {
     pub api_node_id: String,
     pub provider_install_root: String,
@@ -1150,6 +1329,12 @@ pub struct SystemRuntimeProfileResponse {
     pub services: SystemRuntimeServicesResponse,
     pub hosts: Vec<SystemRuntimeHostResponse>,
     pub runtime_targets: Vec<SystemRuntimeTargetResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SystemRuntimeProcessListResponse {
+    pub process_total: usize,
+    pub processes: Vec<SystemProcessResponse>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -1168,10 +1353,24 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/system/runtime-processes",
+            console_get(
+                get_runtime_processes,
+                ConsoleOperation("system.runtime_processes.view".to_string()),
+            ),
+        )
+        .route(
             "/system/release-status",
             console_get(
                 get_release_status,
                 ConsoleOperation("system.release_status.view".to_string()),
+            ),
+        )
+        .route(
+            "/system/runtime-profile/processes/:pid/terminate",
+            console_post(
+                terminate_runtime_process,
+                ConsoleOperation("system.runtime_process.terminate".to_string()),
             ),
         )
 }
@@ -1236,6 +1435,62 @@ pub async fn get_runtime_profile(
     Ok(Json(ApiSuccess::new(value)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/system/runtime-processes",
+    responses(
+        (status = 200, body = SystemRuntimeProcessListResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_runtime_processes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<SystemRuntimeProcessListResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ProcessList(value) = console_interface::invoke(
+        snapshot_state,
+        "http.console.system.runtime-processes.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::ProcessList,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/system/runtime-profile/processes/{pid}/terminate",
+    params(("pid" = u32, Path, description = "Process id to terminate")),
+    responses(
+        (status = 200, body = SystemProcessTerminationResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn terminate_runtime_process(
+    State(state): State<Arc<ApiState>>,
+    Path(pid): Path<u32>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<SystemProcessTerminationResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ProcessTermination(value) = console_interface::invoke(
+        snapshot_state,
+        "http.console.system.runtime-profile.process-terminate.post.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::TerminateProcess { pid },
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
 fn header_locale(headers: &HeaderMap) -> Option<String> {
     headers
         .get("x-1flowbase-locale")
@@ -1248,6 +1503,18 @@ fn header_accept_language(headers: &HeaderMap) -> Option<String> {
         .get(ACCEPT_LANGUAGE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string)
+}
+
+fn termination_outcome_label(
+    outcome: runtime_profile::RuntimeProcessTerminationOutcome,
+) -> &'static str {
+    use runtime_profile::RuntimeProcessTerminationOutcome as Outcome;
+    match outcome {
+        Outcome::Signalled => "signalled",
+        Outcome::NotObservable => "not_observable",
+        Outcome::Forbidden => "forbidden",
+        Outcome::Failed => "failed",
+    }
 }
 
 fn merge_runtime_profiles(

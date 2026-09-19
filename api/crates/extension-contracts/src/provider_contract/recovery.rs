@@ -300,6 +300,16 @@ pub struct ProviderRecoveryReceipt {
 }
 
 impl ProviderRecoveryReceipt {
+    pub const fn is_pre_commit_http_fallback(&self) -> bool {
+        matches!(
+            (self.transport, self.disposition),
+            (
+                RecoveryTransport::ProviderHttp,
+                RecoveryDisposition::PreCommitHttpFallback
+            )
+        )
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         validate_commit_disposition(self.commit_level, self.disposition)?;
         if self.attempt >= MAX_RECOVERY_INNER_ATTEMPTS {

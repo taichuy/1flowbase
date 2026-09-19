@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { App } from 'antd';
 import {
   act,
   fireEvent,
@@ -20,7 +21,14 @@ const echartsMock = vi.hoisted(() => ({
 
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
-  fetchSettingsSystemRuntimeProfile: vi.fn()
+  settingsSystemRuntimeProcessesQueryKey: [
+    'settings',
+    'system-runtime',
+    'processes'
+  ],
+  fetchSettingsSystemRuntimeProfile: vi.fn(),
+  fetchSettingsSystemRuntimeProcesses: vi.fn(),
+  terminateSettingsSystemRuntimeProcess: vi.fn()
 }));
 
 vi.mock('echarts/core', () => ({
@@ -186,13 +194,65 @@ function runtimeProfile(sampleIndex = 0) {
   };
 }
 
+function runtimeProcessList() {
+  return {
+    process_total: 3,
+    processes: [
+      {
+        pid: 1442117,
+        parent_pid: 1,
+        name: 'api-server',
+        command: './target/debug/api-server',
+        user: 'taichuy',
+        status: 'sleeping',
+        cpu_usage_percent: 0.85,
+        memory_bytes: 33_554_432,
+        memory_usage_percent: 3.2,
+        start_time_unix_seconds: 1_758_160_251,
+        terminable: true,
+        backend_process: true
+      },
+      {
+        pid: 1619155,
+        parent_pid: 1,
+        name: 'MainThread',
+        command: 'node dsh --profile web',
+        user: 'taichuy',
+        status: 'running',
+        cpu_usage_percent: 0.57,
+        memory_bytes: 25_165_824,
+        memory_usage_percent: 2.84,
+        start_time_unix_seconds: 1_758_217_368,
+        terminable: true,
+        backend_process: false
+      },
+      {
+        pid: 669,
+        parent_pid: 1,
+        name: 'systemd-journald',
+        command: '/usr/lib/systemd/systemd-journald',
+        user: 'root',
+        status: 'sleeping',
+        cpu_usage_percent: 0.03,
+        memory_bytes: 14_155_776,
+        memory_usage_percent: 1.35,
+        start_time_unix_seconds: 1_756_994_875,
+        terminable: false,
+        backend_process: false
+      }
+    ]
+  };
+}
+
 function renderPanel() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <SystemRuntimePanel />
+      <App>
+        <SystemRuntimePanel />
+      </App>
     </QueryClientProvider>
   );
   return { ...view, queryClient };
@@ -212,6 +272,15 @@ describe('SystemRuntimePanel', () => {
     systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(
       runtimeProfile()
     );
+    systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockReset();
+    systemRuntimeApi.fetchSettingsSystemRuntimeProcesses.mockResolvedValue(
+      runtimeProcessList()
+    );
+    systemRuntimeApi.terminateSettingsSystemRuntimeProcess.mockReset();
+    systemRuntimeApi.terminateSettingsSystemRuntimeProcess.mockResolvedValue({
+      pid: 1442117,
+      outcome: 'signalled'
+    });
   });
 
   afterEach(() => {
@@ -232,94 +301,20 @@ describe('SystemRuntimePanel', () => {
     ).toBeVisible();
   });
 
-  test('ac_001 fills the settings viewport so the surface body owns scrolling', async () => {
+  test('ac_001 keeps only the resource monitor section and fills the settings viewport', async () => {
     renderPanel();
 
-    expect(await screen.findByText('运行概览')).toBeInTheDocument();
-    expect(screen.getByText('资源监控')).toBeInTheDocument();
-    const overviewSection = screen.getByText('运行概览').closest('section');
-    const environmentSection = screen.getByText('运行环境').closest('section');
-    const monitorSection = screen.getByText('资源监控').closest('section');
-
-    expect(overviewSection).not.toBeNull();
-    expect(environmentSection).not.toBeNull();
-    expect(monitorSection).not.toBeNull();
+    expect(await screen.findByText('资源监控')).toBeInTheDocument();
+    expect(screen.queryByText('运行概览')).not.toBeInTheDocument();
+    expect(screen.queryByText('运行环境')).not.toBeInTheDocument();
     expect(
-      overviewSection!.compareDocumentPosition(environmentSection!) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      environmentSection!.compareDocumentPosition(monitorSection!) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      within(environmentSection!).getByRole('combobox', { name: '运行目标' })
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).queryByText('当前语言')
-    ).not.toBeInTheDocument();
-    expect(
-      within(environmentSection!).queryByText('回退语言')
-    ).not.toBeInTheDocument();
-    expect(
-      within(environmentSection!).queryByText('支持语言')
-    ).not.toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('相关进程内存')
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('插件安装路径')
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('宿主扩展路径')
-    ).toBeInTheDocument();
-    expect(
-      within(monitorSection!).queryByRole('combobox', { name: '运行目标' })
+      screen.queryByRole('combobox', { name: '运行目标' })
     ).not.toBeInTheDocument();
     expect(screen.getByTestId('settings-section-surface')).toHaveClass(
       'settings-section-surface--fill'
     );
     expect(
-      screen.getByRole('combobox', { name: '运行目标' })
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole('img', { name: '运行资源实时曲线' })
-    ).toBeInTheDocument();
-  });
-
-  test('ac_009 shows the host total with the selected target process breakdown', async () => {
-    renderPanel();
-
-    const environmentSection = (await screen.findByText('运行环境')).closest(
-      'section'
-    );
-    expect(environmentSection).not.toBeNull();
-    expect(within(environmentSection!).getByText('768 MB')).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('5 个进程')
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('当前目标 320 MB · 2 个进程')
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('根进程 RSS 256 MB')
-    ).toBeInTheDocument();
-
-    fireEvent.mouseDown(
-      within(environmentSection!).getByRole('combobox', {
-        name: '运行目标'
-      })
-    );
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Runtime Extension Host' })
-    );
-
-    expect(within(environmentSection!).getByText('768 MB')).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('当前目标 448 MB · 3 个进程')
-    ).toBeInTheDocument();
-    expect(
-      within(environmentSection!).getByText('根进程 RSS 256 MB')
     ).toBeInTheDocument();
   });
 
@@ -334,16 +329,13 @@ describe('SystemRuntimePanel', () => {
     expect(screen.getByText('共享 16.0 MB')).toBeInTheDocument();
   });
 
-  test('shows related process memory as partial when a runtime target is unreachable', async () => {
-    const profile = runtimeProfile();
-    profile.related_process_memory_complete = false;
-    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(
-      profile
-    );
-
+  test('ac_011 shows storage usage as used over total bytes beside the mount point', async () => {
     renderPanel();
 
-    expect(await screen.findByText('部分运行目标不可用')).toBeInTheDocument();
+    await screen.findByText('资源监控');
+    expect(
+      screen.getByText('/ · 16.0 GB / 64.0 GB')
+    ).toBeInTheDocument();
   });
 
   test('ac_003 polls every two seconds and pauses while hidden', async () => {
@@ -420,15 +412,15 @@ describe('SystemRuntimePanel', () => {
     });
   });
 
-  test('ac_004 switches the live metrics target without merging same-host services', async () => {
+  test('ac_004 monitors the single api-server target without a target selector', async () => {
     renderPanel();
 
     await screen.findByText('资源监控');
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Runtime Extension Host' })
-    );
-    expect(screen.getByText('37.5%')).toBeInTheDocument();
+    expect(screen.getByText('12.5%')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '运行目标' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('37.5%')).not.toBeInTheDocument();
   });
 
   test('shows zero during CPU warm-up and replaces it with the first sampled value', async () => {
@@ -537,9 +529,9 @@ describe('SystemRuntimePanel', () => {
     fireEvent.click(screen.getByText('进程内存'));
     expect(screen.getByText('API Server · 2 个进程')).toBeInTheDocument();
     expect(
-      screen.getByText('Runtime Extension Host · 3 个进程')
-    ).toBeInTheDocument();
-    expect(screen.getByText('同宿主合计 · 5 个进程')).toBeInTheDocument();
+      screen.queryByText('Runtime Extension Host · 3 个进程')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('同宿主合计 · 5 个进程')).not.toBeInTheDocument();
 
     await waitFor(() => {
       const option = echartsMock.chart.setOption.mock.calls
@@ -548,7 +540,7 @@ describe('SystemRuntimePanel', () => {
         .find(
           (candidate) =>
             Array.isArray(candidate?.series) &&
-            candidate.series[0]?.name === '同宿主相关进程合计'
+            candidate.series[0]?.name === 'API Server 进程树'
         ) as
         | {
             yAxis?: { name?: string };
@@ -561,61 +553,98 @@ describe('SystemRuntimePanel', () => {
 
       expect(option?.yAxis?.name).toBe('MB');
       expect(option?.series?.map((series) => series.name)).toEqual([
-        '同宿主相关进程合计',
         'API Server 进程树',
         'API Server 根进程 RSS'
       ]);
-      expect(option?.series?.[0]?.data).toEqual([768]);
-      expect(option?.series?.[1]?.data).toEqual([320]);
-      expect(option?.series?.[2]?.data).toEqual([256]);
-    });
-
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Runtime Extension Host' })
-    );
-    await waitFor(() => {
-      const option = echartsMock.chart.setOption.mock.calls
-        .map((call) => call[0])
-        .reverse()
-        .find(
-          (candidate) =>
-            Array.isArray(candidate?.series) &&
-            candidate.series[1]?.name === 'Runtime Extension Host 进程树'
-        ) as { series?: Array<{ name?: string }> } | undefined;
-
-      expect(option?.series?.map((series) => series.name)).toEqual([
-        '同宿主相关进程合计',
-        'Runtime Extension Host 进程树',
-        'Runtime Extension Host 根进程 RSS'
-      ]);
+      expect(option?.series?.[0]?.data).toEqual([320]);
+      expect(option?.series?.[1]?.data).toEqual([256]);
     });
   });
 
-  test('ac_012 leaves a gap in the host process total when collection is incomplete', async () => {
-    const profile = runtimeProfile();
-    profile.related_process_memory_complete = false;
-    systemRuntimeApi.fetchSettingsSystemRuntimeProfile.mockResolvedValue(
-      profile
-    );
+  test('ac_013 lists observable processes and filters by name', async () => {
     renderPanel();
 
     await screen.findByText('资源监控');
-    fireEvent.click(screen.getByText('进程内存'));
+    fireEvent.click(screen.getByRole('tab', { name: '进程' }));
+    const processRegion = within(screen.getByRole('region', { name: '进程' }));
+
+    expect(await processRegion.findByText('api-server')).toBeInTheDocument();
+    expect(processRegion.getByText('MainThread')).toBeInTheDocument();
+    expect(processRegion.getByText('32.0 MB')).toBeInTheDocument();
+    expect(
+      processRegion.getByText('./target/debug/api-server')
+    ).toBeInTheDocument();
+
+    fireEvent.change(
+      processRegion.getByRole('textbox', { name: '请输入进程名' }),
+      {
+        target: { value: 'mainthread' }
+      }
+    );
+
+    expect(processRegion.getByText('MainThread')).toBeInTheDocument();
+    expect(processRegion.queryByText('api-server')).not.toBeInTheDocument();
+  });
+
+  test('ac_014 terminates only the processes the current user may signal', async () => {
+    renderPanel();
+
+    await screen.findByText('资源监控');
+    fireEvent.click(screen.getByRole('tab', { name: '进程' }));
+    const processRegion = within(screen.getByRole('region', { name: '进程' }));
+    await processRegion.findByText('api-server');
+
+    const terminateButtons = processRegion.getAllByRole('button', {
+      name: '结束'
+    });
+    expect(terminateButtons).toHaveLength(3);
+    expect(terminateButtons[0]).toBeEnabled();
+    expect(terminateButtons[2]).toBeDisabled();
+
+    fireEvent.click(terminateButtons[0]);
 
     await waitFor(() => {
-      const option = echartsMock.chart.setOption.mock.calls
-        .map((call) => call[0])
-        .reverse()
-        .find(
-          (candidate) =>
-            Array.isArray(candidate?.series) &&
-            candidate.series[0]?.name === '同宿主相关进程合计'
-        ) as { series?: Array<{ data?: unknown[] }> } | undefined;
-
-      expect(option?.series?.[0]?.data).toEqual([null]);
-      expect(option?.series?.[1]?.data).toEqual([320]);
-      expect(option?.series?.[2]?.data).toEqual([256]);
+      expect(
+        systemRuntimeApi.terminateSettingsSystemRuntimeProcess
+      ).toHaveBeenCalledWith(1442117);
     });
+  });
+
+  test('ac_015 renders the backend process tree inside the resource monitor', async () => {
+    renderPanel();
+
+    await screen.findByText('资源监控');
+
+    expect(
+      screen.queryByRole('tab', { name: '进程树' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('MainThread')).not.toBeInTheDocument();
+    expect(screen.queryByText('systemd-journald')).not.toBeInTheDocument();
+
+    const treePanel = await waitFor(() => {
+      const element = document.querySelector(
+        '.system-runtime-panel__process-tree-panel'
+      );
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    expect(treePanel).toHaveTextContent('api-server');
+    expect(treePanel).not.toHaveTextContent('1442117');
+    expect(treePanel).not.toHaveTextContent('CPU');
+
+    const detailPanel = document.querySelector(
+      '.system-runtime-panel__process-detail-panel'
+    );
+    expect(detailPanel).not.toBeNull();
+    const detail = within(detailPanel as HTMLElement);
+    expect(detail.getByText('api-server')).toBeInTheDocument();
+    expect(detail.getByText('1442117')).toBeInTheDocument();
+    expect(
+      detail.getByText('./target/debug/api-server')
+    ).toBeInTheDocument();
+    expect(detail.getByText('32.0 MB')).toBeInTheDocument();
+    expect(
+      detail.getByRole('button', { name: /结\s*束/u })
+    ).toBeInTheDocument();
   });
 });

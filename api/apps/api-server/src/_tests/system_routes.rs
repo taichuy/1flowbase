@@ -1,6 +1,6 @@
 use crate::_tests::support::{
-    get_json, sample_api_profile, sample_runner_profile, test_app_with_runtime_profile_error,
-    test_app_with_runtime_profiles,
+    get_json, post_json, sample_api_profile, sample_runner_profile,
+    test_app_with_runtime_profile_error, test_app_with_runtime_profiles,
 };
 use axum::{
     body::Body,
@@ -167,4 +167,100 @@ async fn ac_006_runtime_profile_cache_keeps_locale_resolution_request_scoped() {
         english["data"]["runtime_targets"],
         chinese["data"]["runtime_targets"]
     );
+}
+
+#[tokio::test]
+async fn runtime_processes_observe_with_current_user_permissions() {
+    let (app, cookie) = test_app_with_runtime_profiles(
+        sample_api_profile("host_same"),
+        Some(sample_runner_profile("host_same")),
+        &["settings_feature.access.system.system-runtime"],
+        Some("zh_Hans"),
+    )
+    .await;
+
+    let payload = get_json(&app, "/api/console/system/runtime-processes", &cookie).await;
+    let processes = payload["data"]["processes"]
+        .as_array()
+        .expect("runtime processes must project an observable process list");
+    assert!(
+        !processes.is_empty(),
+        "process list must observe at least the current process",
+    );
+    let process_total = payload["data"]["process_total"]
+        .as_u64()
+        .expect("process total must be projected");
+    assert!(process_total >= processes.len() as u64);
+
+    let current_pid = std::process::id() as u64;
+    let current = processes
+        .iter()
+        .find(|process| process["pid"].as_u64() == Some(current_pid))
+        .expect("the current test process must be observable");
+    assert!(
+        current["name"]
+            .as_str()
+            .is_some_and(|name| !name.is_empty()),
+        "observed process name must not be empty",
+    );
+    assert!(
+        current["status"]
+            .as_str()
+            .is_some_and(|status| !status.is_empty()),
+        "observed process status must map to a stable label",
+    );
+    assert!(
+        current["memory_usage_percent"]
+            .as_f64()
+            .is_some_and(|value| value >= 0.0),
+        "observed process memory usage must be non-negative",
+    );
+    assert_eq!(
+        current["terminable"], false,
+        "the console process must never project itself as terminable",
+    );
+    assert_eq!(
+        current["backend_process"], true,
+        "the API server itself must anchor the 1flowbase backend process tree",
+    );
+}
+
+#[tokio::test]
+async fn runtime_process_terminate_refuses_the_own_process() {
+    let (app, cookie) = test_app_with_runtime_profiles(
+        sample_api_profile("host_same"),
+        Some(sample_runner_profile("host_same")),
+        &[],
+        None,
+    )
+    .await;
+
+    let current_pid = std::process::id();
+    let payload = post_json(
+        &app,
+        &format!("/api/console/system/runtime-profile/processes/{current_pid}/terminate"),
+        &cookie,
+    )
+    .await;
+    assert_eq!(payload["data"]["pid"], current_pid);
+    assert_eq!(payload["data"]["outcome"], "forbidden");
+}
+
+#[tokio::test]
+async fn runtime_process_terminate_reports_a_missing_process() {
+    let (app, cookie) = test_app_with_runtime_profiles(
+        sample_api_profile("host_same"),
+        Some(sample_runner_profile("host_same")),
+        &[],
+        None,
+    )
+    .await;
+
+    let payload = post_json(
+        &app,
+        "/api/console/system/runtime-profile/processes/4294967295/terminate",
+        &cookie,
+    )
+    .await;
+    assert_eq!(payload["data"]["outcome"], "not_observable");
 }

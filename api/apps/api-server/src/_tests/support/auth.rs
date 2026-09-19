@@ -326,6 +326,7 @@ async fn test_state_with_runtime_profile_state(
         assistant_client_sessions: Default::default(),
         api_runtime_profile,
         runtime_host_system,
+        runtime_process_sampler: Arc::new(runtime_profile::RuntimeProcessSampler::new()),
         official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
         official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
         official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
@@ -482,6 +483,26 @@ pub async fn get_json(app: &Router, path: &str, cookie: &str) -> serde_json::Val
         .clone()
         .oneshot(
             Request::builder()
+                .uri(path)
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
+pub async fn post_json(app: &Router, path: &str, cookie: &str) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
                 .uri(path)
                 .header("cookie", cookie)
                 .body(Body::empty())

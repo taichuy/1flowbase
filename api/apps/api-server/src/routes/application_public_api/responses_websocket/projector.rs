@@ -229,6 +229,16 @@ impl ResponsesWebSocketProjector {
         let Some(item) = envelope.payload.get("item").cloned() else {
             return;
         };
+        if envelope.event_type == "provider_output_item_done"
+            && is_client_executable_item(&item)
+            && envelope
+                .payload
+                .get("committed_delivery")
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            return;
+        }
 
         self.close_output_item(run, events);
         let event_type = match envelope.event_type.as_str() {
@@ -272,20 +282,24 @@ impl ResponsesWebSocketProjector {
                     self.completed_output_items.clone()
                 )
             })],
-            "flow_failed" => vec![failed_response_event(
-                run,
-                &self.model,
-                self.previous_response_id.as_deref(),
-                run.error
-                    .as_ref()
-                    .map(|error| error.message.as_str())
-                    .unwrap_or("published run failed"),
-                "server_error",
-                run.error
-                    .as_ref()
-                    .map(|error| error.code.as_str())
-                    .unwrap_or("runtime_error"),
-            )],
+            "flow_failed" => {
+                let mut event = failed_response_event(
+                    run,
+                    &self.model,
+                    self.previous_response_id.as_deref(),
+                    run.error
+                        .as_ref()
+                        .map(|error| error.message.as_str())
+                        .unwrap_or("published run failed"),
+                    "server_error",
+                    run.error
+                        .as_ref()
+                        .map(|error| error.code.as_str())
+                        .unwrap_or("runtime_error"),
+                );
+                event["response"]["output"] = Value::Array(self.completed_output_items.clone());
+                vec![event]
+            },
             "flow_cancelled" => vec![json!({
                 "type": "response.cancelled",
                 "response": response_snapshot(
@@ -379,6 +393,11 @@ impl ResponsesWebSocketProjector {
         }
         Ok(frames)
     }
+}
+
+fn is_client_executable_item(item: &Value) -> bool {
+    let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+    item_type.ends_with("_call") || item_type == "mcp_approval_request"
 }
 
 fn is_terminal_event(event_type: &str) -> bool {

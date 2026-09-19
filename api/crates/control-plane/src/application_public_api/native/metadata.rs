@@ -15,6 +15,7 @@ const METADATA_PATH: &str = "$.metadata";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    transport_connection_scope: Option<String>,
     application_run_log_context: Option<control_plane_contracts::ports::ApplicationRunLogContext>,
     responses_transport_requirement: ResponsesTransportRequirement,
     provider_transport_payload: Option<ProviderTransportPayload>,
@@ -59,6 +60,7 @@ impl NativeRequestMetadata {
         };
         Ok(Self {
             trace_id,
+            transport_connection_scope: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
@@ -69,6 +71,7 @@ impl NativeRequestMetadata {
     pub fn with_trace_id(trace_id: Option<String>) -> Self {
         Self {
             trace_id,
+            transport_connection_scope: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
@@ -91,6 +94,15 @@ impl NativeRequestMetadata {
     ) {
         context.call_kind = Some(execution_operation.call_kind().to_owned());
         self.application_run_log_context = Some(context);
+    }
+
+    /// Host-only execution attachment. It is neither public metadata nor protocol context.
+    pub fn set_transport_connection_scope(&mut self, scope: Option<String>) {
+        self.transport_connection_scope = scope;
+    }
+
+    pub fn take_transport_connection_scope(&mut self) -> Option<String> {
+        self.transport_connection_scope.take()
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -211,6 +223,28 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn qf6_connection_scope_is_host_only_and_never_serialized_or_deserialized() {
+        let mut metadata = NativeRequestMetadata::with_trace_id(Some("trace".into()));
+        metadata.set_transport_connection_scope(Some("host-socket".into()));
+        assert_eq!(
+            serde_json::to_value(&metadata).unwrap(),
+            json!({"trace_id":"trace"})
+        );
+        assert_eq!(
+            metadata.take_transport_connection_scope().as_deref(),
+            Some("host-socket")
+        );
+        assert!(metadata.take_transport_connection_scope().is_none());
+        assert!(serde_json::from_value::<NativeRequestMetadata>(json!({
+            "transport_connection_scope": "client-forged"
+        }))
+        .is_err());
+        assert!(NativeRequestMetadata::default()
+            .take_transport_connection_scope()
+            .is_none());
+    }
 
     #[test]
     fn d4_ac_007_transport_requirement_is_transient_and_not_user_settable() {

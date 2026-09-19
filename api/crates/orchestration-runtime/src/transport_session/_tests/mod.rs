@@ -8,9 +8,9 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
-    RegistryError, TerminationKind, TransportClock, TransportInstant, TransportOwnerId,
-    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
-    TransportSessionRegistry, TransportSessionState,
+    RegistryError, TerminationKind, TransportClock, TransportFenceStatus, TransportInstant,
+    TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
+    TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 
 #[derive(Clone, Default)]
@@ -120,6 +120,12 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
     let replacement = registry.rotate_generation(&original).unwrap();
     assert!(replacement.generation.get() > original.generation.get());
     assert_eq!(registry.safe_snapshot().sessions[0].owner_id, owner);
+    let before_stale_observation = registry.safe_snapshot();
+    assert!(matches!(
+        registry.fence_status(&original),
+        TransportFenceStatus::Stale { .. }
+    ));
+    assert_eq!(registry.safe_snapshot(), before_stale_observation);
     assert!(matches!(
         registry.activate(&original),
         Err(RegistryError::StaleGeneration { .. })
@@ -246,7 +252,18 @@ fn every_non_terminal_state_has_a_finite_lease() {
         registry.finish_invocation(&lease, completion).unwrap();
         clock.advance(Duration::from_secs(56));
         registry.maintain();
-        assert!(registry.is_empty(), "{completion:?} must expire");
+        if completion == InvocationCompletion::IdleAffinity {
+            assert_eq!(
+                registry.state(&fence).unwrap(),
+                TransportSessionState::IdleReleased
+            );
+            clock.advance(Duration::from_secs(144));
+            registry.maintain();
+        }
+        assert!(
+            registry.is_empty(),
+            "{completion:?} must have a finite logical lifetime"
+        );
     }
 }
 
@@ -526,4 +543,223 @@ fn owner_disconnect_does_not_regress_terminal_path_states_to_orphaned() {
         assert!(registry.mark_owner_orphaned(&owner).is_empty());
         assert_eq!(registry.state(&fence).unwrap(), terminal_state);
     }
+}
+
+#[test]
+fn physical_fault_rotation_requires_close_ack_and_preserves_logical_deadline_and_sequence() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let first = registry.admit(request("fault-successor")).unwrap();
+    registry.activate(&first).unwrap();
+    let failed = registry
+        .begin_invocation(&first, invocation_request(Some(10_000)))
+        .unwrap();
+    registry
+        .finish_invocation(&failed, InvocationCompletion::Faulted)
+        .unwrap();
+    assert!(matches!(
+        registry.rotate_generation(&first),
+        Err(RegistryError::InvalidTransition { .. })
+    ));
+    registry
+        .record_close_acknowledgement(&first, false)
+        .unwrap();
+    assert!(registry.rotate_generation(&first).is_err());
+    registry.record_close_acknowledgement(&first, true).unwrap();
+    // A duplicate negative ACK cannot revoke an accepted close fact.
+    registry
+        .record_close_acknowledgement(&first, false)
+        .unwrap();
+    clock.advance(Duration::from_secs(1));
+    let second = registry.rotate_generation(&first).unwrap();
+    registry.activate(&second).unwrap();
+    let next = registry
+        .begin_invocation(&second, invocation_request(Some(60_000)))
+        .unwrap();
+    assert!(second.generation > first.generation);
+    assert!(next.sequence() > failed.sequence());
+    assert_eq!(next.deadline().as_millis(), 60_000);
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(199)
+    );
+    let before = registry.safe_snapshot();
+    assert!(matches!(
+        registry.finish_invocation(&failed, InvocationCompletion::Faulted),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert!(matches!(
+        registry.record_close_acknowledgement(&first, true),
+        Err(RegistryError::StaleGeneration { .. })
+    ));
+    assert_eq!(registry.safe_snapshot(), before);
+}
+
+#[test]
+fn faulted_invocation_is_terminal_and_expired_fault_lease_cannot_rotate() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("fault-expiry")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::InflightExists)
+    );
+    registry
+        .finish_invocation(&lease, InvocationCompletion::Faulted)
+        .unwrap();
+    assert_eq!(
+        registry.finish_invocation(&lease, InvocationCompletion::Active),
+        Err(RegistryError::NoInflight)
+    );
+    registry.record_close_acknowledgement(&fence, true).unwrap();
+    clock.advance(Duration::from_secs(5));
+    assert_eq!(
+        registry.rotate_generation(&fence),
+        Err(RegistryError::NotFound)
+    );
+    assert_eq!(
+        registry.tombstone(&fence.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)
+    );
+}
+
+#[test]
+fn physical_fault_wins_over_pending_soft_drain_without_replaying_inflight_work() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("drain-fault")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    clock.advance(Duration::from_secs(80));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Draining
+    );
+    registry
+        .finish_invocation(&lease, InvocationCompletion::Faulted)
+        .unwrap();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Faulted
+    );
+    assert!(!registry.safe_snapshot().sessions[0].inflight);
+    assert!(registry.rotate_generation(&fence).is_err());
+}
+
+#[test]
+fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_close_ack() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.idle_affinity_lease = Duration::from_secs(90);
+    settings.physical_soft_drain_age = Duration::from_secs(150);
+    settings.physical_max_age = Duration::from_secs(180);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("idle-release")).unwrap();
+    registry.activate(&fence).unwrap();
+    let first = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&first, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    clock.advance(Duration::from_secs(89));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::IdleAffinity
+    );
+    registry.drain_events();
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::IdleReleased
+    );
+    assert!(registry.tombstone(&fence.session_id).is_none());
+    assert_eq!(registry.drain_events().len(), 1);
+    assert!(registry.rotate_generation(&fence).is_err());
+    assert!(registry
+        .begin_invocation(&fence, invocation_request(None))
+        .is_err());
+    registry
+        .record_close_acknowledgement(&fence, false)
+        .unwrap();
+    assert!(registry.rotate_generation(&fence).is_err());
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert!(
+        registry.drain_events().is_empty(),
+        "release emits close only once"
+    );
+    registry.record_close_acknowledgement(&fence, true).unwrap();
+    let next = registry.rotate_generation(&fence).unwrap();
+    registry.activate(&next).unwrap();
+    let second = registry
+        .begin_invocation(&next, invocation_request(None))
+        .unwrap();
+    assert!(second.sequence() > first.sequence());
+    assert!(next.generation > fence.generation);
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(109)
+    );
+    assert!(registry
+        .finish_invocation(&first, InvocationCompletion::IdleAffinity)
+        .is_err());
+    assert!(registry.record_close_acknowledgement(&fence, true).is_err());
+    registry
+        .finish_invocation(&second, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    clock.advance(Duration::from_secs(90));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&next).unwrap(),
+        TransportSessionState::IdleReleased
+    );
+    clock.advance(Duration::from_secs(19));
+    registry.maintain();
+    assert_eq!(
+        registry.tombstone(&next.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+    );
+}
+
+#[test]
+fn socket_orphan_requires_current_invocation_sequence_and_fence() {
+    let mut registry = TransportSessionRegistry::new(FakeClock::default(), config(1)).unwrap();
+    let fence = registry.admit(request("scoped")).unwrap();
+    registry.activate(&fence).unwrap();
+    let old = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&old, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    assert_eq!(
+        registry.mark_invocation_orphaned(&old),
+        Err(RegistryError::NoInflight)
+    );
+    let current = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    assert_eq!(
+        registry.mark_invocation_orphaned(&old),
+        Err(RegistryError::StaleInvocation)
+    );
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Active
+    );
+    registry.mark_invocation_orphaned(&current).unwrap();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
 }

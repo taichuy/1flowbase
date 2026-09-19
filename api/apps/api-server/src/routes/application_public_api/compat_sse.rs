@@ -22,10 +22,12 @@ use control_plane::{
     orchestration_runtime::{
         debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{RuntimeEventEnvelope, RuntimeEventPayload},
+    ports::{RuntimeEventDeliveryClaim, RuntimeEventEnvelope, RuntimeEventPayload},
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
+
+use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
 use tracing::warn;
 #[cfg(test)]
 use tracing::{debug, info};
@@ -95,7 +97,9 @@ pub(crate) enum CompatibleResumeAdmission {
     reason = "the compatibility turn command is consumed immediately and preserves typed actor ownership"
 )]
 enum CompatibleTurnAction {
-    Start,
+    Start {
+        transport_connection_scope: Option<String>,
+    },
     ResumeForActor {
         command: ResumePublishedCallbackCommand,
         actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
@@ -108,6 +112,8 @@ enum CompatibleTurnAction {
 pub(crate) struct CompatibleProjectionInput {
     run_snapshot: NativeRunResult,
     envelope: RuntimeEventEnvelope,
+    /// Present only for a committed tool delivery; the protocol writer settles it.
+    delivery: Option<RuntimeEventDeliveryReceipt>,
 }
 
 pub(crate) struct CompatibleTypedTurnStream {
@@ -116,8 +122,14 @@ pub(crate) struct CompatibleTypedTurnStream {
 }
 
 impl CompatibleProjectionInput {
-    pub(crate) fn into_parts(self) -> (NativeRunResult, RuntimeEventEnvelope) {
-        (self.run_snapshot, self.envelope)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        NativeRunResult,
+        RuntimeEventEnvelope,
+        Option<RuntimeEventDeliveryReceipt>,
+    ) {
+        (self.run_snapshot, self.envelope, self.delivery)
     }
 }
 
@@ -138,14 +150,14 @@ struct OpenedCompatibleTurn {
 impl CompatibleTurnAction {
     fn name(&self) -> &'static str {
         match self {
-            Self::Start => "start",
+            Self::Start { .. } => "start",
             Self::ResumeForActor { .. } => "resume",
         }
     }
 
     fn resumed_callback_task_id(&self) -> Option<uuid::Uuid> {
         match self {
-            Self::Start => None,
+            Self::Start { .. } => None,
             Self::ResumeForActor { command, .. } => {
                 Some(callback_task_id_from_resume_command(command))
             }
@@ -530,6 +542,7 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    transport_connection_scope: Option<String>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let mcp_runtime_invoker = dependencies
@@ -540,7 +553,9 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     let opened = open_compatible_turn_with_invoker(
         dependencies.clone(),
         initial_run,
-        CompatibleTurnAction::Start,
+        CompatibleTurnAction::Start {
+            transport_connection_scope,
+        },
         provider_transport_slot,
         mcp_runtime_invoker,
     )
@@ -708,12 +723,15 @@ async fn open_compatible_turn_with_invoker(
                     background_dependencies.native.runtime_event_stream.clone(),
                 );
         match action {
-            CompatibleTurnAction::Start => {
+            CompatibleTurnAction::Start {
+                transport_connection_scope,
+            } => {
                 if let Err(runtime_error) = runtime_service
                     .start_published_flow_run(StartPublishedFlowRunCommand {
                         application_id: background_run.application_id,
                         flow_run_id: background_run.id,
                         provider_transport_slot,
+                        transport_connection_scope,
                     })
                     .await
                 {

@@ -165,7 +165,11 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     legacy_mapping("mcp_management.manage.all", MCP_SIMPLE_OPERATIONS, &[], &[]),
     legacy_mapping(
         "system_runtime.view.all",
-        &["system.release_status.view", "system.runtime_profile.view"],
+        &[
+            "system.release_status.view",
+            "system.runtime_profile.view",
+            "system.runtime_processes.view",
+        ],
         &[],
         &[],
     ),

@@ -1,8 +1,8 @@
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex as StdMutex,
+        Arc, Mutex as StdMutex, Weak,
     },
     time::Duration,
 };
@@ -10,16 +10,18 @@ use std::{
 use orchestration_runtime::transport_session::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationLease, InvocationRequest,
     LifecycleEvent, RegistryError, SafeRegistrySnapshot, SystemTransportClock, TerminationKind,
-    TransportClock, TransportFence, TransportInstant, TransportOwnerId, TransportProviderId,
-    TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
+    TransportClock, TransportFence, TransportFenceStatus, TransportInstant, TransportOwnerId,
+    TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId, TransportSessionId,
     TransportSessionRegistry, TransportSessionState,
 };
 use plugin_framework::{
     provider_contract::{
-        ProviderInvocationInput, ProviderLogicalSessionState, ProviderPhysicalTransportState,
+        CommitLevel, CursorBinding, ProviderInvocationInput,
+        ProviderInvocationTransportClassification, ProviderInvocationTransportOutcome,
+        ProviderLifecycleAckOutcome, ProviderLogicalSessionState, ProviderRecoveryDirective,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderTransportSessionAction,
         ProviderTransportSessionCommand, ProviderTransportSessionDirective,
-        ProviderTransportSessionReceipt,
+        ProviderTransportSessionReceipt, ProviderWireOperation, RecoveryTransport,
     },
     PluginFrameworkError,
 };
@@ -35,7 +37,65 @@ const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TransportTerminationNotice {
     pub(crate) owner_id: String,
+    pub(crate) fence: TransportFence,
+    pub(crate) invocation_sequence: Option<u64>,
+    pub(crate) connection_scope_id: Option<String>,
     pub(crate) code: &'static str,
+}
+
+/// A socket owns only leases actually admitted for it, never all sessions with
+/// the same client thread identity. This is a bounded attachment to the registry.
+pub(crate) struct TransportConnectionScope {
+    id: String,
+    state: StdMutex<TransportConnectionBindings>,
+}
+
+#[derive(Default)]
+struct TransportConnectionBindings {
+    closed: bool,
+    leases: BTreeMap<String, InvocationLease>,
+}
+
+impl TransportConnectionScope {
+    #[cfg(test)]
+    pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
+        Arc::new(Self {
+            id: uuid::Uuid::now_v7().to_string(),
+            state: StdMutex::new(TransportConnectionBindings {
+                closed: false,
+                leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
+            }),
+        })
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn accepts_termination(&self, notice: &TransportTerminationNotice) -> bool {
+        let state = self.state.lock().expect("transport connection bindings");
+        !state.closed
+            && notice.connection_scope_id.as_deref() == Some(self.id.as_str())
+            && state
+                .leases
+                .get(notice.fence.session_id.as_str())
+                .is_some_and(|lease| {
+                    lease.fence == notice.fence
+                        && Some(lease.sequence()) == notice.invocation_sequence
+                })
+    }
+}
+
+pub(crate) fn take_transport_connection_scope(
+    input: &mut ProviderInvocationInput,
+) -> Option<String> {
+    input
+        .client_protocol_envelope
+        .as_mut()?
+        .headers
+        .remove(control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER)?
+        .into_iter()
+        .next()
 }
 
 struct LifecycleCommand {
@@ -46,8 +106,16 @@ struct LifecycleCommand {
     close_fence: Option<TransportFence>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LifecycleDispatchOutcome {
+    Provider(ProviderLifecycleAckOutcome),
+    PhysicalConnectionFault,
+}
+
 pub(crate) struct PreparedTransportInvocation {
     lease: InvocationLease,
+    transport: RecoveryTransport,
+    recovery_directive: Option<ProviderRecoveryDirective>,
 }
 
 #[async_trait::async_trait]
@@ -81,6 +149,7 @@ pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
+    connection_scopes: StdMutex<BTreeMap<String, Weak<TransportConnectionScope>>>,
 }
 
 impl TransportSessionCoordinator<SystemTransportClock> {
@@ -113,6 +182,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             scheduler: StdMutex::new(None),
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
+            connection_scopes: StdMutex::new(BTreeMap::new()),
         })
     }
 
@@ -138,15 +208,67 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         self.notices.subscribe()
     }
 
+    pub(crate) fn open_connection_scope(&self) -> Arc<TransportConnectionScope> {
+        let scope = Arc::new(TransportConnectionScope {
+            id: uuid::Uuid::now_v7().to_string(),
+            state: StdMutex::new(TransportConnectionBindings::default()),
+        });
+        let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+        scopes.retain(|_, scope| scope.strong_count() > 0);
+        scopes.insert(scope.id.clone(), Arc::downgrade(&scope));
+        scope
+    }
+
+    pub(crate) async fn close_connection_scope(&self, scope: &TransportConnectionScope) {
+        let _dispatcher = self.dispatcher.lock().await;
+        let leases = {
+            let mut state = scope.state.lock().expect("transport connection bindings");
+            state.closed = true;
+            std::mem::take(&mut state.leases)
+        };
+        self.connection_scopes
+            .lock()
+            .expect("transport scopes")
+            .remove(scope.id());
+        let mut registry = self.registry.lock().await;
+        for lease in leases.values() {
+            if registry.fence_status(&lease.fence) == TransportFenceStatus::Current {
+                // Only still-bound inflight work belongs to this disconnected socket.
+                // Completed text/tool calls were detached by finish.
+                let _ = registry.mark_invocation_orphaned(lease);
+            }
+        }
+    }
+
+    fn detach_lease(&self, lease: &InvocationLease) {
+        let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+        scopes.retain(|_, scope| {
+            let Some(scope) = scope.upgrade() else {
+                return false;
+            };
+            let mut state = scope.state.lock().expect("transport connection bindings");
+            let key = lease.fence.session_id.as_str();
+            if state.leases.get(key).is_some_and(|bound| bound == lease) {
+                state.leases.remove(key);
+            }
+            true
+        });
+    }
+
     pub(crate) async fn prepare(
         &self,
         target_id: &str,
         input: &mut ProviderInvocationInput,
         context: &ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
+        let connection_scope_id = take_transport_connection_scope(input);
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
+        let transport = selected_responses_transport(input)?;
+        let recovery_directive = input
+            .recovery_directive()
+            .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
         if self.shutdown.load(Ordering::Acquire) {
             return Err(transport_error("transport_session_orphaned"));
         }
@@ -171,27 +293,74 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .map(TransportInstant::from_millis);
 
         let _dispatcher = self.dispatcher.lock().await;
+        let connection_scope = match connection_scope_id {
+            Some(id) => {
+                let scope = self
+                    .connection_scopes
+                    .lock()
+                    .expect("transport scopes")
+                    .get(&id)
+                    .and_then(Weak::upgrade)
+                    .ok_or_else(|| transport_error("transport_session_orphaned"))?;
+                if scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .closed
+                {
+                    return Err(transport_error("transport_session_orphaned"));
+                }
+                Some(scope)
+            }
+            None => None,
+        };
         self.registry.lock().await.maintain();
         self.dispatch_pending_events_locked().await;
 
         let mut registry = self.registry.lock().await;
+        let now = registry.safe_snapshot().observed_at;
+        if invocation_deadline.is_some_and(|deadline| deadline <= now) {
+            return Err(transport_error("transport_invocation_deadline_exceeded"));
+        }
         let fence = if let Some(fence) = registry.fence(&session_id) {
             let state = registry.state(&fence)?;
             if state == TransportSessionState::Orphaned {
                 return Err(transport_error("transport_session_orphaned"));
             }
-            if matches!(
-                state,
-                TransportSessionState::Draining
-                    | TransportSessionState::Faulted
-                    | TransportSessionState::Closing
-            ) {
-                return Err(transport_error("provider_connection_max_age"));
-            }
             if registry.runtime_target_id(&fence)? != &target {
                 return Err(transport_error("transport_session_evicted"));
             }
-            fence
+            if matches!(
+                state,
+                TransportSessionState::Faulted | TransportSessionState::IdleReleased
+            ) {
+                validate_fault_successor(input, recovery_directive.as_ref(), now)?;
+                // Only the next invocation gets a fresh physical generation.
+                // Rotation keeps the original logical deadline and sequence.
+                let next = registry.rotate_generation(&fence).map_err(|error| {
+                    if matches!(error, RegistryError::InvalidTransition { .. }) {
+                        transport_error("provider_physical_connection_close_pending")
+                    } else {
+                        map_registry_use_error(error)
+                    }
+                })?;
+                registry.activate(&next)?;
+                next
+            } else {
+                if matches!(
+                    state,
+                    TransportSessionState::Draining | TransportSessionState::Closing
+                ) {
+                    return Err(transport_error(
+                        if state == TransportSessionState::Draining {
+                            "provider_connection_draining"
+                        } else {
+                            "provider_connection_closing"
+                        },
+                    ));
+                }
+                fence
+            }
         } else if let Some(receipt) = registry.tombstone(&session_id) {
             return Err(transport_error(termination_code(receipt.kind)));
         } else {
@@ -227,8 +396,35 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             })
             .map_err(|_| transport_error("transport_session_directive_invalid"))?;
         drop(registry);
+        {
+            let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+            scopes.retain(|_, scope| {
+                let Some(scope) = scope.upgrade() else {
+                    return false;
+                };
+                scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .leases
+                    .remove(lease.fence.session_id.as_str());
+                true
+            });
+        }
+        if let Some(scope) = connection_scope {
+            scope
+                .state
+                .lock()
+                .expect("transport connection bindings")
+                .leases
+                .insert(lease.fence.session_id.as_str().into(), lease.clone());
+        }
         self.dispatch_pending_events_locked().await;
-        Ok(Some(PreparedTransportInvocation { lease }))
+        Ok(Some(PreparedTransportInvocation {
+            lease,
+            transport,
+            recovery_directive,
+        }))
     }
 
     pub(crate) async fn finish(
@@ -236,19 +432,64 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         prepared: PreparedTransportInvocation,
         result: &anyhow::Result<super::ProviderRuntimeInvocationOutput>,
     ) -> anyhow::Result<()> {
+        self.detach_lease(&prepared.lease);
+        let fence_status = self
+            .registry
+            .lock()
+            .await
+            .fence_status(&prepared.lease.fence);
+        if matches!(fence_status, TransportFenceStatus::Stale { .. }) {
+            tracing::warn!(
+                ?fence_status,
+                generation = prepared.lease.fence.generation.get(),
+                "old provider transport generation was fenced without changing current state"
+            );
+            return Err(transport_error("provider_transport_stale_generation"));
+        }
         let completion = match result {
             Ok(output) => {
-                let receipt = output
-                    .result
-                    .transport_session_receipt()
-                    .map_err(|_| transport_error("provider_connection_max_age"))?
-                    .ok_or_else(|| transport_error("provider_connection_max_age"))?;
-                if receipt.generation != prepared.lease.fence.generation.get()
-                    || receipt.physical_state != ProviderPhysicalTransportState::Ready
+                let classification = match output.result.transport_outcome_for_mode(
+                    prepared.transport,
+                    prepared.lease.fence.generation.get(),
+                    prepared.recovery_directive.as_ref(),
+                ) {
+                    Ok(outcome) => outcome,
+                    Err(reason) => {
+                        tracing::warn!(
+                            generation = prepared.lease.fence.generation.get(),
+                            has_recovery_directive = prepared.recovery_directive.is_some(),
+                            reason = %reason,
+                            "provider transport receipt could not be classified"
+                        );
+                        self.fault_invocation(&prepared.lease).await;
+                        return Err(transport_error("provider_transport_receipt_invalid"));
+                    }
+                };
+                if let ProviderInvocationTransportClassification::Session(outcome) = classification
                 {
-                    self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
-                        .await;
-                    return Err(transport_error("provider_connection_max_age"));
+                    match outcome {
+                        ProviderInvocationTransportOutcome::Ready { .. }
+                        | ProviderInvocationTransportOutcome::HttpFallback { .. } => {}
+                        ProviderInvocationTransportOutcome::ReceiptMissing => {
+                            self.fault_invocation(&prepared.lease).await;
+                            return Err(transport_error("provider_transport_receipt_missing"));
+                        }
+                        ProviderInvocationTransportOutcome::StaleGeneration { .. } => {
+                            let registry = self.registry.lock().await;
+                            let status = registry.fence_status(&prepared.lease.fence);
+                            drop(registry);
+                            tracing::warn!(
+                            ?status,
+                            generation = prepared.lease.fence.generation.get(),
+                            "stale provider transport result was fenced without changing session state"
+                        );
+                            return Err(transport_error("provider_transport_stale_generation"));
+                        }
+                        ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {
+                            self.fault_invocation(&prepared.lease).await;
+                            return Err(transport_error("provider_physical_connection_fault"));
+                        }
+                    }
                 }
                 if output.result.tool_calls.is_empty() {
                     InvocationCompletion::IdleAffinity
@@ -257,8 +498,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 }
             }
             Err(_) => {
-                self.terminate(&prepared.lease.fence, TerminationKind::ProviderFault)
-                    .await;
+                self.fault_invocation(&prepared.lease).await;
                 return Ok(());
             }
         };
@@ -269,13 +509,6 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         drop(registry);
         self.dispatch_pending_events().await;
         Ok(())
-    }
-
-    pub(crate) async fn mark_owner_orphaned(&self, owner_id: &str) {
-        let Ok(owner_id) = TransportOwnerId::new(owner_id.to_string()) else {
-            return;
-        };
-        self.registry.lock().await.mark_owner_orphaned(&owner_id);
     }
 
     pub(crate) async fn safe_snapshot(
@@ -302,8 +535,16 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         }
     }
 
-    async fn terminate(&self, fence: &TransportFence, kind: TerminationKind) {
-        let _ = self.registry.lock().await.terminate(fence, kind);
+    async fn fault_invocation(&self, lease: &InvocationLease) {
+        let result = self
+            .registry
+            .lock()
+            .await
+            .finish_invocation(lease, InvocationCompletion::Faulted);
+        if let Err(error) = result {
+            tracing::warn!(%error, generation = lease.fence.generation.get(),
+                "failed invocation did not change a stale or closed transport session");
+        }
         self.dispatch_pending_events().await;
     }
 
@@ -336,6 +577,19 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         };
         let mut deferred = VecDeque::new();
         for command in commands {
+            let fault_close = command.command.action == ProviderTransportSessionAction::Close
+                && command.termination.is_none();
+            if fault_close {
+                let registry = self.registry.lock().await;
+                if registry.fence_status(&command.fence) != TransportFenceStatus::Current
+                    || !matches!(
+                        registry.state(&command.fence).ok(),
+                        Some(TransportSessionState::Faulted | TransportSessionState::IdleReleased)
+                    )
+                {
+                    continue;
+                }
+            }
             if command.command.action == ProviderTransportSessionAction::Drain {
                 let snapshot = self.registry.lock().await.safe_snapshot();
                 match drain_disposition(&snapshot, &command.fence) {
@@ -353,17 +607,23 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .transport_session(&command.target_id, command.command.clone()),
             )
             .await;
-            let acknowledged = matches!(
-                &result,
-                Ok(Ok(receipt))
-                    if receipt.generation == command.command.generation
-                        && receipt.close_acknowledged == Some(true)
-            );
+            let ack_outcome = match result {
+                Ok(Ok(receipt)) => {
+                    match receipt.lifecycle_ack_outcome(command.command.generation) {
+                        Ok(outcome) => LifecycleDispatchOutcome::Provider(outcome),
+                        Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
+                    }
+                }
+                Ok(Err(_)) | Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
+            };
+            let acknowledged = ack_outcome
+                == LifecycleDispatchOutcome::Provider(ProviderLifecycleAckOutcome::Acknowledged);
             if !acknowledged {
                 tracing::warn!(
                     target_id = %command.target_id,
                     generation = command.command.generation,
-                    "provider transport lifecycle command did not return a matching ACK"
+                    ?ack_outcome,
+                    "provider transport lifecycle command did not return an accepted ACK"
                 );
             }
             if let Some(fence) = &command.close_fence {
@@ -372,6 +632,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .lock()
                     .await
                     .record_close_acknowledgement(fence, acknowledged);
+            }
+            if fault_close && !acknowledged {
+                deferred.push_back(command);
+                continue;
             }
             if command.command.action == ProviderTransportSessionAction::Drain {
                 if !acknowledged {
@@ -401,7 +665,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     }
                 }
             }
-            if let Some(notice) = command.termination {
+            if let Some(mut notice) = command.termination {
+                let scopes = self.connection_scopes.lock().expect("transport scopes");
+                for scope in scopes.values().filter_map(Weak::upgrade) {
+                    let state = scope.state.lock().expect("transport connection bindings");
+                    if let Some(lease) = state.leases.get(notice.fence.session_id.as_str()) {
+                        if lease.fence == notice.fence {
+                            notice.connection_scope_id = Some(scope.id.clone());
+                            notice.invocation_sequence = Some(lease.sequence());
+                            break;
+                        }
+                    }
+                }
                 let _ = self.notices.send(notice);
             }
         }
@@ -461,6 +736,29 @@ fn lifecycle_command(
                 close_fence: None,
             })
         }
+        LifecycleEvent::StateChanged {
+            fence,
+            to: TransportSessionState::Faulted | TransportSessionState::IdleReleased,
+            ..
+        } => {
+            let target_id = registry
+                .runtime_target_id(&fence)
+                .ok()?
+                .as_str()
+                .to_string();
+            Some(LifecycleCommand {
+                fence: fence.clone(),
+                target_id,
+                command: ProviderTransportSessionCommand {
+                    logical_session_id: fence.session_id.as_str().to_string(),
+                    generation: fence.generation.get(),
+                    action: ProviderTransportSessionAction::Close,
+                    deadline_unix_ms: control_deadline_unix_ms(),
+                },
+                termination: None,
+                close_fence: Some(fence),
+            })
+        }
         LifecycleEvent::Terminated(receipt) => Some(LifecycleCommand {
             fence: receipt.fence.clone(),
             target_id: receipt.runtime_target_id.as_str().to_string(),
@@ -472,11 +770,83 @@ fn lifecycle_command(
             },
             termination: Some(TransportTerminationNotice {
                 owner_id: receipt.owner_id.as_str().to_string(),
+                fence: receipt.fence.clone(),
+                invocation_sequence: None,
+                connection_scope_id: None,
                 code: termination_code(receipt.kind),
             }),
             close_fence: Some(receipt.fence),
         }),
         _ => None,
+    }
+}
+
+// This admits a new invocation; it never resubmits the failed invocation or
+// strips a cursor. An opaque/connection-bound cursor without durable proof is
+// unusable on the fresh physical generation.
+fn validate_fault_successor(
+    input: &ProviderInvocationInput,
+    recovery: Option<&ProviderRecoveryDirective>,
+    now: TransportInstant,
+) -> anyhow::Result<()> {
+    if recovery
+        .is_some_and(|directive| directive.initial_commit_level != CommitLevel::LifecycleOnly)
+    {
+        return Err(transport_error("provider_transport_committed_invocation"));
+    }
+    if recovery.is_some_and(|directive| {
+        u64::try_from(directive.policy.budget().absolute_deadline_unix_ms)
+            .map_or(true, |deadline| deadline <= now.as_millis())
+    }) {
+        return Err(transport_error("transport_invocation_deadline_exceeded"));
+    }
+    let binding = recovery
+        .and_then(|directive| directive.cursor_provenance)
+        .map(|cursor| cursor.binding);
+    let has_cursor = input.previous_response_id.is_some()
+        || input.native_transport.as_ref().is_some_and(|native| {
+            native
+                .wire_body
+                .get("previous_response_id")
+                .is_some_and(|value| !value.is_null())
+        });
+    if matches!(binding, Some(CursorBinding::ConnectionBound { .. }))
+        || (has_cursor && binding != Some(CursorBinding::Durable))
+    {
+        return Err(transport_error(
+            "provider_transport_cursor_unreconstructible",
+        ));
+    }
+    Ok(())
+}
+
+/// Freeze the transport selected by the invocation configuration before calling
+/// the provider. Node selection wins over the provider-instance setting; `auto`
+/// starts with WS and requires a typed recovery receipt for HTTP fallback. This
+/// follows the paired OpenAI provider contract, never infers HTTP from metadata.
+fn selected_responses_transport(
+    input: &ProviderInvocationInput,
+) -> anyhow::Result<RecoveryTransport> {
+    if input.operation == ProviderWireOperation::Compact {
+        return Ok(RecoveryTransport::ProviderHttp);
+    }
+    match input.model_parameters.get("use_responses_websocket") {
+        Some(serde_json::Value::Bool(true)) => return Ok(RecoveryTransport::AiNativeWebSocket),
+        Some(serde_json::Value::Bool(false)) => return Ok(RecoveryTransport::ProviderHttp),
+        Some(_) => return Err(transport_error("provider_transport_mode_invalid")),
+        None => {}
+    }
+    match input.provider_config.get("transport_mode") {
+        None => Ok(RecoveryTransport::ProviderHttp),
+        Some(serde_json::Value::Null) => Ok(RecoveryTransport::AiNativeWebSocket),
+        Some(serde_json::Value::String(mode)) => match mode.trim().to_ascii_lowercase().as_str() {
+            "http_sse" | "sse" | "http" => Ok(RecoveryTransport::ProviderHttp),
+            "" | "auto" | "responses_websocket" | "websocket" | "ws" => {
+                Ok(RecoveryTransport::AiNativeWebSocket)
+            }
+            _ => Err(transport_error("provider_transport_mode_invalid")),
+        },
+        Some(_) => Err(transport_error("provider_transport_mode_invalid")),
     }
 }
 
@@ -513,9 +883,8 @@ fn termination_code(kind: TerminationKind) -> &'static str {
         TerminationKind::OwnerOrphaned
         | TerminationKind::OwnerClosed
         | TerminationKind::Shutdown => "transport_session_orphaned",
-        TerminationKind::ProviderHardMax | TerminationKind::ProviderFault => {
-            "provider_connection_max_age"
-        }
+        TerminationKind::ProviderHardMax => "provider_connection_max_age",
+        TerminationKind::ProviderFault => "provider_physical_connection_fault",
         TerminationKind::DeadlineExceeded(DeadlineKind::Task) => {
             "transport_invocation_deadline_exceeded"
         }
@@ -576,355 +945,5 @@ fn _assert_runtime_error_is_send(error: RuntimeBackendError) -> RuntimeBackendEr
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use orchestration_runtime::transport_session::CapacityRejection;
-    use plugin_framework::provider_contract::{
-        ProtocolContextEnvelope, ProviderCompactProfile, ProviderInvocationResult,
-        ProviderTransportSessionCloseReason, ProviderWireOperation,
-    };
-    use std::{
-        collections::BTreeMap,
-        sync::atomic::{AtomicU64, Ordering as AtomicOrdering},
-    };
-
-    #[derive(Clone)]
-    struct FakeClock(Arc<AtomicU64>);
-
-    impl FakeClock {
-        fn new(now_ms: u64) -> Self {
-            Self(Arc::new(AtomicU64::new(now_ms)))
-        }
-
-        fn advance(&self, duration: Duration) {
-            self.0.fetch_add(
-                u64::try_from(duration.as_millis()).unwrap(),
-                AtomicOrdering::SeqCst,
-            );
-        }
-    }
-
-    impl TransportClock for FakeClock {
-        fn now(&self) -> TransportInstant {
-            TransportInstant::from_millis(self.0.load(AtomicOrdering::SeqCst))
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    enum AckBehavior {
-        Matching(bool),
-        Mismatched,
-    }
-
-    struct FakeTransportRuntime {
-        responses: StdMutex<VecDeque<AckBehavior>>,
-        commands: StdMutex<Vec<ProviderTransportSessionCommand>>,
-    }
-
-    impl FakeTransportRuntime {
-        fn new(responses: impl IntoIterator<Item = AckBehavior>) -> Self {
-            Self {
-                responses: StdMutex::new(responses.into_iter().collect()),
-                commands: StdMutex::new(Vec::new()),
-            }
-        }
-
-        fn commands(&self) -> Vec<ProviderTransportSessionCommand> {
-            self.commands.lock().unwrap().clone()
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl TransportLifecycleRuntime for FakeTransportRuntime {
-        async fn transport_session(
-            &self,
-            _target_id: &str,
-            command: ProviderTransportSessionCommand,
-        ) -> Result<ProviderTransportSessionReceipt, RuntimeBackendError> {
-            self.commands.lock().unwrap().push(command.clone());
-            let behavior = self
-                .responses
-                .lock()
-                .unwrap()
-                .pop_front()
-                .expect("a fake ACK behavior must be configured for every command");
-            let (generation, close_acknowledged) = match behavior {
-                AckBehavior::Matching(acknowledged) => (command.generation, Some(acknowledged)),
-                AckBehavior::Mismatched => (command.generation + 1, Some(true)),
-            };
-            Ok(ProviderTransportSessionReceipt {
-                generation,
-                reused: true,
-                physical_state: ProviderPhysicalTransportState::Closed,
-                connection_age_ms: 1,
-                ttl_remaining_ms: 0,
-                close_reason: Some(ProviderTransportSessionCloseReason::RequestedDrain),
-                close_acknowledged,
-            })
-        }
-    }
-
-    fn transport_config() -> TransportRegistryConfig {
-        TransportRegistryConfig {
-            logical_max_age: Duration::from_secs(60),
-            invocation_default: Duration::from_secs(10),
-            idle_affinity_lease: Duration::from_secs(30),
-            physical_soft_drain_age: Duration::from_secs(20),
-            physical_max_age: Duration::from_secs(40),
-            ..TransportRegistryConfig::default()
-        }
-    }
-
-    fn invocation_input(
-        session_id: &str,
-        operation: ProviderWireOperation,
-    ) -> ProviderInvocationInput {
-        ProviderInvocationInput {
-            operation,
-            provider_instance_id: "provider-instance".to_string(),
-            provider_code: "provider-code".to_string(),
-            protocol: "openai_responses".to_string(),
-            model: "model-a".to_string(),
-            client_protocol_envelope: Some(ProtocolContextEnvelope {
-                source_protocol: "openai_responses".to_string(),
-                headers: BTreeMap::from([("session-id".to_string(), vec![session_id.to_string()])]),
-                ..ProtocolContextEnvelope::default()
-            }),
-            ..ProviderInvocationInput::default()
-        }
-    }
-
-    fn context(deadline_ms: u64) -> ProviderRuntimeExecutionContext {
-        ProviderRuntimeExecutionContext {
-            workspace_id: uuid::Uuid::nil(),
-            actor_id: None,
-            deadline_unix_ms: i64::try_from(deadline_ms).unwrap(),
-        }
-    }
-
-    fn successful_output(
-        generation: u64,
-    ) -> anyhow::Result<super::super::ProviderRuntimeInvocationOutput> {
-        let mut result = ProviderInvocationResult {
-            provider_metadata: serde_json::json!({}),
-            ..ProviderInvocationResult::default()
-        };
-        result
-            .set_transport_session_receipt(ProviderTransportSessionReceipt {
-                generation,
-                reused: true,
-                physical_state: ProviderPhysicalTransportState::Ready,
-                connection_age_ms: 1,
-                ttl_remaining_ms: 1_000,
-                close_reason: None,
-                close_acknowledged: None,
-            })
-            .unwrap();
-        Ok(super::super::ProviderRuntimeInvocationOutput {
-            events: Vec::new(),
-            result,
-        })
-    }
-
-    fn reason(error: anyhow::Error) -> String {
-        error.to_string()
-    }
-
-    #[test]
-    fn termination_reasons_preserve_the_transport_failure_domain() {
-        assert_eq!(
-            termination_code(TerminationKind::DeadlineExceeded(DeadlineKind::Task)),
-            "transport_invocation_deadline_exceeded"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::DeadlineExceeded(
-                DeadlineKind::LogicalAbsolute
-            )),
-            "transport_logical_deadline_exceeded"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::DeadlineExceeded(DeadlineKind::StateLease)),
-            "transport_state_lease_expired"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::ProviderHardMax),
-            "provider_connection_max_age"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::ProviderFault),
-            "provider_connection_max_age"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::CapacityEvicted),
-            "transport_session_evicted"
-        );
-        assert_eq!(
-            termination_code(TerminationKind::OwnerOrphaned),
-            "transport_session_orphaned"
-        );
-    }
-
-    #[test]
-    fn registry_rejections_have_stable_safe_reasons() {
-        assert!(
-            reason(map_registry_use_error(RegistryError::DeadlineInPast))
-                .contains("transport_invocation_deadline_exceeded")
-        );
-        assert!(
-            reason(map_registry_use_error(RegistryError::InflightExists))
-                .contains("transport_session_busy")
-        );
-        assert!(reason(map_registry_use_error(RegistryError::NotFound))
-            .contains("transport_session_evicted"));
-        assert!(reason(map_registry_admission_error(RegistryError::Capacity(
-            CapacityRejection {
-                capacity: 1,
-                active: 1,
-            }
-        )))
-        .contains("capacity_exceeded"));
-        assert!(
-            reason(map_registry_admission_error(RegistryError::DeadlineInPast))
-                .contains("provider_connection_max_age")
-        );
-    }
-
-    #[tokio::test]
-    async fn compaction_successor_reuses_logical_session_without_inheriting_deadline() {
-        let clock = FakeClock::new(1_000_000);
-        let runtime = Arc::new(FakeTransportRuntime::new([]));
-        let coordinator =
-            TransportSessionCoordinator::new_with_clock(runtime, transport_config(), clock.clone())
-                .unwrap();
-        let mut compact = invocation_input("stable-session", ProviderWireOperation::Compact);
-        compact.profile = Some(ProviderCompactProfile::ResponsesCompactionV2);
-        let first = coordinator
-            .prepare("runtime-a", &mut compact, &context(1_000_010))
-            .await
-            .unwrap()
-            .unwrap();
-        let first_directive = compact.transport_session_directive().unwrap().unwrap();
-        coordinator
-            .finish(first, &successful_output(first_directive.generation))
-            .await
-            .unwrap();
-
-        clock.advance(Duration::from_millis(11));
-        let mut successor = invocation_input("stable-session", ProviderWireOperation::Generate);
-        let second = coordinator
-            .prepare("runtime-a", &mut successor, &context(1_000_100))
-            .await
-            .unwrap()
-            .unwrap();
-        let second_directive = successor.transport_session_directive().unwrap().unwrap();
-        let snapshot = coordinator.safe_snapshot().await;
-
-        assert_eq!(snapshot.sessions.len(), 1);
-        assert_eq!(
-            first_directive.logical_session_id,
-            second_directive.logical_session_id
-        );
-        assert_eq!(first_directive.generation, second_directive.generation);
-        assert_eq!(second.lease.sequence(), 2);
-        assert_eq!(
-            snapshot.sessions[0].invocation_deadline,
-            Some(TransportInstant::from_millis(1_000_100))
-        );
-        assert_eq!(
-            snapshot.sessions[0].invocation_ttl,
-            Some(Duration::from_millis(89))
-        );
-    }
-
-    async fn coordinator_at_inflight_soft_drain(
-        behavior: AckBehavior,
-    ) -> (
-        TransportSessionCoordinator<FakeClock>,
-        Arc<FakeTransportRuntime>,
-        FakeClock,
-        PreparedTransportInvocation,
-        u64,
-    ) {
-        let clock = FakeClock::new(2_000_000);
-        let runtime = Arc::new(FakeTransportRuntime::new([behavior]));
-        let coordinator = TransportSessionCoordinator::new_with_clock(
-            runtime.clone(),
-            transport_config(),
-            clock.clone(),
-        )
-        .unwrap();
-        let mut input = invocation_input("drain-session", ProviderWireOperation::Generate);
-        let prepared = coordinator
-            .prepare("runtime-a", &mut input, &context(2_030_000))
-            .await
-            .unwrap()
-            .unwrap();
-        let generation = input
-            .transport_session_directive()
-            .unwrap()
-            .unwrap()
-            .generation;
-
-        clock.advance(Duration::from_secs(20));
-        coordinator.maintain_and_dispatch().await;
-        assert!(runtime.commands().is_empty());
-        let snapshot = coordinator.safe_snapshot().await;
-        assert_eq!(snapshot.sessions[0].state, TransportSessionState::Draining);
-        assert!(snapshot.sessions[0].inflight);
-        (coordinator, runtime, clock, prepared, generation)
-    }
-
-    #[tokio::test]
-    async fn inflight_drain_defers_then_matching_ack_rotates_and_fences_old_generation() {
-        let (coordinator, runtime, clock, prepared, generation) =
-            coordinator_at_inflight_soft_drain(AckBehavior::Matching(true)).await;
-        let old_fence = prepared.lease.fence.clone();
-        coordinator
-            .finish(prepared, &successful_output(generation))
-            .await
-            .unwrap();
-
-        let commands = runtime.commands();
-        assert_eq!(commands.len(), 1);
-        assert_eq!(commands[0].action, ProviderTransportSessionAction::Drain);
-        assert_eq!(commands[0].generation, generation);
-        let snapshot = coordinator.safe_snapshot().await;
-        assert_eq!(snapshot.sessions[0].fence.session_id, old_fence.session_id);
-        assert!(snapshot.sessions[0].fence.generation.get() > generation);
-        assert_eq!(snapshot.sessions[0].state, TransportSessionState::Active);
-
-        let mut registry = coordinator.registry.lock().await;
-        assert!(matches!(
-            registry.activate(&old_fence),
-            Err(RegistryError::StaleGeneration { .. })
-        ));
-        assert!(lifecycle_command(
-            &registry,
-            LifecycleEvent::StateChanged {
-                fence: old_fence,
-                from: TransportSessionState::Active,
-                to: TransportSessionState::Draining,
-                at: clock.now(),
-            }
-        )
-        .is_none());
-    }
-
-    #[tokio::test]
-    async fn false_or_mismatched_drain_ack_never_rotates_generation() {
-        for behavior in [AckBehavior::Matching(false), AckBehavior::Mismatched] {
-            let (coordinator, runtime, _clock, prepared, generation) =
-                coordinator_at_inflight_soft_drain(behavior).await;
-            coordinator
-                .finish(prepared, &successful_output(generation))
-                .await
-                .unwrap();
-
-            assert_eq!(runtime.commands().len(), 1);
-            let snapshot = coordinator.safe_snapshot().await;
-            assert_eq!(snapshot.sessions[0].fence.generation.get(), generation);
-            assert_eq!(snapshot.sessions[0].state, TransportSessionState::Draining);
-            assert!(!snapshot.sessions[0].inflight);
-        }
-    }
-}
+#[path = "_tests/transport_session_lifecycle.rs"]
+mod tests;

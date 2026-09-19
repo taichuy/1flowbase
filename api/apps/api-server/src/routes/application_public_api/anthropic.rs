@@ -494,6 +494,7 @@ fn anthropic_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        transport_connection_scope: None,
         reserved_attempt_id: None,
         native_transport: None,
         bearer_token: bearer_token.to_string(),

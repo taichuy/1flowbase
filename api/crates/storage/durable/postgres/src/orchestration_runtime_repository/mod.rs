@@ -11,18 +11,20 @@ use control_plane_contracts::{
         PublishedRunStreamState,
     },
     ports::{
-        AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
-        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
-        AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
-        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
-        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        AckRuntimeEventDeliveryInput, AcquireResumeClaimInput, AcquireResumeClaimOutput,
+        AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
+        AppendContextVersionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
+        AppendModelFailoverAttemptLedgerInput, AppendProviderInvocationContextInput,
+        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
+        AppendRuntimeItemInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
+        ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
         AttachCompiledPlanToFlowRunInput, BillingRepository, BindInvocationContextInput,
-        CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        CallbackResumeContext, CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
+        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
         CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
@@ -37,18 +39,20 @@ use control_plane_contracts::{
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
-        ListModelProviderRequestLogsPageInput, ListPricingRulesInput, ModelProviderRequestLogsPage,
+        ListModelProviderRequestLogsPageInput, ListPricingRulesInput,
+        MarkRuntimeEventDeliveryUncertainInput, ModelProviderRequestLogsPage,
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
-        ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
-        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, SettleCreditInput,
-        UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
-        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
-        UpsertDebugVariableCacheEntryInput,
+        ReleaseRuntimeEventDeliveryInput, ReplaceApplicationRunTraceProjectionInput,
+        ReserveCreditInput, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
+        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, RollbackLegacyRuntimeShadowResult,
+        RuntimeContextContentVersion, RuntimeEventDeliveryClaim, SettleCreditInput,
+        ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
+        UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
+        UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -68,6 +72,7 @@ use record_mappers::*;
 use sequencing::*;
 
 include!("event_methods.rs");
+include!("delivery_methods.rs");
 include!("artifact_methods.rs");
 include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
@@ -82,6 +87,7 @@ include!("flow_run_callback_resume_attempt_methods.rs");
 include!("storage_foundation_methods.rs");
 include!("legacy_shadow_methods.rs");
 include!("waiting_state_methods.rs");
+include!("tool_callback_inbox_methods.rs");
 include!("resume_claim_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
@@ -403,6 +409,34 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::append_runtime_events(self, inputs).await
     }
 
+    async fn claim_runtime_event_deliveries(
+        &self,
+        input: &ClaimRuntimeEventDeliveriesInput,
+    ) -> Result<Vec<RuntimeEventDeliveryClaim>> {
+        PgControlPlaneStore::claim_runtime_event_deliveries(self, input).await
+    }
+
+    async fn ack_runtime_event_delivery(
+        &self,
+        input: &AckRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::ack_runtime_event_delivery(self, input).await
+    }
+
+    async fn release_runtime_event_delivery(
+        &self,
+        input: &ReleaseRuntimeEventDeliveryInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::release_runtime_event_delivery(self, input).await
+    }
+
+    async fn mark_runtime_event_delivery_uncertain(
+        &self,
+        input: &MarkRuntimeEventDeliveryUncertainInput,
+    ) -> Result<domain::RuntimeEventRecord> {
+        PgControlPlaneStore::mark_runtime_event_delivery_uncertain(self, input).await
+    }
+
     async fn append_runtime_item(
         &self,
         input: &AppendRuntimeItemInput,
@@ -492,6 +526,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &FinishResumeClaimInput,
     ) -> Result<ResumeClaimRecord> {
         PgControlPlaneStore::finish_resume_claim(self, input).await
+    }
+
+    async fn commit_tool_callback_results(
+        &self,
+        input: &CommitToolCallbackResultsInput,
+    ) -> Result<CommitToolCallbackResultsOutput> {
+        PgControlPlaneStore::commit_tool_callback_results(self, input).await
     }
 
     async fn append_usage_ledger(
@@ -1660,6 +1701,26 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         input: &FinishFlowRunCallbackResumeAttemptInput,
     ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {
         PgControlPlaneStore::finish_flow_run_callback_resume_attempt(self, input).await
+    }
+
+    async fn claim_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        PgControlPlaneStore::claim_flow_run_callback_resume_attempt(
+            self,
+            attempt_id,
+            &response_payload,
+        )
+        .await
+    }
+
+    async fn park_published_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        PgControlPlaneStore::park_flow_run_callback_resume_attempt(self, attempt_id).await
     }
 
     async fn cancel_published_callback_resume_attempts_for_run(
