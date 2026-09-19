@@ -1384,3 +1384,7 @@ fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
     assert!(source.contains("call_executable("));
     assert!(source.contains("call_executable_streaming("));
 }
+
+#[cfg(unix)]
+#[path = "provider_host/stream_error_tests.rs"]
+mod stream_error_tests;

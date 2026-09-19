@@ -218,8 +218,13 @@ impl ProviderWorkerSupervisor {
                 host_calls,
             )
             .await;
-        if result.is_err() {
-            self.fail_active_worker(&mut worker).await?;
+        if result.is_err() && worker.last_cleanup_receipt().is_some() {
+            // Stdio retires only broken streams. A provider error drained through
+            // its result delimiter leaves the worker usable for the next call.
+            // Lifecycle cleanup is secondary and cannot replace the primary error.
+            if let Err(cleanup_error) = self.fail_active_worker(&mut worker).await {
+                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+            }
         }
         drop(worker);
         drop(lease);
@@ -504,6 +509,55 @@ mod tests {
             .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
             .await
             .unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stream_first_error_survives_non_typed_cleanup_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("provider-cleanup-error-{nonce}.sh"));
+        std::fs::write(
+            &path,
+            r#"#!/usr/bin/env bash
+read -r payload
+printf '%s\n' '{"type":"error","error":{"kind":"rate_limited","message":"primary-provider-error"}}'
+exit 7
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let supervisor = ProviderWorkerSupervisor::activate(path.clone(), limits(), 1).unwrap();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = supervisor.last_cleanup.lock().unwrap();
+            panic!("controlled secondary cleanup lock failure");
+        }));
+        let result = supervisor
+            .call_streaming_with_limits_and_host_calls(
+                &ProviderStdioRequest {
+                    method: ProviderStdioMethod::Invoke,
+                    input: json!({}),
+                },
+                &limits(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
+        std::fs::remove_file(path).unwrap();
+        let PluginFrameworkError::RuntimeContract { error } = result.unwrap_err() else {
+            panic!("cleanup must not replace the provider RuntimeContract error");
+        };
+        assert_eq!(error.message, "primary-provider-error");
+        assert_eq!(
+            error.kind,
+            extension_package_runtime::provider_contract::ProviderRuntimeErrorKind::RateLimited
+        );
+        assert!(supervisor.worker.lock().await.process_control().is_none());
     }
 
     fn supervisor(generation: u64) -> Arc<ProviderWorkerSupervisor> {
