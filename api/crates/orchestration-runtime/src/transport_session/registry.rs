@@ -558,7 +558,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                 };
                 // Releasing an affinity socket does not terminate the logical session.
                 // The close ACK and successor authorization still gate rotation.
-                let _ = self.set_state(&fence, TransportSessionState::IdleReleased, now);
+                self.set_state(&fence, TransportSessionState::IdleReleased, now)
+                    .expect("the idle release fence was read from the current registry");
             } else {
                 self.terminate_by_id(&session_id, kind, now);
             }
@@ -719,7 +720,8 @@ fn valid_transition(from: TransportSessionState, to: TransportSessionState) -> b
         ) | (
             State::WaitingTool | State::IdleAffinity | State::Orphaned,
             State::Active | State::Orphaned | State::Draining | State::Faulted | State::Closing
-        ) | (State::Draining, State::Faulted | State::Closing)
+        ) | (State::IdleAffinity, State::IdleReleased)
+            | (State::Draining, State::Faulted | State::Closing)
             | (State::Faulted | State::IdleReleased, State::Closing)
     )
 }
