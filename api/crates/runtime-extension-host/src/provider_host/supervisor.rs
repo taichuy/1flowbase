@@ -648,6 +648,7 @@ exit 7
         assert_eq!(after.state, ProviderWorkerLifecycleState::Active);
         assert_eq!(after.in_flight, 0);
         assert!(supervisor.call(&request("fast")).await.is_ok());
+        supervisor.begin_quiesce().unwrap();
         supervisor
             .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
             .await
