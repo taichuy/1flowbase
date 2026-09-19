@@ -388,3 +388,71 @@ async fn increment_published_default_reaches_native_wire_and_callback_configurat
         repository.complete_callback_task_for_test(callback.id);
     }
 }
+
+#[tokio::test]
+async fn increment_published_default_respects_explicit_disabled_reasoning_through_native_wire() {
+    use control_plane::application_public_api::native::NativeExecutionModelParameters;
+    use control_plane::ports::ProviderTransportPayload;
+
+    let harness = ApplicationPublicApiTestHarness::new();
+    let repository = harness.repository();
+    let application = harness.seed_application(actor_user_id(), "Explicit reasoning disabled");
+    let token = issue_key(&harness, application.id).await;
+    save_model_catalog(
+        &repository,
+        &application,
+        json!([model(json!({
+            "default_effort":"medium", "supported_efforts":["medium","max"]
+        }))]),
+    )
+    .await;
+    publish_runnable_application(&repository, application.id).await;
+    let service = ApplicationPublishedRunService::new(repository.clone());
+
+    for (mode, default) in [("disabled", None), ("enabled", Some("medium"))] {
+        let request = native_request_with_model_parameters(
+            "public-luna",
+            json!({
+                "reasoning":{"mode":mode}
+            }),
+        );
+        let result = service
+            .start_native_run(CreateNativeRunCommand {
+                bearer_token: token.clone(),
+                protocol: TranslationProtocol::Native,
+                request,
+            })
+            .await
+            .unwrap();
+        let flow = repository
+            .get_flow_run(application.id, result.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            flow.input_payload["sys"]["model_parameters"]["reasoning"]["mode"],
+            mode
+        );
+        assert_eq!(
+            flow.input_payload["sys"]["model_parameters"]["reasoning"]["effort"].as_str(),
+            default
+        );
+        assert_eq!(
+            flow.input_payload["sys"]["published_reasoning_default_effort"].as_str(),
+            default
+        );
+        let original = ProviderTransportPayload::openai_responses(json!({
+            "model":"public-luna", "input":"hello", "reasoning":{"summary":"auto"}
+        }))
+        .unwrap();
+        let sealed = NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow.input_payload,
+            original.clone(),
+        )
+        .unwrap();
+        assert_eq!(sealed.wire_body()["reasoning"]["effort"].as_str(), default);
+        if mode == "disabled" {
+            assert_eq!(sealed, original);
+        }
+    }
+}

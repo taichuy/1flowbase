@@ -260,10 +260,21 @@ impl NativeExecutionModelParameters {
         })
     }
 
+    pub(crate) fn needs_default_effort(&self) -> bool {
+        self.reasoning.as_ref().is_none_or(|reasoning| {
+            reasoning.effective_mode() != NativeReasoningMode::Disabled
+                && reasoning.effort.is_none()
+        })
+    }
+
     pub(crate) fn apply_default_effort(&mut self, effort: &str) -> bool {
         let Some(effort) = NativeReasoningEffort::parse(effort) else {
             return false;
         };
+        // Explicit disabled intent takes precedence over an application default.
+        if !self.needs_default_effort() {
+            return true;
+        }
         let reasoning = self
             .reasoning
             .get_or_insert_with(|| NativeReasoningParameters {

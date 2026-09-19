@@ -148,11 +148,7 @@ pub(crate) fn admit_published_model_parameters(
                 return Err(NativeRunValidationError::InvalidPublishedModelConfiguration);
             }
             let parameters = effective.get_or_insert_with(NativeExecutionModelParameters::default);
-            if parameters
-                .reasoning()
-                .and_then(NativeReasoningParameters::effort)
-                .is_none()
-            {
+            if parameters.needs_default_effort() {
                 defaulted_effort = Some(default.clone());
             }
             if !parameters.apply_default_effort(default) {
