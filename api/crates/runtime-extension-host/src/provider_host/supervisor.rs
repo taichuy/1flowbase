@@ -188,8 +188,12 @@ impl ProviderWorkerSupervisor {
         let mut worker = self.worker.lock().await;
         self.ensure_lease_can_dispatch(&worker)?;
         let result = worker.call(request).await;
-        if result.is_err() {
-            self.fail_active_worker(&mut worker).await?;
+        if result.is_err() && worker.last_cleanup_receipt().is_some() {
+            // The carrier, not a provider error kind, determines synchronization.
+            // A complete unary rejection leaves the same worker and cursors alive.
+            if let Err(cleanup_error) = self.fail_active_worker(&mut worker).await {
+                tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+            }
         }
         drop(worker);
         drop(lease);
@@ -606,3 +610,7 @@ exit 7
         false
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "../_tests/provider_unary.rs"]
+mod unary_tests;
