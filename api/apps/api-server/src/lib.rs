@@ -833,6 +833,7 @@ async fn app_and_runtime_host_from_config(
         .map(Arc::new),
     )?;
     let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?);
+    let runtime_process_sampler = Arc::new(runtime_profile::RuntimeProcessSampler::new());
     if !provider_runtime
         .model_provider_extension_graph()
         .is_some_and(|graph| Arc::ptr_eq(graph, extension_boot_snapshot.graph_arc()))
@@ -864,6 +865,7 @@ async fn app_and_runtime_host_from_config(
         assistant_client_sessions: Default::default(),
         api_runtime_profile,
         runtime_host_system: runtime_extension_host.clone(),
+        runtime_process_sampler,
         official_plugin_source,
         official_mcp_bundle_source,
         official_extension_catalog_source,

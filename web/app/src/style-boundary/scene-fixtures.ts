@@ -599,6 +599,48 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/system/runtime-processes'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          process_total: 2,
+          processes: [
+            {
+              pid: 1442117,
+              parent_pid: 1,
+              name: 'api-server',
+              command: './target/debug/api-server',
+              user: 'taichuy',
+              status: 'sleeping',
+              cpu_usage_percent: 0.85,
+              memory_bytes: 33_554_432,
+              memory_usage_percent: 3.2,
+              start_time_unix_seconds: 1_758_160_251,
+              terminable: true,
+              backend_process: true
+            },
+            {
+              pid: 1619155,
+              parent_pid: 1,
+              name: 'MainThread',
+              command: 'node dsh --profile web',
+              user: 'taichuy',
+              status: 'running',
+              cpu_usage_percent: 0.57,
+              memory_bytes: 25_165_824,
+              memory_usage_percent: 2.84,
+              start_time_unix_seconds: 1_758_217_368,
+              terminable: false,
+              backend_process: false
+            }
+          ]
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
       requestUrl.pathname === '/api/console/settings/ui-management/components'
     ) {
       return createStyleBoundaryJsonResponse({

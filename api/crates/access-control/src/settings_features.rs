@@ -335,7 +335,12 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/system/runtime-profile"),
+                ("GET", "/api/console/system/runtime-processes"),
                 ("GET", "/api/console/system/release-status"),
+                (
+                    "POST",
+                    "/api/console/system/runtime-profile/processes/{pid}/terminate",
+                ),
             ]),
         },
         SettingsFeatureRegistration {

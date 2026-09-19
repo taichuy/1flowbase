@@ -432,6 +432,14 @@ vi.mock('@1flowbase/api-client', () => ({
   fetchConsoleSystemRuntimeProfile: vi.fn().mockResolvedValue({
     topology: { relationship: 'same_host' },
     hosts: []
+  }),
+  fetchConsoleSystemRuntimeProcesses: vi.fn().mockResolvedValue({
+    process_total: 0,
+    processes: []
+  }),
+  terminateConsoleSystemProcess: vi.fn().mockResolvedValue({
+    pid: 1,
+    outcome: 'signalled'
   })
 }));
 

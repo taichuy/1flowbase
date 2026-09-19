@@ -268,7 +268,11 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     ),
     legacy_mapping(
         "settings_feature.access.system.system-runtime",
-        &["system.release_status.view", "system.runtime_profile.view"],
+        &[
+            "system.release_status.view",
+            "system.runtime_profile.view",
+            "system.runtime_processes.view",
+        ],
         &[],
         &[],
     ),

@@ -242,6 +242,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             ),
             extension_boot_snapshot: Some(extension_boot_snapshot),
             runtime_host_system: std::sync::Arc::new(UnreachableRuntimeHostSystemClient),
+            runtime_process_sampler: std::sync::Arc::new(
+                runtime_profile::RuntimeProcessSampler::new(),
+            ),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
             official_extension_catalog_source: std::sync::Arc::new(

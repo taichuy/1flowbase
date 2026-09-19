@@ -1450,16 +1450,6 @@
         ]
       },
       {
-        "id": "runtime-service-list",
-        "selector": ".system-runtime-panel__service-list",
-        "propertyAssertions": [
-          {
-            "property": "overflow",
-            "expected": "hidden"
-          }
-        ]
-      },
-      {
         "id": "runtime-metric-strip",
         "selector": ".system-runtime-panel__metric-strip",
         "propertyAssertions": [

@@ -1642,7 +1642,12 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-system",
-            &["system.runtime_profile.view", "system.release_status.view"],
+            &[
+                "system.runtime_profile.view",
+                "system.runtime_processes.view",
+                "system.release_status.view",
+                "system.runtime_process.terminate",
+            ],
             &["api-server.console-system"],
             crate::routes::system::compile_registry(crate::routes::system::SystemInterfaceDependencies {
                 store: state.store.clone(),
@@ -1654,6 +1659,7 @@ pub(crate) fn production_interface_contributions(
                 api_node_id: state.api_node_id.clone(),
                 provider_install_root: state.provider_install_root.clone(),
                 host_extension_dropin_root: state.host_extension_dropin_root.clone(),
+                process_sampler: Arc::clone(&state.runtime_process_sampler),
                 network_egress: state.network_egress_http_clients(),
             })?,
         ),

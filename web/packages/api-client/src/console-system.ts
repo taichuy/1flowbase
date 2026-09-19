@@ -157,6 +157,32 @@ export interface ConsoleSystemRuntimeTarget {
   metrics: ConsoleSystemRuntimeMetrics | null;
 }
 
+export interface ConsoleSystemProcess {
+  pid: number;
+  parent_pid: number | null;
+  name: string;
+  command: string | null;
+  user: string | null;
+  status: string;
+  /** CPU usage as a percentage of the whole machine (all logical CPUs). */
+  cpu_usage_percent: number;
+  memory_bytes: number;
+  memory_usage_percent: number;
+  start_time_unix_seconds: number;
+  terminable: boolean;
+  backend_process: boolean;
+}
+
+export interface ConsoleSystemProcessTermination {
+  pid: number;
+  outcome: string;
+}
+
+export interface ConsoleSystemRuntimeProcessList {
+  process_total: number;
+  processes: ConsoleSystemProcess[];
+}
+
 export interface ConsoleSystemRuntimeProfile {
   provider_install_root: string;
   host_extension_dropin_root: string;
@@ -178,6 +204,21 @@ export function fetchConsoleSystemRuntimeProfile(baseUrl?: string) {
 export function fetchConsoleReleaseStatus(baseUrl?: string) {
   return apiFetch<ConsoleReleaseStatus>({
     path: '/api/console/system/release-status',
+    baseUrl
+  });
+}
+
+export function fetchConsoleSystemRuntimeProcesses(baseUrl?: string) {
+  return apiFetch<ConsoleSystemRuntimeProcessList>({
+    path: '/api/console/system/runtime-processes',
+    baseUrl
+  });
+}
+
+export function terminateConsoleSystemProcess(pid: number, baseUrl?: string) {
+  return apiFetch<ConsoleSystemProcessTermination>({
+    path: `/api/console/system/runtime-profile/processes/${pid}/terminate`,
+    method: 'POST',
     baseUrl
   });
 }

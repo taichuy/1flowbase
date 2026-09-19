@@ -243,6 +243,7 @@ async fn fixture_state() -> (
         ),
         extension_boot_snapshot: Some(extension_boot_snapshot),
         runtime_host_system: Arc::new(UnreachableRuntimeHost),
+        runtime_process_sampler: Arc::new(runtime_profile::RuntimeProcessSampler::new()),
         official_plugin_source: Arc::new(NoopPluginSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
         official_extension_catalog_source: Arc::new(

@@ -131,3 +131,30 @@ fn newly_available_cgroup_cpu_counter_warms_up_before_reporting_usage() {
     assert_eq!(metrics.availability, RuntimeMetricAvailability::WarmingUp);
     assert_eq!(metrics.usage_percent, None);
 }
+
+#[test]
+fn cgroup_cpu_usage_is_normalised_to_the_whole_machine() {
+    let system = System::new_all();
+    let cgroup = CgroupSnapshot {
+        scoped: true,
+        cpu_usage_micros: Some(5_000_000),
+        cpu_limit_cores: Some(2.0),
+        memory_used_bytes: Some(1),
+        memory_limit_bytes: Some(2),
+        memory_composition: None,
+    };
+
+    // 4 CPU-seconds consumed over a 2s interval on an 8-CPU machine == 25%.
+    let metrics = cpu_metrics(
+        &system,
+        8,
+        Some(Duration::from_secs(2)),
+        RuntimeMetricAvailability::Available,
+        Some(&cgroup),
+        Some(1_000_000),
+    );
+
+    assert_eq!(metrics.scope_kind, RuntimeMetricScopeKind::Cgroup);
+    assert_eq!(metrics.limit_cores, 2.0);
+    assert_eq!(metrics.usage_percent, Some(25.0));
+}

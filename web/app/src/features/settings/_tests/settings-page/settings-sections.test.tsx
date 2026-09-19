@@ -177,7 +177,14 @@ const pluginsApi = vi.hoisted(() => ({
 
 const systemRuntimeApi = vi.hoisted(() => ({
   settingsSystemRuntimeQueryKey: ['settings', 'system-runtime'],
-  fetchSettingsSystemRuntimeProfile: vi.fn()
+  settingsSystemRuntimeProcessesQueryKey: [
+    'settings',
+    'system-runtime',
+    'processes'
+  ],
+  fetchSettingsSystemRuntimeProfile: vi.fn(),
+  fetchSettingsSystemRuntimeProcesses: vi.fn(),
+  terminateSettingsSystemRuntimeProcess: vi.fn()
 }));
 
 const fileManagementApi = vi.hoisted(() => ({
@@ -1152,13 +1159,21 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/system-runtime');
     });
-    expect(await screen.findByText('运行概览')).toBeInTheDocument();
-    expect(screen.getByText('资源监控')).toBeInTheDocument();
-    expect(screen.getByText('同机部署')).toBeInTheDocument();
+    expect(await screen.findByText('资源监控')).toBeInTheDocument();
+    expect(screen.queryByText('运行概览')).not.toBeInTheDocument();
+    expect(screen.queryByText('运行环境')).not.toBeInTheDocument();
+    expect(screen.queryByText('同机部署')).not.toBeInTheDocument();
     expect(screen.queryByText('zh_Hans')).not.toBeInTheDocument();
-    expect(screen.getByText('相关进程内存')).toBeInTheDocument();
-    expect(screen.getAllByText('API Server').length).toBeGreaterThan(0);
-    expect(screen.getByText('Runtime Extension Host')).toBeInTheDocument();
+    expect(screen.queryByText('相关进程内存')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: '运行资源实时曲线' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Runtime Extension Host')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '运行目标' })
+    ).not.toBeInTheDocument();
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
     ).toHaveBeenCalled();

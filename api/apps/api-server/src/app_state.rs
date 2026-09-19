@@ -383,6 +383,7 @@ pub struct ApiState {
         Arc<Mutex<HashMap<uuid::Uuid, Arc<crate::routes::assistant::AssistantClientToolBridge>>>>,
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     pub runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
+    pub runtime_process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
     pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
