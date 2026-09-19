@@ -420,10 +420,14 @@ pub(super) async fn call_bound_transport_session(
     let output = match result {
         Ok(output) => output,
         Err(error) => {
-            return match confirmed_exit_receipt(&binding, command.action)? {
-                Some(receipt) => Ok(receipt),
-                None => Err(error),
-            }
+            tracing::warn!(session_id = %binding.identity.logical_session_id,
+                generation = binding.identity.generation, worker_incarnation = binding.identity.worker_incarnation,
+                control_error_kind = ?error.kind(), control_failure_code = safe_control_failure_code(&error), attempt_deadline_ms = command.deadline_unix_ms,
+                "provider control failed; checking independently confirmed worker exit");
+            return match confirmed_exit_receipt(&binding, command.action) {
+                Ok(Some(receipt)) => Ok(receipt),
+                Ok(None) | Err(_) => Err(error),
+            };
         }
     };
     let receipt: ProviderTransportSessionReceipt =
@@ -445,4 +449,22 @@ pub(super) async fn call_bound_transport_session(
         }
     }
     Ok(receipt)
+}
+
+fn safe_control_failure_code(error: &PluginFrameworkError) -> &'static str {
+    match error {
+        PluginFrameworkError::RuntimeContract { error } => match error.message.as_str() {
+            "provider worker ended without response line" | "provider worker process exited" => {
+                "control_worker_eof"
+            }
+            "provider transport control deadline exceeded" => "control_queue_deadline",
+            message if message.starts_with("provider runtime timed out:") => {
+                "control_stdio_timeout"
+            }
+            _ => "control_provider_rejection",
+        },
+        PluginFrameworkError::Serialization { .. } => "control_invalid_envelope",
+        PluginFrameworkError::Io { .. } => "control_stdio_io_error",
+        _ => "control_contract_error",
+    }
 }

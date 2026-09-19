@@ -38,6 +38,7 @@ enum AckBehavior {
     Matching(bool),
     Mismatched,
     ReleasedWithoutAck,
+    ControlError,
 }
 
 struct FakeTransportRuntime {
@@ -76,6 +77,12 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
             AckBehavior::Matching(acknowledged) => (command.generation, Some(acknowledged)),
             AckBehavior::Mismatched => (command.generation + 1, Some(true)),
             AckBehavior::ReleasedWithoutAck => (command.generation, Some(false)),
+            AckBehavior::ControlError => {
+                return Err(RuntimeBackendError::Execution {
+                    target_id: "fixture".into(),
+                    message: "never-log-private-control-body".into(),
+                })
+            }
         };
         Ok(ProviderTransportSessionReceipt {
             closure_evidence: Some(ProviderTransportClosureEvidence {
@@ -1457,4 +1464,94 @@ async fn close_overall_deadline_expires_without_restarting_budget() {
             .unwrap()
     )
     .contains("close_exhausted"));
+}
+
+#[tokio::test]
+async fn primary_failure_and_control_blocker_are_retained_without_provider_body() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::ControlError]));
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime, transport_config(), clock).unwrap();
+    let mut input = invocation_input("dual-diagnostics", ProviderWireOperation::Generate);
+    let failed = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let primary: anyhow::Result<super::super::ProviderRuntimeInvocationOutput> =
+        Err(PluginFrameworkError::runtime(ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::RateLimited,
+            "never-log-private-provider-body",
+        ))
+        .into());
+    coordinator.finish(failed, &primary).await.unwrap();
+    assert!(
+        primary
+            .unwrap_err()
+            .to_string()
+            .contains("never-log-private-provider-body"),
+        "original caller error must remain intact"
+    );
+    let blocked = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .err()
+        .unwrap();
+    let PluginFrameworkError::RuntimeContract { error } =
+        blocked.downcast_ref::<PluginFrameworkError>().unwrap()
+    else {
+        panic!("typed error required")
+    };
+    assert_eq!(error.message, "provider_physical_connection_close_pending");
+    let details = error.provider_details.as_ref().unwrap();
+    assert_eq!(
+        details["transport_recovery"]["primary_error"]["kind"],
+        serde_json::json!("rate_limited")
+    );
+    assert_eq!(
+        details["transport_recovery"]["primary_error"]["code"],
+        serde_json::json!("provider_rate_limited")
+    );
+    assert_eq!(
+        details["transport_recovery"]["first_control_failure"],
+        serde_json::json!("control_execution_error")
+    );
+    assert_eq!(
+        details["transport_recovery"]["attempts"],
+        serde_json::json!(1)
+    );
+    assert!(!details.to_string().contains("never-log-private"));
+}
+
+#[tokio::test]
+async fn inflight_drain_exhaustion_is_explicit_without_replay_or_new_budget() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([]));
+    let mut config = transport_config();
+    config.logical_max_age = Duration::from_secs(120);
+    config.physical_max_age = Duration::from_secs(120);
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+            .unwrap();
+    let mut input = invocation_input("long-inflight", ProviderWireOperation::Generate);
+    let active = coordinator
+        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .await
+        .unwrap()
+        .unwrap();
+    clock.advance(Duration::from_secs(20));
+    coordinator.maintain_and_dispatch().await;
+    clock.advance(Duration::from_secs(31));
+    coordinator.maintain_and_dispatch().await;
+    let error = coordinator
+        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("provider_physical_connection_close_exhausted"));
+    let snapshot = coordinator.safe_snapshot().await;
+    assert_eq!(snapshot.sessions[0].fence, active.lease.fence);
+    assert!(snapshot.sessions[0].inflight);
+    assert!(runtime.commands().is_empty());
+    assert_eq!(coordinator.pending_commands.lock().unwrap()[0].attempts, 0);
 }

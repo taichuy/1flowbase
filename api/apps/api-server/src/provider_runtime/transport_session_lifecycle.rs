@@ -113,6 +113,16 @@ struct LifecycleCommand {
     attempts: u8,
     state: CloseTaskState,
     last_blocker: Option<&'static str>,
+    first_control_failure: Option<&'static str>,
+    primary_failure: Option<PrimaryTransportFailure>,
+    task_id: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PrimaryTransportFailure {
+    kind: Option<ProviderRuntimeErrorKind>,
+    code: &'static str,
+    invocation_sequence: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -345,14 +355,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 TransportSessionState::Faulted | TransportSessionState::IdleReleased
             ) {
                 validate_fault_successor(input, recovery_directive.as_ref(), now)?;
-                if self
-                    .pending_commands
-                    .lock()
-                    .expect("transport pending command lock")
-                    .iter()
-                    .any(|task| task.fence == fence && task.state == CloseTaskState::Exhausted)
-                {
-                    return Err(transport_error(
+                if self.close_task_exhausted(&fence) {
+                    return Err(self.recovery_admission_error(
+                        &fence,
                         "provider_physical_connection_close_exhausted",
                     ));
                 }
@@ -360,7 +365,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 // Rotation keeps the original logical deadline and sequence.
                 let next = registry.rotate_generation(&fence).map_err(|error| {
                     if matches!(error, RegistryError::InvalidTransition { .. }) {
-                        transport_error("provider_physical_connection_close_pending")
+                        self.recovery_admission_error(
+                            &fence,
+                            "provider_physical_connection_close_pending",
+                        )
                     } else {
                         map_registry_use_error(error)
                     }
@@ -372,7 +380,14 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     state,
                     TransportSessionState::Draining | TransportSessionState::Closing
                 ) {
-                    return Err(transport_error(
+                    if self.close_task_exhausted(&fence) {
+                        return Err(self.recovery_admission_error(
+                            &fence,
+                            "provider_physical_connection_close_exhausted",
+                        ));
+                    }
+                    return Err(self.recovery_admission_error(
+                        &fence,
                         if state == TransportSessionState::Draining {
                             "provider_connection_draining"
                         } else {
@@ -383,7 +398,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 fence
             }
         } else if let Some(receipt) = registry.tombstone(&session_id) {
-            return Err(transport_error(termination_code(receipt.kind)));
+            return Err(
+                self.recovery_admission_error(&receipt.fence, termination_code(receipt.kind))
+            );
         } else {
             let fence = registry
                 .admit(AdmissionRequest {
@@ -483,7 +500,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             reason = %reason,
                             "provider transport receipt could not be classified"
                         );
-                        self.fault_invocation(&prepared.lease).await;
+                        self.fault_invocation(&prepared.lease, None).await;
                         return Err(transport_error("provider_transport_receipt_invalid"));
                     }
                 };
@@ -493,7 +510,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         ProviderInvocationTransportOutcome::Ready { .. }
                         | ProviderInvocationTransportOutcome::HttpFallback { .. } => {}
                         ProviderInvocationTransportOutcome::ReceiptMissing => {
-                            self.fault_invocation(&prepared.lease).await;
+                            self.fault_invocation(&prepared.lease, None).await;
                             return Err(transport_error("provider_transport_receipt_missing"));
                         }
                         ProviderInvocationTransportOutcome::StaleGeneration { .. } => {
@@ -508,7 +525,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             return Err(transport_error("provider_transport_stale_generation"));
                         }
                         ProviderInvocationTransportOutcome::PhysicalConnectionFault { .. } => {
-                            self.fault_invocation(&prepared.lease).await;
+                            self.fault_invocation(&prepared.lease, None).await;
                             return Err(transport_error("provider_physical_connection_fault"));
                         }
                     }
@@ -519,8 +536,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     InvocationCompletion::WaitingTool
                 }
             }
-            Err(_) => {
-                self.fault_invocation(&prepared.lease).await;
+            Err(error) => {
+                self.fault_invocation(
+                    &prepared.lease,
+                    Some(primary_transport_failure(error, prepared.lease.sequence())),
+                )
+                .await;
                 return Ok(());
             }
         };
@@ -557,7 +578,11 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         }
     }
 
-    async fn fault_invocation(&self, lease: &InvocationLease) {
+    async fn fault_invocation(
+        &self,
+        lease: &InvocationLease,
+        primary: Option<PrimaryTransportFailure>,
+    ) {
         let result = self
             .registry
             .lock()
@@ -567,7 +592,11 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             tracing::warn!(%error, generation = lease.fence.generation.get(),
                 "failed invocation did not change a stale or closed transport session");
         }
-        self.dispatch_pending_events().await;
+        let _dispatcher = self.dispatcher.lock().await;
+        self.dispatch_pending_events_locked_with_primary(
+            primary.map(|failure| (lease.fence.clone(), failure)),
+        )
+        .await;
     }
 
     async fn maintain_and_dispatch(&self) {
@@ -581,6 +610,13 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     }
 
     async fn dispatch_pending_events_locked(&self) {
+        self.dispatch_pending_events_locked_with_primary(None).await;
+    }
+
+    async fn dispatch_pending_events_locked_with_primary(
+        &self,
+        primary: Option<(TransportFence, PrimaryTransportFailure)>,
+    ) {
         let (new_commands, snapshot) = {
             let mut registry = self.registry.lock().await;
             let commands = registry
@@ -621,6 +657,11 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     pending.push_back(command);
                 }
             }
+            if let Some((fence, primary)) = primary {
+                if let Some(task) = pending.iter_mut().find(|task| task.fence == fence) {
+                    task.primary_failure.get_or_insert(primary);
+                }
+            }
             pending.drain(..).collect::<Vec<_>>()
         };
         let mut retained = VecDeque::new();
@@ -638,6 +679,8 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 task.state = CloseTaskState::Exhausted;
                 task.last_blocker = Some("provider_physical_connection_close_exhausted");
                 tracing::warn!(
+                    task_id = %task.task_id, primary = ?task.primary_failure,
+                    first_control_failure = task.first_control_failure,
                     generation = task.fence.generation.get(),
                     attempts = task.attempts,
                     overall_deadline_ms = task.overall_deadline.as_millis(),
@@ -691,11 +734,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 .await;
             let evidence = match result {
                 Ok(receipt) => accepted_closure_evidence(&task, &receipt),
-                Err(_) => Err("provider_transport_close_control_failed"),
+                Err(error) => Err(control_error_code(&error)),
             };
             let released = match evidence {
                 Ok(evidence) => {
                     task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
+                    tracing::info!(task_id = %task.task_id, generation = task.fence.generation.get(),
+                        worker_incarnation = evidence.identity.worker_incarnation, source = ?evidence.source,
+                        local_released = evidence.local_released, peer_ack = ?evidence.peer_close_acknowledged,
+                        no_ack_reason = ?evidence.no_ack_reason, attempt = task.attempts,
+                        attempt_deadline_ms = task.command.deadline_unix_ms,
+                        overall_deadline_ms = task.overall_deadline.as_millis(),
+                        "provider close physical evidence observed");
                     match self
                         .registry
                         .lock()
@@ -703,7 +753,14 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                         .record_closure_evidence(&task.fence, &evidence)
                     {
                         Ok(()) => {
-                            task.last_blocker = None;
+                            task.last_blocker = if evidence.local_released {
+                                None
+                            } else {
+                                Some("provider_transport_close_not_released")
+                            };
+                            if let Some(code) = task.last_blocker {
+                                task.first_control_failure.get_or_insert(code);
+                            }
                             evidence.local_released
                         }
                         Err(_) => {
@@ -713,6 +770,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     }
                 }
                 Err(code) => {
+                    task.first_control_failure.get_or_insert(code);
                     task.last_blocker = Some(code);
                     false
                 }
@@ -743,8 +801,11 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     task.next_due = transport_add(completed_at, close_retry_delay(&task))
                         .min(task.overall_deadline);
                 }
-                tracing::warn!(generation = task.fence.generation.get(), attempts = task.attempts,
-                    ?task.state, blocker = task.last_blocker, overall_deadline_ms = task.overall_deadline.as_millis(),
+                tracing::warn!(task_id = %task.task_id, primary = ?task.primary_failure,
+                    first_control_failure = task.first_control_failure,
+                    generation = task.fence.generation.get(), attempts = task.attempts,
+                    next_due_ms = task.next_due.as_millis(), attempt_deadline_ms = task.command.deadline_unix_ms,
+                    state = ?task.state, blocker = task.last_blocker, overall_deadline_ms = task.overall_deadline.as_millis(),
                     "provider close task retained its bounded recovery outcome");
             }
             retained.push_back(task);
@@ -753,6 +814,44 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .lock()
             .expect("transport pending command lock")
             .extend(retained);
+    }
+
+    fn close_task_exhausted(&self, fence: &TransportFence) -> bool {
+        self.pending_commands
+            .lock()
+            .expect("transport pending command lock")
+            .iter()
+            .any(|task| task.fence == *fence && task.state == CloseTaskState::Exhausted)
+    }
+
+    fn recovery_admission_error(
+        &self,
+        fence: &TransportFence,
+        code: &'static str,
+    ) -> anyhow::Error {
+        let tasks = self
+            .pending_commands
+            .lock()
+            .expect("transport pending command lock");
+        let Some(task) = tasks.iter().find(|task| task.fence == *fence) else {
+            return transport_error(code);
+        };
+        let mut error = ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderTransportAdmissionFailed,
+            code,
+        );
+        error.provider_details = Some(serde_json::json!({
+            "transport_recovery": {
+                "task_id": task.task_id, "generation": fence.generation.get(),
+                "worker_incarnation": task.command.worker_incarnation,
+                "primary_error": task.primary_failure.map(|failure| serde_json::json!({
+                    "kind": failure.kind, "code": failure.code, "invocation_sequence": failure.invocation_sequence,
+                })),
+                "first_control_failure": task.first_control_failure, "recovery_blocker": task.last_blocker,
+                "attempts": task.attempts, "overall_deadline_unix_ms": task.overall_deadline.as_millis(),
+            }
+        }));
+        PluginFrameworkError::runtime(error).into()
     }
 
     fn publish_termination(&self, mut notice: TransportTerminationNotice) {
@@ -843,6 +942,10 @@ fn lifecycle_command(
         .map_or(transport_add(now, CONTROL_OVERALL_DEADLINE), |session| {
             transport_add(now, CONTROL_OVERALL_DEADLINE.min(session.logical_ttl))
         });
+    let task_id = hash_identity(&[
+        fence.session_id.as_str(),
+        &fence.generation.get().to_string(),
+    ]);
     Some(LifecycleCommand {
         command: ProviderTransportSessionCommand {
             logical_session_id: fence.session_id.as_str().to_owned(),
@@ -865,6 +968,9 @@ fn lifecycle_command(
         attempts: 0,
         state: CloseTaskState::Pending,
         last_blocker: None,
+        first_control_failure: None,
+        primary_failure: None,
+        task_id,
     })
 }
 
@@ -897,6 +1003,81 @@ fn accepted_closure_evidence(
             Err("provider_transport_close_identity_mismatch")
         }
         _ => Ok(evidence.clone()),
+    }
+}
+
+fn primary_transport_failure(
+    error: &anyhow::Error,
+    invocation_sequence: u64,
+) -> PrimaryTransportFailure {
+    let typed = match error.downcast_ref::<PluginFrameworkError>() {
+        Some(PluginFrameworkError::RuntimeContract { error }) => Some(error.as_ref()),
+        _ => error.downcast_ref::<ProviderRuntimeError>(),
+    };
+    let kind = typed.map(|error| error.kind);
+    // Only canonical categories and known fixed messages are retained; no provider body or free-form diagnostic.
+    let code = match typed.map(|error| error.message.as_str()) {
+        Some("WebSocket continuation interrupted: cursor owner is unavailable") => {
+            "provider_cursor_owner_unavailable"
+        }
+        Some("provider_transport_cursor_unreconstructible") => {
+            "provider_transport_cursor_unreconstructible"
+        }
+        Some("provider_transport_receipt_missing") => "provider_transport_receipt_missing",
+        _ => kind
+            .map(provider_kind_code)
+            .unwrap_or("provider_invocation_failed"),
+    };
+    PrimaryTransportFailure {
+        kind,
+        code,
+        invocation_sequence,
+    }
+}
+
+fn provider_kind_code(kind: ProviderRuntimeErrorKind) -> &'static str {
+    match kind {
+        ProviderRuntimeErrorKind::AuthFailed => "provider_auth_failed",
+        ProviderRuntimeErrorKind::EndpointUnreachable => "provider_endpoint_unreachable",
+        ProviderRuntimeErrorKind::ModelNotFound => "provider_model_not_found",
+        ProviderRuntimeErrorKind::ProviderAffinityMismatch => "provider_affinity_mismatch",
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable => "provider_transport_unavailable",
+        ProviderRuntimeErrorKind::ProviderTransportAdmissionFailed => {
+            "provider_transport_admission_failed"
+        }
+        ProviderRuntimeErrorKind::SemanticCapabilityUnsupported => {
+            "provider_semantic_capability_unsupported"
+        }
+        ProviderRuntimeErrorKind::RateLimited => "provider_rate_limited",
+        ProviderRuntimeErrorKind::ProviderUpstreamError => "provider_upstream_error",
+        ProviderRuntimeErrorKind::ProviderInvalidResponse => "provider_invalid_response",
+    }
+}
+
+fn control_error_code(error: &RuntimeBackendError) -> &'static str {
+    match error {
+        RuntimeBackendError::InvalidRequest(_) => "control_invalid_request",
+        RuntimeBackendError::DuplicateBackend => "control_duplicate_backend",
+        RuntimeBackendError::MissingBackend => "control_missing_backend",
+        RuntimeBackendError::Unavailable(_) => "control_backend_unavailable",
+        RuntimeBackendError::DuplicateRequest(_) => "control_duplicate_request",
+        RuntimeBackendError::Cancelled(_) => "control_cancelled",
+        RuntimeBackendError::UnsupportedOperation(_) => "control_unsupported_operation",
+        RuntimeBackendError::Contract(error) => match error.as_ref() {
+            PluginFrameworkError::RuntimeContract { error } => match error.message.as_str() {
+                "provider worker ended without response line"
+                | "provider worker process exited" => "control_worker_eof",
+                "provider transport control deadline exceeded" => "control_queue_deadline",
+                message if message.starts_with("provider runtime timed out:") => {
+                    "control_stdio_timeout"
+                }
+                _ => provider_kind_code(error.kind),
+            },
+            _ => "control_provider_contract_error",
+        },
+        RuntimeBackendError::CountTokens(_) => "control_unexpected_count_tokens_error",
+        RuntimeBackendError::Compact(_) => "control_unexpected_compact_error",
+        RuntimeBackendError::Execution { .. } => "control_execution_error",
     }
 }
 
