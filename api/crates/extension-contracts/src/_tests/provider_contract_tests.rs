@@ -198,6 +198,7 @@ fn provider_stdio_contract_uses_snake_case_methods_and_result_payloads() {
 #[test]
 fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
     let directive = ProviderTransportSessionDirective {
+        worker_incarnation: None,
         logical_session_id: "logical_01".into(),
         generation: 41,
         task_id: "task_01".into(),
@@ -235,6 +236,7 @@ fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
         serde_json::from_value::<ProviderTransportSessionDirective>(missing_generation).is_err()
     );
     assert!(ProviderTransportSessionCommand {
+        worker_incarnation: None,
         logical_session_id: "contains a space".into(),
         generation: 1,
         action: ProviderTransportSessionAction::Drain,
@@ -247,6 +249,7 @@ fn b2_transport_session_contract_is_typed_bounded_and_deny_unknown() {
 #[test]
 fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
     let receipt = ProviderTransportSessionReceipt {
+        closure_evidence: None,
         generation: 7,
         reused: true,
         physical_state: ProviderPhysicalTransportState::Closed,
@@ -270,6 +273,7 @@ fn b2_transport_session_receipt_is_safe_and_round_trips_through_metadata() {
     let request = ProviderStdioRequest {
         method: ProviderStdioMethod::TransportSession,
         input: serde_json::to_value(ProviderTransportSessionCommand {
+            worker_incarnation: None,
             logical_session_id: "logical_01".into(),
             generation: 7,
             action: ProviderTransportSessionAction::Close,
@@ -296,6 +300,7 @@ fn transport_outcomes_keep_receipt_generation_fault_and_ack_domains_distinct() {
 
     let mut stale = empty.clone();
     let stale_receipt = ProviderTransportSessionReceipt {
+        closure_evidence: None,
         generation: 6,
         reused: true,
         physical_state: ProviderPhysicalTransportState::Ready,
@@ -314,6 +319,7 @@ fn transport_outcomes_keep_receipt_generation_fault_and_ack_domains_distinct() {
     );
 
     let fault_receipt = ProviderTransportSessionReceipt {
+        closure_evidence: None,
         generation: 7,
         reused: true,
         physical_state: ProviderPhysicalTransportState::Faulted,
@@ -342,6 +348,7 @@ fn transport_outcomes_keep_receipt_generation_fault_and_ack_domains_distinct() {
     );
 
     let ack_missing = ProviderTransportSessionReceipt {
+        closure_evidence: None,
         generation: 7,
         reused: true,
         physical_state: ProviderPhysicalTransportState::Closed,
@@ -446,6 +453,7 @@ fn d1_recovery_directive_round_trips_without_changing_the_legacy_directive() {
         cursor_provenance: Some(CursorProvenance::connection_bound(epoch, incarnation)),
     };
     let legacy = ProviderTransportSessionDirective {
+        worker_incarnation: None,
         logical_session_id: "logical_01".into(),
         generation: 41,
         task_id: "task_01".into(),
@@ -2271,6 +2279,7 @@ mod transport_outcome_mode_tests {
 
     fn ready() -> ProviderTransportSessionReceipt {
         ProviderTransportSessionReceipt {
+            closure_evidence: None,
             generation: 7,
             reused: false,
             physical_state: ProviderPhysicalTransportState::Ready,
@@ -2432,4 +2441,150 @@ mod transport_outcome_mode_tests {
         result.set_transport_session_receipt(ready()).unwrap();
         assert!(result.transport_outcome(7, Some(&directive())).is_err());
     }
+}
+
+#[test]
+fn closure_identity_and_physical_facts_are_independent_from_peer_ack() {
+    let identity = ProviderTransportSessionIdentity {
+        logical_session_id: "close-session".into(),
+        generation: 9,
+        worker_incarnation: 3,
+    };
+    let mut receipt = ProviderTransportSessionReceipt {
+        generation: 9,
+        reused: false,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 1,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::RequestedClose),
+        close_acknowledged: Some(false),
+        closure_evidence: Some(ProviderTransportClosureEvidence {
+            source: ProviderTransportClosureSource::ProviderLocalRelease,
+            no_ack_reason: Some(ProviderTransportNoAckReason::Timeout),
+            identity: identity.clone(),
+            local_released: true,
+            peer_close_acknowledged: Some(false),
+        }),
+    };
+    assert_eq!(
+        receipt.closure_outcome(&identity).unwrap(),
+        ProviderTransportClosureOutcome::Released {
+            peer_close_acknowledged: Some(false)
+        }
+    );
+    for wrong in [
+        ProviderTransportSessionIdentity {
+            logical_session_id: "other".into(),
+            ..identity.clone()
+        },
+        ProviderTransportSessionIdentity {
+            generation: 10,
+            ..identity.clone()
+        },
+        ProviderTransportSessionIdentity {
+            worker_incarnation: 4,
+            ..identity.clone()
+        },
+    ] {
+        assert_eq!(
+            receipt.closure_outcome(&wrong).unwrap(),
+            ProviderTransportClosureOutcome::IdentityMismatch
+        );
+    }
+    receipt.closure_evidence.as_mut().unwrap().local_released = false;
+    assert_eq!(
+        receipt.closure_outcome(&identity).unwrap(),
+        ProviderTransportClosureOutcome::NotReleased
+    );
+    receipt.closure_evidence.as_mut().unwrap().local_released = true;
+    let encoded = serde_json::to_value(&receipt).unwrap();
+    assert_eq!(
+        serde_json::from_value::<ProviderTransportSessionReceipt>(encoded.clone()).unwrap(),
+        receipt
+    );
+    let mut unknown = encoded;
+    unknown["closure_evidence"]["unsafe_payload"] = json!("not accepted");
+    assert!(serde_json::from_value::<ProviderTransportSessionReceipt>(unknown).is_err());
+    receipt.close_acknowledged = None;
+    let evidence = receipt.closure_evidence.as_mut().unwrap();
+    evidence.source = ProviderTransportClosureSource::ConfirmedWorkerExit;
+    evidence.peer_close_acknowledged = None;
+    evidence.no_ack_reason = Some(ProviderTransportNoAckReason::Unknown);
+    assert_eq!(
+        receipt.closure_outcome(&identity).unwrap(),
+        ProviderTransportClosureOutcome::Released {
+            peer_close_acknowledged: None
+        }
+    );
+    receipt.close_acknowledged = Some(true);
+    receipt
+        .closure_evidence
+        .as_mut()
+        .unwrap()
+        .peer_close_acknowledged = Some(true);
+    assert!(
+        receipt.validate().is_err(),
+        "worker exit must not manufacture peer ACK"
+    );
+    receipt.closure_evidence = None;
+    assert_eq!(
+        receipt.closure_outcome(&identity).unwrap(),
+        ProviderTransportClosureOutcome::EvidenceMissing
+    );
+}
+
+#[test]
+fn closure_evidence_rejects_contradictory_or_unbound_identity() {
+    let mut receipt = ProviderTransportSessionReceipt {
+        generation: 9,
+        reused: false,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 0,
+        ttl_remaining_ms: 0,
+        close_reason: Some(ProviderTransportSessionCloseReason::RequestedClose),
+        close_acknowledged: Some(true),
+        closure_evidence: Some(ProviderTransportClosureEvidence {
+            source: ProviderTransportClosureSource::ProviderLocalRelease,
+            no_ack_reason: None,
+            identity: ProviderTransportSessionIdentity {
+                logical_session_id: "close-session".into(),
+                generation: 9,
+                worker_incarnation: 3,
+            },
+            local_released: true,
+            peer_close_acknowledged: Some(true),
+        }),
+    };
+    assert!(receipt.validate().is_ok());
+    receipt.closure_evidence.as_mut().unwrap().local_released = false;
+    assert!(receipt.validate().is_err());
+    receipt.closure_evidence.as_mut().unwrap().local_released = true;
+    receipt
+        .closure_evidence
+        .as_mut()
+        .unwrap()
+        .identity
+        .worker_incarnation = 0;
+    assert!(receipt.validate().is_err());
+    receipt
+        .closure_evidence
+        .as_mut()
+        .unwrap()
+        .identity
+        .worker_incarnation = 3;
+    receipt
+        .closure_evidence
+        .as_mut()
+        .unwrap()
+        .identity
+        .generation = 10;
+    assert!(receipt.validate().is_err());
+    receipt
+        .closure_evidence
+        .as_mut()
+        .unwrap()
+        .identity
+        .generation = 9;
+    receipt.physical_state = ProviderPhysicalTransportState::Ready;
+    assert!(receipt.validate().is_err());
 }
