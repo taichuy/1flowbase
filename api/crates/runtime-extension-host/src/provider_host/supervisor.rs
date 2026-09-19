@@ -154,6 +154,10 @@ impl ProviderWorkerSupervisor {
         }))
     }
 
+    pub(crate) fn incarnation(&self) -> FrameworkResult<u64> {
+        Ok(self.lock_admission()?.lifecycle.generation())
+    }
+
     pub(crate) fn snapshot(&self) -> FrameworkResult<ProviderWorkerSupervisorSnapshot> {
         let admission = self.lock_admission()?;
         Ok(ProviderWorkerSupervisorSnapshot {
@@ -193,6 +197,34 @@ impl ProviderWorkerSupervisor {
             // A complete unary rejection leaves the same worker and cursors alive.
             if let Err(cleanup_error) = self.fail_active_worker(&mut worker).await {
                 tracing::warn!(error = %cleanup_error, "secondary provider worker cleanup failure");
+            }
+        }
+        drop(worker);
+        drop(lease);
+        result
+    }
+
+    /// Queue expiry never writes to stdio. Once dispatched, the carrier owns
+    /// timeout retirement and bounded cleanup; callers must await this future.
+    pub(crate) async fn call_with_deadline(
+        self: &Arc<Self>,
+        request: &ProviderStdioRequest,
+        limits: &PluginRuntimeLimits,
+        deadline_unix_ms: i64,
+    ) -> FrameworkResult<Value> {
+        let lease = self.admit()?;
+        let mut worker =
+            tokio::time::timeout(control_remaining(deadline_unix_ms)?, self.worker.lock())
+                .await
+                .map_err(|_| control_deadline_error())?;
+        self.ensure_lease_can_dispatch(&worker)?;
+        let remaining = control_remaining(deadline_unix_ms)?;
+        let mut limits = limits.clone();
+        limits.timeout_ms = Some(remaining.as_millis().min(u64::MAX as u128) as u64);
+        let result = worker.call_with_limits(request, &limits).await;
+        if result.is_err() && worker.last_cleanup_receipt().is_some() {
+            if let Err(error) = self.fail_active_worker(&mut worker).await {
+                tracing::warn!(error = %error, "secondary provider control cleanup failure");
             }
         }
         drop(worker);
@@ -383,6 +415,27 @@ impl ProviderWorkerSupervisor {
     }
 }
 
+fn control_deadline_error() -> PluginFrameworkError {
+    PluginFrameworkError::runtime(extension_package_runtime::provider_contract::ProviderRuntimeError::new(
+        extension_package_runtime::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        "provider transport control deadline exceeded",
+    ))
+}
+
+fn control_remaining(deadline_unix_ms: i64) -> FrameworkResult<Duration> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    if deadline_unix_ms <= now {
+        return Err(control_deadline_error());
+    }
+    Ok(Duration::from_millis(
+        deadline_unix_ms.saturating_sub(now) as u64
+    ))
+}
+
 fn lifecycle_lock_error() -> PluginFrameworkError {
     PluginFrameworkError::invalid_provider_package("provider worker lifecycle is unavailable")
 }
@@ -562,6 +615,62 @@ exit 7
             extension_package_runtime::provider_contract::ProviderRuntimeErrorKind::RateLimited
         );
         assert!(supervisor.worker.lock().await.process_control().is_none());
+    }
+
+    #[tokio::test]
+    async fn control_queue_deadline_and_cancel_leave_unwritten_worker_synchronized() {
+        let supervisor = supervisor(1);
+        let before = supervisor.snapshot().unwrap();
+        let guard = supervisor.worker.lock().await;
+        let deadline = || {
+            (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64)
+                + 20
+        };
+        assert!(supervisor
+            .call_with_deadline(&request("fast"), &limits(), deadline())
+            .await
+            .is_err());
+        let waiting = Arc::clone(&supervisor);
+        let task = tokio::spawn(async move {
+            waiting
+                .call_with_deadline(&request("fast"), &limits(), deadline() + 1_000)
+                .await
+        });
+        tokio::task::yield_now().await;
+        task.abort();
+        let _ = task.await;
+        drop(guard);
+        let after = supervisor.snapshot().unwrap();
+        assert_eq!(after.pid, before.pid);
+        assert_eq!(after.state, ProviderWorkerLifecycleState::Active);
+        assert_eq!(after.in_flight, 0);
+        assert!(supervisor.call(&request("fast")).await.is_ok());
+        supervisor
+            .finish_quiesce(Duration::from_secs(1), ProviderWorkerCleanupReason::Drained)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatched_control_timeout_retires_unsynchronized_worker() {
+        let supervisor = supervisor(1);
+        let deadline = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64)
+            + 20;
+        assert!(supervisor
+            .call_with_deadline(&request("slow"), &limits(), deadline)
+            .await
+            .is_err());
+        assert_eq!(
+            supervisor.snapshot().unwrap().state,
+            ProviderWorkerLifecycleState::Failed
+        );
+        assert!(supervisor.last_cleanup_receipt().unwrap().unwrap().exited);
     }
 
     fn supervisor(generation: u64) -> Arc<ProviderWorkerSupervisor> {

@@ -44,6 +44,23 @@ pub struct ProviderTransportClosureEvidence {
     pub peer_close_acknowledged: Option<bool>,
 }
 
+impl ProviderTransportClosureEvidence {
+    pub fn validate(&self) -> Result<(), String> {
+        self.identity.validate()?;
+        if self.peer_close_acknowledged == Some(true)
+            && (!self.local_released || self.no_ack_reason.is_some())
+        {
+            return Err("observed peer ACK requires local release and no failure reason".into());
+        }
+        if self.source == ProviderTransportClosureSource::ConfirmedWorkerExit
+            && (!self.local_released || self.peer_close_acknowledged.is_some())
+        {
+            return Err("confirmed worker exit proves local release, not peer ACK".into());
+        }
+        Ok(())
+    }
+}
+
 /// ConfirmedWorkerExit is host-only evidence; a host must reject it on provider wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -264,7 +281,7 @@ impl ProviderTransportSessionReceipt {
             return Err("transport session close ACK requires a close reason".into());
         }
         if let Some(evidence) = &self.closure_evidence {
-            evidence.identity.validate()?;
+            evidence.validate()?;
             if evidence.identity.generation != self.generation {
                 return Err("closure evidence generation differs from receipt".into());
             }
@@ -273,18 +290,6 @@ impl ProviderTransportSessionReceipt {
                     || self.ttl_remaining_ms != 0)
             {
                 return Err("local release requires a closed transport with zero TTL".into());
-            }
-            if evidence.peer_close_acknowledged == Some(true)
-                && (!evidence.local_released || evidence.no_ack_reason.is_some())
-            {
-                return Err(
-                    "observed peer ACK requires local release and no failure reason".into(),
-                );
-            }
-            if evidence.source == ProviderTransportClosureSource::ConfirmedWorkerExit
-                && (!evidence.local_released || evidence.peer_close_acknowledged.is_some())
-            {
-                return Err("confirmed worker exit proves local release, not peer ACK".into());
             }
             if evidence.peer_close_acknowledged != self.close_acknowledged {
                 return Err("closure peer ACK differs from receipt ACK".into());

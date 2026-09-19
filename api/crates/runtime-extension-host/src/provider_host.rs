@@ -24,9 +24,13 @@ use extension_package_runtime::{
         ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
         ProviderCountTokensResult, ProviderGenerateTranslationReceipt, ProviderInvocationInput,
         ProviderInvocationResult, ProviderModelDescriptor, ProviderOperationalCapability,
-        ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStreamEvent, ProviderTransportSessionCommand, ProviderTransportSessionReceipt,
+        ProviderPhysicalTransportState, ProviderResetCreditOperation, ProviderResetCreditResult,
+        ProviderResetCreditRuntimeInput, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent,
+        ProviderTransportClosureEvidence, ProviderTransportClosureSource,
+        ProviderTransportNoAckReason, ProviderTransportSessionAction,
+        ProviderTransportSessionCloseReason, ProviderTransportSessionCommand,
+        ProviderTransportSessionIdentity, ProviderTransportSessionReceipt,
         ProviderUsageWindowsResult, ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
     provider_count_tokens_estimator::estimate_provider_count_tokens,
@@ -64,6 +68,14 @@ struct ProviderWorkerRegistryState {
     workers: HashMap<String, ProviderWorkerHandle>,
     next_generation: HashMap<String, u64>,
     cleanup_receipts: HashMap<String, ProviderWorkerCleanupReceipt>,
+    transport_bindings: HashMap<(String, String, u64), TransportWorkerBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct TransportWorkerBinding {
+    identity: ProviderTransportSessionIdentity,
+    worker: ProviderWorkerHandle,
+    expires_at: std::time::Instant,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -973,25 +985,13 @@ impl ProviderHost {
                     "physical transport sessions require a stateful provider worker",
                 )));
             }
-            let output = Self::call_runtime_loaded(
-                loaded,
-                provider_workers,
-                ProviderStdioMethod::TransportSession,
-                serde_json::to_value(command).map_err(|error| {
-                    PluginFrameworkError::invalid_provider_contract(error.to_string())
-                })?,
+            call_bound_transport_session(
+                &provider_workers,
+                &loaded.package.identifier(),
+                command,
+                &loaded.package.manifest.runtime.limits,
             )
-            .await?;
-            let receipt: ProviderTransportSessionReceipt =
-                serde_json::from_value(output).map_err(|error| {
-                    PluginFrameworkError::invalid_provider_contract(format!(
-                        "provider transport session receipt is malformed: {error}"
-                    ))
-                })?;
-            receipt
-                .validate()
-                .map_err(PluginFrameworkError::invalid_provider_contract)?;
-            Ok(receipt)
+            .await
         })
     }
 
@@ -1277,11 +1277,21 @@ impl ProviderHost {
             active_invocation_leases,
             invocation_id,
             plugin_id,
-            input,
+            mut input,
             required_live_events,
             diagnostic_live_events,
             host_calls,
         } = invocation;
+
+        let selected_worker = if loaded.package.manifest.execution_mode
+            == PluginExecutionMode::StatefulProviderWorker
+        {
+            let worker = provider_worker_handle(&provider_workers, plugin_id.clone(), &loaded)?;
+            bind_transport_worker(&provider_workers, &plugin_id, &worker, &mut input)?;
+            Some(worker)
+        } else {
+            None
+        };
 
         let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
@@ -1325,7 +1335,7 @@ impl ProviderHost {
                 }
             }
             PluginExecutionMode::StatefulProviderWorker => {
-                let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
+                let worker = selected_worker.expect("stateful invocation selected its worker");
                 worker
                     .call_streaming_with_limits_and_host_calls(
                         &request,
@@ -1534,8 +1544,9 @@ mod operations;
 mod supervisor;
 
 use operations::{
-    merge_models, normalize_balance, normalize_models, normalize_reset_credit_result,
-    normalize_usage_windows, provider_invocation_limits, provider_pool_key, provider_worker_handle,
+    bind_transport_worker, call_bound_transport_session, merge_models, normalize_balance,
+    normalize_models, normalize_reset_credit_result, normalize_usage_windows,
+    provider_invocation_limits, provider_pool_key, provider_worker_handle,
     record_provider_worker_cleanup, reset_credit_result_matches_operation,
     take_provider_worker_for_quiesce,
 };

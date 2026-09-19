@@ -245,3 +245,204 @@ pub(super) fn merge_models(
     }
     merged.into_values().collect()
 }
+
+const TRANSPORT_BINDING_CAPACITY: usize = 4096;
+const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
+    std::time::Duration::from_secs(24 * 60 * 60 + 60);
+
+fn transport_binding_error(message: &str) -> PluginFrameworkError {
+    PluginFrameworkError::runtime(ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        message,
+    ))
+}
+
+pub(super) fn bind_transport_worker(
+    workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+    worker: &ProviderWorkerHandle,
+    input: &mut ProviderInvocationInput,
+) -> FrameworkResult<()> {
+    let Some(mut directive) = input
+        .transport_session_directive()
+        .map_err(PluginFrameworkError::invalid_provider_contract)?
+    else {
+        return Ok(());
+    };
+    let incarnation = worker.incarnation()?;
+    let identity = ProviderTransportSessionIdentity {
+        logical_session_id: directive.logical_session_id.clone(),
+        generation: directive.generation,
+        worker_incarnation: incarnation,
+    };
+    let key = (
+        plugin_id.to_owned(),
+        identity.logical_session_id.clone(),
+        identity.generation,
+    );
+    let now = std::time::Instant::now();
+    let mut registry = lock_provider_worker_registry(workers)?;
+    registry.transport_bindings.retain(|_, binding| {
+        binding.expires_at > now
+            || binding
+                .worker
+                .snapshot()
+                .map_or(true, |snapshot| snapshot.in_flight > 0)
+    });
+    if let Some(binding) = registry.transport_bindings.get(&key) {
+        if binding.identity != identity || !Arc::ptr_eq(&binding.worker, worker) {
+            return Err(transport_binding_error(
+                "transport generation belongs to a previous worker",
+            ));
+        }
+    } else {
+        if registry.transport_bindings.len() >= TRANSPORT_BINDING_CAPACITY {
+            return Err(transport_binding_error(
+                "transport worker binding capacity exhausted",
+            ));
+        }
+        let unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(i64::MAX as u128) as i64;
+        if directive.physical_deadline_unix_ms <= unix_ms {
+            return Err(transport_binding_error(
+                "transport binding physical deadline has expired",
+            ));
+        }
+        let remaining_ms = directive.physical_deadline_unix_ms.saturating_sub(unix_ms) as u64;
+        let retention = std::time::Duration::from_millis(remaining_ms)
+            .saturating_add(std::time::Duration::from_secs(60))
+            .min(TRANSPORT_BINDING_MAX_RETENTION);
+        registry.transport_bindings.insert(
+            key,
+            TransportWorkerBinding {
+                identity,
+                worker: Arc::clone(worker),
+                expires_at: now + retention,
+            },
+        );
+    }
+    drop(registry);
+    // Overwrite input claims using the actual supervisor, before the first wire request.
+    directive.worker_incarnation = Some(incarnation);
+    input
+        .set_transport_session_directive(directive)
+        .map_err(PluginFrameworkError::invalid_provider_contract)
+}
+
+fn confirmed_exit_receipt(
+    binding: &TransportWorkerBinding,
+    action: ProviderTransportSessionAction,
+) -> FrameworkResult<Option<ProviderTransportSessionReceipt>> {
+    let Some(cleanup) = binding.worker.last_cleanup_receipt()? else {
+        return Ok(None);
+    };
+    if !cleanup.exited || cleanup.generation != binding.identity.worker_incarnation {
+        return Ok(None);
+    }
+    Ok(Some(ProviderTransportSessionReceipt {
+        generation: binding.identity.generation,
+        reused: false,
+        physical_state: ProviderPhysicalTransportState::Closed,
+        connection_age_ms: 0,
+        ttl_remaining_ms: 0,
+        close_reason: Some(match action {
+            ProviderTransportSessionAction::Drain => {
+                ProviderTransportSessionCloseReason::RequestedDrain
+            }
+            ProviderTransportSessionAction::Close => {
+                ProviderTransportSessionCloseReason::RequestedClose
+            }
+        }),
+        close_acknowledged: None,
+        closure_evidence: Some(ProviderTransportClosureEvidence {
+            identity: binding.identity.clone(),
+            source: ProviderTransportClosureSource::ConfirmedWorkerExit,
+            local_released: true,
+            peer_close_acknowledged: None,
+            no_ack_reason: Some(ProviderTransportNoAckReason::Unknown),
+        }),
+    }))
+}
+
+pub(super) async fn call_bound_transport_session(
+    workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+    mut command: ProviderTransportSessionCommand,
+    limits: &PluginRuntimeLimits,
+) -> FrameworkResult<ProviderTransportSessionReceipt> {
+    let binding = {
+        let mut registry = lock_provider_worker_registry(workers)?;
+        let now = std::time::Instant::now();
+        registry.transport_bindings.retain(|_, binding| {
+            binding.expires_at > now
+                || binding
+                    .worker
+                    .snapshot()
+                    .map_or(true, |snapshot| snapshot.in_flight > 0)
+        });
+        registry
+            .transport_bindings
+            .get(&(
+                plugin_id.to_owned(),
+                command.logical_session_id.clone(),
+                command.generation,
+            ))
+            .cloned()
+            .ok_or_else(|| {
+                transport_binding_error("transport worker binding evidence is unavailable")
+            })?
+    };
+    if command
+        .worker_incarnation
+        .is_some_and(|value| value != binding.identity.worker_incarnation)
+    {
+        return Err(transport_binding_error(
+            "transport control worker incarnation mismatch",
+        ));
+    }
+    command.worker_incarnation = Some(binding.identity.worker_incarnation);
+    if let Some(receipt) = confirmed_exit_receipt(&binding, command.action)? {
+        return Ok(receipt);
+    }
+    let request = ProviderStdioRequest {
+        method: ProviderStdioMethod::TransportSession,
+        input: serde_json::to_value(&command)
+            .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?,
+    };
+    // Use the original supervisor even if a newer worker is now registered.
+    let result = binding
+        .worker
+        .call_with_deadline(&request, limits, command.deadline_unix_ms)
+        .await;
+    let output = match result {
+        Ok(output) => output,
+        Err(error) => {
+            return match confirmed_exit_receipt(&binding, command.action)? {
+                Some(receipt) => Ok(receipt),
+                None => Err(error),
+            }
+        }
+    };
+    let receipt: ProviderTransportSessionReceipt =
+        serde_json::from_value(output).map_err(|error| {
+            PluginFrameworkError::invalid_provider_contract(format!(
+                "provider transport receipt is malformed: {error}"
+            ))
+        })?;
+    receipt
+        .validate()
+        .map_err(PluginFrameworkError::invalid_provider_contract)?;
+    if let Some(evidence) = &receipt.closure_evidence {
+        if evidence.source != ProviderTransportClosureSource::ProviderLocalRelease
+            || evidence.identity != binding.identity
+        {
+            return Err(transport_binding_error(
+                "provider transport closure evidence identity or source rejected",
+            ));
+        }
+    }
+    Ok(receipt)
+}
