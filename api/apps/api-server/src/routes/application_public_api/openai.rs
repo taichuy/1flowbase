@@ -809,15 +809,11 @@ async fn dispatch_response_for_endpoint(
             &headers,
         )?;
     }
-    if let Some(envelope) = request.client_protocol_envelope.as_mut() {
-        let key = control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER;
-        // External headers and translated JSON cannot claim a socket. Only the
-        // private typed dispatch argument supplies an authenticated host scope.
-        envelope.headers.remove(key);
-        if let Some(scope) = transport_connection_scope {
-            envelope.headers.insert(key.into(), vec![scope]);
-        }
-    }
+    // Keep socket ownership outside the canonical envelope and its durable/ephemeral
+    // protocol-context storage. It is applied only at the host Provider boundary.
+    request
+        .metadata
+        .set_transport_connection_scope(transport_connection_scope);
     let operation = *request.execution.execution_operation();
     attach_compact_provider_transport_payload(
         &mut request,

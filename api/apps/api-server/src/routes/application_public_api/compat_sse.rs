@@ -97,7 +97,9 @@ pub(crate) enum CompatibleResumeAdmission {
     reason = "the compatibility turn command is consumed immediately and preserves typed actor ownership"
 )]
 enum CompatibleTurnAction {
-    Start,
+    Start {
+        transport_connection_scope: Option<String>,
+    },
     ResumeForActor {
         command: ResumePublishedCallbackCommand,
         actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
@@ -148,14 +150,14 @@ struct OpenedCompatibleTurn {
 impl CompatibleTurnAction {
     fn name(&self) -> &'static str {
         match self {
-            Self::Start => "start",
+            Self::Start { .. } => "start",
             Self::ResumeForActor { .. } => "resume",
         }
     }
 
     fn resumed_callback_task_id(&self) -> Option<uuid::Uuid> {
         match self {
-            Self::Start => None,
+            Self::Start { .. } => None,
             Self::ResumeForActor { command, .. } => {
                 Some(callback_task_id_from_resume_command(command))
             }
@@ -540,6 +542,7 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    transport_connection_scope: Option<String>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let mcp_runtime_invoker = dependencies
@@ -550,7 +553,9 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     let opened = open_compatible_turn_with_invoker(
         dependencies.clone(),
         initial_run,
-        CompatibleTurnAction::Start,
+        CompatibleTurnAction::Start {
+            transport_connection_scope,
+        },
         provider_transport_slot,
         mcp_runtime_invoker,
     )
@@ -718,12 +723,15 @@ async fn open_compatible_turn_with_invoker(
                     background_dependencies.native.runtime_event_stream.clone(),
                 );
         match action {
-            CompatibleTurnAction::Start => {
+            CompatibleTurnAction::Start {
+                transport_connection_scope,
+            } => {
                 if let Err(runtime_error) = runtime_service
                     .start_published_flow_run(StartPublishedFlowRunCommand {
                         application_id: background_run.application_id,
                         flow_run_id: background_run.id,
                         provider_transport_slot,
+                        transport_connection_scope,
                     })
                     .await
                 {

@@ -232,3 +232,86 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         json!("function_call_output")
     );
 }
+
+#[tokio::test]
+async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_boundary() {
+    use std::collections::BTreeMap;
+
+    use crate::application_public_api::native::NativeRunRequest;
+    use plugin_framework::provider_contract::{
+        validate_protocol_context_envelope, ProtocolContextEnvelope,
+    };
+
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    let (runtime_port, captured_inputs) =
+        test_support::InMemoryProviderRuntime::with_invocation_capture();
+    let mut request: NativeRunRequest =
+        serde_json::from_value(json!({"query":"scope boundary"})).unwrap();
+    let canonical = ProtocolContextEnvelope {
+        source_protocol: "openai_responses".into(),
+        headers: BTreeMap::from([("session-id".into(), vec!["logical-thread".into()])]),
+        ..Default::default()
+    };
+    request.client_protocol_envelope = Some(canonical.clone());
+    request
+        .metadata
+        .set_transport_connection_scope(Some("host-initial-socket".into()));
+    validate_protocol_context_envelope(request.client_protocol_envelope.as_ref().unwrap())
+        .expect("host execution metadata must not contaminate canonical protocol validation");
+    let serialized = serde_json::to_value(&request).unwrap();
+    assert!(!serialized.to_string().contains("host-initial-socket"));
+    let command = StartPublishedFlowRunCommand {
+        application_id: Uuid::nil(),
+        flow_run_id: Uuid::nil(),
+        provider_transport_slot: None,
+        transport_connection_scope: request.metadata.take_transport_connection_scope(),
+    };
+    assert!(request.metadata.take_transport_connection_scope().is_none());
+    let invoker = RuntimeProviderInvoker {
+        response_round_id: None,
+        native_user_messages_digest: None,
+        repository,
+        runtime: runtime_port,
+        workspace_id: Uuid::nil(),
+        provider_secret_master_key: "test-master-key".into(),
+        live_provider_events: None,
+        runtime_event_stream: None,
+        flow_run_id: Some(command.flow_run_id),
+        active_node_id: None,
+        active_node_run_id: None,
+        api_node_id: Some("local:test".into()),
+        provider_install_root: Some(std::env::temp_dir()),
+        flow_execution_context: None,
+        answer_presentation: None,
+        transport_connection_scope_override: None,
+        provider_transport_payload: None,
+        provider_transport_store: None,
+        provider_continuation: None,
+        model_pricing_cache_store: None,
+    }
+    .with_transport_connection_scope_override(command.transport_connection_scope);
+    let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
+    let mut input = provider_user_input(provider_instance_id);
+    input.client_protocol_envelope = request.client_protocol_envelope;
+    orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(&invoker, &runtime, input)
+        .await
+        .expect("initial execution scope must reach the real Provider invoker");
+    let captured = captured_inputs.lock().unwrap();
+    assert_eq!(captured.len(), 1);
+    let mut late_context = captured[0].client_protocol_envelope.clone().unwrap();
+    assert_eq!(
+        late_context
+            .headers
+            .remove(HOST_TRANSPORT_CONNECTION_SCOPE_HEADER),
+        Some(vec!["host-initial-socket".into()])
+    );
+    assert_eq!(late_context, canonical);
+    validate_protocol_context_envelope(&late_context).unwrap();
+    // Controlled negative reproduces QA5's actual canonical contract violation.
+    late_context.headers.insert(
+        HOST_TRANSPORT_CONNECTION_SCOPE_HEADER.into(),
+        vec!["old-ingress-injection".into()],
+    );
+    assert!(validate_protocol_context_envelope(&late_context).is_err());
+}

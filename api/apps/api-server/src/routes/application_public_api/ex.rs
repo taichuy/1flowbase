@@ -269,6 +269,7 @@ fn spawn_workflow_extension_execution(
         scope_application_activity(
             application_id,
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
+                transport_connection_scope: None,
                 application_id,
                 flow_run_id,
                 provider_transport_slot: None,

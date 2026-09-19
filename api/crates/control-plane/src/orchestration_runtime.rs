@@ -124,6 +124,8 @@ pub struct ContinueFlowDebugRunCommand {
 }
 
 pub struct StartPublishedFlowRunCommand {
+    /// Private host execution state; never stored in the flow input or protocol envelope.
+    pub transport_connection_scope: Option<String>,
     pub application_id: Uuid,
     pub flow_run_id: Uuid,
     pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
@@ -1016,6 +1018,7 @@ where
             command.application_id,
             command.flow_run_id,
             command.provider_transport_slot,
+            command.transport_connection_scope,
         )
         .await
     }
@@ -1025,6 +1028,7 @@ where
         application_id: Uuid,
         flow_run_id: Uuid,
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
+        transport_connection_scope: Option<String>,
     ) -> Result<domain::ApplicationRunDetail>
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
@@ -1137,17 +1141,13 @@ where
         let provider_transport_payload = self
             .resolve_provider_transport_payload(&running, provider_transport_slot)
             .await?;
-        let result = match provider_transport_payload {
-            Some(payload) => {
-                live_debug_run::continue_flow_debug_run_with_provider_transport(
-                    self,
-                    continuation,
-                    payload,
-                )
-                .await
-            }
-            None => self.continue_flow_debug_run(continuation).await,
-        };
+        let result = live_debug_run::continue_flow_debug_run_with_provider_transport(
+            self,
+            continuation,
+            provider_transport_payload,
+            transport_connection_scope,
+        )
+        .await;
         if let Some(slot_id) = provider_transport_slot {
             self.delete_provider_transport_slot(slot_id).await;
         }

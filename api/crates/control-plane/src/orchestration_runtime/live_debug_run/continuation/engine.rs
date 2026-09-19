@@ -14,6 +14,7 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     command: &ContinueFlowDebugRunCommand,
     live_provider_events: Option<LiveProviderStreamEventSender>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
+    transport_connection_scope: Option<String>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::BillingRepository
@@ -117,7 +118,8 @@ where
     }
     .for_flow_run(flow_run.id)
     .with_flow_execution_context(flow_execution_context.clone())
-    .with_provider_transport_payload(provider_transport_payload);
+    .with_provider_transport_payload(provider_transport_payload)
+    .with_transport_connection_scope_override(transport_connection_scope);
     let answer_presentation =
         crate::orchestration_runtime::answer_presentation::AnswerPresentationCursor::from_plan(
             &compiled_plan,

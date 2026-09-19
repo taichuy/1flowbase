@@ -292,7 +292,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         let dependencies = self.0.clone();
         let actor = application_actor(principal);
         Box::pin(async move {
-            let (request, protocol, provider_transport) = match input.command {
+            let (mut request, protocol, provider_transport) = match input.command {
                 CompatibilityInvocationCommand::Start {
                     request,
                     protocol,
@@ -309,6 +309,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     .map_err(CompatibilityBlockingTargetError);
                 }
             };
+            let transport_connection_scope = request.metadata.take_transport_connection_scope();
             let protocol_context = request.client_protocol_envelope.clone();
             let operation = provider_transport
                 .as_ref()
@@ -343,6 +344,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 actor,
                 run,
                 provider_transport_slot,
+                transport_connection_scope,
             )
             .await
             .map(CompatibilityBlockingOutput)
@@ -374,10 +376,11 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
         Box::pin(async move {
             let typed = match input.command {
                 CompatibilityInvocationCommand::Start {
-                    request,
+                    mut request,
                     protocol,
                     provider_transport,
                 } => {
+                    let transport_connection_scope = request.metadata.take_transport_connection_scope();
                     let protocol_context = request.client_protocol_envelope.clone();
                     let operation = provider_transport
                         .as_ref()
@@ -416,6 +419,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         dependencies,
                         run,
                         provider_transport_slot,
+                        transport_connection_scope,
                         actor,
                     )
                     .await
