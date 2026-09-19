@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 371,
+  "projected_interface_count": 373,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1096,6 +1096,12 @@
       "View system release status"
     ],
     [
+      "system.runtime_processes.view",
+      "GET",
+      "/api/console/system/runtime-processes",
+      "View system runtime processes"
+    ],
+    [
       "system.runtime_profile.view",
       "GET",
       "/api/console/system/runtime-profile",
@@ -2030,6 +2036,12 @@
       "POST",
       "/api/console/settings/ui-management/templates/:id/publish",
       "Publish UI management templates"
+    ],
+    [
+      "system.runtime_process.terminate",
+      "POST",
+      "/api/console/system/runtime-profile/processes/:pid/terminate",
+      "System runtime process terminate"
     ],
     [
       "create_user_api_key",
