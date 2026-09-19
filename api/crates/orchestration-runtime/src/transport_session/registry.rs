@@ -1,3 +1,4 @@
+use extension_contracts::provider_contract::ProviderTransportClosureEvidence;
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -65,6 +66,7 @@ struct PhysicalGenerationRecord {
     soft_deadline: TransportDeadline,
     hard_deadline: TransportDeadline,
     close_acknowledged: Option<bool>,
+    closure_evidence: Option<ProviderTransportClosureEvidence>,
 }
 
 struct SessionRecord {
@@ -156,6 +158,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     soft_deadline: physical_soft_deadline,
                     hard_deadline: physical_hard_deadline,
                     close_acknowledged: None,
+                    closure_evidence: None,
                 },
             },
         );
@@ -311,7 +314,11 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         ) || (matches!(
             record.logical.state,
             TransportSessionState::Faulted | TransportSessionState::IdleReleased
-        ) && record.physical.close_acknowledged != Some(true))
+        ) && !record
+            .physical
+            .closure_evidence
+            .as_ref()
+            .is_some_and(|evidence| evidence.local_released))
         {
             return Err(RegistryError::InvalidTransition {
                 from: record.logical.state,
@@ -325,6 +332,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         record.physical.generation = generation;
         record.physical.created_at = now;
         record.physical.close_acknowledged = None;
+        record.physical.closure_evidence = None;
         record.logical.state = TransportSessionState::Opening;
         record.logical.state_since = now;
         record.logical.state_deadline = record.logical.absolute_deadline;
@@ -375,13 +383,65 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .find(|receipt| receipt.fence.session_id == *session_id)
     }
 
+    /// Consumes a host-validated control receipt for exactly the closed generation.
+    /// This records physical isolation only; it never completes or replays an invocation.
+    pub fn record_closure_evidence(
+        &mut self,
+        fence: &TransportFence,
+        evidence: &ProviderTransportClosureEvidence,
+    ) -> Result<(), RegistryError> {
+        evidence
+            .validate()
+            .map_err(|_| RegistryError::InvalidClosureEvidence)?;
+        if evidence.identity.logical_session_id != fence.session_id.as_str()
+            || evidence.identity.generation != fence.generation.get()
+        {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        if let Some(record) = self.sessions.get_mut(&fence.session_id) {
+            ensure_generation(record, fence)?;
+            if !matches!(
+                record.logical.state,
+                TransportSessionState::Faulted
+                    | TransportSessionState::IdleReleased
+                    | TransportSessionState::Draining
+                    | TransportSessionState::Closing
+                    | TransportSessionState::Orphaned
+            ) {
+                return Err(RegistryError::InvalidTransition {
+                    from: record.logical.state,
+                    to: TransportSessionState::Opening,
+                });
+            }
+            retain_closure_evidence(&mut record.physical.closure_evidence, evidence)?;
+            record.physical.close_acknowledged = record
+                .physical
+                .closure_evidence
+                .as_ref()
+                .and_then(|value| value.peer_close_acknowledged);
+            return Ok(());
+        }
+        let receipt = self
+            .tombstones
+            .iter_mut()
+            .rev()
+            .find(|receipt| receipt.fence == *fence)
+            .ok_or(RegistryError::NotFound)?;
+        retain_closure_evidence(&mut receipt.closure_evidence, evidence)?;
+        receipt.close_acknowledged = receipt
+            .closure_evidence
+            .as_ref()
+            .and_then(|value| value.peer_close_acknowledged);
+        Ok(())
+    }
+
     pub fn record_close_acknowledgement(
         &mut self,
         fence: &TransportFence,
         acknowledged: bool,
     ) -> Result<(), RegistryError> {
         // Faulted physical generations retain the logical record and its fixed
-        // deadline. Their close ACK authorizes rotation, never logical readmission.
+        // deadline. Peer ACK is diagnostic; only independent release evidence authorizes rotation.
         if let Some(record) = self.sessions.get_mut(&fence.session_id) {
             ensure_generation(record, fence)?;
             if matches!(
@@ -516,6 +576,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             .sessions
             .iter()
             .map(|(session_id, record)| SafeSessionSnapshot {
+                closure_evidence: record.physical.closure_evidence.clone(),
                 fence: TransportFence {
                     session_id: session_id.clone(),
                     generation: record.physical.generation,
@@ -678,7 +739,8 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             kind,
             terminated_at: now,
             connection_age: now.saturating_duration_since(record.physical.created_at),
-            close_acknowledged: None,
+            close_acknowledged: record.physical.close_acknowledged,
+            closure_evidence: record.physical.closure_evidence,
         };
         self.tombstones.push_back(receipt.clone());
         while self.tombstones.len() > self.config.tombstone_capacity {
@@ -850,4 +912,22 @@ fn eviction_rank(state: TransportSessionState) -> Option<u8> {
         | TransportSessionState::Faulted
         | TransportSessionState::Closing => None,
     }
+}
+
+fn retain_closure_evidence(
+    stored: &mut Option<ProviderTransportClosureEvidence>,
+    incoming: &ProviderTransportClosureEvidence,
+) -> Result<(), RegistryError> {
+    if let Some(current) = stored.as_ref() {
+        if current.identity != incoming.identity {
+            return Err(RegistryError::InvalidClosureEvidence);
+        }
+        // A late or incomplete observation cannot revoke a proven release, nor
+        // replace the original missing-ACK diagnosis with a fabricated success.
+        if current.local_released {
+            return Ok(());
+        }
+    }
+    *stored = Some(incoming.clone());
+    Ok(())
 }
