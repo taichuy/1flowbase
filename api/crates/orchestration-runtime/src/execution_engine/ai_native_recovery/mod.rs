@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn seeded_event_sequences_never_replay_after_semantic_commit_or_terminal() {
-        let mut rng = StdRng::seed_from_u64(0x2072_D3);
+        let mut rng = StdRng::seed_from_u64(0x0020_72D3);
         for sequence in 0..256_u16 {
             let mut ledger =
                 AiNativeRecoveryLedger::new(10_000, 1, true, RecoveryInputMode::SemanticMapped)

@@ -275,13 +275,11 @@ impl NativeExecutionModelParameters {
         if !self.needs_default_effort() {
             return true;
         }
-        let reasoning = self
-            .reasoning
-            .get_or_insert_with(|| NativeReasoningParameters {
-                mode: None,
-                effort: None,
-                budget_tokens: None,
-            });
+        let reasoning = self.reasoning.get_or_insert(NativeReasoningParameters {
+            mode: None,
+            effort: None,
+            budget_tokens: None,
+        });
         if reasoning.effort.is_none() {
             reasoning.effort = Some(effort);
         }
