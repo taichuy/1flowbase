@@ -201,7 +201,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             if registry.runtime_target_id(&fence)? != &target {
                 return Err(transport_error("transport_session_evicted"));
             }
-            if state == TransportSessionState::Faulted {
+            if matches!(
+                state,
+                TransportSessionState::Faulted | TransportSessionState::IdleReleased
+            ) {
                 validate_fault_successor(input, recovery_directive.as_ref(), now)?;
                 // Only the next invocation gets a fresh physical generation.
                 // Rotation keeps the original logical deadline and sequence.
@@ -433,7 +436,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             if fault_close {
                 let registry = self.registry.lock().await;
                 if registry.fence_status(&command.fence) != TransportFenceStatus::Current
-                    || registry.state(&command.fence).ok() != Some(TransportSessionState::Faulted)
+                    || !matches!(
+                        registry.state(&command.fence).ok(),
+                        Some(TransportSessionState::Faulted | TransportSessionState::IdleReleased)
+                    )
                 {
                     continue;
                 }
@@ -575,7 +581,7 @@ fn lifecycle_command(
         }
         LifecycleEvent::StateChanged {
             fence,
-            to: TransportSessionState::Faulted,
+            to: TransportSessionState::Faulted | TransportSessionState::IdleReleased,
             ..
         } => {
             let target_id = registry

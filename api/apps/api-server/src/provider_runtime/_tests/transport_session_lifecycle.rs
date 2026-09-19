@@ -889,3 +889,162 @@ async fn draining_and_closing_are_not_reported_as_hard_max_age() {
         assert!(reason(error).contains(expected));
     }
 }
+
+#[tokio::test]
+async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired_call() {
+    for elapsed in [89, 90, 91] {
+        let clock = FakeClock::new(2_000_000);
+        let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+        let mut config = TransportRegistryConfig::default();
+        config.logical_max_age = Duration::from_secs(200);
+        let coordinator =
+            TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+                .unwrap();
+        let mut notices = coordinator.subscribe();
+        let mut input = invocation_input("idle-successor", ProviderWireOperation::Generate);
+        let first = coordinator
+            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .unwrap()
+            .unwrap();
+        let old = first.lease.clone();
+        coordinator
+            .finish(first, &successful_output(old.fence.generation.get()))
+            .await
+            .unwrap();
+        clock.advance(Duration::from_secs(elapsed));
+        let error = coordinator
+            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .err()
+            .unwrap();
+        assert!(reason(error).contains("transport_invocation_deadline_exceeded"));
+        if elapsed >= 90 {
+            input.previous_response_id = Some("unproven-cursor".into());
+            let error = coordinator
+                .prepare("runtime-a", &mut input, &context(2_150_000))
+                .await
+                .err()
+                .unwrap();
+            assert!(reason(error).contains("provider_transport_cursor_unreconstructible"));
+            assert_eq!(
+                input.previous_response_id.as_deref(),
+                Some("unproven-cursor")
+            );
+            input.previous_response_id = None;
+        }
+        let second = coordinator
+            .prepare("runtime-a", &mut input, &context(2_150_000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(second.lease.sequence() > old.sequence());
+        assert_eq!(
+            second.lease.fence.generation > old.fence.generation,
+            elapsed >= 90
+        );
+        assert_eq!(
+            coordinator.safe_snapshot().await.sessions[0].logical_ttl,
+            Duration::from_secs(200 - elapsed)
+        );
+        assert!(
+            notices.try_recv().is_err(),
+            "idle resource release is not logical termination"
+        );
+        assert_eq!(runtime.commands().len(), usize::from(elapsed >= 90));
+        if elapsed >= 90 {
+            let late = PreparedTransportInvocation {
+                lease: old,
+                transport: RecoveryTransport::AiNativeWebSocket,
+                recovery_directive: None,
+            };
+            assert!(reason(
+                coordinator
+                    .finish(late, &successful_output(1))
+                    .await
+                    .unwrap_err()
+            )
+            .contains("provider_transport_stale_generation"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([
+        AckBehavior::Matching(false),
+        AckBehavior::Mismatched,
+        AckBehavior::Matching(true),
+    ]));
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        runtime.clone(),
+        TransportRegistryConfig::default(),
+        clock.clone(),
+    )
+    .unwrap();
+    let mut input = invocation_input("idle-guards", ProviderWireOperation::Generate);
+    let first = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let old = first.lease.clone();
+    coordinator
+        .finish(first, &successful_output(old.fence.generation.get()))
+        .await
+        .unwrap();
+    clock.advance(Duration::from_secs(90));
+    for _ in 0..2 {
+        let error = coordinator
+            .prepare("runtime-a", &mut input, &context(2_150_000))
+            .await
+            .err()
+            .unwrap();
+        assert!(reason(error).contains("provider_physical_connection_close_pending"));
+        assert_eq!(
+            coordinator.safe_snapshot().await.sessions[0].fence,
+            old.fence
+        );
+    }
+    let epoch = TransportEpoch::new(17).unwrap();
+    let mut directive = recovery_directive(epoch);
+    directive.policy = RecoveryPolicy::NativeOpaque {
+        budget: RecoveryBudget {
+            max_inner_attempts: 2,
+            absolute_deadline_unix_ms: 2_150_000,
+        },
+    };
+    directive.initial_commit_level = CommitLevel::Terminal;
+    input.set_recovery_directive(directive.clone()).unwrap();
+    let error = coordinator
+        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("provider_transport_committed_invocation"));
+    directive.initial_commit_level = CommitLevel::LifecycleOnly;
+    directive.cursor_provenance = Some(CursorProvenance::connection_bound(
+        epoch,
+        plugin_framework::provider_contract::SocketIncarnation::new(1).unwrap(),
+    ));
+    input.previous_response_id = Some("cursor".into());
+    input.set_recovery_directive(directive.clone()).unwrap();
+    let error = coordinator
+        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .await
+        .err()
+        .unwrap();
+    assert!(reason(error).contains("provider_transport_cursor_unreconstructible"));
+    directive.cursor_provenance = Some(CursorProvenance::durable());
+    input.set_recovery_directive(directive.clone()).unwrap();
+    let next = coordinator
+        .prepare("runtime-a", &mut input, &context(2_150_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(next.lease.fence.generation > old.fence.generation);
+    assert_eq!(input.previous_response_id.as_deref(), Some("cursor"));
+    assert_eq!(input.recovery_directive().unwrap(), Some(directive));
+    assert_eq!(runtime.commands().len(), 3);
+}

@@ -252,7 +252,18 @@ fn every_non_terminal_state_has_a_finite_lease() {
         registry.finish_invocation(&lease, completion).unwrap();
         clock.advance(Duration::from_secs(56));
         registry.maintain();
-        assert!(registry.is_empty(), "{completion:?} must expire");
+        if completion == InvocationCompletion::IdleAffinity {
+            assert_eq!(
+                registry.state(&fence).unwrap(),
+                TransportSessionState::IdleReleased
+            );
+            clock.advance(Duration::from_secs(144));
+            registry.maintain();
+        }
+        assert!(
+            registry.is_empty(),
+            "{completion:?} must have a finite logical lifetime"
+        );
     }
 }
 
@@ -640,4 +651,76 @@ fn physical_fault_wins_over_pending_soft_drain_without_replaying_inflight_work()
     );
     assert!(!registry.safe_snapshot().sessions[0].inflight);
     assert!(registry.rotate_generation(&fence).is_err());
+}
+
+#[test]
+fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_close_ack() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.idle_affinity_lease = Duration::from_secs(90);
+    settings.physical_soft_drain_age = Duration::from_secs(150);
+    settings.physical_max_age = Duration::from_secs(180);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("idle-release")).unwrap();
+    registry.activate(&fence).unwrap();
+    let first = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&first, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    clock.advance(Duration::from_secs(89));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::IdleAffinity
+    );
+    registry.drain_events();
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::IdleReleased
+    );
+    assert!(registry.tombstone(&fence.session_id).is_none());
+    assert_eq!(registry.drain_events().len(), 1);
+    assert!(registry.rotate_generation(&fence).is_err());
+    assert!(registry
+        .begin_invocation(&fence, invocation_request(None))
+        .is_err());
+    registry
+        .record_close_acknowledgement(&fence, false)
+        .unwrap();
+    assert!(registry.rotate_generation(&fence).is_err());
+    clock.advance(Duration::from_secs(1));
+    registry.maintain();
+    assert!(
+        registry.drain_events().is_empty(),
+        "release emits close only once"
+    );
+    registry.record_close_acknowledgement(&fence, true).unwrap();
+    let next = registry.rotate_generation(&fence).unwrap();
+    registry.activate(&next).unwrap();
+    let second = registry
+        .begin_invocation(&next, invocation_request(None))
+        .unwrap();
+    assert!(second.sequence() > first.sequence());
+    assert!(next.generation > fence.generation);
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].logical_ttl,
+        Duration::from_secs(109)
+    );
+    assert!(registry
+        .finish_invocation(&first, InvocationCompletion::IdleAffinity)
+        .is_err());
+    assert!(registry.record_close_acknowledgement(&fence, true).is_err());
+    registry
+        .finish_invocation(&second, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    clock.advance(Duration::from_secs(109));
+    registry.maintain();
+    assert_eq!(
+        registry.tombstone(&next.session_id).unwrap().kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+    );
 }

@@ -99,6 +99,8 @@ pub enum TransportSessionState {
     Active,
     WaitingTool,
     IdleAffinity,
+    /// Affinity resource was released; the fixed logical lifetime remains.
+    IdleReleased,
     Orphaned,
     Draining,
     Faulted,
