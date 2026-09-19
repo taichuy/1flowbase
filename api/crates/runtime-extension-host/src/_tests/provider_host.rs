@@ -31,6 +31,7 @@ fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
     let mut input = invocation_input("fixture-model");
     input
         .set_transport_session_directive(ProviderTransportSessionDirective {
+            worker_incarnation: None,
             logical_session_id: "logical-fixture".into(),
             generation: 7,
             task_id: "invocation-7-1".into(),
@@ -1345,10 +1346,30 @@ async fn transport_session_control_uses_stateful_stdio_and_returns_safe_receipt(
         .unwrap()
         .plugin_id;
 
+    let worker = provider_worker_handle(
+        &host.provider_workers,
+        plugin_id.clone(),
+        host.loaded_package(&plugin_id).unwrap(),
+    )
+    .unwrap();
+    let mut input = invocation_input("fixture-model");
+    input
+        .set_transport_session_directive(ProviderTransportSessionDirective {
+            worker_incarnation: None,
+            logical_session_id: "logical-fixture".into(),
+            generation: 7,
+            task_id: "first".into(),
+            state: ProviderLogicalSessionState::Active,
+            physical_deadline_unix_ms: 4_102_444_800_000,
+        })
+        .unwrap();
+    bind_transport_worker(&host.provider_workers, &plugin_id, &worker, &mut input).unwrap();
+
     let receipt = host
         .transport_session_operation(
             &plugin_id,
             ProviderTransportSessionCommand {
+                worker_incarnation: None,
                 logical_session_id: "logical-fixture".into(),
                 generation: 7,
                 action: ProviderTransportSessionAction::Drain,
@@ -1375,8 +1396,8 @@ fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
         source
             .matches("PluginExecutionMode::StatefulProviderWorker")
             .count(),
-        3,
-        "unary, streaming, and transport-session control are the stateful dispatch boundaries"
+        4,
+        "unary, streaming selection/dispatch, and transport control are explicit boundaries"
     );
     assert!(source.contains("worker.call(&request).await"));
     assert!(source.contains("worker\n                    .call_streaming_with_limits"));
@@ -1388,3 +1409,7 @@ fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
 #[cfg(unix)]
 #[path = "provider_host/stream_error_tests.rs"]
 mod stream_error_tests;
+
+#[cfg(unix)]
+#[path = "provider_host/transport_bindings.rs"]
+mod transport_bindings;

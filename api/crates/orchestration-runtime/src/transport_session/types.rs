@@ -1,3 +1,4 @@
+use extension_contracts::provider_contract::ProviderTransportClosureEvidence;
 use std::{error::Error, fmt, time::Duration};
 
 const MAX_OPAQUE_ID_BYTES: usize = 256;
@@ -138,6 +139,7 @@ pub struct TerminationReceipt {
     pub connection_age: Duration,
     /// Result of the downstream close command. `None` means that the command is still pending.
     pub close_acknowledged: Option<bool>,
+    pub closure_evidence: Option<ProviderTransportClosureEvidence>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -223,6 +225,7 @@ impl InvocationCompletion {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SafeSessionSnapshot {
+    pub closure_evidence: Option<ProviderTransportClosureEvidence>,
     pub fence: TransportFence,
     pub owner_id: TransportOwnerId,
     pub provider_id: TransportProviderId,
@@ -338,6 +341,7 @@ pub struct CapacityRejection {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RegistryError {
     InvalidConfig,
+    InvalidClosureEvidence,
     DeadlineInPast,
     AlreadyExists,
     NotFound,

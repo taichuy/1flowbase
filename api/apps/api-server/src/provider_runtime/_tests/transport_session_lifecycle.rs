@@ -37,6 +37,8 @@ impl TransportClock for FakeClock {
 enum AckBehavior {
     Matching(bool),
     Mismatched,
+    ReleasedWithoutAck,
+    ControlError,
 }
 
 struct FakeTransportRuntime {
@@ -74,8 +76,25 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
         let (generation, close_acknowledged) = match behavior {
             AckBehavior::Matching(acknowledged) => (command.generation, Some(acknowledged)),
             AckBehavior::Mismatched => (command.generation + 1, Some(true)),
+            AckBehavior::ReleasedWithoutAck => (command.generation, Some(false)),
+            AckBehavior::ControlError => {
+                return Err(RuntimeBackendError::Execution {
+                    target_id: "fixture".into(),
+                    message: "never-log-private-control-body".into(),
+                })
+            }
         };
         Ok(ProviderTransportSessionReceipt {
+            closure_evidence: Some(ProviderTransportClosureEvidence {
+                source: plugin_framework::provider_contract::ProviderTransportClosureSource::ProviderLocalRelease,
+                no_ack_reason: if close_acknowledged == Some(false) { Some(plugin_framework::provider_contract::ProviderTransportNoAckReason::Timeout) } else { None },
+                identity: ProviderTransportSessionIdentity {
+                    logical_session_id: command.logical_session_id.clone(), generation,
+                    worker_incarnation: command.worker_incarnation.unwrap_or(1),
+                },
+                local_released: !matches!(behavior, AckBehavior::Matching(false)),
+                peer_close_acknowledged: close_acknowledged,
+            }),
             generation,
             reused: true,
             physical_state: ProviderPhysicalTransportState::Closed,
@@ -135,6 +154,7 @@ fn successful_output(
     };
     result
         .set_transport_session_receipt(ProviderTransportSessionReceipt {
+            closure_evidence: None,
             generation,
             reused: true,
             physical_state: ProviderPhysicalTransportState::Ready,
@@ -356,6 +376,16 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
         registry
             .finish_invocation(&old_generation.lease, InvocationCompletion::Active)
             .unwrap();
+        registry
+            .transition(&old_generation.lease.fence, TransportSessionState::Draining)
+            .unwrap();
+        registry.record_closure_evidence(&old_generation.lease.fence, &ProviderTransportClosureEvidence {
+            identity: ProviderTransportSessionIdentity {
+                logical_session_id: old_generation.lease.fence.session_id.as_str().into(),
+                generation: old_generation_number, worker_incarnation: 1,
+            }, source: plugin_framework::provider_contract::ProviderTransportClosureSource::ProviderLocalRelease,
+            local_released: true, peer_close_acknowledged: Some(true), no_ack_reason: None,
+        }).unwrap();
         let next = registry
             .rotate_generation(&old_generation.lease.fence)
             .unwrap();
@@ -391,6 +421,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     };
     fault_result
         .set_transport_session_receipt(ProviderTransportSessionReceipt {
+            closure_evidence: None,
             generation: fault.lease.fence.generation.get(),
             reused: true,
             physical_state: ProviderPhysicalTransportState::Faulted,
@@ -710,12 +741,15 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
         .unwrap();
     let before = coordinator.safe_snapshot().await;
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare("runtime-a", &mut input, &context(2_020_000))
         .await
         .err()
         .unwrap();
     assert!(reason(error).contains("provider_physical_connection_close_pending"));
     assert_eq!(coordinator.safe_snapshot().await, before);
+    clock.advance(Duration::from_secs(1));
+    coordinator.maintain_and_dispatch().await;
+    clock.advance(Duration::from_secs(1));
     // A valid ACK still cannot admit an already-expired invocation or rotate its fence.
     let error = coordinator
         .prepare("runtime-a", &mut input, &context(2_000_000))
@@ -723,10 +757,13 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
         .err()
         .unwrap();
     assert!(reason(error).contains("transport_invocation_deadline_exceeded"));
-    assert_eq!(coordinator.safe_snapshot().await, before);
+    assert_eq!(
+        coordinator.safe_snapshot().await.sessions[0].fence,
+        before.sessions[0].fence
+    );
     assert_eq!(runtime.commands().len(), 3);
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare("runtime-a", &mut input, &context(2_020_000))
         .await
         .unwrap()
         .unwrap();
@@ -1006,6 +1043,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
             coordinator.safe_snapshot().await.sessions[0].fence,
             old.fence
         );
+        clock.advance(Duration::from_secs(1));
     }
     let epoch = TransportEpoch::new(17).unwrap();
     let mut directive = recovery_directive(epoch);
@@ -1283,3 +1321,6 @@ async fn completed_waiting_tool_retains_business_state_after_socket_close() {
         TransportSessionState::WaitingTool
     );
 }
+
+#[path = "transport_session_lifecycle/close_control.rs"]
+mod close_control;

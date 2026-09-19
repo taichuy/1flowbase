@@ -10,6 +10,83 @@ const MAX_OPAQUE_ID_BYTES: usize = 256;
 const MAX_CONNECTION_LIFETIME_MS: u64 = 24 * 60 * 60 * 1_000;
 pub const PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION: u8 = 1;
 
+/// Identity bound by the host to the worker that actually dispatched this session.
+/// Worker incarnation is the supervisor generation within this host lifetime, not
+/// a provider socket counter or a PID. It must never be routed to a successor worker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderTransportSessionIdentity {
+    pub logical_session_id: String,
+    pub generation: u64,
+    pub worker_incarnation: u64,
+}
+
+impl ProviderTransportSessionIdentity {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_opaque_id("logical_session_id", &self.logical_session_id)?;
+        if self.generation == 0 || self.worker_incarnation == 0 {
+            return Err("transport identity generations must be positive".into());
+        }
+        Ok(())
+    }
+}
+
+/// Physical facts only: neither local release nor peer ACK authorizes business replay.
+/// The host may report local release after confirmed worker exit, but must leave
+/// peer ACK unknown unless it has a separate, matching provider observation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderTransportClosureEvidence {
+    pub source: ProviderTransportClosureSource,
+    pub no_ack_reason: Option<ProviderTransportNoAckReason>,
+    pub identity: ProviderTransportSessionIdentity,
+    pub local_released: bool,
+    pub peer_close_acknowledged: Option<bool>,
+}
+
+impl ProviderTransportClosureEvidence {
+    pub fn validate(&self) -> Result<(), String> {
+        self.identity.validate()?;
+        if self.peer_close_acknowledged == Some(true)
+            && (!self.local_released || self.no_ack_reason.is_some())
+        {
+            return Err("observed peer ACK requires local release and no failure reason".into());
+        }
+        if self.source == ProviderTransportClosureSource::ConfirmedWorkerExit
+            && (!self.local_released || self.peer_close_acknowledged.is_some())
+        {
+            return Err("confirmed worker exit proves local release, not peer ACK".into());
+        }
+        Ok(())
+    }
+}
+
+/// ConfirmedWorkerExit is host-only evidence; a host must reject it on provider wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTransportClosureSource {
+    ProviderLocalRelease,
+    ConfirmedWorkerExit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTransportNoAckReason {
+    Timeout,
+    TransportError,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderTransportClosureOutcome {
+    EvidenceMissing,
+    IdentityMismatch,
+    NotReleased,
+    Released {
+        peer_close_acknowledged: Option<bool>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderLogicalSessionState {
@@ -23,6 +100,9 @@ pub enum ProviderLogicalSessionState {
 pub struct ProviderTransportSessionDirective {
     pub logical_session_id: String,
     pub generation: u64,
+    /// Injected from the actual host worker binding; absent means not yet bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_incarnation: Option<u64>,
     pub task_id: String,
     pub state: ProviderLogicalSessionState,
     pub physical_deadline_unix_ms: i64,
@@ -30,6 +110,9 @@ pub struct ProviderTransportSessionDirective {
 
 impl ProviderTransportSessionDirective {
     pub fn validate(&self) -> Result<(), String> {
+        if self.worker_incarnation == Some(0) {
+            return Err("transport worker incarnation must be positive".into());
+        }
         validate_opaque_id("logical_session_id", &self.logical_session_id)?;
         if self.generation == 0 {
             return Err("transport session directive generation must be positive".into());
@@ -54,12 +137,18 @@ pub enum ProviderTransportSessionAction {
 pub struct ProviderTransportSessionCommand {
     pub logical_session_id: String,
     pub generation: u64,
+    /// Injected from the actual host worker binding; absent means not yet bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_incarnation: Option<u64>,
     pub action: ProviderTransportSessionAction,
     pub deadline_unix_ms: i64,
 }
 
 impl ProviderTransportSessionCommand {
     pub fn validate(&self) -> Result<(), String> {
+        if self.worker_incarnation == Some(0) {
+            return Err("transport worker incarnation must be positive".into());
+        }
         validate_opaque_id("logical_session_id", &self.logical_session_id)?;
         if self.generation == 0 {
             return Err("transport session generation must be positive".into());
@@ -104,6 +193,8 @@ pub struct ProviderTransportSessionReceipt {
     pub close_reason: Option<ProviderTransportSessionCloseReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub close_acknowledged: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_evidence: Option<ProviderTransportClosureEvidence>,
 }
 
 /// Host-side classification of a provider invocation's physical transport facts.
@@ -155,6 +246,28 @@ pub enum ProviderLifecycleAckOutcome {
 }
 
 impl ProviderTransportSessionReceipt {
+    /// Missing legacy evidence fails closed even if the old ACK flag is true.
+    pub fn closure_outcome(
+        &self,
+        expected: &ProviderTransportSessionIdentity,
+    ) -> Result<ProviderTransportClosureOutcome, String> {
+        self.validate()?;
+        expected.validate()?;
+        let Some(evidence) = &self.closure_evidence else {
+            return Ok(ProviderTransportClosureOutcome::EvidenceMissing);
+        };
+        if evidence.identity != *expected {
+            return Ok(ProviderTransportClosureOutcome::IdentityMismatch);
+        }
+        Ok(if evidence.local_released {
+            ProviderTransportClosureOutcome::Released {
+                peer_close_acknowledged: evidence.peer_close_acknowledged,
+            }
+        } else {
+            ProviderTransportClosureOutcome::NotReleased
+        })
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.generation == 0 {
             return Err("transport session receipt generation must be positive".into());
@@ -166,6 +279,21 @@ impl ProviderTransportSessionReceipt {
         }
         if self.close_acknowledged.is_some() && self.close_reason.is_none() {
             return Err("transport session close ACK requires a close reason".into());
+        }
+        if let Some(evidence) = &self.closure_evidence {
+            evidence.validate()?;
+            if evidence.identity.generation != self.generation {
+                return Err("closure evidence generation differs from receipt".into());
+            }
+            if evidence.local_released
+                && (self.physical_state != ProviderPhysicalTransportState::Closed
+                    || self.ttl_remaining_ms != 0)
+            {
+                return Err("local release requires a closed transport with zero TTL".into());
+            }
+            if evidence.peer_close_acknowledged != self.close_acknowledged {
+                return Err("closure peer ACK differs from receipt ACK".into());
+            }
         }
         Ok(())
     }

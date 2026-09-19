@@ -8,7 +8,7 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
-    RegistryError, TerminationKind, TransportClock, TransportFenceStatus, TransportInstant,
+    RegistryError, TerminationKind, TransportClock, TransportFence, TransportFenceStatus, TransportInstant,
     TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
     TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
@@ -116,6 +116,14 @@ fn generation_fence_rejects_delayed_events_and_close_reopen_aba() {
         .unwrap();
     registry
         .finish_invocation(&completed, InvocationCompletion::Active)
+        .unwrap();
+    assert!(registry.rotate_generation(&original).is_err());
+    registry
+        .transition(&original, TransportSessionState::Draining)
+        .unwrap();
+    assert!(registry.rotate_generation(&original).is_err());
+    registry
+        .record_closure_evidence(&original, &released_evidence(&original, 7))
         .unwrap();
     let replacement = registry.rotate_generation(&original).unwrap();
     assert!(replacement.generation.get() > original.generation.get());
@@ -546,7 +554,7 @@ fn owner_disconnect_does_not_regress_terminal_path_states_to_orphaned() {
 }
 
 #[test]
-fn physical_fault_rotation_requires_close_ack_and_preserves_logical_deadline_and_sequence() {
+fn physical_fault_rotation_requires_release_evidence_and_preserves_logical_deadline_and_sequence() {
     let clock = FakeClock::default();
     let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
     let first = registry.admit(request("fault-successor")).unwrap();
@@ -571,6 +579,13 @@ fn physical_fault_rotation_requires_close_ack_and_preserves_logical_deadline_and
         .record_close_acknowledgement(&first, false)
         .unwrap();
     clock.advance(Duration::from_secs(1));
+    assert!(
+        registry.rotate_generation(&first).is_err(),
+        "ACK alone is not local release proof"
+    );
+    registry
+        .record_closure_evidence(&first, &released_evidence(&first, 7))
+        .unwrap();
     let second = registry.rotate_generation(&first).unwrap();
     registry.activate(&second).unwrap();
     let next = registry
@@ -654,7 +669,7 @@ fn physical_fault_wins_over_pending_soft_drain_without_replaying_inflight_work()
 }
 
 #[test]
-fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_close_ack() {
+fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_release_evidence() {
     let clock = FakeClock::default();
     let mut settings = config(1);
     settings.idle_affinity_lease = Duration::from_secs(90);
@@ -699,6 +714,13 @@ fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_close_ack() {
         "release emits close only once"
     );
     registry.record_close_acknowledgement(&fence, true).unwrap();
+    assert!(
+        registry.rotate_generation(&fence).is_err(),
+        "ACK alone is not local release proof"
+    );
+    registry
+        .record_closure_evidence(&fence, &released_evidence(&fence, 7))
+        .unwrap();
     let next = registry.rotate_generation(&fence).unwrap();
     registry.activate(&next).unwrap();
     let second = registry
@@ -762,4 +784,75 @@ fn socket_orphan_requires_current_invocation_sequence_and_fence() {
         registry.state(&fence).unwrap(),
         TransportSessionState::Orphaned
     );
+}
+
+fn released_evidence(
+    fence: &TransportFence,
+    worker: u64,
+) -> extension_contracts::provider_contract::ProviderTransportClosureEvidence {
+    use extension_contracts::provider_contract::*;
+    ProviderTransportClosureEvidence {
+        identity: ProviderTransportSessionIdentity {
+            logical_session_id: fence.session_id.as_str().into(),
+            generation: fence.generation.get(),
+            worker_incarnation: worker,
+        },
+        source: ProviderTransportClosureSource::ProviderLocalRelease,
+        local_released: true,
+        peer_close_acknowledged: Some(false),
+        no_ack_reason: Some(ProviderTransportNoAckReason::Timeout),
+    }
+}
+
+#[test]
+fn close_release_identity_is_fenced_and_does_not_relax_orphan_or_inflight() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
+    let fence = registry.admit(request("close-isolation")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry.mark_invocation_orphaned(&lease).unwrap();
+    let evidence = released_evidence(&fence, 7);
+    registry.record_closure_evidence(&fence, &evidence).unwrap();
+    assert!(registry.rotate_generation(&fence).is_err());
+    registry
+        .finish_invocation(&lease, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
+    assert!(registry.rotate_generation(&fence).is_err());
+    assert_eq!(
+        registry.record_closure_evidence(&fence, &released_evidence(&fence, 8)),
+        Err(RegistryError::InvalidClosureEvidence)
+    );
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].closure_evidence,
+        Some(evidence)
+    );
+}
+
+#[test]
+fn close_release_late_evidence_cannot_modify_rotated_generation() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
+    let first = registry.admit(request("close-stale")).unwrap();
+    registry.activate(&first).unwrap();
+    let lease = registry
+        .begin_invocation(&first, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&lease, InvocationCompletion::Faulted)
+        .unwrap();
+    let evidence = released_evidence(&first, 7);
+    registry.record_closure_evidence(&first, &evidence).unwrap();
+    let next = registry.rotate_generation(&first).unwrap();
+    assert!(registry.record_closure_evidence(&first, &evidence).is_err());
+    assert!(registry.record_closure_evidence(&next, &evidence).is_err());
+    assert!(registry.safe_snapshot().sessions[0]
+        .closure_evidence
+        .is_none());
 }

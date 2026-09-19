@@ -245,7 +245,7 @@ impl ProviderWorker {
         )
         .await
         {
-            Ok(Ok(output)) => Ok(output),
+            Ok(Ok(output)) => output,
             Ok(Err(error)) => {
                 let receipt = self
                     .stop_with_reason(
@@ -420,7 +420,7 @@ impl ProviderWorker {
         &mut self,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-    ) -> FrameworkResult<Value> {
+    ) -> FrameworkResult<FrameworkResult<Value>> {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
@@ -439,7 +439,11 @@ impl ProviderWorker {
             if trimmed.is_empty() {
                 continue;
             }
-            return parse_stdio_response_line(&executable_path, trimmed);
+            // A complete valid unary envelope restores the request/response boundary,
+            // even when its business result is an error. No correlation IDs exist
+            // for an incomplete/late response, so those failures retire the process.
+            let envelope = parse_stdio_response_envelope(&executable_path, trimmed)?;
+            return Ok(stdio_response_result(envelope));
         }
 
         Err(worker_ended_without_output_error())
@@ -889,26 +893,34 @@ async fn write_worker_request(
 }
 
 fn parse_stdio_response_line(executable_path: &Path, line: &str) -> FrameworkResult<Value> {
+    stdio_response_result(parse_stdio_response_envelope(executable_path, line)?)
+}
+
+fn parse_stdio_response_envelope(
+    executable_path: &Path,
+    line: &str,
+) -> FrameworkResult<ProviderStdioResponse> {
     let envelope = serde_json::from_str::<ProviderStdioResponse>(line).map_err(|error| {
         PluginFrameworkError::serialization(Some(executable_path), error.to_string())
     })?;
-
-    if envelope.ok {
-        return Ok(envelope.result);
+    if envelope.ok == envelope.error.is_some() {
+        return Err(PluginFrameworkError::invalid_provider_contract(
+            "provider unary response has inconsistent ok/error fields",
+        ));
     }
+    Ok(envelope)
+}
 
-    let error = envelope.error.unwrap_or_else(|| ProviderStdioError {
-        kind: ProviderRuntimeErrorKind::ProviderInvalidResponse,
-        message: "provider runtime execution failed".to_string(),
-        provider_summary: None,
-        provider_details: None,
-    });
-    Err(PluginFrameworkError::runtime(ProviderRuntimeError {
-        kind: error.kind,
-        message: error.message,
-        provider_summary: error.provider_summary,
-        provider_details: error.provider_details,
-    }))
+fn stdio_response_result(envelope: ProviderStdioResponse) -> FrameworkResult<Value> {
+    match envelope.error {
+        None => Ok(envelope.result),
+        Some(error) => Err(PluginFrameworkError::runtime(ProviderRuntimeError {
+            kind: error.kind,
+            message: error.message,
+            provider_summary: error.provider_summary,
+            provider_details: error.provider_details,
+        })),
+    }
 }
 
 struct ProviderStreamTimeoutState {
