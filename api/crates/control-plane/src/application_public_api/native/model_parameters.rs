@@ -356,13 +356,13 @@ impl NativeReasoningParameters {
                 let value = value.as_str().ok_or_else(|| {
                     NativeModelParameterParseError::present(
                         format!("{REASONING_PATH}.effort"),
-                        "reasoning.effort must be a supported non-empty string",
+                        "reasoning.effort must be a non-empty string of at most 128 bytes without surrounding whitespace or control characters",
                     )
                 })?;
                 Some(NativeReasoningEffort::parse(value).ok_or_else(|| {
                     NativeModelParameterParseError::present(
                         format!("{REASONING_PATH}.effort"),
-                        "reasoning.effort must be a supported non-empty string",
+                        "reasoning.effort must be a non-empty string of at most 128 bytes without surrounding whitespace or control characters",
                     )
                 })?)
             }
@@ -447,61 +447,26 @@ impl NativeReasoningMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct NativeReasoningEffort {
-    wire_spelling: String,
-    normalized: NativeReasoningEffortKind,
+struct NativeReasoningEffort(String);
+
+/// Wire syntax only; supported values belong to the published model descriptor.
+pub(crate) fn valid_reasoning_effort(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
 }
 
 impl NativeReasoningEffort {
-    fn parse(wire_spelling: &str) -> Option<Self> {
-        let normalized = NativeReasoningEffortKind::parse(wire_spelling.trim())?;
-        Some(Self {
-            wire_spelling: wire_spelling.to_string(),
-            normalized,
-        })
+    fn parse(value: &str) -> Option<Self> {
+        valid_reasoning_effort(value).then(|| Self(value.to_owned()))
     }
 
     fn normalized(&self) -> &str {
-        self.normalized.as_str()
+        &self.0
     }
-
     fn wire_spelling(&self) -> &str {
-        &self.wire_spelling
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NativeReasoningEffortKind {
-    Minimal,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl NativeReasoningEffortKind {
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "minimal" => Some(Self::Minimal),
-            "low" => Some(Self::Low),
-            "medium" => Some(Self::Medium),
-            "high" => Some(Self::High),
-            "xhigh" => Some(Self::Xhigh),
-            "max" => Some(Self::Max),
-            _ => None,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Minimal => "minimal",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh => "xhigh",
-            Self::Max => "max",
-        }
+        &self.0
     }
 }
 
@@ -700,8 +665,8 @@ fn record_native_model_parameter_receipts(
         report.record(
             &path,
             Some(&path),
-            TranslationDecisionKind::Normalized,
-            Some("reasoning effort is normalized before runtime use"),
+            TranslationDecisionKind::Exact,
+            None,
             TranslationSafeRepresentation::Present,
         );
     }

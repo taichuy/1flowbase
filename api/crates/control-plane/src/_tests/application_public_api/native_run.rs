@@ -478,7 +478,7 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
                 "requested_context_window": 1000000,
                 "reasoning": {
                     "mode": "adaptive",
-                    "effort": " high ",
+                    "effort": "high",
                     "budget_tokens": 2048
                 }
             }
@@ -515,7 +515,7 @@ fn d2_ac_001_native_model_parameter_leaves_have_one_safe_canonical_receipt() {
         (
             "$.execution.model_parameters.reasoning.effort",
             "$.execution.model_parameters.reasoning.effort",
-            TranslationDecisionKind::Normalized,
+            TranslationDecisionKind::Exact,
         ),
         (
             "$.execution.model_parameters.reasoning.budget_tokens",
@@ -580,7 +580,7 @@ fn d2_ac_001_native_model_parameter_shape_errors_are_safe_and_specific() {
             TranslationSafeRepresentation::Present,
         ),
         (
-            json!({"reasoning": {"effort": "turbo"}}),
+            json!({"reasoning": {"effort": " high "}}),
             "$.execution.model_parameters.reasoning.effort",
             TranslationSafeRepresentation::Present,
         ),
@@ -1434,5 +1434,26 @@ fn d2_f1_native_defined_container_receipts_remain_unique_on_nested_rejection() {
             .collect::<Vec<_>>();
         assert_eq!(decisions.len(), 1, "{source_path} needs one final receipt");
         assert_eq!(decisions[0].kind, TranslationDecisionKind::Rejected);
+    }
+}
+
+#[test]
+fn increment_effort_native_preserves_extensions_and_rejects_malformed_values() {
+    for effort in [json!("max"), json!("ultra"), json!("custom-v2")] {
+        let translated = translate_native_run_request(json!({"query":"hello", "execution":{"model_parameters":{"reasoning":{"effort":effort}}}})).unwrap();
+        let value = serde_json::to_value(translated.request.execution).unwrap();
+        assert_eq!(value["model_parameters"]["reasoning"]["effort"], effort);
+    }
+    for effort in [
+        json!(""),
+        json!(" max"),
+        json!("max "),
+        json!(7),
+        json!(null),
+        json!({}),
+        json!("x".repeat(129)),
+        json!("a\nb"),
+    ] {
+        assert!(translate_native_run_request(json!({"query":"hello", "execution":{"model_parameters":{"reasoning":{"effort":effort}}}})).is_err());
     }
 }
