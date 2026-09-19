@@ -8,9 +8,9 @@ use std::{
 
 use super::{
     AdmissionRequest, DeadlineKind, InvocationCompletion, InvocationRequest, LifecycleEvent,
-    RegistryError, TerminationKind, TransportClock, TransportFence, TransportFenceStatus, TransportInstant,
-    TransportOwnerId, TransportProviderId, TransportRegistryConfig, TransportRuntimeTargetId,
-    TransportSessionId, TransportSessionRegistry, TransportSessionState,
+    RegistryError, TerminationKind, TransportClock, TransportFence, TransportFenceStatus,
+    TransportInstant, TransportOwnerId, TransportProviderId, TransportRegistryConfig,
+    TransportRuntimeTargetId, TransportSessionId, TransportSessionRegistry, TransportSessionState,
 };
 
 #[derive(Clone, Default)]

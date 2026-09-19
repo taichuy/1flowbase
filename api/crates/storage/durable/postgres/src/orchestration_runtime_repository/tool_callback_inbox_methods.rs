@@ -114,7 +114,7 @@ impl PgControlPlaneStore {
                 r#"
                 update flow_run_tool_callback_inbox
                    set status = 'received', result_payload = $6,
-                       result_fingerprint = $7, received_at = now()
+                       result_fingerprint = $7, received_at = now(), updated_at = now()
                  where scope_id = $1 and application_id = $2 and flow_run_id = $3
                    and callback_task_id = $4 and tool_call_id = $5 and status = 'pending'
                 "#,

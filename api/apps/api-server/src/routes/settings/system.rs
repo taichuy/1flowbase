@@ -64,9 +64,7 @@ impl InterfaceContract for SystemInterfaceInput {
                     serde_json::json!({"anyOf": [mp::object_schema(&[("byte_count",mp::count_schema())]), {"type":"null"}]}),
                 ),
             ]),
-            mp::object_schema(&[
-                ("variant", mp::tag_schema("ProcessList")),
-            ]),
+            mp::object_schema(&[("variant", mp::tag_schema("ProcessList"))]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("TerminateProcess")),
                 ("pid", serde_json::json!({"type":"integer"})),
@@ -839,20 +837,67 @@ impl InterfaceContract for SystemInterfaceOutput {
                             if (_field_0).processes.len() > 256 {
                                 return None;
                             }
-                            serde_json::Value::Array((_field_0).processes.iter().map(|item| Some(mp::object_value(&[
-                                ("pid", serde_json::json!((item).pid)),
-                                ("parent_pid", match (item).parent_pid.as_ref() { Some(value) => serde_json::json!(*(value)), None => serde_json::Value::Null }),
-                                ("name", mp::text(&(item).name)?),
-                                ("command", match (item).command.as_ref() { Some(value) => mp::object_value(&[("byte_count", serde_json::json!((value).len()))]), None => serde_json::Value::Null }),
-                                ("user", match (item).user.as_ref() { Some(value) => mp::text(value)?, None => serde_json::Value::Null }),
-                                ("status", mp::text(&(item).status)?),
-                                ("cpu_usage_percent", serde_json::json!((item).cpu_usage_percent)),
-                                ("memory_bytes", serde_json::json!((item).memory_bytes)),
-                                ("memory_usage_percent", serde_json::json!((item).memory_usage_percent)),
-                                ("start_time_unix_seconds", serde_json::json!((item).start_time_unix_seconds)),
-                                ("terminable", serde_json::Value::Bool((item).terminable)),
-                                ("backend_process", serde_json::Value::Bool((item).backend_process)),
-                            ]))).collect::<Option<Vec<_>>>()?)
+                            serde_json::Value::Array(
+                                (_field_0)
+                                    .processes
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value(&[
+                                            ("pid", serde_json::json!((item).pid)),
+                                            (
+                                                "parent_pid",
+                                                match (item).parent_pid.as_ref() {
+                                                    Some(value) => serde_json::json!(*(value)),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            ("name", mp::text(&(item).name)?),
+                                            (
+                                                "command",
+                                                match (item).command.as_ref() {
+                                                    Some(value) => mp::object_value(&[(
+                                                        "byte_count",
+                                                        serde_json::json!((value).len()),
+                                                    )]),
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            (
+                                                "user",
+                                                match (item).user.as_ref() {
+                                                    Some(value) => mp::text(value)?,
+                                                    None => serde_json::Value::Null,
+                                                },
+                                            ),
+                                            ("status", mp::text(&(item).status)?),
+                                            (
+                                                "cpu_usage_percent",
+                                                serde_json::json!((item).cpu_usage_percent),
+                                            ),
+                                            (
+                                                "memory_bytes",
+                                                serde_json::json!((item).memory_bytes),
+                                            ),
+                                            (
+                                                "memory_usage_percent",
+                                                serde_json::json!((item).memory_usage_percent),
+                                            ),
+                                            (
+                                                "start_time_unix_seconds",
+                                                serde_json::json!((item).start_time_unix_seconds),
+                                            ),
+                                            (
+                                                "terminable",
+                                                serde_json::Value::Bool((item).terminable),
+                                            ),
+                                            (
+                                                "backend_process",
+                                                serde_json::Value::Bool((item).backend_process),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
                         }),
                     ]),
                 ),

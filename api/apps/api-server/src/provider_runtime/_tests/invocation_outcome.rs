@@ -27,7 +27,7 @@ fn assert_original(error: anyhow::Error) {
     else {
         panic!("original typed error must remain downcastable");
     };
-    assert_eq!(error, &original_error());
+    assert_eq!(error.as_ref(), &original_error());
 }
 
 #[test]

@@ -616,10 +616,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("system.release_status.view", "system.system-runtime"),
     settings("system.runtime_profile.view", "system.system-runtime"),
     settings("system.runtime_processes.view", "system.system-runtime"),
-    settings(
-        "system.runtime_process.terminate",
-        "system.system-runtime",
-    ),
+    settings("system.runtime_process.terminate", "system.system-runtime"),
     settings("system_backups.create", "system.backups"),
     settings("system_backups.delete", "system.backups"),
     settings("system_backups.detail", "system.backups"),
