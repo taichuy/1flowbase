@@ -244,9 +244,13 @@ where
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
-        // The request model is workflow input. Only the LLM node selected by the
-        // graph owns provider/model capability validation.
-        let external_model_parameters = client_request.execution.model_parameters().cloned();
+        // Public capability admission and listing share the active publication.
+        // This public alias is not the LLM node's provider-model selection.
+        let external_model_parameters = super::model_catalog::admit_published_model_parameters(
+            &publication.document_snapshot,
+            client_request.model.as_deref(),
+            client_request.execution.model_parameters(),
+        )?;
         let requested_model_id = client_request.model.clone();
         let idempotency_key = client_request
             .execution

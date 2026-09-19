@@ -52,9 +52,9 @@ pub enum SelectedLlmModelParameterError {
     ReasoningEffortUnsupported { requested: String },
 }
 
-/// Validates explicit request intent against the descriptor resolved by an LLM
-/// node. Callers must not substitute the public request `model` for the model
-/// actually selected by that node.
+/// Validates intent against a selected descriptor. Public API admission uses
+/// the published public-model descriptor; this does not resolve or replace the
+/// provider model selected by a workflow LLM node.
 pub fn validate_selected_llm_model_parameters(
     selected_model: &AgentModelDescriptor,
     parameters: &NativeExecutionModelParameters,
@@ -104,11 +104,10 @@ fn validate_selected_llm_reasoning(
     }
 
     if let (Some(requested), Some(descriptor)) = (requested_effort, reasoning_descriptor) {
-        if !descriptor.supported_efforts.is_empty()
-            && !descriptor
-                .supported_efforts
-                .iter()
-                .any(|supported| supported == requested)
+        if !descriptor
+            .supported_efforts
+            .iter()
+            .any(|supported| supported == requested)
         {
             return Err(SelectedLlmModelParameterError::ReasoningEffortUnsupported {
                 requested: requested.to_string(),
@@ -116,6 +115,40 @@ fn validate_selected_llm_reasoning(
         }
     }
     Ok(())
+}
+
+/// Resolve public capability admission from the same snapshot used by model listing.
+/// Missing public model selection does not imply a provider model selection.
+pub(crate) fn admit_published_model_parameters(
+    document: &Value,
+    model_id: Option<&str>,
+    parameters: Option<&NativeExecutionModelParameters>,
+) -> Result<Option<NativeExecutionModelParameters>, super::native::NativeRunValidationError> {
+    use super::native::NativeRunValidationError;
+    let Some(model_id) = model_id else {
+        return Ok(parameters.cloned());
+    };
+    let selected = extract_agent_model_catalog_from_start_node(document)
+        .into_iter()
+        .find(|model| model.id == model_id)
+        .ok_or(NativeRunValidationError::UnknownModel)?;
+    let mut effective = parameters.cloned();
+    if let Some(reasoning) = &selected.reasoning {
+        if let Some(default) = &reasoning.default_effort {
+            if !reasoning.supported_efforts.contains(default) {
+                return Err(NativeRunValidationError::InvalidPublishedModelConfiguration);
+            }
+            let parameters = effective.get_or_insert_with(NativeExecutionModelParameters::default);
+            if !parameters.apply_default_effort(default) {
+                return Err(NativeRunValidationError::InvalidPublishedModelConfiguration);
+            }
+        }
+    }
+    if let Some(parameters) = &effective {
+        validate_selected_llm_model_parameters(&selected, parameters)
+            .map_err(NativeRunValidationError::UnsupportedModelParameters)?;
+    }
+    Ok(effective)
 }
 
 pub fn extract_agent_model_catalog_from_start_node(document: &Value) -> Vec<AgentModelDescriptor> {
@@ -264,8 +297,6 @@ fn normalize_reasoning(value: Option<&Value>) -> Option<AgentModelReasoning> {
     let default_effort = object
         .get("default_effort")
         .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned);
     let supported_efforts = object
         .get("supported_efforts")
@@ -274,8 +305,6 @@ fn normalize_reasoning(value: Option<&Value>) -> Option<AgentModelReasoning> {
             items
                 .iter()
                 .filter_map(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned)
                 .collect::<Vec<_>>()
         })

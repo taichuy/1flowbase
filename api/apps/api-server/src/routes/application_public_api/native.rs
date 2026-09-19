@@ -614,6 +614,21 @@ pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
             "invalid_mapping",
             "application public API mapping is invalid",
         ),
+        NativeRunValidationError::UnknownModel => NativeApiError::new(
+            StatusCode::BAD_REQUEST,
+            "unknown_model",
+            "model is not declared by the active publication",
+        ),
+        NativeRunValidationError::UnsupportedModelParameters(_) => NativeApiError::new(
+            StatusCode::BAD_REQUEST,
+            "unsupported_model_parameters",
+            "model parameters are not supported by the published model",
+        ),
+        NativeRunValidationError::InvalidPublishedModelConfiguration => NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid_published_model_configuration",
+            "published model reasoning configuration is invalid",
+        ),
         NativeRunValidationError::InvalidToolResults(message) => {
             NativeApiError::new(StatusCode::BAD_REQUEST, "tool_results", message)
         }

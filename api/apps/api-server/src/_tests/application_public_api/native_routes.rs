@@ -1091,3 +1091,36 @@ async fn native_run_route_forbids_reading_run_created_by_another_application_api
     let payload = response_json(forbidden).await;
     assert_eq!(payload["code"], json!("application_run_forbidden"));
 }
+
+#[test]
+fn increment_model_admission_errors_project_as_client_or_configuration_errors() {
+    use crate::routes::application_public_api::native::native_error;
+    use control_plane::application_public_api::{
+        model_catalog::SelectedLlmModelParameterError, native::NativeRunValidationError,
+    };
+    for (error, status, code) in [
+        (
+            NativeRunValidationError::UnknownModel,
+            StatusCode::BAD_REQUEST,
+            "unknown_model",
+        ),
+        (
+            NativeRunValidationError::UnsupportedModelParameters(
+                SelectedLlmModelParameterError::ReasoningEffortUnsupported {
+                    requested: "max".into(),
+                },
+            ),
+            StatusCode::BAD_REQUEST,
+            "unsupported_model_parameters",
+        ),
+        (
+            NativeRunValidationError::InvalidPublishedModelConfiguration,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid_published_model_configuration",
+        ),
+    ] {
+        let projected = native_error(error);
+        assert_eq!(projected.status, status);
+        assert_eq!(projected.code, code);
+    }
+}

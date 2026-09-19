@@ -191,7 +191,7 @@ impl std::ops::Index<&str> for NativeExecution {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeExecutionModelParameters {
     max_output_tokens: Option<NonZeroU64>,
     requested_context_window: Option<NonZeroU64>,
@@ -199,6 +199,23 @@ pub struct NativeExecutionModelParameters {
 }
 
 impl NativeExecutionModelParameters {
+    pub(crate) fn apply_default_effort(&mut self, effort: &str) -> bool {
+        let Some(effort) = NativeReasoningEffort::parse(effort) else {
+            return false;
+        };
+        let reasoning = self
+            .reasoning
+            .get_or_insert_with(|| NativeReasoningParameters {
+                mode: None,
+                effort: None,
+                budget_tokens: None,
+            });
+        if reasoning.effort.is_none() {
+            reasoning.effort = Some(effort);
+        }
+        true
+    }
+
     fn from_value(value: &Value) -> Result<Self, NativeModelParameterParseError> {
         let object = value.as_object().ok_or_else(|| {
             NativeModelParameterParseError::present(
