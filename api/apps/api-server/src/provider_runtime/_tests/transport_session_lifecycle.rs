@@ -37,6 +37,7 @@ impl TransportClock for FakeClock {
 enum AckBehavior {
     Matching(bool),
     Mismatched,
+    ReleasedWithoutAck,
 }
 
 struct FakeTransportRuntime {
@@ -74,8 +75,19 @@ impl TransportLifecycleRuntime for FakeTransportRuntime {
         let (generation, close_acknowledged) = match behavior {
             AckBehavior::Matching(acknowledged) => (command.generation, Some(acknowledged)),
             AckBehavior::Mismatched => (command.generation + 1, Some(true)),
+            AckBehavior::ReleasedWithoutAck => (command.generation, Some(false)),
         };
         Ok(ProviderTransportSessionReceipt {
+            closure_evidence: Some(ProviderTransportClosureEvidence {
+                source: plugin_framework::provider_contract::ProviderTransportClosureSource::ProviderLocalRelease,
+                no_ack_reason: if close_acknowledged == Some(false) { Some(plugin_framework::provider_contract::ProviderTransportNoAckReason::Timeout) } else { None },
+                identity: ProviderTransportSessionIdentity {
+                    logical_session_id: command.logical_session_id.clone(), generation,
+                    worker_incarnation: command.worker_incarnation.unwrap_or(1),
+                },
+                local_released: !matches!(behavior, AckBehavior::Matching(false)),
+                peer_close_acknowledged: close_acknowledged,
+            }),
             generation,
             reused: true,
             physical_state: ProviderPhysicalTransportState::Closed,
@@ -135,6 +147,7 @@ fn successful_output(
     };
     result
         .set_transport_session_receipt(ProviderTransportSessionReceipt {
+            closure_evidence: None,
             generation,
             reused: true,
             physical_state: ProviderPhysicalTransportState::Ready,
@@ -356,6 +369,16 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
         registry
             .finish_invocation(&old_generation.lease, InvocationCompletion::Active)
             .unwrap();
+        registry
+            .transition(&old_generation.lease.fence, TransportSessionState::Draining)
+            .unwrap();
+        registry.record_closure_evidence(&old_generation.lease.fence, &ProviderTransportClosureEvidence {
+            identity: ProviderTransportSessionIdentity {
+                logical_session_id: old_generation.lease.fence.session_id.as_str().into(),
+                generation: old_generation_number, worker_incarnation: 1,
+            }, source: plugin_framework::provider_contract::ProviderTransportClosureSource::ProviderLocalRelease,
+            local_released: true, peer_close_acknowledged: Some(true), no_ack_reason: None,
+        }).unwrap();
         let next = registry
             .rotate_generation(&old_generation.lease.fence)
             .unwrap();
@@ -391,6 +414,7 @@ async fn invocation_transport_outcomes_preserve_missing_stale_fault_and_http_fal
     };
     fault_result
         .set_transport_session_receipt(ProviderTransportSessionReceipt {
+            closure_evidence: None,
             generation: fault.lease.fence.generation.get(),
             reused: true,
             physical_state: ProviderPhysicalTransportState::Faulted,
@@ -710,12 +734,15 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
         .unwrap();
     let before = coordinator.safe_snapshot().await;
     let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare("runtime-a", &mut input, &context(2_020_000))
         .await
         .err()
         .unwrap();
     assert!(reason(error).contains("provider_physical_connection_close_pending"));
     assert_eq!(coordinator.safe_snapshot().await, before);
+    clock.advance(Duration::from_secs(1));
+    coordinator.maintain_and_dispatch().await;
+    clock.advance(Duration::from_secs(1));
     // A valid ACK still cannot admit an already-expired invocation or rotate its fence.
     let error = coordinator
         .prepare("runtime-a", &mut input, &context(2_000_000))
@@ -723,10 +750,13 @@ async fn physical_fault_successor_requires_matching_close_ack_and_unexpired_dead
         .err()
         .unwrap();
     assert!(reason(error).contains("transport_invocation_deadline_exceeded"));
-    assert_eq!(coordinator.safe_snapshot().await, before);
+    assert_eq!(
+        coordinator.safe_snapshot().await.sessions[0].fence,
+        before.sessions[0].fence
+    );
     assert_eq!(runtime.commands().len(), 3);
     let next = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .prepare("runtime-a", &mut input, &context(2_020_000))
         .await
         .unwrap()
         .unwrap();
@@ -1006,6 +1036,7 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
             coordinator.safe_snapshot().await.sessions[0].fence,
             old.fence
         );
+        clock.advance(Duration::from_secs(1));
     }
     let epoch = TransportEpoch::new(17).unwrap();
     let mut directive = recovery_directive(epoch);
@@ -1282,4 +1313,148 @@ async fn completed_waiting_tool_retains_business_state_after_socket_close() {
         coordinator.registry.lock().await.state(&fence).unwrap(),
         TransportSessionState::WaitingTool
     );
+}
+
+#[tokio::test]
+async fn local_release_without_peer_ack_allows_only_safe_successor() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::ReleasedWithoutAck]));
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), transport_config(), clock)
+            .unwrap();
+    let mut input = invocation_input("release-without-ack", ProviderWireOperation::Generate);
+    let failed = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let old = failed.lease.fence.clone();
+    coordinator
+        .finish(failed, &Err(transport_error("primary-cursor-error")))
+        .await
+        .unwrap();
+    let snapshot = coordinator.safe_snapshot().await;
+    assert_eq!(
+        snapshot.sessions[0]
+            .closure_evidence
+            .as_ref()
+            .unwrap()
+            .peer_close_acknowledged,
+        Some(false)
+    );
+    input.previous_response_id = Some("bound-cursor".into());
+    assert!(reason(
+        coordinator
+            .prepare("runtime-a", &mut input, &context(2_010_000))
+            .await
+            .err()
+            .unwrap()
+    )
+    .contains("cursor_unreconstructible"));
+    input.previous_response_id = None;
+    let next = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(next.lease.fence.generation > old.generation);
+    assert_eq!(runtime.commands().len(), 1);
+}
+
+#[tokio::test]
+async fn close_budget_and_deadline_survive_maintenance_and_terminal_upgrade() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(false); 5]));
+    let mut config = transport_config();
+    config.fault_grace = Duration::from_secs(60);
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+            .unwrap();
+    let mut input = invocation_input("bounded-close", ProviderWireOperation::Generate);
+    let failed = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let fence = failed.lease.fence.clone();
+    coordinator
+        .finish(failed, &Err(transport_error("primary")))
+        .await
+        .unwrap();
+    let deadline = coordinator.pending_commands.lock().unwrap()[0].overall_deadline;
+    for _ in 0..20 {
+        coordinator.maintain_and_dispatch().await;
+    }
+    assert_eq!(
+        runtime.commands().len(),
+        1,
+        "polling must not bypass backoff"
+    );
+    for _ in 1..5 {
+        let next_due = coordinator.pending_commands.lock().unwrap()[0].next_due;
+        clock.advance(Duration::from_millis(
+            next_due.as_millis() - clock.now().as_millis(),
+        ));
+        coordinator.maintain_and_dispatch().await;
+    }
+    {
+        let tasks = coordinator.pending_commands.lock().unwrap();
+        assert_eq!(tasks[0].state, CloseTaskState::Exhausted);
+        assert_eq!(tasks[0].attempts, CONTROL_MAX_ATTEMPTS);
+        assert_eq!(tasks[0].overall_deadline, deadline);
+    }
+    coordinator
+        .registry
+        .lock()
+        .await
+        .terminate(&fence, TerminationKind::ProviderFault)
+        .unwrap();
+    coordinator.dispatch_pending_events().await;
+    coordinator.maintain_and_dispatch().await;
+    let tasks = coordinator.pending_commands.lock().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].attempts, 5);
+    assert_eq!(tasks[0].overall_deadline, deadline);
+    assert!(tasks[0].terminal_close);
+    assert_eq!(runtime.commands().len(), 5);
+    assert!(runtime
+        .commands()
+        .iter()
+        .all(|command| command.deadline_unix_ms <= deadline.as_millis() as i64));
+}
+
+#[tokio::test]
+async fn close_overall_deadline_expires_without_restarting_budget() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(false)]));
+    let mut config = transport_config();
+    config.fault_grace = Duration::from_secs(60);
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+            .unwrap();
+    let mut input = invocation_input("close-expiry", ProviderWireOperation::Generate);
+    let failed = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    coordinator
+        .finish(failed, &Err(transport_error("primary")))
+        .await
+        .unwrap();
+    clock.advance(Duration::from_secs(31));
+    coordinator.maintain_and_dispatch().await;
+    assert_eq!(runtime.commands().len(), 1);
+    assert_eq!(
+        coordinator.pending_commands.lock().unwrap()[0].state,
+        CloseTaskState::Exhausted
+    );
+    assert!(reason(
+        coordinator
+            .prepare("runtime-a", &mut input, &context(2_040_000))
+            .await
+            .err()
+            .unwrap()
+    )
+    .contains("close_exhausted"));
 }

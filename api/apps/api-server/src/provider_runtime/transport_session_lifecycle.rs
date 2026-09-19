@@ -18,10 +18,12 @@ use plugin_framework::{
     provider_contract::{
         CommitLevel, CursorBinding, ProviderInvocationInput,
         ProviderInvocationTransportClassification, ProviderInvocationTransportOutcome,
-        ProviderLifecycleAckOutcome, ProviderLogicalSessionState, ProviderRecoveryDirective,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderTransportSessionAction,
+        ProviderLogicalSessionState, ProviderRecoveryDirective, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderTransportClosureEvidence,
+        ProviderTransportClosureOutcome, ProviderTransportSessionAction,
         ProviderTransportSessionCommand, ProviderTransportSessionDirective,
-        ProviderTransportSessionReceipt, ProviderWireOperation, RecoveryTransport,
+        ProviderTransportSessionIdentity, ProviderTransportSessionReceipt, ProviderWireOperation,
+        RecoveryTransport,
     },
     PluginFrameworkError,
 };
@@ -32,6 +34,8 @@ use tokio::sync::{broadcast, Mutex, Notify};
 use super::ProviderRuntimeExecutionContext;
 
 const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
+const CONTROL_OVERALL_DEADLINE: Duration = Duration::from_secs(30);
+const CONTROL_MAX_ATTEMPTS: u8 = 5;
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,13 +107,19 @@ struct LifecycleCommand {
     target_id: String,
     command: ProviderTransportSessionCommand,
     termination: Option<TransportTerminationNotice>,
-    close_fence: Option<TransportFence>,
+    terminal_close: bool,
+    overall_deadline: TransportInstant,
+    next_due: TransportInstant,
+    attempts: u8,
+    state: CloseTaskState,
+    last_blocker: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LifecycleDispatchOutcome {
-    Provider(ProviderLifecycleAckOutcome),
-    PhysicalConnectionFault,
+enum CloseTaskState {
+    Pending,
+    Released,
+    Exhausted,
 }
 
 pub(crate) struct PreparedTransportInvocation {
@@ -335,6 +345,17 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 TransportSessionState::Faulted | TransportSessionState::IdleReleased
             ) {
                 validate_fault_successor(input, recovery_directive.as_ref(), now)?;
+                if self
+                    .pending_commands
+                    .lock()
+                    .expect("transport pending command lock")
+                    .iter()
+                    .any(|task| task.fence == fence && task.state == CloseTaskState::Exhausted)
+                {
+                    return Err(transport_error(
+                        "provider_physical_connection_close_exhausted",
+                    ));
+                }
                 // Only the next invocation gets a fresh physical generation.
                 // Rotation keeps the original logical deadline and sequence.
                 let next = registry.rotate_generation(&fence).map_err(|error| {
@@ -388,6 +409,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis()).unwrap_or(i64::MAX);
         input
             .set_transport_session_directive(ProviderTransportSessionDirective {
+                worker_incarnation: None,
                 logical_session_id: session_id.as_str().to_string(),
                 generation: fence.generation.get(),
                 task_id: format!("invocation-{}-{}", fence.generation.get(), lease.sequence()),
@@ -559,131 +581,193 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     }
 
     async fn dispatch_pending_events_locked(&self) {
-        let new_commands = {
+        let (new_commands, snapshot) = {
             let mut registry = self.registry.lock().await;
-            registry
+            let commands = registry
                 .drain_events()
                 .into_iter()
                 .filter_map(|event| lifecycle_command(&registry, event))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (commands, registry.safe_snapshot())
         };
         let commands = {
             let mut pending = self
                 .pending_commands
                 .lock()
                 .expect("transport pending command lock");
-            pending.extend(new_commands);
+            pending.retain(|task| {
+                snapshot
+                    .sessions
+                    .iter()
+                    .any(|session| session.fence == task.fence)
+                    || snapshot
+                        .tombstones
+                        .iter()
+                        .any(|receipt| receipt.fence == task.fence)
+            });
+            for command in new_commands {
+                if let Some(existing) = pending.iter_mut().find(|task| task.fence == command.fence)
+                {
+                    // Drain -> Close / logical termination upgrades the same physical task.
+                    // It never renews the original deadline, attempts, or exhausted state.
+                    if command.command.action == ProviderTransportSessionAction::Close {
+                        existing.command.action = ProviderTransportSessionAction::Close;
+                    }
+                    if command.terminal_close {
+                        existing.terminal_close = true;
+                        existing.termination = command.termination;
+                    }
+                } else {
+                    pending.push_back(command);
+                }
+            }
             pending.drain(..).collect::<Vec<_>>()
         };
-        let mut deferred = VecDeque::new();
-        for command in commands {
-            let fault_close = command.command.action == ProviderTransportSessionAction::Close
-                && command.termination.is_none();
-            if fault_close {
-                let registry = self.registry.lock().await;
-                if registry.fence_status(&command.fence) != TransportFenceStatus::Current
-                    || !matches!(
-                        registry.state(&command.fence).ok(),
-                        Some(TransportSessionState::Faulted | TransportSessionState::IdleReleased)
-                    )
-                {
-                    continue;
-                }
+        let mut retained = VecDeque::new();
+        for mut task in commands {
+            if let Some(notice) = task.termination.take() {
+                self.publish_termination(notice);
             }
-            if command.command.action == ProviderTransportSessionAction::Drain {
-                let snapshot = self.registry.lock().await.safe_snapshot();
-                match drain_disposition(&snapshot, &command.fence) {
-                    DrainDisposition::Defer => {
-                        deferred.push_back(command);
-                        continue;
-                    }
-                    DrainDisposition::Stale => continue,
-                    DrainDisposition::Ready => {}
-                }
-            }
-            let result = tokio::time::timeout(
-                CONTROL_DEADLINE,
-                self.runtime
-                    .transport_session(&command.target_id, command.command.clone()),
-            )
-            .await;
-            let ack_outcome = match result {
-                Ok(Ok(receipt)) => {
-                    match receipt.lifecycle_ack_outcome(command.command.generation) {
-                        Ok(outcome) => LifecycleDispatchOutcome::Provider(outcome),
-                        Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
-                    }
-                }
-                Ok(Err(_)) | Err(_) => LifecycleDispatchOutcome::PhysicalConnectionFault,
-            };
-            let acknowledged = ack_outcome
-                == LifecycleDispatchOutcome::Provider(ProviderLifecycleAckOutcome::Acknowledged);
-            if !acknowledged {
-                tracing::warn!(
-                    target_id = %command.target_id,
-                    generation = command.command.generation,
-                    ?ack_outcome,
-                    "provider transport lifecycle command did not return an accepted ACK"
-                );
-            }
-            if let Some(fence) = &command.close_fence {
-                let _ = self
-                    .registry
-                    .lock()
-                    .await
-                    .record_close_acknowledgement(fence, acknowledged);
-            }
-            if fault_close && !acknowledged {
-                deferred.push_back(command);
+            if task.state != CloseTaskState::Pending {
+                retained.push_back(task);
                 continue;
             }
-            if command.command.action == ProviderTransportSessionAction::Drain {
-                if !acknowledged {
-                    deferred.push_back(command);
-                    continue;
+            let snapshot = self.registry.lock().await.safe_snapshot();
+            let now = snapshot.observed_at;
+            if now >= task.overall_deadline || task.attempts >= CONTROL_MAX_ATTEMPTS {
+                task.state = CloseTaskState::Exhausted;
+                task.last_blocker = Some("provider_physical_connection_close_exhausted");
+                tracing::warn!(
+                    generation = task.fence.generation.get(),
+                    attempts = task.attempts,
+                    overall_deadline_ms = task.overall_deadline.as_millis(),
+                    "provider close task exhausted"
+                );
+                retained.push_back(task);
+                continue;
+            }
+            if now < task.next_due {
+                retained.push_back(task);
+                continue;
+            }
+            if !task.terminal_close {
+                match task.command.action {
+                    ProviderTransportSessionAction::Drain => {
+                        match drain_disposition(&snapshot, &task.fence) {
+                            DrainDisposition::Stale => continue,
+                            DrainDisposition::Defer => {
+                                retained.push_back(task);
+                                continue;
+                            }
+                            DrainDisposition::Ready => {}
+                        }
+                    }
+                    ProviderTransportSessionAction::Close => {
+                        if !snapshot.sessions.iter().any(|session| {
+                            session.fence == task.fence
+                                && matches!(
+                                    session.state,
+                                    TransportSessionState::Faulted
+                                        | TransportSessionState::IdleReleased
+                                )
+                        }) {
+                            continue;
+                        }
+                    }
                 }
-                let mut registry = self.registry.lock().await;
-                let snapshot = registry.safe_snapshot();
-                if drain_disposition(&snapshot, &command.fence) == DrainDisposition::Ready {
-                    match registry.rotate_generation(&command.fence) {
-                        Ok(next_fence) => {
-                            if let Err(error) = registry.activate(&next_fence) {
-                                tracing::warn!(
-                                    session_id = next_fence.session_id.as_str(),
-                                    generation = next_fence.generation.get(),
-                                    %error,
-                                    "rotated provider transport generation could not be activated"
-                                );
+            }
+            task.command.deadline_unix_ms = i64::try_from(
+                transport_add(now, CONTROL_DEADLINE)
+                    .min(task.overall_deadline)
+                    .as_millis(),
+            )
+            .unwrap_or(i64::MAX);
+            task.attempts += 1;
+            // The host owns the wire deadline and retirement after a dispatched timeout.
+            // Dropping this future externally could leave a late unary response in stdio.
+            let result = self
+                .runtime
+                .transport_session(&task.target_id, task.command.clone())
+                .await;
+            let evidence = match result {
+                Ok(receipt) => accepted_closure_evidence(&task, &receipt),
+                Err(_) => Err("provider_transport_close_control_failed"),
+            };
+            let released = match evidence {
+                Ok(evidence) => {
+                    task.command.worker_incarnation = Some(evidence.identity.worker_incarnation);
+                    match self
+                        .registry
+                        .lock()
+                        .await
+                        .record_closure_evidence(&task.fence, &evidence)
+                    {
+                        Ok(()) => {
+                            task.last_blocker = None;
+                            evidence.local_released
+                        }
+                        Err(_) => {
+                            task.last_blocker = Some("provider_transport_close_stale_evidence");
+                            false
+                        }
+                    }
+                }
+                Err(code) => {
+                    task.last_blocker = Some(code);
+                    false
+                }
+            };
+            if released {
+                task.state = CloseTaskState::Released;
+                if task.command.action == ProviderTransportSessionAction::Drain {
+                    let mut registry = self.registry.lock().await;
+                    if drain_disposition(&registry.safe_snapshot(), &task.fence)
+                        == DrainDisposition::Ready
+                    {
+                        match registry.rotate_generation(&task.fence) {
+                            Ok(next) => {
+                                let _ = registry.activate(&next);
+                            }
+                            Err(_) => {
+                                task.last_blocker =
+                                    Some("provider_transport_close_rotation_blocked");
                             }
                         }
-                        Err(error) => tracing::warn!(
-                            session_id = command.fence.session_id.as_str(),
-                            generation = command.fence.generation.get(),
-                            %error,
-                            "provider transport generation could not rotate after close ACK"
-                        ),
                     }
                 }
-            }
-            if let Some(mut notice) = command.termination {
-                let scopes = self.connection_scopes.lock().expect("transport scopes");
-                for scope in scopes.values().filter_map(Weak::upgrade) {
-                    let state = scope.state.lock().expect("transport connection bindings");
-                    if let Some(lease) = state.leases.get(notice.fence.session_id.as_str()) {
-                        if lease.fence == notice.fence {
-                            notice.connection_scope_id = Some(scope.id.clone());
-                            notice.invocation_sequence = Some(lease.sequence());
-                            break;
-                        }
-                    }
+            } else {
+                let completed_at = self.registry.lock().await.safe_snapshot().observed_at;
+                if task.attempts >= CONTROL_MAX_ATTEMPTS || completed_at >= task.overall_deadline {
+                    task.state = CloseTaskState::Exhausted;
+                } else {
+                    task.next_due = transport_add(completed_at, close_retry_delay(&task))
+                        .min(task.overall_deadline);
                 }
-                let _ = self.notices.send(notice);
+                tracing::warn!(generation = task.fence.generation.get(), attempts = task.attempts,
+                    ?task.state, blocker = task.last_blocker, overall_deadline_ms = task.overall_deadline.as_millis(),
+                    "provider close task retained its bounded recovery outcome");
             }
+            retained.push_back(task);
         }
         self.pending_commands
             .lock()
             .expect("transport pending command lock")
-            .extend(deferred);
+            .extend(retained);
+    }
+
+    fn publish_termination(&self, mut notice: TransportTerminationNotice) {
+        let scopes = self.connection_scopes.lock().expect("transport scopes");
+        for scope in scopes.values().filter_map(Weak::upgrade) {
+            let state = scope.state.lock().expect("transport connection bindings");
+            if let Some(lease) = state.leases.get(notice.fence.session_id.as_str()) {
+                if lease.fence == notice.fence {
+                    notice.connection_scope_id = Some(scope.id.clone());
+                    notice.invocation_sequence = Some(lease.sequence());
+                    break;
+                }
+            }
+        }
+        let _ = self.notices.send(notice);
     }
 }
 
@@ -716,69 +800,124 @@ fn lifecycle_command(
     registry: &TransportSessionRegistry<impl TransportClock>,
     event: LifecycleEvent,
 ) -> Option<LifecycleCommand> {
-    match event {
-        LifecycleEvent::StateChanged { fence, to, .. } if to == TransportSessionState::Draining => {
-            let target_id = registry
-                .runtime_target_id(&fence)
-                .ok()?
-                .as_str()
-                .to_string();
-            Some(LifecycleCommand {
-                fence: fence.clone(),
-                target_id,
-                command: ProviderTransportSessionCommand {
-                    logical_session_id: fence.session_id.as_str().to_string(),
-                    generation: fence.generation.get(),
-                    action: ProviderTransportSessionAction::Drain,
-                    deadline_unix_ms: control_deadline_unix_ms(),
-                },
-                termination: None,
-                close_fence: None,
-            })
+    let (fence, target_id, action, termination) = match event {
+        LifecycleEvent::StateChanged { fence, to, .. }
+            if matches!(
+                to,
+                TransportSessionState::Draining
+                    | TransportSessionState::Faulted
+                    | TransportSessionState::IdleReleased
+            ) =>
+        {
+            let target = registry.runtime_target_id(&fence).ok()?.as_str().to_owned();
+            let action = if to == TransportSessionState::Draining {
+                ProviderTransportSessionAction::Drain
+            } else {
+                ProviderTransportSessionAction::Close
+            };
+            (fence, target, action, None)
         }
-        LifecycleEvent::StateChanged {
-            fence,
-            to: TransportSessionState::Faulted | TransportSessionState::IdleReleased,
-            ..
-        } => {
-            let target_id = registry
-                .runtime_target_id(&fence)
-                .ok()?
-                .as_str()
-                .to_string();
-            Some(LifecycleCommand {
-                fence: fence.clone(),
-                target_id,
-                command: ProviderTransportSessionCommand {
-                    logical_session_id: fence.session_id.as_str().to_string(),
-                    generation: fence.generation.get(),
-                    action: ProviderTransportSessionAction::Close,
-                    deadline_unix_ms: control_deadline_unix_ms(),
-                },
-                termination: None,
-                close_fence: Some(fence),
-            })
-        }
-        LifecycleEvent::Terminated(receipt) => Some(LifecycleCommand {
-            fence: receipt.fence.clone(),
-            target_id: receipt.runtime_target_id.as_str().to_string(),
-            command: ProviderTransportSessionCommand {
-                logical_session_id: receipt.fence.session_id.as_str().to_string(),
-                generation: receipt.fence.generation.get(),
-                action: ProviderTransportSessionAction::Close,
-                deadline_unix_ms: control_deadline_unix_ms(),
-            },
-            termination: Some(TransportTerminationNotice {
-                owner_id: receipt.owner_id.as_str().to_string(),
+        LifecycleEvent::Terminated(receipt) => {
+            let notice = TransportTerminationNotice {
+                owner_id: receipt.owner_id.as_str().to_owned(),
                 fence: receipt.fence.clone(),
                 invocation_sequence: None,
                 connection_scope_id: None,
                 code: termination_code(receipt.kind),
-            }),
-            close_fence: Some(receipt.fence),
-        }),
-        _ => None,
+            };
+            (
+                receipt.fence,
+                receipt.runtime_target_id.as_str().to_owned(),
+                ProviderTransportSessionAction::Close,
+                Some(notice),
+            )
+        }
+        _ => return None,
+    };
+    let snapshot = registry.safe_snapshot();
+    let now = snapshot.observed_at;
+    let overall_deadline = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.fence == fence)
+        .map_or(transport_add(now, CONTROL_OVERALL_DEADLINE), |session| {
+            transport_add(now, CONTROL_OVERALL_DEADLINE.min(session.logical_ttl))
+        });
+    Some(LifecycleCommand {
+        command: ProviderTransportSessionCommand {
+            logical_session_id: fence.session_id.as_str().to_owned(),
+            generation: fence.generation.get(),
+            worker_incarnation: None,
+            action,
+            deadline_unix_ms: i64::try_from(
+                transport_add(now, CONTROL_DEADLINE)
+                    .min(overall_deadline)
+                    .as_millis(),
+            )
+            .unwrap_or(i64::MAX),
+        },
+        fence,
+        target_id,
+        terminal_close: termination.is_some(),
+        termination,
+        overall_deadline,
+        next_due: now,
+        attempts: 0,
+        state: CloseTaskState::Pending,
+        last_blocker: None,
+    })
+}
+
+fn accepted_closure_evidence(
+    task: &LifecycleCommand,
+    receipt: &ProviderTransportSessionReceipt,
+) -> Result<ProviderTransportClosureEvidence, &'static str> {
+    receipt
+        .validate()
+        .map_err(|_| "provider_transport_close_invalid_evidence")?;
+    let evidence = receipt
+        .closure_evidence
+        .as_ref()
+        .ok_or("provider_transport_close_evidence_missing")?;
+    let expected = ProviderTransportSessionIdentity {
+        logical_session_id: task.command.logical_session_id.clone(),
+        generation: task.command.generation,
+        worker_incarnation: task
+            .command
+            .worker_incarnation
+            .unwrap_or(evidence.identity.worker_incarnation),
+    };
+    // The runtime-host boundary already checked this worker incarnation against its trusted dispatch binding.
+    match receipt
+        .closure_outcome(&expected)
+        .map_err(|_| "provider_transport_close_invalid_evidence")?
+    {
+        ProviderTransportClosureOutcome::IdentityMismatch
+        | ProviderTransportClosureOutcome::EvidenceMissing => {
+            Err("provider_transport_close_identity_mismatch")
+        }
+        _ => Ok(evidence.clone()),
     }
+}
+
+fn transport_add(now: TransportInstant, duration: Duration) -> TransportInstant {
+    TransportInstant::from_millis(
+        now.as_millis()
+            .saturating_add(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
+    )
+}
+
+fn close_retry_delay(task: &LifecycleCommand) -> Duration {
+    let base = 250_u64
+        .saturating_mul(1_u64 << task.attempts.saturating_sub(1).min(4))
+        .min(4_000);
+    let mut hash = Sha256::new();
+    hash.update(task.fence.session_id.as_str().as_bytes());
+    hash.update(task.fence.generation.get().to_le_bytes());
+    hash.update([task.attempts]);
+    let bytes = hash.finalize();
+    let jitter = u64::from(u16::from_le_bytes([bytes[0], bytes[1]])) % (base / 2 + 1);
+    Duration::from_millis(base + jitter)
 }
 
 // This admits a new invocation; it never resubmits the failed invocation or
@@ -869,14 +1008,6 @@ fn hash_identity(parts: &[&str]) -> String {
     format!("{:x}", digest.finalize())
 }
 
-fn control_deadline_unix_ms() -> i64 {
-    i64::try_from(
-        (time::OffsetDateTime::now_utc() + time::Duration::seconds(5)).unix_timestamp_nanos()
-            / 1_000_000,
-    )
-    .unwrap_or(i64::MAX)
-}
-
 fn termination_code(kind: TerminationKind) -> &'static str {
     match kind {
         TerminationKind::CapacityEvicted => "transport_session_evicted",
@@ -927,6 +1058,7 @@ fn map_registry_use_error(error: RegistryError) -> anyhow::Error {
         RegistryError::AlreadyExists
         | RegistryError::InvalidTransition { .. }
         | RegistryError::GenerationExhausted
+        | RegistryError::InvalidClosureEvidence
         | RegistryError::InvalidConfig => transport_error("transport_session_evicted"),
     }
 }
