@@ -1048,3 +1048,238 @@ async fn idle_release_close_ack_cursor_and_commit_guards_are_composed() {
     assert_eq!(input.recovery_directive().unwrap(), Some(directive));
     assert_eq!(runtime.commands().len(), 3);
 }
+
+fn scope_input(scope: &TransportConnectionScope, model: &str) -> ProviderInvocationInput {
+    let mut input = invocation_input("shared-thread", ProviderWireOperation::Generate);
+    input.model = model.into();
+    input
+        .client_protocol_envelope
+        .as_mut()
+        .unwrap()
+        .headers
+        .insert(
+            control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER.into(),
+            vec![scope.id().into()],
+        );
+    input
+}
+
+#[tokio::test]
+async fn scoped_termination_matches_actual_model_fence_and_invocation_only() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)])),
+        TransportRegistryConfig::default(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let a = coordinator.open_connection_scope();
+    let b = coordinator.open_connection_scope();
+    let mut input_a = scope_input(&a, "model-a");
+    let first = coordinator
+        .prepare("runtime-a", &mut input_a, &context(2_100_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!input_a
+        .client_protocol_envelope
+        .as_ref()
+        .unwrap()
+        .headers
+        .contains_key(
+            control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER
+        ));
+    let second = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&b, "model-b"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let mut notices = coordinator.subscribe();
+    coordinator
+        .registry
+        .lock()
+        .await
+        .terminate(&first.lease.fence, TerminationKind::ProviderHardMax)
+        .unwrap();
+    coordinator.dispatch_pending_events().await;
+    let notice = notices.try_recv().unwrap();
+    assert!(a.accepts_termination(&notice));
+    assert!(!b.accepts_termination(&notice));
+    assert_eq!(notice.fence, first.lease.fence);
+    assert_eq!(notice.invocation_sequence, Some(first.lease.sequence()));
+    coordinator.close_connection_scope(&a).await;
+    assert_eq!(
+        coordinator
+            .registry
+            .lock()
+            .await
+            .state(&second.lease.fence)
+            .unwrap(),
+        TransportSessionState::Active
+    );
+}
+
+#[tokio::test]
+async fn completed_connection_close_and_old_notices_do_not_orphan_successor() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([])),
+        TransportRegistryConfig::default(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let old = coordinator.open_connection_scope();
+    let first = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&old, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let old_lease = first.lease.clone();
+    coordinator
+        .finish(first, &successful_output(old_lease.fence.generation.get()))
+        .await
+        .unwrap();
+    assert!(old.state.lock().unwrap().leases.is_empty());
+    let current = coordinator.open_connection_scope();
+    let second = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&current, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.lease.fence, old_lease.fence);
+    assert!(second.lease.sequence() > old_lease.sequence());
+    let stale_notice = TransportTerminationNotice {
+        owner_id: "shared-thread".into(),
+        fence: old_lease.fence.clone(),
+        invocation_sequence: Some(old_lease.sequence()),
+        connection_scope_id: Some(current.id().into()),
+        code: "provider_connection_max_age",
+    };
+    assert!(
+        !current.accepts_termination(&stale_notice),
+        "same physical generation does not identify the new invocation"
+    );
+    coordinator.close_connection_scope(&old).await;
+    assert_eq!(
+        coordinator
+            .registry
+            .lock()
+            .await
+            .state(&second.lease.fence)
+            .unwrap(),
+        TransportSessionState::Active
+    );
+    let fence = second.lease.fence.clone();
+    coordinator
+        .finish(second, &successful_output(fence.generation.get()))
+        .await
+        .unwrap();
+    coordinator.close_connection_scope(&current).await;
+    assert_eq!(
+        coordinator.registry.lock().await.state(&fence).unwrap(),
+        TransportSessionState::IdleAffinity
+    );
+    assert!(coordinator.connection_scopes.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn active_scope_disconnect_orphans_only_its_current_lease_and_rejects_forgery() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([])),
+        TransportRegistryConfig::default(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let scope = coordinator.open_connection_scope();
+    let mut forged = scope_input(&scope, "model-a");
+    forged
+        .client_protocol_envelope
+        .as_mut()
+        .unwrap()
+        .headers
+        .insert(
+            control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER.into(),
+            vec!["client-forged".into()],
+        );
+    assert!(coordinator
+        .prepare("runtime-a", &mut forged, &context(2_100_000))
+        .await
+        .is_err());
+    assert!(!forged
+        .client_protocol_envelope
+        .as_ref()
+        .unwrap()
+        .headers
+        .contains_key(
+            control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER
+        ));
+    assert!(coordinator.safe_snapshot().await.sessions.is_empty());
+    let first = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&scope, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let fence = first.lease.fence.clone();
+    coordinator.close_connection_scope(&scope).await;
+    assert_eq!(
+        coordinator.registry.lock().await.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
+    coordinator
+        .finish(first, &successful_output(fence.generation.get()))
+        .await
+        .unwrap();
+    assert_eq!(
+        coordinator.registry.lock().await.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
+    );
+}
+
+#[tokio::test]
+async fn completed_waiting_tool_retains_business_state_after_socket_close() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([])),
+        TransportRegistryConfig::default(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let scope = coordinator.open_connection_scope();
+    let first = coordinator
+        .prepare(
+            "runtime-a",
+            &mut scope_input(&scope, "model-a"),
+            &context(2_100_000),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let fence = first.lease.fence.clone();
+    let mut output = successful_output(fence.generation.get()).unwrap();
+    output.result.tool_calls = vec![plugin_framework::provider_contract::ProviderToolCall {
+        id: "committed-tool".into(),
+        name: "read".into(),
+        arguments: serde_json::json!({}),
+        provider_metadata: serde_json::json!({}),
+    }];
+    coordinator.finish(first, &Ok(output)).await.unwrap();
+    assert!(scope.state.lock().unwrap().leases.is_empty());
+    coordinator.close_connection_scope(&scope).await;
+    assert_eq!(
+        coordinator.registry.lock().await.state(&fence).unwrap(),
+        TransportSessionState::WaitingTool
+    );
+}

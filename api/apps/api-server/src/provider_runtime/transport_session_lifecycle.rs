@@ -1,8 +1,8 @@
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex as StdMutex,
+        Arc, Mutex as StdMutex, Weak,
     },
     time::Duration,
 };
@@ -37,7 +37,65 @@ const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TransportTerminationNotice {
     pub(crate) owner_id: String,
+    pub(crate) fence: TransportFence,
+    pub(crate) invocation_sequence: Option<u64>,
+    pub(crate) connection_scope_id: Option<String>,
     pub(crate) code: &'static str,
+}
+
+/// A socket owns only leases actually admitted for it, never all sessions with
+/// the same client thread identity. This is a bounded attachment to the registry.
+pub(crate) struct TransportConnectionScope {
+    id: String,
+    state: StdMutex<TransportConnectionBindings>,
+}
+
+#[derive(Default)]
+struct TransportConnectionBindings {
+    closed: bool,
+    leases: BTreeMap<String, InvocationLease>,
+}
+
+impl TransportConnectionScope {
+    #[cfg(test)]
+    pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
+        Arc::new(Self {
+            id: uuid::Uuid::now_v7().to_string(),
+            state: StdMutex::new(TransportConnectionBindings {
+                closed: false,
+                leases: BTreeMap::from([(lease.fence.session_id.as_str().into(), lease)]),
+            }),
+        })
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn accepts_termination(&self, notice: &TransportTerminationNotice) -> bool {
+        let state = self.state.lock().expect("transport connection bindings");
+        !state.closed
+            && notice.connection_scope_id.as_deref() == Some(self.id.as_str())
+            && state
+                .leases
+                .get(notice.fence.session_id.as_str())
+                .is_some_and(|lease| {
+                    lease.fence == notice.fence
+                        && Some(lease.sequence()) == notice.invocation_sequence
+                })
+    }
+}
+
+pub(crate) fn take_transport_connection_scope(
+    input: &mut ProviderInvocationInput,
+) -> Option<String> {
+    input
+        .client_protocol_envelope
+        .as_mut()?
+        .headers
+        .remove(control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER)?
+        .into_iter()
+        .next()
 }
 
 struct LifecycleCommand {
@@ -91,6 +149,7 @@ pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
+    connection_scopes: StdMutex<BTreeMap<String, Weak<TransportConnectionScope>>>,
 }
 
 impl TransportSessionCoordinator<SystemTransportClock> {
@@ -123,6 +182,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             scheduler: StdMutex::new(None),
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
+            connection_scopes: StdMutex::new(BTreeMap::new()),
         })
     }
 
@@ -148,12 +208,60 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         self.notices.subscribe()
     }
 
+    pub(crate) fn open_connection_scope(&self) -> Arc<TransportConnectionScope> {
+        let scope = Arc::new(TransportConnectionScope {
+            id: uuid::Uuid::now_v7().to_string(),
+            state: StdMutex::new(TransportConnectionBindings::default()),
+        });
+        let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+        scopes.retain(|_, scope| scope.strong_count() > 0);
+        scopes.insert(scope.id.clone(), Arc::downgrade(&scope));
+        scope
+    }
+
+    pub(crate) async fn close_connection_scope(&self, scope: &TransportConnectionScope) {
+        let _dispatcher = self.dispatcher.lock().await;
+        let leases = {
+            let mut state = scope.state.lock().expect("transport connection bindings");
+            state.closed = true;
+            std::mem::take(&mut state.leases)
+        };
+        self.connection_scopes
+            .lock()
+            .expect("transport scopes")
+            .remove(scope.id());
+        let mut registry = self.registry.lock().await;
+        for lease in leases.values() {
+            if registry.fence_status(&lease.fence) == TransportFenceStatus::Current {
+                // Only still-bound inflight work belongs to this disconnected socket.
+                // Completed text/tool calls were detached by finish.
+                let _ = registry.mark_invocation_orphaned(lease);
+            }
+        }
+    }
+
+    fn detach_lease(&self, lease: &InvocationLease) {
+        let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+        scopes.retain(|_, scope| {
+            let Some(scope) = scope.upgrade() else {
+                return false;
+            };
+            let mut state = scope.state.lock().expect("transport connection bindings");
+            let key = lease.fence.session_id.as_str();
+            if state.leases.get(key).is_some_and(|bound| bound == lease) {
+                state.leases.remove(key);
+            }
+            true
+        });
+    }
+
     pub(crate) async fn prepare(
         &self,
         target_id: &str,
         input: &mut ProviderInvocationInput,
         context: &ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
+        let connection_scope_id = take_transport_connection_scope(input);
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
@@ -185,6 +293,27 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .map(TransportInstant::from_millis);
 
         let _dispatcher = self.dispatcher.lock().await;
+        let connection_scope = match connection_scope_id {
+            Some(id) => {
+                let scope = self
+                    .connection_scopes
+                    .lock()
+                    .expect("transport scopes")
+                    .get(&id)
+                    .and_then(Weak::upgrade)
+                    .ok_or_else(|| transport_error("transport_session_orphaned"))?;
+                if scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .closed
+                {
+                    return Err(transport_error("transport_session_orphaned"));
+                }
+                Some(scope)
+            }
+            None => None,
+        };
         self.registry.lock().await.maintain();
         self.dispatch_pending_events_locked().await;
 
@@ -267,6 +396,29 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             })
             .map_err(|_| transport_error("transport_session_directive_invalid"))?;
         drop(registry);
+        {
+            let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+            scopes.retain(|_, scope| {
+                let Some(scope) = scope.upgrade() else {
+                    return false;
+                };
+                scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .leases
+                    .remove(lease.fence.session_id.as_str());
+                true
+            });
+        }
+        if let Some(scope) = connection_scope {
+            scope
+                .state
+                .lock()
+                .expect("transport connection bindings")
+                .leases
+                .insert(lease.fence.session_id.as_str().into(), lease.clone());
+        }
         self.dispatch_pending_events_locked().await;
         Ok(Some(PreparedTransportInvocation {
             lease,
@@ -280,6 +432,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         prepared: PreparedTransportInvocation,
         result: &anyhow::Result<super::ProviderRuntimeInvocationOutput>,
     ) -> anyhow::Result<()> {
+        self.detach_lease(&prepared.lease);
         let fence_status = self
             .registry
             .lock()
@@ -356,13 +509,6 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         drop(registry);
         self.dispatch_pending_events().await;
         Ok(())
-    }
-
-    pub(crate) async fn mark_owner_orphaned(&self, owner_id: &str) {
-        let Ok(owner_id) = TransportOwnerId::new(owner_id.to_string()) else {
-            return;
-        };
-        self.registry.lock().await.mark_owner_orphaned(&owner_id);
     }
 
     pub(crate) async fn safe_snapshot(
@@ -519,7 +665,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     }
                 }
             }
-            if let Some(notice) = command.termination {
+            if let Some(mut notice) = command.termination {
+                let scopes = self.connection_scopes.lock().expect("transport scopes");
+                for scope in scopes.values().filter_map(Weak::upgrade) {
+                    let state = scope.state.lock().expect("transport connection bindings");
+                    if let Some(lease) = state.leases.get(notice.fence.session_id.as_str()) {
+                        if lease.fence == notice.fence {
+                            notice.connection_scope_id = Some(scope.id.clone());
+                            notice.invocation_sequence = Some(lease.sequence());
+                            break;
+                        }
+                    }
+                }
                 let _ = self.notices.send(notice);
             }
         }
@@ -613,6 +770,9 @@ fn lifecycle_command(
             },
             termination: Some(TransportTerminationNotice {
                 owner_id: receipt.owner_id.as_str().to_string(),
+                fence: receipt.fence.clone(),
+                invocation_sequence: None,
+                connection_scope_id: None,
                 code: termination_code(receipt.kind),
             }),
             close_fence: Some(receipt.fence),

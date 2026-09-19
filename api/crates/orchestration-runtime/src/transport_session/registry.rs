@@ -444,6 +444,37 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         Ok(self.record(fence)?.physical.hard_deadline)
     }
 
+    /// Disconnect exactly the invocation still attached to this socket.
+    pub fn mark_invocation_orphaned(
+        &mut self,
+        lease: &InvocationLease,
+    ) -> Result<(), RegistryError> {
+        let now = self.clock.now();
+        self.maintain_at(now);
+        let record = self.record(&lease.fence)?;
+        let invocation = record
+            .logical
+            .invocation
+            .as_ref()
+            .ok_or(RegistryError::NoInflight)?;
+        if invocation.sequence != lease.sequence() || invocation.deadline != lease.deadline() {
+            return Err(RegistryError::StaleInvocation);
+        }
+        if !matches!(
+            record.logical.state,
+            TransportSessionState::Opening
+                | TransportSessionState::Active
+                | TransportSessionState::WaitingTool
+                | TransportSessionState::IdleAffinity
+        ) {
+            return Err(RegistryError::InvalidTransition {
+                from: record.logical.state,
+                to: TransportSessionState::Orphaned,
+            });
+        }
+        self.set_state(&lease.fence, TransportSessionState::Orphaned, now)
+    }
+
     pub fn mark_owner_orphaned(&mut self, owner_id: &TransportOwnerId) -> Vec<TransportFence> {
         let now = self.clock.now();
         self.maintain_at(now);

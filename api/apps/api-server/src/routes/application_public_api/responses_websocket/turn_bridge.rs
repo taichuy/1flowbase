@@ -65,6 +65,7 @@ impl ResponsesTurnBridge {
             self.authorization.principal.clone(),
             self.authorization.handshake_headers.clone(),
             body,
+            self.authorization.transport_scope.id().to_string(),
         )
         .await
         {

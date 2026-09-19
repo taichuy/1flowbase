@@ -717,10 +717,49 @@ fn idle_affinity_89_90_91_retains_logical_deadline_and_requires_close_ack() {
     registry
         .finish_invocation(&second, InvocationCompletion::IdleAffinity)
         .unwrap();
-    clock.advance(Duration::from_secs(109));
+    clock.advance(Duration::from_secs(90));
+    registry.maintain();
+    assert_eq!(
+        registry.state(&next).unwrap(),
+        TransportSessionState::IdleReleased
+    );
+    clock.advance(Duration::from_secs(19));
     registry.maintain();
     assert_eq!(
         registry.tombstone(&next.session_id).unwrap().kind,
         TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+    );
+}
+
+#[test]
+fn socket_orphan_requires_current_invocation_sequence_and_fence() {
+    let mut registry = TransportSessionRegistry::new(FakeClock::default(), config(1)).unwrap();
+    let fence = registry.admit(request("scoped")).unwrap();
+    registry.activate(&fence).unwrap();
+    let old = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&old, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    assert_eq!(
+        registry.mark_invocation_orphaned(&old),
+        Err(RegistryError::NoInflight)
+    );
+    let current = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    assert_eq!(
+        registry.mark_invocation_orphaned(&old),
+        Err(RegistryError::StaleInvocation)
+    );
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Active
+    );
+    registry.mark_invocation_orphaned(&current).unwrap();
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned
     );
 }

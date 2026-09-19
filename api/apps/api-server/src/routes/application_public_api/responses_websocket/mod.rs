@@ -30,7 +30,7 @@ mod turn_bridge;
 pub(crate) struct ResponsesWebSocketAuthorization {
     pub(crate) principal: interface_runtime::ApplicationPrincipal,
     pub(crate) handshake_headers: HeaderMap,
-    pub(crate) transport_owner_id: String,
+    pub(crate) transport_scope: Arc<crate::provider_runtime::TransportConnectionScope>,
 }
 
 /// Upgrades an authenticated OpenAI Responses request to WebSocket transport.
@@ -52,11 +52,13 @@ pub(crate) async fn upgrade(
     .await?
     .into_principal();
     let handshake_headers = auth::responses_handshake_headers(&headers);
-    let transport_owner_id = openai::responses_transport_owner_id(&principal, &handshake_headers)?;
+    // Validate the logical session identity independently of socket ownership.
+    openai::responses_transport_owner_id(&principal, &handshake_headers)?;
+    let transport_scope = state.provider_runtime.open_transport_connection_scope();
     let authorization = ResponsesWebSocketAuthorization {
         principal,
         handshake_headers,
-        transport_owner_id,
+        transport_scope,
     };
 
     Ok(websocket.on_upgrade(move |socket| async move {

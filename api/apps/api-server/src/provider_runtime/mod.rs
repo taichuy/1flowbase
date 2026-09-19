@@ -68,7 +68,9 @@ mod distribution_registry;
 mod model_provider_slot;
 mod transport_session_lifecycle;
 
-pub(crate) use transport_session_lifecycle::TransportTerminationNotice;
+pub(crate) use transport_session_lifecycle::{
+    TransportConnectionScope, TransportTerminationNotice,
+};
 
 use distribution_registry::EffectiveProviderDistributionSnapshot;
 
@@ -318,8 +320,12 @@ impl ApiRuntimeServices {
         self.transport_sessions.subscribe()
     }
 
-    pub(crate) async fn mark_transport_owner_orphaned(&self, owner_id: &str) {
-        self.transport_sessions.mark_owner_orphaned(owner_id).await;
+    pub(crate) fn open_transport_connection_scope(&self) -> Arc<TransportConnectionScope> {
+        self.transport_sessions.open_connection_scope()
+    }
+
+    pub(crate) async fn close_transport_connection_scope(&self, scope: &TransportConnectionScope) {
+        self.transport_sessions.close_connection_scope(scope).await;
     }
 
     pub(crate) async fn transport_session_snapshot(
@@ -886,6 +892,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
+        let mut invocation = input.into_invocation();
+        transport_session_lifecycle::take_transport_connection_scope(&mut invocation);
+        let input = ProviderCountTokensInput::from_invocation(invocation);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.as_invocation().provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -917,8 +926,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn compact(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -936,8 +946,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn invoke_stream(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -974,9 +985,10 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn invoke_stream_with_live_events(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        transport_session_lifecycle::take_transport_connection_scope(&mut input);
         let binding = self.resolve_model_provider_binding(installation)?;
         binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);

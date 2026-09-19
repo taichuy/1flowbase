@@ -109,6 +109,19 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
     use crate::provider_runtime::TransportTerminationNotice;
 
     tokio::time::timeout(Duration::from_secs(5), async {
+        use orchestration_runtime::transport_session::*;
+        let mut registry = TransportSessionRegistry::new(SystemTransportClock::default(), TransportRegistryConfig::default()).unwrap();
+        let fence = registry.admit(AdmissionRequest {
+            session_id: TransportSessionId::new("terminal-fixture").unwrap(),
+            owner_id: TransportOwnerId::new("owner-fixture").unwrap(),
+            provider_id: TransportProviderId::new("provider").unwrap(),
+            runtime_target_id: TransportRuntimeTargetId::new("runtime").unwrap(),
+            provider_hard_deadline: None,
+        }).unwrap();
+        registry.activate(&fence).unwrap();
+        let lease = registry.begin_invocation(&fence, InvocationRequest::default()).unwrap();
+        let scope = crate::provider_runtime::TransportConnectionScope::for_test(lease.clone());
+        let route_scope = scope.clone();
         let (notices, _) = tokio::sync::broadcast::channel(4);
         let route_notices = notices.clone();
         let finish = Arc::new(tokio::sync::Notify::new());
@@ -118,6 +131,7 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
         let router = Router::new().route("/ws", get(move |upgrade: WebSocketUpgrade| {
             let termination = route_notices.subscribe();
             let finish = route_finish.clone();
+            let scope = route_scope.clone();
             async move {
                 upgrade.on_upgrade(move |socket| {
                     run_connection_loop_with_terminations(socket, move |_, frames| {
@@ -128,7 +142,7 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
                             finish.notified().await;
                             Ok::<_, ResponsesTurnBridgeError>(())
                         }
-                    }, Some(("owner-fixture".into(), termination)))
+                    }, Some((scope, termination)))
                 })
             }
         }));
@@ -139,7 +153,7 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
         assert_eq!(first["type"], "response.failed");
         assert_eq!(first["response"]["error"]["code"], "original-provider-error");
         // Receiving the first terminal is the causal barrier before physical close.
-        notices.send(TransportTerminationNotice { owner_id:"owner-fixture".into(), code:"provider_connection_max_age" }).unwrap();
+        notices.send(TransportTerminationNotice { owner_id:"owner-fixture".into(), fence, invocation_sequence:Some(lease.sequence()), connection_scope_id:Some(scope.id().into()), code:"provider_connection_max_age" }).unwrap();
         assert!(matches!(socket.next().await.unwrap().unwrap(), Message::Close(_)), "close must not append another success or failure terminal");
         let _ = socket.close(None).await;
         finish.notify_one();

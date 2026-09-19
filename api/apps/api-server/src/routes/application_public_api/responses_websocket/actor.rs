@@ -175,7 +175,7 @@ pub(crate) async fn run_connection(
         authorization.principal.application_id(),
         ApplicationActivityKind::WebSocketConnection,
     );
-    let owner_id = authorization.transport_owner_id.clone();
+    let transport_scope = authorization.transport_scope.clone();
     let terminations = state.provider_runtime.subscribe_transport_terminations();
     let services = state.provider_runtime.clone();
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
@@ -185,10 +185,12 @@ pub(crate) async fn run_connection(
             let bridge = bridge.clone();
             async move { bridge.execute(response, frames).await }
         },
-        Some((owner_id.clone(), terminations)),
+        Some((transport_scope.clone(), terminations)),
     )
     .await;
-    services.mark_transport_owner_orphaned(&owner_id).await;
+    services
+        .close_transport_connection_scope(&transport_scope)
+        .await;
 }
 
 #[cfg(test)]
@@ -206,7 +208,7 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: WebSocket,
     execute: F,
     mut terminations: Option<(
-        String,
+        Arc<crate::provider_runtime::TransportConnectionScope>,
         tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
     )>,
 ) where
@@ -434,16 +436,16 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
 
 async fn receive_termination(
     terminations: &mut Option<(
-        String,
+        Arc<crate::provider_runtime::TransportConnectionScope>,
         tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
     )>,
 ) -> Option<crate::provider_runtime::TransportTerminationNotice> {
-    let Some((owner_id, receiver)) = terminations.as_mut() else {
+    let Some((scope, receiver)) = terminations.as_mut() else {
         return std::future::pending().await;
     };
     loop {
         match receiver.recv().await {
-            Ok(notice) if notice.owner_id == *owner_id => return Some(notice),
+            Ok(notice) if scope.accepts_termination(&notice) => return Some(notice),
             Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                 return std::future::pending().await
