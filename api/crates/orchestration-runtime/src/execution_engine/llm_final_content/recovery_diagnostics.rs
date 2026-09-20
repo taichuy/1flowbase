@@ -66,6 +66,24 @@ fn failure(source: &Value) -> Option<Value> {
         ),
         ("failure_phase", &["idle", "active", "closing"][..]),
         (
+            "semantic_event_kind",
+            &[
+                "text_delta",
+                "reasoning_delta",
+                "tool_call_delta",
+                "tool_call_commit",
+                "raw_responses_delta",
+                "message_added",
+                "message_done",
+                "reasoning_added",
+                "reasoning_done",
+                "tool_item_added",
+                "tool_item_done",
+                "unknown_item",
+                "other",
+            ][..],
+        ),
+        (
             "recovery_decision",
             &[
                 "retry_websocket",
@@ -169,6 +187,8 @@ fn failure(source: &Value) -> Option<Value> {
         ("close_code", 4999),
         ("attempt", 15),
         ("consumed_attempts", 16),
+        ("buffered_scaffold_events", 1024),
+        ("buffered_scaffold_bytes", 16 * 1024 * 1024),
     ] {
         if let Some(value) = source
             .get(field)
