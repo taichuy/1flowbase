@@ -1,5 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use extension_contracts::provider_contract::{
+    ProtocolContextEnvelope, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
+};
 use serde_json::{json, Value};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -29,7 +32,9 @@ use crate::application_public_api::{
     run_service::ApplicationPublishedRunControlRepository,
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
-use crate::ports::ProviderTransportPayload;
+use crate::ports::{
+    ProviderProtocolContextLocator, ProviderProtocolContextValue, ProviderTransportPayload,
+};
 
 #[derive(Clone)]
 struct SettlingConsumer {
@@ -106,7 +111,15 @@ async fn fixture(failure: Option<Value>) -> Fixture {
     fixture_with_configuration(failure, None).await
 }
 
-async fn fixture_with_configuration(mut failure: Option<Value>, tools: Option<Value>) -> Fixture {
+async fn fixture_with_configuration(failure: Option<Value>, tools: Option<Value>) -> Fixture {
+    fixture_with_protocol_context(failure, tools, None).await
+}
+
+async fn fixture_with_protocol_context(
+    mut failure: Option<Value>,
+    tools: Option<Value>,
+    protocol_context: Option<ProtocolContextEnvelope>,
+) -> Fixture {
     let actor = Uuid::from_u128(0x11111111111111111111111111111111);
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor, "Native inference recovery");
@@ -141,11 +154,13 @@ async fn fixture_with_configuration(mut failure: Option<Value>, tools: Option<Va
         .await
         .unwrap();
     repository.configure_runnable_published_generate_route(application.id);
+    let mut request: NativeRunRequest = serde_json::from_value(json!({"query":"work"})).unwrap();
+    request.client_protocol_envelope = protocol_context;
     let run = ApplicationNativeRunService::new(repository.clone())
         .create_native_run(CreateNativeRunCommand {
             protocol: TranslationProtocol::Native,
             bearer_token: token.clone(),
-            request: serde_json::from_value(json!({"query":"work"})).unwrap(),
+            request,
         })
         .await
         .unwrap();
@@ -433,7 +448,35 @@ async fn successful_callback_duplicate_keeps_original_run_and_consumes_once() {
 
 #[tokio::test]
 async fn recovery_successor_duplicates_project_same_linked_run() {
-    let f = fixture(Some(transport_failure())).await;
+    assert_recovery_successor_context(None).await;
+}
+
+#[tokio::test]
+async fn recovery_successor_rebinds_changed_protocol_context_locator() {
+    assert_recovery_successor_context(Some(recovery_protocol_context("current-http"))).await;
+}
+
+#[tokio::test]
+async fn recovery_successor_preserves_matching_protocol_context_locator() {
+    assert_recovery_successor_context(Some(recovery_protocol_context("original-ws"))).await;
+}
+
+fn recovery_protocol_context(session: &str) -> ProtocolContextEnvelope {
+    ProtocolContextEnvelope {
+        source_protocol: "openai_responses".into(),
+        headers: std::collections::BTreeMap::from([("session-id".into(), vec![session.into()])]),
+        ..Default::default()
+    }
+}
+
+async fn assert_recovery_successor_context(current_context: Option<ProtocolContextEnvelope>) {
+    let original_context = recovery_protocol_context("original-ws");
+    let f = fixture_with_protocol_context(
+        Some(transport_failure()),
+        None,
+        Some(original_context.clone()),
+    )
+    .await;
     let PreparedPublishedCallbackResume::RecoverInference { grant } =
         f.prepare(&f.command).await.unwrap()
     else {
@@ -441,6 +484,7 @@ async fn recovery_successor_duplicates_project_same_linked_run() {
     };
     let mut request: NativeRunRequest =
         serde_json::from_value(json!({"query":"reconstructed"})).unwrap();
+    request.client_protocol_envelope = current_context.clone();
     let frozen_input = grant.frozen_input_payload.clone();
     let expected_budget = grant.remaining_attempts;
     let expected_deadline = grant.absolute_deadline_unix_ms;
@@ -509,6 +553,54 @@ async fn recovery_successor_duplicates_project_same_linked_run() {
         "recovery must not remap the replacement query into original workflow input"
     );
     assert_eq!(persisted.input_payload["env"], frozen_input["env"]);
+    let old_locator_value = &frozen_input[CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY];
+    let old_locator = ProviderProtocolContextLocator::parse(old_locator_value)
+        .unwrap()
+        .expect("the predecessor has a sealed protocol context locator");
+    match current_context {
+        Some(envelope) => {
+            let changed = envelope != original_context;
+            let staged = ProviderProtocolContextValue::from_envelope(envelope).unwrap();
+            let current_locator_value =
+                &persisted.input_payload[CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY];
+            let locator = ProviderProtocolContextLocator::parse(current_locator_value)
+                .unwrap()
+                .expect("the successor locator must parse");
+            assert!(
+                staged.matches_locator(&locator),
+                "current staged context must resolve"
+            );
+            assert_eq!(staged.matches_locator(&old_locator), !changed);
+            assert_eq!(current_locator_value != old_locator_value, changed);
+        }
+        None => assert!(
+            persisted
+                .input_payload
+                .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
+                .is_none(),
+            "a successor without current context must not retain the predecessor locator"
+        ),
+    }
+    let mut frozen_business = frozen_input.clone();
+    let mut successor_business = persisted.input_payload.clone();
+    for payload in [&mut frozen_business, &mut successor_business] {
+        payload
+            .as_object_mut()
+            .unwrap()
+            .remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+        let sys = payload["sys"].as_object_mut().unwrap();
+        for key in [
+            "native_inference_recovery",
+            "public_run_idempotency_fingerprint",
+            "public_provider_transport",
+        ] {
+            sys.remove(key);
+        }
+    }
+    assert_eq!(
+        successor_business, frozen_business,
+        "all frozen business inputs remain intact"
+    );
     for _ in 0..2 {
         let PreparedPublishedCallbackResume::Resume { initial_run } =
             f.prepare(&f.command).await.unwrap()

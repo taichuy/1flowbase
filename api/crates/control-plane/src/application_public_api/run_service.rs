@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use extension_contracts::provider_contract::CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -351,7 +352,24 @@ where
 
         let started_at = OffsetDateTime::now_utc();
         let input_payload = if let Some(grant) = &recovery {
-            grant.frozen_input_payload.clone()
+            let mut frozen_input = grant.frozen_input_payload.clone();
+            let frozen_object = frozen_input
+                .as_object_mut()
+                .ok_or(NativeRunValidationError::InvalidMapping)?;
+            // The successor stages the current ingress context, while business inputs stay frozen.
+            match mapped
+                .node_input_payload
+                .get(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY)
+            {
+                Some(locator) => {
+                    frozen_object
+                        .insert(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY.into(), locator.clone());
+                }
+                None => {
+                    frozen_object.remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+                }
+            }
+            frozen_input
         } else {
             let environment_variables = self
                 .repository
