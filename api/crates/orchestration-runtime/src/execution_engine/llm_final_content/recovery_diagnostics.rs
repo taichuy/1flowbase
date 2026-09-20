@@ -43,6 +43,21 @@ fn failure(source: &Value) -> Option<Value> {
     // validates projection data; it never selects an action or parses an error.
     for (field, allowed) in [
         (
+            "io_error_kind",
+            &[
+                "connection_refused",
+                "connection_reset",
+                "connection_aborted",
+                "not_connected",
+                "broken_pipe",
+                "timed_out",
+                "unexpected_eof",
+                "permission_denied",
+                "interrupted",
+                "other",
+            ][..],
+        ),
+        (
             "kind",
             &[
                 "websocket_close",
