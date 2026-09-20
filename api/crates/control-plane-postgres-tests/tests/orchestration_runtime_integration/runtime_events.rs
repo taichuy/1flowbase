@@ -148,6 +148,177 @@ async fn orchestration_runtime_repository_batch_appends_run_and_runtime_events()
     );
 }
 
+#[tokio::test]
+async fn event_batches_respect_postgres_bind_limit_and_preserve_order() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-04-17 09:00:00 UTC),
+    )
+    .await;
+
+    let mut expected_runtime = Vec::new();
+    // 4784 reproduces the observed 71760-bind failure; the other sizes straddle one batch.
+    for count in [4369, 4370, 4784] {
+        let offset = expected_runtime.len();
+        let inputs = (0..count)
+            .map(|index| {
+                let mut input = runtime_event_input(run.id, "text_delta");
+                input.payload = json!({"index": offset + index});
+                input
+            })
+            .collect::<Vec<_>>();
+        let records =
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_events(
+                &store, &inputs,
+            )
+            .await
+            .unwrap();
+        assert_eq!(records.len(), count);
+        for (index, record) in records.iter().enumerate() {
+            assert_eq!(record.sequence, (offset + index + 1) as i64);
+            assert_eq!(record.payload, inputs[index].payload);
+            expected_runtime.push((record.id, record.sequence, record.payload.clone()));
+        }
+    }
+    let stored_runtime = sqlx::query_as::<_, (Uuid, i64, Value)>(
+        "select id, sequence, payload from runtime_events where flow_run_id = $1 order by sequence",
+    )
+    .bind(run.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored_runtime, expected_runtime);
+
+    let inputs = (0..7282)
+        .map(|index| AppendRunEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            event_type: "text_delta".into(),
+            payload: json!({"index": index}),
+        })
+        .collect::<Vec<_>>();
+    let records =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_events(&store, &inputs)
+            .await
+            .unwrap();
+    assert_eq!(records.len(), inputs.len());
+    for (index, record) in records.iter().enumerate() {
+        assert_eq!(record.sequence, (index + 1) as i64);
+        assert_eq!(record.payload, inputs[index].payload);
+    }
+    let stored_run = sqlx::query_as::<_, (Uuid, i64, Value)>(
+        "select id, sequence, payload from flow_run_events where flow_run_id = $1 order by sequence",
+    ).bind(run.id).fetch_all(store.pool()).await.unwrap();
+    assert_eq!(
+        stored_run,
+        records
+            .into_iter()
+            .map(|record| (record.id, record.sequence, record.payload))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn event_batches_roll_back_all_chunks_when_second_chunk_has_invalid_node() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-04-17 09:00:00 UTC),
+    )
+    .await;
+    let existing_run = append_event(&store, &run, None, "existing").await;
+    let existing_runtime =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_event(
+            &store,
+            &runtime_event_input(run.id, "existing"),
+        )
+        .await
+        .unwrap();
+
+    let mut inputs = (0..4370)
+        .map(|_| runtime_event_input(run.id, "text_delta"))
+        .collect::<Vec<_>>();
+    inputs.last_mut().unwrap().node_run_id = Some(Uuid::now_v7());
+    let error = <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_events(
+        &store, &inputs,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        error
+            .downcast_ref::<sqlx::Error>()
+            .unwrap()
+            .as_database_error()
+            .unwrap()
+            .code()
+            .as_deref(),
+        Some("23503")
+    );
+    let retained_runtime = sqlx::query_scalar::<_, Uuid>(
+        "select id from runtime_events where flow_run_id = $1 order by sequence",
+    )
+    .bind(run.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(retained_runtime, vec![existing_runtime.id]);
+    let next_runtime =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_event(
+            &store,
+            &runtime_event_input(run.id, "after_rollback"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(next_runtime.sequence, existing_runtime.sequence + 1);
+
+    let mut inputs = (0..7282)
+        .map(|_| AppendRunEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            event_type: "text_delta".into(),
+            payload: json!({}),
+        })
+        .collect::<Vec<_>>();
+    inputs.last_mut().unwrap().node_run_id = Some(Uuid::now_v7());
+    let error =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_events(&store, &inputs)
+            .await
+            .unwrap_err();
+    assert_eq!(
+        error
+            .downcast_ref::<sqlx::Error>()
+            .unwrap()
+            .as_database_error()
+            .unwrap()
+            .code()
+            .as_deref(),
+        Some("23503")
+    );
+    let retained_run = sqlx::query_scalar::<_, Uuid>(
+        "select id from flow_run_events where flow_run_id = $1 order by sequence",
+    )
+    .bind(run.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(retained_run, vec![existing_run.id]);
+    let next_run = append_event(&store, &run, None, "after_rollback").await;
+    assert_eq!(next_run.sequence, existing_run.sequence + 1);
+}
+
 /// FIX-BE-002: ordinary event writers retain pre-terminal tool evidence but cannot append after
 /// the terminal CAS has committed its canonical flow and runtime terminal events.
 #[tokio::test]

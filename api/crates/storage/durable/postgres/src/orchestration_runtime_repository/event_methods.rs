@@ -70,48 +70,50 @@ impl PgControlPlaneStore {
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let scope_id = flow_run_scope_id_for_update(&mut tx, inputs[0].flow_run_id).await?;
-        let mut builder = QueryBuilder::<Postgres>::new(
-            r#"
-            insert into flow_run_events (
-                id,
-                scope_id,
-                flow_run_id,
-                node_run_id,
-                sequence,
-                event_type,
-                payload,
-                resume_timeline_description,
-                resume_timeline_description_projected
-            ) "#,
-        );
-        builder.push_values(inputs.iter().enumerate(), |mut row, (index, input)| {
-            row.push_bind(Uuid::now_v7())
-                .push_bind(scope_id)
-                .push_bind(input.flow_run_id)
-                .push_bind(input.node_run_id)
-                .push_bind(first_sequence + index as i64)
-                .push_bind(&input.event_type)
-                .push_bind(&input.payload)
-                .push_bind(resume_timeline_description(&input.payload))
-                .push_bind(true);
-        });
-        builder.push(
-            r#"
-            returning
-                id,
-                flow_run_id,
-                node_run_id,
-                sequence,
-                event_type,
-                payload,
-                created_at
-            "#,
-        );
-        let rows = builder.build().fetch_all(&mut *tx).await?;
-        let mut records = rows
-            .into_iter()
-            .map(map_run_event_record)
-            .collect::<Vec<_>>();
+        // PostgreSQL encodes the bind count as u16; each event binds 9 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 9;
+        let mut records = Vec::with_capacity(inputs.len());
+        for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
+            let mut builder = QueryBuilder::<Postgres>::new(
+                r#"
+                insert into flow_run_events (
+                    id,
+                    scope_id,
+                    flow_run_id,
+                    node_run_id,
+                    sequence,
+                    event_type,
+                    payload,
+                    resume_timeline_description,
+                    resume_timeline_description_projected
+                ) "#,
+            );
+            builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
+                row.push_bind(Uuid::now_v7())
+                    .push_bind(scope_id)
+                    .push_bind(input.flow_run_id)
+                    .push_bind(input.node_run_id)
+                    .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
+                    .push_bind(&input.event_type)
+                    .push_bind(&input.payload)
+                    .push_bind(resume_timeline_description(&input.payload))
+                    .push_bind(true);
+            });
+            builder.push(
+                r#"
+                returning
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    sequence,
+                    event_type,
+                    payload,
+                    created_at
+                "#,
+            );
+            let rows = builder.build().fetch_all(&mut *tx).await?;
+            records.extend(rows.into_iter().map(map_run_event_record));
+        }
         tx.commit().await?;
         records.sort_by_key(|record| record.sequence);
         Ok(records)
@@ -266,69 +268,75 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
-        let mut builder = QueryBuilder::<Postgres>::new(
-            r#"
-            insert into runtime_events (
-                id,
-                flow_run_id,
-                node_run_id,
-                span_id,
-                parent_span_id,
-                sequence,
-                event_type,
-                layer,
-                source,
-                trust_level,
-                item_id,
-                ledger_ref,
-                payload,
-                visibility,
-                durability
-            ) "#,
-        );
-        builder.push_values(inputs.iter().enumerate(), |mut row, (index, input)| {
-            row.push_bind(Uuid::now_v7())
-                .push_bind(input.flow_run_id)
-                .push_bind(input.node_run_id)
-                .push_bind(input.span_id)
-                .push_bind(input.parent_span_id)
-                .push_bind(first_sequence + index as i64)
-                .push_bind(&input.event_type)
-                .push_bind(input.layer.as_str())
-                .push_bind(input.source.as_str())
-                .push_bind(input.trust_level.as_str())
-                .push_bind(input.item_id)
-                .push_bind(input.ledger_ref.as_deref())
-                .push_bind(&input.payload)
-                .push_bind(input.visibility.as_str())
-                .push_bind(input.durability.as_str());
-        });
-        builder.push(
-            r#"
-            returning
-                id,
-                flow_run_id,
-                node_run_id,
-                span_id,
-                parent_span_id,
-                sequence,
-                event_type,
-                layer,
-                source,
-                trust_level,
-                item_id,
-                ledger_ref,
-                payload,
-                visibility,
-                durability,
-                created_at
-            "#,
-        );
-        let rows = builder.build().fetch_all(&mut *tx).await?;
-        let mut records = rows
-            .into_iter()
-            .map(map_runtime_event_record)
-            .collect::<Result<Vec<_>>>()?;
+        // PostgreSQL encodes the bind count as u16; each event binds 15 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 15;
+        let mut records = Vec::with_capacity(inputs.len());
+        for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
+            let mut builder = QueryBuilder::<Postgres>::new(
+                r#"
+                insert into runtime_events (
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    span_id,
+                    parent_span_id,
+                    sequence,
+                    event_type,
+                    layer,
+                    source,
+                    trust_level,
+                    item_id,
+                    ledger_ref,
+                    payload,
+                    visibility,
+                    durability
+                ) "#,
+            );
+            builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
+                row.push_bind(Uuid::now_v7())
+                    .push_bind(input.flow_run_id)
+                    .push_bind(input.node_run_id)
+                    .push_bind(input.span_id)
+                    .push_bind(input.parent_span_id)
+                    .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
+                    .push_bind(&input.event_type)
+                    .push_bind(input.layer.as_str())
+                    .push_bind(input.source.as_str())
+                    .push_bind(input.trust_level.as_str())
+                    .push_bind(input.item_id)
+                    .push_bind(input.ledger_ref.as_deref())
+                    .push_bind(&input.payload)
+                    .push_bind(input.visibility.as_str())
+                    .push_bind(input.durability.as_str());
+            });
+            builder.push(
+                r#"
+                returning
+                    id,
+                    flow_run_id,
+                    node_run_id,
+                    span_id,
+                    parent_span_id,
+                    sequence,
+                    event_type,
+                    layer,
+                    source,
+                    trust_level,
+                    item_id,
+                    ledger_ref,
+                    payload,
+                    visibility,
+                    durability,
+                    created_at
+                "#,
+            );
+            let rows = builder.build().fetch_all(&mut *tx).await?;
+            records.extend(
+                rows.into_iter()
+                    .map(map_runtime_event_record)
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
         tx.commit().await?;
         records.sort_by_key(|record| record.sequence);
         Ok(records)
