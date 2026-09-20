@@ -136,7 +136,10 @@ impl ProviderInvoker for SequencedTransportInvoker {
                     },
                 ))
             }
-            ScriptedAttempt::ErrorWithRawDetails { kind, details } => {
+            ScriptedAttempt::ErrorWithRawDetails { kind, mut details } => {
+                if details["1flowbase_provider_recovery"]["transport_epoch"] == "$current" {
+                    details["1flowbase_provider_recovery"]["transport_epoch"] = input.run_context["provider_recovery"]["transport_epoch"].clone();
+                }
                 return Err(anyhow::Error::new(
                     ExtensionContractError::RuntimeContract {
                         error: Box::new(ProviderRuntimeError {
@@ -586,4 +589,30 @@ async fn err_path_without_any_receipt_reports_missing_typed_receipt() {
             .len(),
         1
     );
+}
+
+#[tokio::test]
+async fn exhausted_error_preserves_first_last_and_final_decision_in_engine_outcome() {
+    let (invoker, ids) = scripted_invoker([ScriptedAttempt::ErrorWithRawDetails {
+        kind: ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        details: json!({
+            "1flowbase_provider_recovery": {"attempt":1,"transport":"ai_native_web_socket","transport_epoch":"$current","socket_incarnation":4,"commit_level":"terminal","disposition":"terminal_interruption","reason":"budget_exhausted"},
+            "1flowbase_provider_recovery_diagnostics": {
+                "first_failure":{"kind":"websocket_close","close_code":1011,"reason_category":"proxy_failed","socket_incarnation":3,"attempt":0,"consumed_attempts":1},
+                "last_failure":{"kind":"websocket_close","close_code":1008,"reason_category":"continuation_unavailable","socket_incarnation":4,"owner_socket_incarnation":3,"attempt":1,"consumed_attempts":2},
+                "association_valid":false,"attempts":[],"secret":"SECRET_CANARY"
+            }
+        }),
+    }]);
+    let outcome = start_flow_debug_run(&base_plan(), &json!({"node-start":{"query":"hello"}}), &invoker).await.unwrap();
+    assert_eq!(ids.lock().unwrap().len(), 1, "terminal receipt must not cause an outer provider call");
+    let attempts = llm_attempts(&outcome);
+    let metric = &attempts[0];
+    assert_eq!(metric["ai_native_recovery"]["decision"], "semantic_terminal");
+    assert_eq!(metric["ai_native_recovery"]["provider_attempts_consumed"], 2);
+    assert_eq!(metric["1flowbase_provider_recovery_diagnostics"]["first_failure"]["close_code"], 1011);
+    let ExecutionStopReason::Failed(failure) = outcome.stop_reason else { panic!("expected provider failure") };
+    assert_eq!(failure.error_payload["1flowbase_provider_recovery_diagnostics"]["last_failure"]["close_code"], 1008);
+    assert_eq!(failure.error_payload["ai_native_recovery"]["decision"], "semantic_terminal");
+    assert!(!failure.error_payload.to_string().contains("SECRET_CANARY"));
 }

@@ -481,6 +481,15 @@ pub(super) fn build_attempt_metric(input: AttemptMetricInput<'_>) -> Value {
             .map(Value::String)
             .unwrap_or(Value::Null),
     });
+    for key in [
+        "1flowbase_provider_recovery_diagnostics",
+        "1flowbase_provider_recovery",
+    ] {
+        if let Some(value) = input.error_payload.and_then(|payload| payload.get(key)) {
+            // Already bounded by the provider-error projection owner.
+            attempt[key] = value.clone();
+        }
+    }
     attach_generate_projection_receipt(&mut attempt, input.generate_projection_receipt);
     attempt
 }

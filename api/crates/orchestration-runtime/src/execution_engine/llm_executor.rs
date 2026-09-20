@@ -793,6 +793,7 @@ where
                         | OuterReplayDecision::StaleEpochNoop
                 );
                 attach_ai_native_recovery_receipt(&mut attempt, &recovery_receipt);
+                error_payload["ai_native_recovery"] = json!(recovery_receipt);
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
                 let billing_allows_retry = fee_details
@@ -1036,6 +1037,9 @@ where
         });
         if let Some(receipt) = ai_native_recovery.as_ref() {
             attach_ai_native_recovery_receipt(&mut attempt, receipt);
+            if let Some(payload) = error_payload.as_mut() {
+                payload["ai_native_recovery"] = json!(receipt);
+            }
         }
         attempt_metrics.push(attempt.clone());
 
