@@ -1801,3 +1801,6 @@ fn openai_chat_projects_answer_presentation_delta_not_provider_raw_delta() {
     assert!(provider_events.is_empty());
     assert_eq!(presentation_events.len(), 1);
 }
+
+#[path = "forwarding/_tests/live_delivery_batch.rs"]
+mod live_delivery_batch;

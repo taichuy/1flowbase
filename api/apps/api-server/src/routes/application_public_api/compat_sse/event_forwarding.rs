@@ -140,17 +140,24 @@ async fn forward_subscribed_typed_events(
                     continue;
                 }
             };
-            let Some(index) = claims
+            if !claims
                 .iter()
-                .position(|delivery| runtime_delivery_matches_envelope(delivery, &event))
-            else {
+                .any(|delivery| runtime_delivery_matches_envelope(delivery, &event))
+            {
                 release_delivery_claims(settler, claims);
                 continue;
-            };
-            let delivery = claims.remove(index);
-            release_delivery_claims(settler, claims);
-            let receipt = settler.receipt(delivery);
-            if forward_ordered_typed_events(&mut forwarding, vec![(event, Some(receipt))]).await {
+            }
+            // A live notification wakes the durable batch owner. Releasing its siblings
+            // and claiming again races the asynchronous settler and can lose notifications.
+            forwarding.last_forwarded_sequence =
+                forwarding.last_forwarded_sequence.max(event.sequence);
+            if forward_pending_delivery_claims(
+                &mut forwarding,
+                &mut claims,
+                &mut delivered_claim_events,
+            )
+            .await
+            {
                 return;
             }
             continue;
@@ -190,6 +197,8 @@ async fn forward_pending_delivery_claims(
     deliveries: &mut Vec<RuntimeEventDeliveryClaim>,
     delivered_claim_events: &mut Vec<(String, Value)>,
 ) -> bool {
+    // UPDATE ... RETURNING does not inherit the candidate query's ORDER BY.
+    deliveries.sort_by_key(|delivery| (delivery.event.sequence, delivery.event.id));
     while !deliveries.is_empty() {
         let delivery = deliveries.remove(0);
         let envelope = durable_record_to_runtime_event_envelope(delivery.event.clone());
