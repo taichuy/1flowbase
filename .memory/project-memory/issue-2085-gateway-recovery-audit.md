@@ -2,7 +2,7 @@
 title: "Issue 2085 三层 Gateway 故障修复与审计分工"
 memory_type: project
 created_at: "2026-09-19 17"
-updated_at: "2026-09-20 11"
+updated_at: "2026-09-20 12"
 decision_policy: verify_before_decision
 status: active
 tags: [gateway, responses, audit, issue-2085]
@@ -62,3 +62,19 @@ tags: [gateway, responses, audit, issue-2085]
   未构建「真实 WS 入口 + 回调 owner + 协调器 + provider worker」单进程联合用例；
   「处理中精确重传的有界等待/订阅」未实现（回调层保持 409/拒绝，不启动第二次执行）。
 - 结论口径：**开发与已列自动化验证完成；真实 CLI 短程未执行（阻塞已交接）；长会话稳定性待人工验收。**
+
+## 2026-09-20 用户授权重启 7800 + 真实 CLI 短程结果
+
+- 用户回复「重启吧」后执行：`runtime/restart-api-server.py` 有界替换 dev-up 归属进程
+  （SIGTERM + 有界等待、无强杀、无重复监听、继承原 env、先备份运行中二进制）。
+  旧 pid 3350004（`53062dec…`）→ 新 pid 3652759（`fe66f3ee…`，本轮候选），`/health` ok；
+  回滚备份 `runtime/api-server-before`。
+- 真实 CLI 短程（luna/max，`/home/taichuy/git/1flowbase_latest`，thread `01a0bcb8-516b-...`）：
+  普通调用、工具续接（工具调用→waiting_callback→回调续接）、同 thread 追问均 **PASS**；
+  6 个 flow 全 succeeded，每个 attempt 均带 WS 会话回执且 `provider_metadata.transport=responses_websocket`
+  （确为 WebSocket 非 HTTP），`is_retry` 全 false，`tool_call_commit=1`/`capability_call_requested=1`（工具恰好一次），
+  窗口内准入错误 0 次。
+- mailbox 抢占子项**未触发**：`codex exec` 无子代理选项、`~/.codex` 无 agent 配置、`/root/ci_scout` 不存在；
+  该客户端行为需用户交互式 Codex 会话人工复现，不计入 PASS。
+- 结论口径更新：**开发与已列自动化验证完成；真实 CLI 短程普通调用与工具续接通过、mailbox 抢占子项未触发；
+  长会话稳定性待人工验收。** 本轮候选已激活在 7800。
