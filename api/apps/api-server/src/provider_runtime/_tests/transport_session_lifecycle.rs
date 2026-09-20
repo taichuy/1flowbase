@@ -1573,3 +1573,6 @@ fn admission_diagnostics(error: &anyhow::Error) -> serde_json::Value {
 
 #[path = "transport_session_lifecycle/close_control.rs"]
 mod close_control;
+
+#[path = "transport_session_lifecycle/prewarm_handoff.rs"]
+mod prewarm_handoff;

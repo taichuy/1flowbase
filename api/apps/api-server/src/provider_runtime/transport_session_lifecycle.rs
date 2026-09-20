@@ -33,6 +33,10 @@ use tokio::sync::{broadcast, Mutex, Notify};
 
 use super::ProviderRuntimeExecutionContext;
 
+#[path = "transport_session_lifecycle/prewarm_handoff.rs"]
+mod prewarm_handoff;
+use prewarm_handoff::PrewarmHandoff;
+
 const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
 const CONTROL_OVERALL_DEADLINE: Duration = Duration::from_secs(30);
 const CONTROL_MAX_ATTEMPTS: u8 = 5;
@@ -166,6 +170,7 @@ pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
     notices: broadcast::Sender<TransportTerminationNotice>,
     shutdown: AtomicBool,
     shutdown_notify: Notify,
+    prewarm_handoff: PrewarmHandoff,
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
@@ -199,6 +204,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             notices,
             shutdown: AtomicBool::new(false),
             shutdown_notify: Notify::new(),
+            prewarm_handoff: PrewarmHandoff::default(),
             scheduler: StdMutex::new(None),
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
@@ -258,6 +264,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 let _ = registry.mark_invocation_orphaned(lease);
             }
         }
+        self.prewarm_handoff.changed.notify_waiters();
     }
 
     fn detach_lease(&self, lease: &InvocationLease) {
@@ -316,185 +323,234 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .ok()
             .map(TransportInstant::from_millis);
 
-        let _dispatcher = self.dispatcher.lock().await;
-        let connection_scope = match connection_scope_id {
-            Some(id) => {
-                let scope = self
-                    .connection_scopes
-                    .lock()
-                    .expect("transport scopes")
-                    .get(&id)
-                    .and_then(Weak::upgrade);
-                let Some(scope) = scope else {
-                    // The request names a delivery scope this host no longer owns:
-                    // either it was already closed, or the reference is stale.
-                    return Err(admission_error(
-                        "transport_session_scope_unknown",
-                        admission_details(&session_id, None, None, None, true),
-                    ));
-                };
-                if scope
-                    .state
-                    .lock()
-                    .expect("transport connection bindings")
-                    .closed
-                {
-                    return Err(admission_error(
-                        "transport_session_scope_closed",
-                        admission_details(&session_id, None, None, None, true),
-                    ));
-                }
-                Some(scope)
-            }
-            None => None,
-        };
-        self.registry.lock().await.maintain();
-        self.dispatch_pending_events_locked().await;
-
-        let mut registry = self.registry.lock().await;
-        let now = registry.safe_snapshot().observed_at;
-        if invocation_deadline.is_some_and(|deadline| deadline <= now) {
-            return Err(transport_error("transport_invocation_deadline_exceeded"));
-        }
-        let fence = if let Some(fence) = registry.fence(&session_id) {
-            let state = registry.state(&fence)?;
-            if state == TransportSessionState::Orphaned {
-                // Unbinding the delivery is a fact, not a verdict. Only the
-                // execution state decides whether a successor may start here, and
-                // a second execution for the same logical call is never opened:
-                // while the original invocation is still in flight the request is
-                // refused with its own branch; once it finished, the same owner
-                // identity, target and fence may reclaim the session (the
-                // sequence check inside `begin_invocation` re-checks this under the
-                // registry lock, closing the finish/race window).
-                let inflight = registry.invocation_inflight(&fence)?;
-                if inflight {
-                    return Err(admission_error(
-                        "transport_session_inflight_unbound",
-                        admission_details(&session_id, Some(&fence), Some(state), Some(true), true),
-                    ));
-                }
-            }
-            if registry.runtime_target_id(&fence)? != &target {
+        let mut handoff_deadline = None;
+        loop {
+            // Register before observing state; completion between inspection and await
+            // must wake this waiter. Never retain registry/dispatcher locks while waiting.
+            let changed = self.prewarm_handoff.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            let _dispatcher = self.dispatcher.lock().await;
+            if self.shutdown.load(Ordering::Acquire) {
                 return Err(admission_error(
-                    "transport_session_evicted",
-                    admission_details(&session_id, Some(&fence), Some(state), None, scope_requested),
+                    "transport_session_shutdown",
+                    admission_details(&session_id, None, None, None, scope_requested),
                 ));
             }
-            if matches!(
-                state,
-                TransportSessionState::Faulted | TransportSessionState::IdleReleased
-            ) {
-                validate_fault_successor(input, recovery_directive.as_ref(), now)?;
-                if self.close_task_exhausted(&fence) {
-                    return Err(self.recovery_admission_error(
-                        &fence,
-                        "provider_physical_connection_close_exhausted",
+            let connection_scope = match connection_scope_id.as_ref() {
+                Some(id) => {
+                    let scope = self
+                        .connection_scopes
+                        .lock()
+                        .expect("transport scopes")
+                        .get(id)
+                        .and_then(Weak::upgrade);
+                    let Some(scope) = scope else {
+                        // The request names a delivery scope this host no longer owns:
+                        // either it was already closed, or the reference is stale.
+                        return Err(admission_error(
+                            "transport_session_scope_unknown",
+                            admission_details(&session_id, None, None, None, true),
+                        ));
+                    };
+                    if scope
+                        .state
+                        .lock()
+                        .expect("transport connection bindings")
+                        .closed
+                    {
+                        return Err(admission_error(
+                            "transport_session_scope_closed",
+                            admission_details(&session_id, None, None, None, true),
+                        ));
+                    }
+                    Some(scope)
+                }
+                None => None,
+            };
+            self.registry.lock().await.maintain();
+            self.dispatch_pending_events_locked().await;
+
+            let mut registry = self.registry.lock().await;
+            let now = registry.safe_snapshot().observed_at;
+            if invocation_deadline.is_some_and(|deadline| deadline <= now) {
+                return Err(transport_error("transport_invocation_deadline_exceeded"));
+            }
+            let fence = if let Some(fence) = registry.fence(&session_id) {
+                let state = registry.state(&fence)?;
+                if state == TransportSessionState::Orphaned {
+                    // Unbinding the delivery is a fact, not a verdict. Only the
+                    // execution state decides whether a successor may start here, and
+                    // a second execution for the same logical call is never opened:
+                    // ordinary in-flight calls are refused. Only a non-generating
+                    // prewarm may hand off after bounded completion; the same owner
+                    // identity, target and fence may reclaim the session (the
+                    // sequence check inside `begin_invocation` re-checks this under the
+                    // registry lock, closing the finish/race window).
+                    let inflight = registry.invocation_inflight(&fence)?;
+                    if inflight {
+                        if registry.runtime_target_id(&fence)? == &target
+                            && self.prewarm_handoff.contains(&fence)
+                            && connection_scope.is_some()
+                        {
+                            let deadline = *handoff_deadline.get_or_insert_with(|| {
+                                let remaining_ms = invocation_deadline
+                                    .map(|deadline| {
+                                        deadline.as_millis().saturating_sub(now.as_millis())
+                                    })
+                                    .unwrap_or(30_000);
+                                tokio::time::Instant::now() + Duration::from_millis(remaining_ms)
+                            });
+                            drop(registry);
+                            drop(_dispatcher);
+                            if tokio::time::timeout_at(deadline, changed).await.is_err() {
+                                return Err(transport_error(
+                                    "transport_invocation_deadline_exceeded",
+                                ));
+                            }
+                            continue;
+                        }
+                        return Err(admission_error(
+                            "transport_session_inflight_unbound",
+                            admission_details(
+                                &session_id,
+                                Some(&fence),
+                                Some(state),
+                                Some(true),
+                                true,
+                            ),
+                        ));
+                    }
+                }
+                if registry.runtime_target_id(&fence)? != &target {
+                    return Err(admission_error(
+                        "transport_session_evicted",
+                        admission_details(
+                            &session_id,
+                            Some(&fence),
+                            Some(state),
+                            None,
+                            scope_requested,
+                        ),
                     ));
                 }
-                // Only the next invocation gets a fresh physical generation.
-                // Rotation keeps the original logical deadline and sequence.
-                let next = registry.rotate_generation(&fence).map_err(|error| {
-                    if matches!(error, RegistryError::InvalidTransition { .. }) {
-                        self.recovery_admission_error(
-                            &fence,
-                            "provider_physical_connection_close_pending",
-                        )
-                    } else {
-                        map_registry_use_error(error)
-                    }
-                })?;
-                registry.activate(&next)?;
-                next
-            } else {
                 if matches!(
                     state,
-                    TransportSessionState::Draining | TransportSessionState::Closing
+                    TransportSessionState::Faulted | TransportSessionState::IdleReleased
                 ) {
+                    validate_fault_successor(input, recovery_directive.as_ref(), now)?;
                     if self.close_task_exhausted(&fence) {
                         return Err(self.recovery_admission_error(
                             &fence,
                             "provider_physical_connection_close_exhausted",
                         ));
                     }
-                    return Err(self.recovery_admission_error(
-                        &fence,
-                        if state == TransportSessionState::Draining {
-                            "provider_connection_draining"
+                    // Only the next invocation gets a fresh physical generation.
+                    // Rotation keeps the original logical deadline and sequence.
+                    let next = registry.rotate_generation(&fence).map_err(|error| {
+                        if matches!(error, RegistryError::InvalidTransition { .. }) {
+                            self.recovery_admission_error(
+                                &fence,
+                                "provider_physical_connection_close_pending",
+                            )
                         } else {
-                            "provider_connection_closing"
-                        },
-                    ));
+                            map_registry_use_error(error)
+                        }
+                    })?;
+                    registry.activate(&next)?;
+                    next
+                } else {
+                    if matches!(
+                        state,
+                        TransportSessionState::Draining | TransportSessionState::Closing
+                    ) {
+                        if self.close_task_exhausted(&fence) {
+                            return Err(self.recovery_admission_error(
+                                &fence,
+                                "provider_physical_connection_close_exhausted",
+                            ));
+                        }
+                        return Err(self.recovery_admission_error(
+                            &fence,
+                            if state == TransportSessionState::Draining {
+                                "provider_connection_draining"
+                            } else {
+                                "provider_connection_closing"
+                            },
+                        ));
+                    }
+                    fence
                 }
+            } else if let Some(receipt) = registry.tombstone(&session_id) {
+                return Err(
+                    self.recovery_admission_error(&receipt.fence, termination_code(receipt.kind))
+                );
+            } else {
+                let fence = registry
+                    .admit(AdmissionRequest {
+                        session_id: session_id.clone(),
+                        owner_id,
+                        provider_id,
+                        runtime_target_id: target,
+                        provider_hard_deadline: None,
+                    })
+                    .map_err(map_registry_admission_error)?;
+                registry.activate(&fence)?;
                 fence
-            }
-        } else if let Some(receipt) = registry.tombstone(&session_id) {
-            return Err(
-                self.recovery_admission_error(&receipt.fence, termination_code(receipt.kind))
-            );
-        } else {
-            let fence = registry
-                .admit(AdmissionRequest {
-                    session_id: session_id.clone(),
-                    owner_id,
-                    provider_id,
-                    runtime_target_id: target,
-                    provider_hard_deadline: None,
+            };
+            let lease = registry
+                .begin_invocation(
+                    &fence,
+                    InvocationRequest {
+                        deadline: invocation_deadline,
+                    },
+                )
+                .map_err(map_registry_use_error)?;
+            self.prewarm_handoff.record(input, transport, &lease);
+            let physical_deadline_unix_ms =
+                i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis())
+                    .unwrap_or(i64::MAX);
+            input
+                .set_transport_session_directive(ProviderTransportSessionDirective {
+                    worker_incarnation: None,
+                    logical_session_id: session_id.as_str().to_string(),
+                    generation: fence.generation.get(),
+                    task_id: format!("invocation-{}-{}", fence.generation.get(), lease.sequence()),
+                    state: ProviderLogicalSessionState::Active,
+                    physical_deadline_unix_ms,
                 })
-                .map_err(map_registry_admission_error)?;
-            registry.activate(&fence)?;
-            fence
-        };
-        let lease = registry
-            .begin_invocation(
-                &fence,
-                InvocationRequest {
-                    deadline: invocation_deadline,
-                },
-            )
-            .map_err(map_registry_use_error)?;
-        let physical_deadline_unix_ms =
-            i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis()).unwrap_or(i64::MAX);
-        input
-            .set_transport_session_directive(ProviderTransportSessionDirective {
-                worker_incarnation: None,
-                logical_session_id: session_id.as_str().to_string(),
-                generation: fence.generation.get(),
-                task_id: format!("invocation-{}-{}", fence.generation.get(), lease.sequence()),
-                state: ProviderLogicalSessionState::Active,
-                physical_deadline_unix_ms,
-            })
-            .map_err(|_| transport_error("transport_session_directive_invalid"))?;
-        drop(registry);
-        {
-            let mut scopes = self.connection_scopes.lock().expect("transport scopes");
-            scopes.retain(|_, scope| {
-                let Some(scope) = scope.upgrade() else {
-                    return false;
-                };
+                .map_err(|_| transport_error("transport_session_directive_invalid"))?;
+            drop(registry);
+            {
+                let mut scopes = self.connection_scopes.lock().expect("transport scopes");
+                scopes.retain(|_, scope| {
+                    let Some(scope) = scope.upgrade() else {
+                        return false;
+                    };
+                    scope
+                        .state
+                        .lock()
+                        .expect("transport connection bindings")
+                        .leases
+                        .remove(lease.fence.session_id.as_str());
+                    true
+                });
+            }
+            if let Some(scope) = connection_scope {
                 scope
                     .state
                     .lock()
                     .expect("transport connection bindings")
                     .leases
-                    .remove(lease.fence.session_id.as_str());
-                true
-            });
+                    .insert(lease.fence.session_id.as_str().into(), lease.clone());
+            }
+            self.dispatch_pending_events_locked().await;
+            return Ok(Some(PreparedTransportInvocation {
+                lease,
+                transport,
+                recovery_directive: recovery_directive.clone(),
+            }));
         }
-        if let Some(scope) = connection_scope {
-            scope
-                .state
-                .lock()
-                .expect("transport connection bindings")
-                .leases
-                .insert(lease.fence.session_id.as_str().into(), lease.clone());
-        }
-        self.dispatch_pending_events_locked().await;
-        Ok(Some(PreparedTransportInvocation {
-            lease,
-            transport,
-            recovery_directive,
-        }))
     }
 
     pub(crate) async fn finish(
@@ -593,6 +649,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
 
     pub(crate) async fn shutdown(&self, timeout: Duration) {
         self.shutdown.store(true, Ordering::Release);
+        self.prewarm_handoff.changed.notify_waiters();
         self.registry
             .lock()
             .await
@@ -628,6 +685,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             primary.map(|failure| (lease.fence.clone(), failure)),
         )
         .await;
+        self.prewarm_handoff.changed.notify_waiters();
     }
 
     async fn maintain_and_dispatch(&self) {
@@ -657,6 +715,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 .collect::<Vec<_>>();
             (commands, registry.safe_snapshot())
         };
+        let retired_prewarm = self.prewarm_handoff.retain_inflight(&snapshot);
+        if retired_prewarm || !new_commands.is_empty() {
+            self.prewarm_handoff.changed.notify_waiters();
+        }
         let commands = {
             let mut pending = self
                 .pending_commands
