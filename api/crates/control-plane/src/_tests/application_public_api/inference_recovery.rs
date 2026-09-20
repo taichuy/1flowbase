@@ -304,6 +304,7 @@ async fn native_recovery_rejects_missing_changed_history_and_configuration() {
         }
         let expected = match mutation {
             0 | 7 => "native_recovery_full_context_required",
+            1 => "native_recovery_history_item_count_mismatch",
             6 => "native_recovery_configuration_mismatch",
             _ => "native_recovery_history_mismatch",
         };

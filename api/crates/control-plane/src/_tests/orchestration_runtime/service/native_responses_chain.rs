@@ -119,6 +119,7 @@ async fn native_empty_prewarm_cross_flow_delta_creates_verified_callback_history
         .await;
     let metadata = &checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]
         ["provider_metadata"]["native_response"];
+    assert_eq!(metadata["history"]["version"], 2);
     let mut full_input = initial_input.as_array().unwrap().clone();
     full_input.push(tool_item);
     full_input

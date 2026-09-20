@@ -127,3 +127,144 @@ fn evidence_absence_corruption_and_content_changes_are_distinct() {
     .unwrap();
     assert_eq!(validate_full_retry_input(&json!([{"role":"user","content":"changed"},{"type":"function_call_output","call_id":"c","output":"ok"}]), &history, &["c".into()]).unwrap_err().to_string(), "native_history_mismatch");
 }
+
+#[test]
+fn v2_tracking_contract_is_typed_and_preserves_tool_result_metadata() {
+    for kind in [
+        "function_call",
+        "custom_tool_call",
+        "message",
+        "reasoning",
+        "compaction",
+        "context_compaction",
+    ] {
+        let original = json!({"type":kind,"metadata":{"turn_id":"delivery"},"internal_chat_message_metadata_passthrough":{"turn_id":"turn","create_time":12.5},"extension":{"metadata":{"turn_id":"semantic"}}});
+        let normalized = normalize_item(&original).unwrap();
+        assert!(normalized.get("metadata").is_none());
+        assert!(normalized
+            .get("internal_chat_message_metadata_passthrough")
+            .is_none());
+        assert_eq!(normalized["extension"], original["extension"]);
+        assert_eq!(normalize_item(&normalized).unwrap(), normalized);
+    }
+    for kind in ["function_call_output", "custom_tool_call_output"] {
+        let original = json!({"type":kind,"call_id":"c","output":"ok","metadata":{"turn_id":"result"},"internal_chat_message_metadata_passthrough":{"turn_id":"trace","executed_tool_calls":[{"name":"tool","arguments":"{}","tool_result_metadata":{"id":"r1"}}]}});
+        let mut changed = original.clone();
+        changed["internal_chat_message_metadata_passthrough"]["turn_id"] = json!("new trace");
+        assert_eq!(
+            normalize_item(&original).unwrap(),
+            normalize_item(&changed).unwrap()
+        );
+        changed["internal_chat_message_metadata_passthrough"]["executed_tool_calls"][0]
+            ["tool_result_metadata"]["id"] = json!("r2");
+        assert_ne!(
+            normalize_item(&original).unwrap(),
+            normalize_item(&changed).unwrap()
+        );
+        assert_eq!(
+            normalize_item(&original).unwrap()["metadata"],
+            original["metadata"]
+        );
+    }
+    let unknown = json!({"type":"future_item","id":"legacy","metadata":{"turn_id":"x"}});
+    assert_eq!(normalize_item(&unknown).unwrap(), unknown);
+    let extended =
+        json!({"type":"function_call","metadata":{"turn_id":"x","future_semantic":"keep"}});
+    assert_eq!(
+        normalize_item(&extended).unwrap()["metadata"],
+        json!({"future_semantic":"keep"})
+    );
+    let malformed = json!({"type":"message","metadata":{"turn_id":{"unexpected":true}}});
+    assert_eq!(normalize_item(&malformed).unwrap(), malformed);
+}
+
+#[test]
+fn v2_semantic_fields_and_opaque_extensions_cannot_be_erased() {
+    let examples = [
+        json!({"type":"function_call","call_id":"c","name":"f","namespace":"ns","arguments":"{\"x\":1}","encrypted_function_args":["cipher"]}),
+        json!({"type":"custom_tool_call","call_id":"c","name":"f","namespace":"ns","input":"body","status":"completed"}),
+        json!({"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"text"}]}),
+        json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"opaque"}],"encrypted_content":"cipher"}),
+        json!({"type":"compaction","encrypted_content":"cipher"}),
+        json!({"type":"context_compaction","encrypted_content":"cipher"}),
+        json!({"type":"function_call_output","call_id":"c","output":"result","metadata":{"id":"result"}}),
+    ];
+    for original in examples {
+        let normalized = normalize_item(&original).unwrap();
+        assert_eq!(normalize_item(&normalized).unwrap(), normalized);
+        for field in original
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter(|f| f.as_str() != "type")
+        {
+            let mut changed = original.clone();
+            changed[field] = json!("tampered");
+            assert_ne!(
+                normalize_item(&changed).unwrap(),
+                normalized,
+                "field {field}"
+            );
+        }
+    }
+    assert_eq!(
+        normalize_item(&json!({"type":"compaction_summary","encrypted_content":"cipher"})).unwrap(),
+        json!({"type":"compaction","encrypted_content":"cipher"})
+    );
+    assert_ne!(
+        normalize_item(&json!({"type":"compaction","encrypted_content":"cipher"})).unwrap(),
+        normalize_item(&json!({"type":"context_compaction","encrypted_content":"cipher"})).unwrap()
+    );
+}
+
+#[test]
+fn proof_versions_are_domain_separated_and_legacy_is_not_upgraded() {
+    let input = json!({"type":"message","role":"user","content":"old"});
+    let mut legacy = History::empty(1);
+    legacy.append(&input).unwrap();
+    let legacy = serde_json::to_value(legacy).unwrap();
+    let current = completed_history(&json!({"input":[input]}), None, &[])
+        .unwrap()
+        .unwrap();
+    assert_eq!(current["version"], 2);
+    assert_ne!(current["digest"], legacy["digest"]);
+    let continued = completed_history(
+        &json!({"previous_response_id":"resp_old","input":[]}),
+        Some(&legacy),
+        &[],
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(continued, legacy);
+    assert_eq!(
+        validate_full_retry_input(
+            &json!([input,{"type":"function_call_output","call_id":"c","output":"ok"}]),
+            &legacy,
+            &["c".into()]
+        )
+        .unwrap_err()
+        .to_string(),
+        "native_history_version_unsupported"
+    );
+    let mut future = current.clone();
+    future["version"] = json!(999);
+    assert_eq!(
+        validate_full_retry_input(&json!([]), &future, &[])
+            .unwrap_err()
+            .to_string(),
+        "native_history_version_unsupported"
+    );
+    assert_eq!(
+        validate_full_retry_input(&json!([]), &current, &["c".into()])
+            .unwrap_err()
+            .to_string(),
+        "native_history_item_count_mismatch"
+    );
+    assert!(completed_history(
+        &json!({"previous_response_id":"resp_old","input":[input]}),
+        None,
+        &[]
+    )
+    .unwrap()
+    .is_none());
+}

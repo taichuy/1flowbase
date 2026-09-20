@@ -5,6 +5,15 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+mod canonical;
+mod legacy;
+
+const CURRENT_VERSION: u32 = 2;
+
+fn normalize_item(item: &Value) -> Result<Value> {
+    canonical::normalize_item(item)
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct History {
@@ -14,11 +23,14 @@ struct History {
 }
 
 impl History {
-    fn empty() -> Self {
+    fn empty(version: u32) -> Self {
         Self {
-            version: 1,
+            version,
             item_count: 0,
-            digest: format!("{:x}", Sha256::digest(b"1flowbase.responses.history.v1")),
+            digest: format!(
+                "{:x}",
+                Sha256::digest(format!("1flowbase.responses.history.v{version}"))
+            ),
         }
     }
 
@@ -27,19 +39,28 @@ impl History {
         let history: Self = serde_json::from_value(value.clone())
             .map_err(|_| anyhow::anyhow!("native_history_evidence_invalid"))?;
         ensure!(
-            history.version == 1
-                && history.digest.len() == 64
-                && history.digest.bytes().all(|c| c.is_ascii_hexdigit()),
+            history.digest.len() == 64 && history.digest.bytes().all(|c| c.is_ascii_hexdigit()),
             "native_history_evidence_invalid"
+        );
+        ensure!(
+            matches!(history.version, 1 | CURRENT_VERSION),
+            "native_history_version_unsupported"
         );
         Ok(history)
     }
 
     fn append(&mut self, item: &Value) -> Result<()> {
-        let item = normalize_item(item)?;
+        let item = match self.version {
+            1 => legacy::normalize_item(item)?,
+            CURRENT_VERSION => normalize_item(item)?,
+            _ => anyhow::bail!("native_history_version_unsupported"),
+        };
         let bytes = serde_json::to_vec(&canonical_json(&item))?;
         let mut hash = Sha256::new();
-        hash.update(b"1flowbase.responses.history.item.v1\0");
+        hash.update(format!(
+            "1flowbase.responses.history.item.v{}\0",
+            self.version
+        ));
         hash.update(self.digest.as_bytes());
         hash.update((bytes.len() as u64).to_be_bytes());
         hash.update(bytes);
@@ -66,7 +87,7 @@ pub(crate) fn completed_history(
         };
         History::parse(predecessor)?
     } else {
-        History::empty()
+        History::empty(CURRENT_VERSION)
     };
     let input = match body.get("input") {
         Some(Value::Array(items)) => items.clone(),
@@ -89,15 +110,21 @@ pub(crate) fn validate_full_retry_input(
     owned_call_ids: &[String],
 ) -> Result<()> {
     let expected = History::parse(trusted_history)?;
+    // A v1 hash cannot attest the v2 client equivalence contract. Preserve old
+    // continuation proofs as v1, but require a fresh trusted round for recovery.
+    ensure!(
+        expected.version == CURRENT_VERSION,
+        "native_history_version_unsupported"
+    );
     let items = input
         .as_array()
-        .ok_or_else(|| anyhow::anyhow!("native_history_incomplete"))?;
+        .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
     ensure!(
         expected.item_count > 0
             && expected.item_count.checked_add(owned_call_ids.len()) == Some(items.len()),
-        "native_history_incomplete"
+        "native_history_item_count_mismatch"
     );
-    let mut actual = History::empty();
+    let mut actual = History::empty(CURRENT_VERSION);
     for item in &items[..expected.item_count] {
         actual.append(item)?;
     }
@@ -141,67 +168,6 @@ fn canonical_json(value: &Value) -> Value {
         Value::Array(items) => Value::Array(items.iter().map(canonical_json).collect()),
         value => value.clone(),
     }
-}
-
-/// Narrow wire equivalences from Codex ResponseItem and prepare_response_items_for_request.
-/// Never discard opaque reasoning, compaction, arguments, phase, tool metadata or unknown fields.
-fn normalize_item(item: &Value) -> Result<Value> {
-    let mut item = item.clone();
-    let object = item
-        .as_object_mut()
-        .ok_or_else(|| anyhow::anyhow!("native_history_item_invalid"))?;
-    if !object.contains_key("type") && object.contains_key("role") {
-        object.insert("type".into(), json!("message"));
-    }
-    let kind = object
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    // Codex drops legacy unprefixed item IDs; call_id is always retained.
-    if object.get("id").is_some_and(|id| {
-        id.is_null()
-            || id.as_str().is_some_and(|id| {
-                !id.split_once('_')
-                    .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty())
-            })
-    }) {
-        object.remove("id");
-    }
-    // These two ResponseItem variants do not carry the response delivery status.
-    if matches!(kind.as_str(), "message" | "function_call")
-        && object.get("status").and_then(Value::as_str) == Some("completed")
-    {
-        object.remove("status");
-    }
-    if kind == "message" {
-        if let Some(Value::String(text)) = object.get("content") {
-            let content_type = if object.get("role").and_then(Value::as_str) == Some("assistant") {
-                "output_text"
-            } else {
-                "input_text"
-            };
-            let content = json!([{"type":content_type,"text":text}]);
-            object.insert("content".into(), content);
-        }
-        if let Some(parts) = object.get_mut("content").and_then(Value::as_array_mut) {
-            for part in parts {
-                if let Some(part) = part.as_object_mut() {
-                    if part.get("type").and_then(Value::as_str) == Some("output_text") {
-                        for field in ["annotations", "logprobs"] {
-                            if part
-                                .get(field)
-                                .is_some_and(|v| v.as_array().is_some_and(Vec::is_empty))
-                            {
-                                part.remove(field);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(item)
 }
 
 #[cfg(test)]

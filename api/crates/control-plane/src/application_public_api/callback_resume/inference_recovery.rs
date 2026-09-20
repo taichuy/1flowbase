@@ -220,9 +220,14 @@ pub(super) fn validate_context(
     .map_err(|error| {
         reject(match error.to_string().as_str() {
             "native_history_evidence_missing" => "native_recovery_history_missing",
-            "native_history_evidence_invalid" => "native_recovery_history_invalid",
+            "native_history_evidence_invalid" | "native_history_item_invalid" => {
+                "native_recovery_history_invalid"
+            }
+            "native_history_version_unsupported" => "native_recovery_history_version_unsupported",
+            "native_history_item_count_mismatch" => "native_recovery_history_item_count_mismatch",
+            "native_history_mismatch" => "native_recovery_history_mismatch",
             "native_history_tool_outputs_invalid" => "native_recovery_tool_output_mismatch",
-            _ => "native_recovery_history_mismatch",
+            _ => "native_recovery_history_invalid",
         })
     })?;
     Ok(())
