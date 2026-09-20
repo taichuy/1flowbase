@@ -535,8 +535,10 @@ where
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
         let provider_stream_timing = Arc::new(Mutex::new(Vec::<Value>::new()));
-        let native_completed_items =
-            Arc::new(Mutex::new(std::collections::BTreeMap::<usize, Value>::new()));
+        let native_output_items = Arc::new(Mutex::new(std::collections::BTreeMap::<
+            usize,
+            Option<Value>,
+        >::new()));
         let mut required_forward_handle = None;
         let mut diagnostic_forward_handle = None;
         let active_node = self
@@ -619,7 +621,7 @@ where
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let diagnostic_node_id = node_id.clone();
             let flow_execution_context_for_task = self.flow_execution_context.clone();
-            let native_completed_items_for_task = native_completed_items.clone();
+            let native_output_items_for_task = native_output_items.clone();
             let capture_native_history = self.provider_transport_payload.is_some();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
@@ -642,17 +644,23 @@ where
                     let canonical_deltas = canonical_writer.write(&event)?;
                     if capture_native_history {
                         if let ProviderStreamEvent::OutputItem {
-                            phase: ProviderOutputItemPhase::Done,
+                            phase,
                             output_index,
                             item,
                         } = &event
                         {
-                            let mut items = native_completed_items_for_task
+                            let mut items = native_output_items_for_task
                                 .lock()
                                 .map_err(|_| anyhow!("native output history lock poisoned"))?;
-                            if items.insert(*output_index, item.clone()).is_some() {
-                                return Err(anyhow!("native output history index repeated"));
-                            }
+                            // The canonical writer above owns phase/identity validation.
+                            // Keep open slots so Added without Done cannot look like empty prewarm.
+                            items.insert(
+                                *output_index,
+                                match phase {
+                                    ProviderOutputItemPhase::Added => None,
+                                    ProviderOutputItemPhase::Done => Some(item.clone()),
+                                },
+                            );
                         }
                     }
                     let tool_delivery =
@@ -919,21 +927,22 @@ where
         ) {
             let round_id = self.response_round_id.unwrap_or(flow_run_id);
             let history = {
-                let items = native_completed_items
+                let items = native_output_items
                     .lock()
                     .map_err(|_| anyhow!("native output history lock poisoned"))?;
-                // Missing native item indexes cannot prove a complete output sequence.
+                // Every announced slot must close, and completed indexes must be contiguous.
                 if invocation_error.is_none()
                     && matches!(output.result.finish_reason,
                         Some(plugin_framework::provider_contract::ProviderFinishReason::Stop
                         | plugin_framework::provider_contract::ProviderFinishReason::ToolCall
                         | plugin_framework::provider_contract::ProviderFinishReason::McpCall))
                     && items.keys().copied().eq(0..items.len())
+                    && items.values().all(Option::is_some)
                 {
                     crate::application_public_api::compat::openai::history::completed_history(
                         transport.wire_body(),
                         self.native_history.as_ref(),
-                        &items.values().cloned().collect::<Vec<_>>(),
+                        &items.values().flatten().cloned().collect::<Vec<_>>(),
                     )?
                 } else {
                     None

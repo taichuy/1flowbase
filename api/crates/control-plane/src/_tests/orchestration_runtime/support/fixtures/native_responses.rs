@@ -20,12 +20,20 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         &self,
         flow_run_id: Uuid,
     ) -> crate::ports::ProviderContinuation {
+        self.optional_native_continuation_fixture(flow_run_id)
+            .await
+            .expect("successful native response should publish its continuation")
+    }
+
+    pub async fn optional_native_continuation_fixture(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Option<crate::ports::ProviderContinuation> {
         self.provider_transport_store
             .get_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
                 flow_run_id,
             ))
             .await
             .unwrap()
-            .expect("successful native response should publish its continuation")
     }
 }
