@@ -15,6 +15,7 @@ import { DebugConversationPane } from './conversation/DebugConversationPane';
 import { i18nText } from '../../../../shared/i18n/text';
 
 export function AgentFlowDebugConsole({
+  assistantMessageActions,
   assistantMessageMainRender,
   ariaLabel,
   closeLabel,
@@ -43,6 +44,7 @@ export function AgentFlowDebugConsole({
   onStopRun,
   onSubmitPrompt
 }: {
+  assistantMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
   assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   ariaLabel?: string;
   closeLabel?: string;
@@ -125,6 +127,7 @@ export function AgentFlowDebugConsole({
         onClose={onClose}
       >
         <DebugConversationPane
+          assistantMessageActions={assistantMessageActions}
           assistantMessageMainRender={assistantMessageMainRender}
           composerUiOnly={composerUiOnly}
           composerHeader={composerHeader}

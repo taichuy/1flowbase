@@ -863,15 +863,11 @@ impl PgControlPlaneStore {
         append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
+        // Facts already published for an in-flight call stay readable; the read
+        // path reprojects when the run watermark advances.
         if is_terminal_application_run_log_status(flow_run.status) {
-            Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
+            Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
                 .await?;
-        } else {
-            Self::delete_application_run_conversation_message_items_projection(
-                &mut tx,
-                flow_run.id,
-            )
-            .await?;
         }
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
@@ -946,14 +942,8 @@ impl PgControlPlaneStore {
             Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
                 .await?;
             if is_terminal_application_run_log_status(flow_run.status) {
-                Self::replace_application_run_conversation_message_items_projection(
+                Self::ensure_application_run_conversation_message_items_projection(
                     &mut tx, &flow_run,
-                )
-                .await?;
-            } else {
-                Self::delete_application_run_conversation_message_items_projection(
-                    &mut tx,
-                    flow_run.id,
                 )
                 .await?;
             }

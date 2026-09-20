@@ -791,7 +791,18 @@ impl PgControlPlaneStore {
                 select runs.id,runs.status,
                     case when s.log_task_run_id=runs.id or s.log_task_run_id is null
                         then (select m.content from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='user' order by m.display_sequence limit 1) end as query,
-                    null::text as model,(select string_agg(m.content,E'\n' order by m.display_sequence) from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='assistant') as answer,
+                    null::text as model,(
+                        -- The card answers with the call's answer only: tool-call
+                        -- items are output items but not the answer, so their
+                        -- names never leak into the summary text.
+                        select string_agg(m.content,E'\n' order by m.display_sequence)
+                        from application_run_conversation_message_items m
+                        where m.flow_run_id=runs.id
+                          and m.role='assistant'
+                          and (m.native_message is null
+                               or m.native_message #>> '{_source_item,type}' = 'message'
+                               or m.output_source = 'persisted_answer')
+                    ) as answer,
                     runs.started_at,runs.finished_at,
                     (extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
                 from application_run_log_conversation_runs($1,

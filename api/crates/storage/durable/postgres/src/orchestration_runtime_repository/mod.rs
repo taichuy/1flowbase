@@ -77,6 +77,7 @@ include!("artifact_methods.rs");
 include!("application_run_log_methods.rs");
 include!("application_run_logs/client_log_associations.rs");
 include!("application_run_logs/assistant_conversation_methods.rs");
+include!("application_run_logs/run_conversation_projection_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 include!("application_run_logs/task_projection_methods.rs");
 include!("application_run_trace_projection_methods.rs");

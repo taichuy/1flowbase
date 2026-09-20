@@ -22,8 +22,11 @@ import {
   getConsoleRuntimeDebugStream,
   uploadConsoleRunArchiveChunk,
   type ApiBlobResponse,
+  type ConsoleApplicationConversationContextSource,
   type ConsoleApplicationConversationMessage,
   type ConsoleApplicationConversationMessagesPage,
+  type ConsoleApplicationRunConversationOutputState,
+  type ConsoleApplicationRunOutputSource,
   type ConsoleApplicationRunMonitoringApiKeyUsage,
   type ConsoleApplicationRunMonitoringAuthorizedAccountUsage,
   type ConsoleApplicationRunMonitoringBucket,
@@ -172,6 +175,11 @@ export type ApplicationRunConversationMessage =
   ConsoleApplicationConversationMessage;
 export type ApplicationRunConversationMessagesPage =
   ConsoleApplicationConversationMessagesPage;
+export type ApplicationRunConversationContextSource =
+  ConsoleApplicationConversationContextSource;
+export type ApplicationRunConversationOutputState =
+  ConsoleApplicationRunConversationOutputState;
+export type ApplicationRunOutputSource = ConsoleApplicationRunOutputSource;
 export interface ApplicationRunNodeRunsPage {
   items: ConsoleNodeRunDetail[];
   total: number;

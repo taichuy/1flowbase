@@ -342,11 +342,13 @@ impl ApplicationRuntimeReadsAdapter {
             .collect();
         Ok(ApplicationConversationMessagesPageResponse {
             items,
+            output_state: None,
             page: ApplicationConversationMessagesPageInfoResponse {
                 has_before: page.has_before,
                 has_after: page.has_after,
                 before_cursor: page.before_cursor.map(|value| value.to_string()),
                 after_cursor: page.after_cursor.map(|value| value.to_string()),
+                newest_cursor: None,
             },
         })
     }
@@ -360,7 +362,9 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationConversationMessagesPageResponse, ApiError> {
         self.visible_application(actor, application_id).await?;
         // A task anchor converges to what the user asked and what the model
-        // finally answered; the calls in between live in the trace tree.
+        // finally answered; the calls in between live in the trace tree. Its
+        // context and output state still come from the run projection so the
+        // console can name the source instead of guessing at a missing answer.
         if let Some(task) = <_ as OrchestrationRuntimeRepository>::get_application_run_log_task(
             &self.store,
             application_id,
@@ -369,7 +373,22 @@ impl ApplicationRuntimeReadsAdapter {
         .await?
         .filter(|task| task.member_run_ids.len() > 1)
         {
-            return Ok(converged_task_conversation_messages(&task));
+            let anchor_projection = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
+                &self.store,
+                application_id,
+                run_id,
+                ListApplicationRunConversationMessageItemsPageInput {
+                    before_sequence: None,
+                    after_sequence: None,
+                    limit: 1,
+                },
+            )
+            .await?;
+            return Ok(converged_task_conversation_messages(
+                &task,
+                anchor_projection.contexts,
+                anchor_projection.output_state,
+            ));
         }
         let projection_page = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &self.store,

@@ -4,6 +4,7 @@ mod assistant_conversations;
 mod conversation_projection;
 mod monitoring;
 mod run_conversation_message_items;
+mod run_conversation_native_projection;
 mod run_detail_summary;
 
 mod call_kind;

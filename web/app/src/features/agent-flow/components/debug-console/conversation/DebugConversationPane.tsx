@@ -51,6 +51,7 @@ function bubbleMessageStatus(
 }
 
 export function DebugConversationPane({
+  assistantMessageActions,
   assistantMessageMainRender,
   composerUiOnly = false,
   composerHeader,
@@ -88,6 +89,7 @@ export function DebugConversationPane({
   composerFooterActions?: ReactNode;
   logActionRunId?: string | null;
   showComposer?: boolean;
+  assistantMessageActions?: (message: AgentFlowDebugMessage) => ReactNode;
 }) {
   const [uiOnlyComposerValue, setUiOnlyComposerValue] = useState('');
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -150,6 +152,7 @@ export function DebugConversationPane({
           <DebugAssistantMessage
             message={message}
             messageMain={assistantMessageMainRender?.(message)}
+            extraActions={assistantMessageActions?.(message)}
             onLoadArtifact={onLoadArtifact}
             onLoadArtifacts={onLoadArtifacts}
             onOpenLog={
@@ -164,12 +167,20 @@ export function DebugConversationPane({
       },
       system: {
         placement: 'start' as const,
+        rootClassName: 'agent-flow-editor__debug-system-bubble',
+        styles: {
+          body: { width: '100%' },
+          content: { width: '100%' },
+          root: { paddingInlineEnd: 0, width: '100%' }
+        },
         variant: 'borderless' as const,
         contentRender: (message: AgentFlowDebugMessage) => (
-          <DebugMarkdownContent
-            className="agent-flow-editor__debug-message-content"
-            content={message.content}
-          />
+          <div className="agent-flow-editor__debug-message agent-flow-editor__debug-message--system">
+            <DebugMarkdownContent
+              className="agent-flow-editor__debug-message-content"
+              content={message.content}
+            />
+          </div>
         )
       },
       user: {
@@ -192,6 +203,7 @@ export function DebugConversationPane({
     }),
     [
       logActionRunId,
+      assistantMessageActions,
       assistantMessageMainRender,
       onLoadArtifact,
       onLoadArtifacts,

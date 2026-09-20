@@ -30,10 +30,11 @@ mod converged_task_tests {
     // the anchor run whose trace tree holds the rounds.
     #[test]
     fn converged_task_detail_opens_anchor_for_both_items() {
-        let page = converged_task_conversation_messages(&task(
-            "final_answer_observed",
-            Some("login refactored"),
-        ));
+        let page = converged_task_conversation_messages(
+            &task("final_answer_observed", Some("login refactored")),
+            Vec::new(),
+            None,
+        );
         assert_eq!(page.items.len(), 2);
         assert_eq!(page.items[0].role.as_deref(), Some("user"));
         assert_eq!(page.items[0].content.as_deref(), Some("refactor login"));
@@ -44,9 +45,13 @@ mod converged_task_tests {
             Some(Uuid::nil().to_string().as_str())
         );
         assert!(page.items[1].is_current);
-        let open = converged_task_conversation_messages(&task("in_progress", None));
+        // #2090 AC-002: the answer carries its own source instead of making the
+        // console report a missing answer for a task that observed one.
+        assert_eq!(page.items[1].output_source.as_deref(), Some("persisted_answer"));
+        let open = converged_task_conversation_messages(&task("in_progress", None), Vec::new(), None);
         assert_eq!(open.items[1].status, "running");
         assert_eq!(open.items[1].answer, None);
+        assert_eq!(open.items[1].output_source.as_deref(), Some("none"));
     }
 }
 
@@ -84,6 +89,9 @@ where
         model: application_run_model(&run.input_payload),
         answer,
         is_current: current_run_id == Some(run.id),
+        output_source: None,
+        context_source: None,
+        sequence: None,
     }
 }
 
@@ -107,6 +115,9 @@ fn to_application_conversation_message_summary_response(
         model: run.model,
         answer: run.answer,
         is_current: current_run_id == Some(run.id),
+        output_source: None,
+        context_source: None,
+        sequence: None,
     }
 }
 
@@ -224,16 +235,50 @@ fn parse_run_conversation_message_sequence_cursor(
         .and_then(|sequence| i64::try_from(sequence).ok())
 }
 
+/// Context entries open the conversation: they are the first turns of every
+/// page, followed by the requested window of conversation turns.
+fn conversation_items_with_context(
+    run_id: Uuid,
+    items: Vec<domain::ApplicationRunConversationMessageItem>,
+    contexts: Vec<domain::ApplicationRunConversationContextItem>,
+) -> Vec<ApplicationConversationMessageResponse> {
+    contexts
+        .into_iter()
+        .map(|context| ApplicationConversationMessageResponse {
+            message_id: context.id.to_string(),
+            run_id: run_id.to_string(),
+            detail_run_id: None,
+            can_open_detail: false,
+            role: Some(context.role),
+            content: Some(context.content),
+            started_at: String::new(),
+            finished_at: None,
+            status: "succeeded".to_string(),
+            query: None,
+            model: None,
+            answer: None,
+            is_current: false,
+            output_source: None,
+            sequence: Some(context.display_sequence),
+            context_source: Some(context.context_source),
+        })
+        .chain(
+            items
+                .into_iter()
+                .map(|item| application_run_conversation_message_item_response(run_id, item)),
+        )
+        .collect()
+}
+
 fn conversation_messages_from_projection_page(
     run_id: Uuid,
     page: control_plane::ports::ApplicationRunConversationMessageItemsPage,
 ) -> ApplicationConversationMessagesPageResponse {
     ApplicationConversationMessagesPageResponse {
-        items: page
-            .items
-            .into_iter()
-            .map(|item| application_run_conversation_message_item_response(run_id, item))
-            .collect(),
+        items: conversation_items_with_context(run_id, page.items, page.contexts),
+        output_state: page
+            .output_state
+            .map(application_run_conversation_output_state_response),
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: page.has_before,
             has_after: page.has_after,
@@ -245,7 +290,24 @@ fn conversation_messages_from_projection_page(
                 .after_cursor
                 .and_then(|cursor| usize::try_from(cursor).ok())
                 .map(|cursor| imported_context_cursor(run_id, cursor)),
+            newest_cursor: page
+                .newest_sequence
+                .and_then(|cursor| usize::try_from(cursor).ok())
+                .map(|cursor| imported_context_cursor(run_id, cursor)),
         },
+    }
+}
+
+fn application_run_conversation_output_state_response(
+    state: domain::ApplicationRunConversationOutputState,
+) -> ApplicationRunConversationOutputStateResponse {
+    ApplicationRunConversationOutputStateResponse {
+        run_id: state.flow_run_id.to_string(),
+        status: state.status,
+        call_kind: state.call_kind,
+        request_kind: state.request_kind,
+        output_source: state.output_source,
+        output_item_count: state.output_item_count,
     }
 }
 
@@ -254,11 +316,34 @@ fn conversation_messages_from_projection_page(
 /// still open that run; an unobserved answer stays an open, non-terminal item.
 fn converged_task_conversation_messages(
     task: &domain::ApplicationRunLogTask,
+    contexts: Vec<domain::ApplicationRunConversationContextItem>,
+    output_state: Option<domain::ApplicationRunConversationOutputState>,
 ) -> ApplicationConversationMessagesPageResponse {
     let anchor = task.id.to_string();
     let started_at = format_time(task.started_at);
     let finished_at = format_optional_time(task.finished_at);
     let mut items = Vec::with_capacity(2);
+    let context_responses = contexts
+        .into_iter()
+        .map(|context| ApplicationConversationMessageResponse {
+            message_id: context.id.to_string(),
+            run_id: anchor.clone(),
+            detail_run_id: None,
+            can_open_detail: false,
+            role: Some(context.role),
+            content: Some(context.content),
+            started_at: String::new(),
+            finished_at: None,
+            status: "succeeded".to_string(),
+            query: None,
+            model: None,
+            answer: None,
+            is_current: false,
+            output_source: None,
+            sequence: Some(context.display_sequence),
+            context_source: Some(context.context_source),
+        })
+        .collect::<Vec<_>>();
     if let Some(user_input) = task.user_input.as_deref().filter(|v| !v.trim().is_empty()) {
         items.push(ApplicationConversationMessageResponse {
             message_id: format!("{anchor}:user_input"),
@@ -274,6 +359,9 @@ fn converged_task_conversation_messages(
             model: None,
             answer: None,
             is_current: false,
+            output_source: None,
+            context_source: None,
+            sequence: Some(0),
         });
     }
     // Both items open the anchor run: its trace tree carries the task's rounds,
@@ -302,16 +390,39 @@ fn converged_task_conversation_messages(
         model: None,
         answer: task.final_output.clone(),
         is_current: true,
+        output_source: Some(converged_task_output_source(task, &output_state).to_string()),
+        context_source: None,
+        sequence: Some(1),
     });
     ApplicationConversationMessagesPageResponse {
-        items,
+        items: context_responses
+            .into_iter()
+            .chain(items)
+            .collect(),
+        output_state: output_state.map(application_run_conversation_output_state_response),
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: false,
             has_after: false,
             before_cursor: None,
             after_cursor: None,
+            newest_cursor: None,
         },
     }
+}
+
+/// A converged task states where its answer came from instead of letting the
+/// console report a missing answer for a task that already observed one.
+fn converged_task_output_source<'a>(
+    task: &domain::ApplicationRunLogTask,
+    output_state: &'a Option<domain::ApplicationRunConversationOutputState>,
+) -> &'a str {
+    if task.final_output.is_some() {
+        return "persisted_answer";
+    }
+    output_state
+        .as_ref()
+        .map(|state| state.output_source.as_str())
+        .unwrap_or("none")
 }
 
 fn conversation_messages_from_current_item(
@@ -322,11 +433,13 @@ fn conversation_messages_from_current_item(
         items: vec![application_run_conversation_message_item_response(
             run_id, item,
         )],
+        output_state: None,
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: false,
             has_after: false,
             before_cursor: None,
             after_cursor: None,
+            newest_cursor: None,
         },
     }
 }
@@ -358,6 +471,9 @@ fn application_run_conversation_message_item_response(
         model: item.model,
         answer: item.answer,
         is_current: item.is_current,
+        output_source: item.output_source,
+        sequence: Some(item.display_sequence),
+        context_source: None,
     }
 }
 
@@ -433,11 +549,13 @@ where
             .skip(start)
             .take(end.saturating_sub(start))
             .collect(),
+        output_state: None,
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: start > 0,
             has_after: end < total,
             before_cursor: (start > 0).then(|| imported_context_cursor(run.id, start)),
             after_cursor: (end < total).then(|| imported_context_cursor(run.id, end - 1)),
+            newest_cursor: None,
         },
     }
 }
@@ -698,6 +816,9 @@ fn imported_context_item(
         model: application_run_model(&run.input_payload),
         answer: None,
         is_current: false,
+        output_source: None,
+        context_source: None,
+        sequence: None,
     }
 }
 

@@ -1,34 +1,84 @@
-const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 4;
+// Reading and writing the run conversation message projection: lifecycle,
+// paging, cursor probes and the row mapper. Derivation of the projected rows
+// lives in run_conversation_projection_methods.rs.
+
+// Bump when the projection derivation changes: the stored revision is prefixed
+// with this version, so rows written by an older writer are never served as
+// current.
+const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 5;
+
+/// Roles that carry context rather than a conversation turn. They are projected
+/// next to the paged items so the newest page never hides the context in force.
+const APPLICATION_RUN_CONTEXT_ROLES: [&str; 2] = ["system", "developer"];
+
+/// Context entries live outside the conversation sequence range. Adding or
+/// removing a context entry therefore never shifts a conversation position, so
+/// a cursor a client already holds keeps pointing at the same message.
+const APPLICATION_RUN_CONTEXT_SEQUENCE_BASE: i64 = 1_000_000;
+
+const APPLICATION_RUN_OUTPUT_SOURCE_PROVIDER_ITEM: &str = "provider_output_item";
+const APPLICATION_RUN_OUTPUT_SOURCE_PERSISTED_ANSWER: &str = "persisted_answer";
+const APPLICATION_RUN_OUTPUT_SOURCE_ERROR: &str = "error";
+const APPLICATION_RUN_OUTPUT_SOURCE_NONE: &str = "none";
 
 impl PgControlPlaneStore {
+    /// Returns whether the stored rows were replaced.
     async fn ensure_application_run_conversation_message_items_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run: &domain::FlowRunRecord,
-    ) -> Result<()> {
-        let projected_count = sqlx::query_scalar::<_, i64>(
+    ) -> Result<bool> {
+        if Self::application_run_conversation_message_items_projection_is_current(tx, flow_run.id)
+            .await?
+        {
+            return Ok(false);
+        }
+
+        Self::replace_application_run_conversation_message_items_projection(tx, flow_run).await?;
+        Ok(true)
+    }
+
+    /// A projection is current only when every row was written from the run
+    /// watermark the retained facts currently produce. Rows written before the
+    /// watermark existed carry none and are reprojected exactly once.
+    async fn application_run_conversation_message_items_projection_is_current(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        flow_run_id: Uuid,
+    ) -> Result<bool> {
+        let revision =
+            Self::application_run_conversation_message_watermark(tx, flow_run_id).await?;
+        let current: bool = sqlx::query_scalar(
             r#"
-            select count(*)::bigint
+            select coalesce(bool_and(source_revision is not distinct from $3), false)
             from application_run_conversation_message_items
             where flow_run_id = $1
               and projection_version = $2
             "#,
         )
-        .bind(flow_run.id)
+        .bind(flow_run_id)
         .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
+        .bind(revision)
         .fetch_one(&mut **tx)
         .await?;
-        if projected_count > 0 {
-            let revision =
-                Self::application_run_native_message_source_revision(tx, flow_run.id).await?;
-            let stale: bool = sqlx::query_scalar(
-                "select exists(select 1 from application_run_conversation_message_items where flow_run_id=$1 and native_message->>'_log_source_revision' is distinct from $2)"
-            ).bind(flow_run.id).bind(revision.map(|v| v.to_string())).fetch_one(&mut **tx).await?;
-            if !stale {
-                return Ok(());
-            }
-        }
+        Ok(current)
+    }
 
-        Self::replace_application_run_conversation_message_items_projection(tx, flow_run).await
+    /// The revision a projection must carry to be current: the retained-fact
+    /// watermark plus the writer version that produced the rows.
+    async fn application_run_conversation_message_watermark(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        flow_run_id: Uuid,
+    ) -> Result<Option<String>> {
+        let watermark: Option<String> =
+            sqlx::query_scalar("select application_run_message_projection_watermark($1)")
+                .bind(flow_run_id)
+                .fetch_one(&mut **tx)
+                .await?;
+        Ok(watermark.map(|watermark| {
+            format!(
+                "v{}:{watermark}",
+                APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION
+            )
+        }))
     }
 
     async fn replace_application_run_conversation_message_items_projection(
@@ -42,30 +92,52 @@ impl PgControlPlaneStore {
                 .bind(flow_run.application_id)
                 .fetch_one(&mut **tx)
                 .await?;
-        if let Some(items) = Self::application_run_native_message_items(tx, flow_run).await? {
-            for (sequence, (source_key, native)) in items.into_iter().enumerate() {
+        let revision =
+            Self::application_run_conversation_message_watermark(tx, flow_run.id).await?;
+        if let Some(items) =
+            Self::application_run_native_message_items(tx, flow_run, revision.clone()).await?
+        {
+            for (sequence, source_key, native) in items.into_iter() {
+                let output_source = native
+                    .get("_log_output_source")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty());
+                let context_source = native
+                    .get("_log_context_source")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty());
                 sqlx::query(r#"insert into application_run_conversation_message_items(
                     id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,
                     native_message,detail_run_id,can_open_detail,is_current,status,started_at,finished_at,
-                    projection_version,log_conversation_id,source_item_key)
+                    projection_version,log_conversation_id,source_item_key,
+                    output_source,context_source,source_revision)
                     select md5(coalesce(log_context->>'log_conversation_id',id::text)||':'||$5)::uuid,
-                        $2,application_id,id,$3,'current_run',$6,$7,$8,id,true,true,status,started_at,finished_at,
-                        $4,(log_context->>'log_conversation_id')::uuid,$5 from flow_runs where id=$1"#)
-                    .bind(flow_run.id).bind(scope_id).bind(sequence as i64)
+                        $2,application_id,id,$3,'current_run',$6,$7,$8,
+                        case when $10::text is null then id else null end,
+                        $10::text is null,
+                        $10::text is null,
+                        case when $10::text is null then status else 'succeeded' end,
+                        started_at,finished_at,
+                        $4,(log_context->>'log_conversation_id')::uuid,
+                        case when $8::jsonb ? '_source_item' then $5 else null end,
+                        $9,$10,$11 from flow_runs where id=$1"#)
+                    .bind(flow_run.id).bind(scope_id).bind(sequence)
                     .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(source_key)
                     .bind(native.get("role").and_then(Value::as_str)).bind(native.get("content").and_then(Value::as_str))
-                    .bind(&native).execute(&mut **tx).await?;
+                    .bind(&native).bind(output_source).bind(context_source).bind(&revision)
+                    .execute(&mut **tx).await?;
             }
             return Ok(());
         }
-        let llm_system_content =
-            Self::application_run_conversation_llm_system_content(tx, flow_run.id).await?;
+        let effective_system =
+            Self::application_run_conversation_llm_effective_system(tx, flow_run.id).await?;
+        let contexts = application_run_conversation_contexts(&flow_run.input_payload, effective_system);
         let llm_assistant_message =
             Self::application_run_conversation_llm_assistant_message(tx, flow_run.id).await?;
         let items = application_run_conversation_message_items_from_flow_run(
             flow_run,
             scope_id,
-            llm_system_content,
+            contexts,
             llm_assistant_message,
         );
 
@@ -93,11 +165,14 @@ impl PgControlPlaneStore {
                     finished_at,
                     projection_version,
                     created_at,
-                    updated_at
+                    updated_at,
+                    output_source,
+                    context_source,
+                    source_revision
                 ) values (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-                    $21
+                    $21, $22, $23, $24
                 )
                 "#,
             )
@@ -130,6 +205,9 @@ impl PgControlPlaneStore {
             .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
             .bind(item.created_at)
             .bind(item.updated_at)
+            .bind(item.output_source)
+            .bind(item.context_source)
+            .bind(&revision)
             .execute(&mut **tx)
             .await?;
         }
@@ -137,7 +215,9 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    async fn application_run_conversation_llm_system_content(
+    /// The effective system prompt actually sent to the model node: the prompt
+    /// messages the node ran with, or the resolved system of its LLM context.
+    async fn application_run_conversation_llm_effective_system(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run_id: Uuid,
     ) -> Result<Option<String>> {
@@ -230,6 +310,12 @@ impl PgControlPlaneStore {
         .await?;
         let total_count = self
             .application_run_conversation_message_items_count(application_id, flow_run_id)
+            .await?;
+        let contexts = self
+            .application_run_conversation_context_items(application_id, flow_run_id)
+            .await?;
+        let output_state = self
+            .application_run_conversation_output_state(application_id, flow_run_id)
             .await?;
 
         let mut rows = if let Some(before_sequence) = input.before_sequence {
@@ -337,6 +423,8 @@ impl PgControlPlaneStore {
         Ok(
             control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage {
                 items,
+                contexts,
+                output_state,
                 total_count,
                 has_before,
                 has_after,
@@ -358,6 +446,7 @@ impl PgControlPlaneStore {
                         })
                     })
                     .flatten(),
+                newest_sequence: last_sequence,
             },
         )
     }
@@ -379,6 +468,97 @@ impl PgControlPlaneStore {
         .map_err(Into::into)
     }
 
+    /// Context entries are served beside the page, never inside it, so a full
+    /// page of new turns cannot push the context out of reach.
+    async fn application_run_conversation_context_items(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<domain::ApplicationRunConversationContextItem>> {
+        let rows = sqlx::query(
+            r#"
+            select id, flow_run_id, role, context_source, content, display_sequence
+            from application_run_conversation_message_items
+            where application_id = $1
+              and flow_run_id = $2
+              and projection_version = $3
+              and context_source is not null
+            order by display_sequence asc, id asc
+            "#,
+        )
+        .bind(application_id)
+        .bind(flow_run_id)
+        .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(domain::ApplicationRunConversationContextItem {
+                    id: row.try_get("id")?,
+                    flow_run_id: row.try_get("flow_run_id")?,
+                    role: row.try_get("role")?,
+                    context_source: row.try_get("context_source")?,
+                    content: row.try_get("content")?,
+                    display_sequence: row.try_get("display_sequence")?,
+                })
+            })
+            .collect()
+    }
+
+    async fn application_run_conversation_output_state(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<domain::ApplicationRunConversationOutputState>> {
+        let row = sqlx::query(
+            r#"
+            select
+                f.id as flow_run_id,
+                f.status,
+                coalesce(s.call_kind, 'generate') as call_kind,
+                f.log_context->>'request_kind' as request_kind,
+                -- The state reports where the visible answer came from: a
+                -- stored answer outranks tool-call items, which are output
+                -- items but not an answer.
+                coalesce(max(case m.output_source
+                    when 'persisted_answer' then 3
+                    when 'provider_output_item' then 2
+                    when 'error' then 1
+                    when 'none' then 0
+                end), 0) as output_rank,
+                count(*) filter (where m.output_source = 'provider_output_item')::bigint
+                    as output_item_count
+            from flow_runs f
+            left join application_run_log_summaries s on s.flow_run_id = f.id
+            left join application_run_conversation_message_items m
+                on m.flow_run_id = f.id
+               and m.projection_version = $3
+            where f.application_id = $1
+              and f.id = $2
+            group by f.id, f.status, s.call_kind, f.log_context
+            "#,
+        )
+        .bind(application_id)
+        .bind(flow_run_id)
+        .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(|row| {
+            let output_rank: i32 = row.try_get("output_rank")?;
+            Ok(domain::ApplicationRunConversationOutputState {
+                flow_run_id: row.try_get("flow_run_id")?,
+                status: row.try_get("status")?,
+                call_kind: row.try_get("call_kind")?,
+                request_kind: row.try_get("request_kind")?,
+                output_source: application_run_output_source_from_rank(output_rank).to_string(),
+                output_item_count: row.try_get("output_item_count")?,
+            })
+        })
+        .transpose()
+    }
+
     async fn ensure_application_run_conversation_message_items_projection_for_read(
         &self,
         application_id: Uuid,
@@ -389,9 +569,6 @@ impl PgControlPlaneStore {
         else {
             return Ok(());
         };
-        if !is_terminal_application_run_log_status(flow_run.status) {
-            return Ok(());
-        }
 
         let mut tx = self.pool().begin().await?;
         let locked_flow_run_id = sqlx::query_scalar::<_, Uuid>(
@@ -408,8 +585,17 @@ impl PgControlPlaneStore {
         .fetch_optional(&mut *tx)
         .await?;
         if locked_flow_run_id.is_some() {
-            Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
-                .await?;
+            // A call that is still running already retains its request and every
+            // completed provider output item, so the read model reflects those
+            // facts instead of hiding the call until it reaches a terminal state.
+            let replaced =
+                Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
+                    .await?;
+            if replaced {
+                // The task row derives from member projections; refresh it in the
+                // same transaction so list and detail never disagree.
+                Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run_id).await?;
+            }
         }
         tx.commit().await?;
         Ok(())
@@ -473,7 +659,18 @@ impl PgControlPlaneStore {
                 flow_runs.finished_at,
                 $3::integer as projection_version,
                 flow_runs.created_at,
-                flow_runs.updated_at
+                flow_runs.updated_at,
+                case
+                    when jsonb_typeof(flow_runs.output_payload -> 'answer') = 'string'
+                      or jsonb_typeof(flow_runs.output_payload -> 'text') = 'string'
+                      or jsonb_typeof(flow_runs.output_payload -> 'output') = 'string'
+                      or jsonb_typeof(flow_runs.output_payload -> 'content') = 'string'
+                      or jsonb_typeof(flow_runs.output_payload -> 'message') = 'string'
+                    then 'persisted_answer'
+                    when nullif(btrim(flow_runs.error_payload #>> '{error,message}'), '') is not null
+                    then 'error'
+                    else 'none'
+                end as output_source
             from flow_runs
             join applications on applications.id = flow_runs.application_id
             where flow_runs.application_id = $1
@@ -514,288 +711,25 @@ impl PgControlPlaneStore {
     }
 }
 
-#[derive(Debug)]
-struct ApplicationRunConversationMessageItemProjection {
-    scope_id: Uuid,
-    application_id: Uuid,
-    flow_run_id: Uuid,
-    display_sequence: i64,
-    source_kind: &'static str,
-    role: Option<String>,
-    content: Option<String>,
-    query: Option<String>,
-    model: Option<String>,
-    answer: Option<String>,
-    native_message: Option<serde_json::Value>,
-    detail_run_id: Option<Uuid>,
-    can_open_detail: bool,
-    is_current: bool,
-    status: String,
-    started_at: OffsetDateTime,
-    finished_at: Option<OffsetDateTime>,
-    created_at: OffsetDateTime,
-    updated_at: OffsetDateTime,
-}
-
-fn application_run_conversation_message_items_from_flow_run(
-    flow_run: &domain::FlowRunRecord,
-    scope_id: Uuid,
-    llm_system_content: Option<String>,
-    llm_assistant_message: Option<serde_json::Value>,
-) -> Vec<ApplicationRunConversationMessageItemProjection> {
-    let mut items = Vec::new();
-    let model = application_conversation_model_text(&flow_run.input_payload);
-
-    if let Some(system) = application_conversation_system_text(&flow_run.input_payload) {
-        push_application_run_conversation_imported_item(
-            &mut items,
-            flow_run,
-            scope_id,
-            "system",
-            system,
-            model.clone(),
-        );
-    } else if let Some(system) = llm_system_content {
-        push_application_run_conversation_imported_item(
-            &mut items,
-            flow_run,
-            scope_id,
-            "system",
-            system,
-            model.clone(),
-        );
+fn application_run_output_source_from_rank(rank: i32) -> &'static str {
+    match rank {
+        3 => APPLICATION_RUN_OUTPUT_SOURCE_PERSISTED_ANSWER,
+        2 => APPLICATION_RUN_OUTPUT_SOURCE_PROVIDER_ITEM,
+        1 => APPLICATION_RUN_OUTPUT_SOURCE_ERROR,
+        _ => APPLICATION_RUN_OUTPUT_SOURCE_NONE,
     }
-
-    let start_payload = application_conversation_start_payload(&flow_run.input_payload);
-    if let Some(history) = start_payload
-        .get("history")
-        .or_else(|| start_payload.get("messages"))
-        .and_then(serde_json::Value::as_array)
-    {
-        for message in history {
-            let role = message
-                .get("role")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default();
-            let Some(content) = application_run_conversation_history_message_content(message)
-            else {
-                continue;
-            };
-            if is_hidden_conversation_history_message(message) {
-                continue;
-            }
-
-            match role {
-                "system"
-                    if !items
-                        .iter()
-                        .any(|item| item.role.as_deref() == Some("system")) =>
-                {
-                    push_application_run_conversation_imported_item(
-                        &mut items,
-                        flow_run,
-                        scope_id,
-                        role,
-                        content,
-                        model.clone(),
-                    );
-                }
-                "user" | "assistant" => push_application_run_conversation_imported_item(
-                    &mut items,
-                    flow_run,
-                    scope_id,
-                    role,
-                    content,
-                    model.clone(),
-                ),
-                _ => {}
-            }
-        }
-    }
-
-    let display_sequence = items.len() as i64;
-    items.push(ApplicationRunConversationMessageItemProjection {
-        scope_id,
-        application_id: flow_run.application_id,
-        flow_run_id: flow_run.id,
-        display_sequence,
-        source_kind: "current_run",
-        role: None,
-        content: None,
-        query: application_conversation_user_text(&flow_run.input_payload),
-        model,
-        answer: application_conversation_answer_text(&flow_run.output_payload).or_else(|| {
-            flow_run
-                .error_payload
-                .as_ref()
-                .and_then(application_conversation_answer_text)
-        }),
-        native_message: llm_assistant_message,
-        detail_run_id: Some(flow_run.id),
-        can_open_detail: true,
-        is_current: true,
-        status: flow_run.status.as_str().to_string(),
-        started_at: flow_run.started_at,
-        finished_at: flow_run.finished_at,
-        created_at: flow_run.created_at,
-        updated_at: flow_run.updated_at,
-    });
-
-    items
-}
-
-fn push_application_run_conversation_imported_item(
-    items: &mut Vec<ApplicationRunConversationMessageItemProjection>,
-    flow_run: &domain::FlowRunRecord,
-    scope_id: Uuid,
-    role: &str,
-    content: String,
-    model: Option<String>,
-) {
-    let display_sequence = items.len() as i64;
-    items.push(ApplicationRunConversationMessageItemProjection {
-        scope_id,
-        application_id: flow_run.application_id,
-        flow_run_id: flow_run.id,
-        display_sequence,
-        source_kind: "imported_context",
-        role: Some(role.to_string()),
-        content: Some(content),
-        query: None,
-        model,
-        answer: None,
-        native_message: None,
-        detail_run_id: None,
-        can_open_detail: false,
-        is_current: false,
-        status: "succeeded".to_string(),
-        started_at: flow_run.started_at,
-        finished_at: flow_run.finished_at,
-        created_at: flow_run.created_at,
-        updated_at: flow_run.updated_at,
-    });
-}
-
-fn canonical_assistant_message(value: Option<&serde_json::Value>) -> Option<serde_json::Value> {
-    let object = value?.as_object()?;
-    if object.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
-        return None;
-    }
-    let content = object.get("content")?.as_str()?;
-    let mut message = serde_json::Map::new();
-    message.insert(
-        "role".to_string(),
-        serde_json::Value::String("assistant".to_string()),
-    );
-    message.insert(
-        "content".to_string(),
-        serde_json::Value::String(content.to_string()),
-    );
-    for field in ["content_blocks", "tool_calls"] {
-        if let Some(value) = object.get(field).filter(|value| value.is_array()) {
-            message.insert(field.to_string(), value.clone());
-        }
-    }
-    Some(serde_json::Value::Object(message))
-}
-
-fn application_run_conversation_history_message_content(
-    message: &serde_json::Value,
-) -> Option<String> {
-    let content = message.get("content")?;
-    if let Some(text) = conversation_text_value(content) {
-        return Some(text);
-    }
-
-    let parts = content.as_array()?;
-    let text = parts
-        .iter()
-        .filter_map(conversation_text_value)
-        .collect::<Vec<_>>()
-        .join("");
-    trimmed_text(&text)
-}
-
-fn llm_prompt_messages_system_content(payload: &serde_json::Value) -> Option<String> {
-    let prompt_messages_value = payload.get("prompt_messages")?;
-    let resolved_prompt_messages = runtime_debug_artifact_preview_value(prompt_messages_value);
-    let messages = resolved_prompt_messages
-        .as_ref()
-        .unwrap_or(prompt_messages_value)
-        .as_array()?;
-    let system = messages
-        .iter()
-        .filter(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("system"))
-        .filter_map(application_run_conversation_history_message_content)
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    trimmed_text(&system)
-}
-
-fn llm_effective_system_content(payload: &serde_json::Value) -> Option<String> {
-    let effective_system = payload
-        .get("llm_context")
-        .and_then(|context| context.get("effective_system"))?;
-    let resolved_system = runtime_debug_artifact_preview_value(effective_system);
-
-    resolved_system
-        .as_ref()
-        .and_then(conversation_prompt_text)
-        .or_else(|| conversation_prompt_text(effective_system))
-}
-
-fn conversation_prompt_text(value: &serde_json::Value) -> Option<String> {
-    if let Some(text) = conversation_text_value(value) {
-        return Some(text);
-    }
-
-    let parts = value.as_array()?;
-    let text = parts
-        .iter()
-        .filter_map(conversation_text_value)
-        .collect::<Vec<_>>()
-        .join("");
-    trimmed_text(&text)
-}
-
-fn runtime_debug_artifact_preview_value(value: &serde_json::Value) -> Option<serde_json::Value> {
-    if !value
-        .get("__runtime_debug_artifact")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
-    }
-
-    value
-        .get("preview")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|preview| serde_json::from_str(preview).ok())
-}
-
-fn application_conversation_model_text(payload: &serde_json::Value) -> Option<String> {
-    string_field_value(payload, "model").or_else(|| {
-        let start = application_conversation_start_payload(payload);
-        string_field_value(start, "model")
-    })
-}
-
-fn is_hidden_conversation_history_message(message: &serde_json::Value) -> bool {
-    message
-        .get("metadata")
-        .and_then(|metadata| metadata.get("hidden_from_conversation"))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
 }
 
 // The run message projection is single-run scoped; task-level convergence is
 // served from the task row, never by joining member projections at read time.
+// Context entries are not part of the paged stream, so a caller that only reads
+// the newest page still sees every context entry.
 fn application_run_task_message_items_cte() -> &'static str {
     r#"with task_message_items as (
         select m.*, m.display_sequence as task_sequence
         from application_run_conversation_message_items m
         where m.application_id=$1 and m.flow_run_id=$2 and m.projection_version=$3
+          and m.context_source is null
     )"#
 }
 
@@ -808,7 +742,8 @@ fn run_conversation_message_items_select_sql(
         r#"{}
         select id,scope_id,application_id,flow_run_id,task_sequence as display_sequence,
             source_kind,role,content,query,model,answer,detail_run_id,can_open_detail,
-            is_current,status,started_at,finished_at,projection_version,created_at,updated_at
+            is_current,status,started_at,finished_at,projection_version,created_at,updated_at,
+            output_source
         from task_message_items where true {}
         order by {} limit {limit_placeholder}"#,
         application_run_task_message_items_cte(),
@@ -841,168 +776,6 @@ fn map_application_run_conversation_message_item(
         projection_version: row.try_get("projection_version")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+        output_source: row.try_get("output_source")?,
     })
-}
-
-impl PgControlPlaneStore {
-    // Called by the existing terminal message projection owner. Runtime events
-    // and retained request facts remain the rebuild sources, never diagnostics.
-    async fn application_run_native_message_items(
-        tx: &mut sqlx::Transaction<'_, Postgres>,
-        run: &domain::FlowRunRecord,
-    ) -> Result<Option<Vec<(String, Value)>>> {
-        let context: Option<Value> =
-            sqlx::query_scalar("select log_context from flow_runs where id=$1")
-                .bind(run.id)
-                .fetch_one(&mut **tx)
-                .await?;
-        let Some(context) = context else {
-            return Ok(None);
-        };
-        // Capture before reading facts: a concurrent append can only leave an
-        // older revision, forcing a fresh read instead of marking stale data current.
-        let revision = Self::application_run_native_message_source_revision(tx, run.id).await?;
-        let rows = sqlx::query(
-            r#"with scope_runs as materialized (
-                select id,log_context from flow_runs where id=$1
-                union
-                select f.id,f.log_context from application_run_log_conversation_runs($2,$3::uuid) member
-                join flow_runs f on f.id=member.run_id
-            ), facts as (
-                select f.id as run_id,e.sequence,
-                    'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
-                        else coalesce(e.payload->'item'->>'type','unknown') end||':'||
-                        coalesce(e.payload->'item'->>'call_id',e.payload->'item'->>'id',e.id::text) as source_key,
-                    e.payload->'item' as item
-                from scope_runs f join runtime_events e on e.flow_run_id=f.id
-                where e.event_type='provider_output_item_done' and e.payload->'item' is not null
-                union all
-                select f.id,-1000000+r.ordinality,
-                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),r.item
-                from scope_runs f cross join lateral jsonb_array_elements(
-                    coalesce(f.log_context->'tool_results','[]'::jsonb)) with ordinality r(item,ordinality)
-            ), owners as (
-                select distinct on(source_key) * from facts order by source_key,run_id,sequence
-            )
-            select o.source_key,o.item,
-                exists(select 1 from facts f where f.source_key=o.source_key and f.item is distinct from o.item) as conflicting
-            from owners o where run_id=$1 order by sequence,source_key"#,
-        ).bind(run.id).bind(run.application_id)
-            .bind(context.get("log_conversation_id").and_then(Value::as_str).and_then(|v| Uuid::parse_str(v).ok()))
-            .fetch_all(&mut **tx).await?;
-        let mut items = Vec::new();
-        // A full request history does not create another user message. Only an
-        // explicit task anchor owns that task's observed prompt.
-        let task = context.get("log_task_run_id").and_then(Value::as_str);
-        if task.is_none() || task == Some(run.id.to_string().as_str()) {
-            if let Some(prompt) = context.get("prompt").filter(|v| v.is_object()) {
-                items.push((format!("prompt:{}",run.id),json!({"role":"user","content":native_log_item_text(prompt),"_source_item":prompt})));
-            }
-        }
-        if items.is_empty() && task.is_none() {
-            if let Some(prompt) = application_conversation_user_text(&run.input_payload) {
-                items.push((
-                    format!("prompt:{}", run.id),
-                    json!({"role":"user","content":prompt}),
-                ));
-            }
-        }
-        let has_formal_output = rows
-            .iter()
-            .any(|row| row.get::<String, _>("source_key").starts_with("output:"));
-        if !has_formal_output && task.is_none() {
-            if let Some(answer) = application_conversation_answer_text(&run.output_payload) {
-                items.push((
-                    format!("answer:{}", run.id),
-                    json!({"role":"assistant","content":answer}),
-                ));
-            }
-        }
-        for row in rows {
-            let key: String = row.try_get("source_key")?;
-            let item: Value = row.try_get("item")?;
-            let role = if key.starts_with("result:") {
-                "tool"
-            } else {
-                "assistant"
-            };
-            let mut conflicting: bool = row.try_get("conflicting")?;
-            // Historical conflict observations survive projection rebuilds.
-            let retained = if key.starts_with("result:") {
-                "conflicting_result_call_ids"
-            } else {
-                "conflicting_output_keys"
-            };
-            conflicting |= context
-                .get(retained)
-                .and_then(Value::as_array)
-                .is_some_and(|keys| {
-                    keys.iter()
-                        .any(|v| v.as_str() == key.split_once(':').map(|(_, id)| id))
-                });
-            items.push((key,json!({"role":role,"content":native_log_item_text(&item),"_source_item":item,"_log_conflicting":conflicting})));
-        }
-        // Every real call keeps its original detail/trace link even if it only
-        // retransmits facts owned by another call. This is not another message.
-        if items.is_empty() {
-            items.push((
-                format!("run:{}", run.id),
-                json!({"role":null,"content":null}),
-            ));
-        }
-        for (_, message) in &mut items {
-            message["_log_source_revision"] = json!(revision);
-        }
-        Ok(Some(items))
-    }
-
-    // Formal events and retained request contexts are append-only facts. Include
-    // every scoped call so a later replay/conflict invalidates the original owner,
-    // without introducing another projection writer into the event pipeline.
-    async fn application_run_native_message_source_revision(
-        tx: &mut sqlx::Transaction<'_, Postgres>,
-        flow_run_id: Uuid,
-    ) -> Result<Option<i64>> {
-        sqlx::query_scalar(r#"
-            with anchor as (select * from flow_runs where id=$1 and log_context is not null),
-            members as materialized (
-                select id,log_context from anchor
-                union
-                select f.id,f.log_context from anchor a
-                join application_run_log_conversation_runs(a.application_id,(a.log_context->>'log_conversation_id')::uuid) member on true
-                join flow_runs f on f.id=member.run_id
-            )
-            select case when exists(select 1 from anchor) then
-                (select count(*)+coalesce(sum(jsonb_array_length(coalesce(log_context->'tool_results','[]'::jsonb))),0)::bigint from members)
-                +(select count(*) from runtime_events e join members m on m.id=e.flow_run_id where e.event_type='provider_output_item_done')
-            end
-        "#).bind(flow_run_id).fetch_one(&mut **tx).await.map_err(Into::into)
-    }
-}
-
-fn native_log_item_text(item: &Value) -> String {
-    if let Some(text) = item.as_str() {
-        return text.to_owned();
-    }
-    for field in ["content", "output", "summary"] {
-        if let Some(value) = item.get(field) {
-            if let Some(text) = value.as_str() {
-                return text.to_owned();
-            }
-            if let Some(parts) = value.as_array() {
-                let text = parts
-                    .iter()
-                    .filter_map(|part| part.get("text").and_then(Value::as_str))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !text.is_empty() {
-                    return text;
-                }
-            }
-        }
-    }
-    item.get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned()
 }
