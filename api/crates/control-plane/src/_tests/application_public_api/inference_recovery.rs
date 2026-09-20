@@ -103,6 +103,10 @@ fn transport_failure() -> Value {
 }
 
 async fn fixture(failure: Option<Value>) -> Fixture {
+    fixture_with_configuration(failure, None).await
+}
+
+async fn fixture_with_configuration(mut failure: Option<Value>, tools: Option<Value>) -> Fixture {
     let actor = Uuid::from_u128(0x11111111111111111111111111111111);
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor, "Native inference recovery");
@@ -175,6 +179,18 @@ async fn fixture(failure: Option<Value>) -> Fixture {
         .as_array_mut()
         .unwrap()
         .push(json!({"type":"function_call_output","call_id":"call_1","output":"done"}));
+    if let Some(tools) = tools {
+        body["tools"] = tools;
+        if let Some(error) = failure.as_mut() {
+            let failed_request = NativeExecutionModelParameters::seal_published_reasoning_default(
+                &flow.input_payload,
+                ProviderTransportPayload::openai_responses(body.clone()).unwrap(),
+            )
+            .unwrap();
+            error["native_inference_configuration_digest"] =
+                json!(failed_request.configuration_digest().unwrap());
+        }
+    }
     let command = ResumePublishedCallbackCommand {
         transport_connection_scope: None,
         reserved_attempt_id: None,
@@ -545,5 +561,64 @@ async fn recovery_requires_the_failed_invocations_host_binding() {
             format!("conflict: {expected}")
         );
         fixture.assert_receipt_unchanged();
+    }
+}
+
+#[tokio::test]
+async fn changed_configuration_recovery_binds_failed_request_not_previous_callback() {
+    let tools = json!([{"type":"function","name":"new_tool","parameters":{"type":"object","properties":{}}}]);
+    let f = fixture_with_configuration(Some(transport_failure()), Some(tools)).await;
+    assert!(matches!(
+        f.prepare(&f.command).await.unwrap(),
+        PreparedPublishedCallbackResume::RecoverInference { .. }
+    ));
+    for tools in [None, Some(json!([]))] {
+        let mut command = f.command.clone();
+        let mut body = command.native_transport.take().unwrap().into_wire_body();
+        if let Some(tools) = tools {
+            body["tools"] = tools;
+        } else {
+            body.as_object_mut().unwrap().remove("tools");
+        }
+        command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+        assert_eq!(
+            f.prepare(&command).await.unwrap_err().to_string(),
+            "conflict: native_recovery_configuration_mismatch"
+        );
+    }
+    f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn malformed_failed_configuration_evidence_cannot_fall_back_to_old_callback() {
+    for invalid in [
+        Value::Null,
+        json!({"digest":"not-a-string"}),
+        json!("sha256:forged"),
+    ] {
+        let mut failure = transport_failure();
+        failure["native_inference_configuration_digest"] = invalid;
+        let f = fixture(Some(failure)).await;
+        assert_eq!(
+            f.prepare(&f.command).await.unwrap_err().to_string(),
+            "conflict: native_recovery_configuration_mismatch"
+        );
+        f.assert_receipt_unchanged();
+    }
+}
+
+#[tokio::test]
+async fn completed_callback_configuration_refresh_keeps_receipt_identity() {
+    let f = fixture_with_configuration(None, Some(json!([]))).await;
+    for tools in [
+        json!([]),
+        json!([{"type":"function","name":"new_tool","parameters":{"type":"object","properties":{}}}]),
+    ] {
+        let mut command = f.command.clone();
+        let mut body = command.native_transport.take().unwrap().into_wire_body();
+        body["tools"] = tools;
+        command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+        f.service.resume_callback(command).await.unwrap();
+        f.assert_receipt_unchanged();
     }
 }

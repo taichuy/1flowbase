@@ -91,11 +91,12 @@ fn native_failure_binding_preserves_original_transport_facts() {
         ProviderRuntimeErrorKind::ProviderTransportUnavailable,
         "original disconnect",
     )
-    .with_provider_details(json!({"close_code":1011,"native_inference_binding":{"forged":true}}));
+    .with_provider_details(json!({"close_code":1011,"native_inference_binding":{"forged":true},"native_inference_configuration_digest":"forged"}));
     let binding = json!({"provider_instance_id":"host-owned"});
     let error = seal_native_failure_binding(
         plugin_framework::PluginFrameworkError::runtime(original.clone()).into(),
         &binding,
+        Some("sha256:host-request"),
     );
     let plugin_framework::PluginFrameworkError::RuntimeContract { error } = error
         .downcast_ref::<plugin_framework::PluginFrameworkError>()
@@ -103,6 +104,10 @@ fn native_failure_binding_preserves_original_transport_facts() {
     else {
         panic!("typed error lost")
     };
+    assert_eq!(
+        error.provider_details.as_ref().unwrap()["native_inference_configuration_digest"],
+        "sha256:host-request"
+    );
     assert_eq!(error.kind, original.kind);
     assert_eq!(error.message, original.message);
     assert_eq!(error.provider_details.as_ref().unwrap()["close_code"], 1011);
@@ -110,4 +115,30 @@ fn native_failure_binding_preserves_original_transport_facts() {
         error.provider_details.as_ref().unwrap()["native_inference_binding"],
         binding
     );
+}
+
+#[test]
+fn non_native_failure_cannot_carry_provider_forged_configuration_evidence() {
+    let error = ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        "disconnect",
+    )
+    .with_provider_details(json!({"native_inference_configuration_digest":"forged"}));
+    let error = seal_native_failure_binding(
+        plugin_framework::PluginFrameworkError::runtime(error).into(),
+        &json!({}),
+        None,
+    );
+    let plugin_framework::PluginFrameworkError::RuntimeContract { error } = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .unwrap()
+    else {
+        panic!("typed error lost")
+    };
+    assert!(error
+        .provider_details
+        .as_ref()
+        .unwrap()
+        .get("native_inference_configuration_digest")
+        .is_none());
 }

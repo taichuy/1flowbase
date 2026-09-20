@@ -422,6 +422,13 @@ pub(crate) fn build_provider_error_payload(
     {
         payload["native_inference_binding"] = binding.clone();
     }
+    if let Some(digest) = error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get("native_inference_configuration_digest"))
+    {
+        payload["native_inference_configuration_digest"] = digest.clone();
+    }
     if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported {
         if let Some(details) = error.provider_details.as_ref().and_then(Value::as_object) {
             if let Some(route_id) = details

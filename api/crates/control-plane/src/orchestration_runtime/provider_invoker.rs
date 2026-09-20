@@ -61,7 +61,11 @@ pub(super) fn committed_tool_delivery_candidate(
 }
 
 /// Add host evidence before billing can return the original transport error early.
-fn seal_native_failure_binding(error: anyhow::Error, binding: &Value) -> anyhow::Error {
+fn seal_native_failure_binding(
+    error: anyhow::Error,
+    binding: &Value,
+    configuration_digest: Option<&str>,
+) -> anyhow::Error {
     if let Some(plugin_framework::PluginFrameworkError::RuntimeContract { error: original }) =
         error.downcast_ref::<plugin_framework::PluginFrameworkError>()
     {
@@ -74,6 +78,16 @@ fn seal_native_failure_binding(error: anyhow::Error, binding: &Value) -> anyhow:
             details = json!({"original_provider_details": details});
         }
         details["native_inference_binding"] = binding.clone();
+        // This is the failed invocation's request, which may differ from the preceding
+        // successful callback round after a legitimate full-context configuration change.
+        // Never trust a provider-supplied value for host admission evidence.
+        details
+            .as_object_mut()
+            .unwrap()
+            .remove("native_inference_configuration_digest");
+        if let Some(digest) = configuration_digest {
+            details["native_inference_configuration_digest"] = json!(digest);
+        }
         original.provider_details = Some(details);
         return plugin_framework::PluginFrameworkError::runtime(*original).into();
     }
@@ -971,9 +985,15 @@ where
             .filter(|value| value.is_object())
             .cloned();
         if let Some(error) = invocation_error.take() {
+            let configuration_digest = self
+                .provider_transport_payload
+                .as_ref()
+                .map(|transport| transport.configuration_digest())
+                .transpose()?;
             invocation_error = Some(seal_native_failure_binding(
                 error,
                 &native_inference_binding,
+                configuration_digest.as_deref(),
             ));
         }
         let billing_result = fee_lifecycle

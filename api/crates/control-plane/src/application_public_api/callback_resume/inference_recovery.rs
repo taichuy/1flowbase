@@ -208,7 +208,18 @@ pub(super) fn validate_context(
             &flow.input_payload,
             transport.clone(),
         )?;
-    if metadata["configuration_digest"].as_str() != Some(sealed.configuration_digest()?.as_str()) {
+    // A normal full-context continuation may change request configuration. Recovery
+    // must replay the failed invocation exactly, not the preceding successful round.
+    // Older host records have no invocation digest and retain their original strict proof.
+    let expected_configuration = match flow
+        .error_payload
+        .as_ref()
+        .and_then(|error| error.get("native_inference_configuration_digest"))
+    {
+        Some(digest) => digest.as_str(),
+        None => metadata["configuration_digest"].as_str(),
+    };
+    if expected_configuration != Some(sealed.configuration_digest()?.as_str()) {
         return Err(reject("native_recovery_configuration_mismatch"));
     }
     let ids = callback_call_ids(callback)?;
