@@ -75,7 +75,7 @@ fn seal_native_failure_binding(error: anyhow::Error, binding: &Value) -> anyhow:
         }
         details["native_inference_binding"] = binding.clone();
         original.provider_details = Some(details);
-        return plugin_framework::PluginFrameworkError::runtime(original).into();
+        return plugin_framework::PluginFrameworkError::runtime(*original).into();
     }
     error
 }
