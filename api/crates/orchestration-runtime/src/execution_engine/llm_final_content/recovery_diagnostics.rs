@@ -1,7 +1,7 @@
 //! Bounded error projection, not recovery policy. Provider-specific recognition
 //! remains in the provider; this boundary admits only safe diagnostic facts.
 use extension_contracts::provider_contract::{
-    recovery_receipt_from_details, PROVIDER_RECOVERY_RECEIPT_METADATA_KEY,
+    recovery_receipt_from_details, ProviderRuntimeErrorKind, PROVIDER_RECOVERY_RECEIPT_METADATA_KEY,
 };
 use serde_json::{json, Value};
 const KEY: &str = "1flowbase_provider_recovery_diagnostics";
@@ -90,6 +90,12 @@ fn failure(source: &Value) -> Option<Value> {
         {
             result[field] = json!(value);
         }
+    }
+    if let Some(kind) = source
+        .get("provider_error_kind")
+        .and_then(|value| serde_json::from_value::<ProviderRuntimeErrorKind>(value.clone()).ok())
+    {
+        result["provider_error_kind"] = json!(kind);
     }
     for field in ["socket_incarnation", "owner_socket_incarnation"] {
         if let Some(value) = source
