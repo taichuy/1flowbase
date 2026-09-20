@@ -352,9 +352,16 @@ impl AiNativeRecoveryLedger {
         let provider_attempts_consumed = if decision == OuterReplayDecision::StaleEpochNoop {
             None
         } else {
-            let consumed = receipt
-                .filter(|receipt| receipt.validate_against(&provider_directive).is_ok())
-                .and_then(|receipt| receipt.consumed_attempts().ok());
+            let validated =
+                receipt.filter(|receipt| receipt.validate_against(&provider_directive).is_ok());
+            if let Some(receipt) = validated {
+                match receipt.commit_level {
+                    CommitLevel::LifecycleOnly => {}
+                    CommitLevel::SemanticCommitted => self.semantic_committed = true,
+                    CommitLevel::Terminal => self.semantic_terminal = true,
+                }
+            }
+            let consumed = validated.and_then(|receipt| receipt.consumed_attempts().ok());
             self.total_attempts_charged += u32::from(
                 consumed.unwrap_or(provider_directive.policy.budget().max_inner_attempts),
             );
