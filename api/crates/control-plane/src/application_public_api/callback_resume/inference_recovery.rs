@@ -28,6 +28,49 @@ impl NativeInferenceRecoveryGrant {
     }
 }
 
+/// Recovery alone reads the identity-scoped Native record. Keep the public callback
+/// projection unchanged: it intentionally excludes provider state and private history.
+pub(super) async fn load_owned_evidence<R: ApplicationPublishedRunControlRepository>(
+    repository: &R,
+    actor: &super::super::api_keys::ApplicationApiKeyActor,
+    callback: &domain::CallbackTaskRecord,
+) -> Result<domain::CallbackTaskRecord> {
+    let ids = callback_call_ids(callback)?;
+    repository
+        .find_native_responses_callbacks_by_call_ids(
+            actor.workspace_id,
+            actor.application_id,
+            actor.api_key_id,
+            actor.creator_user_id,
+            &ids,
+        )
+        .await?
+        .into_iter()
+        .find(|owned| {
+            owned.id == callback.id
+                && owned.flow_run_id == callback.flow_run_id
+                && owned.node_run_id == callback.node_run_id
+                && owned.status == callback.status
+        })
+        .ok_or_else(|| ControlPlaneError::Conflict("native_recovery_history_missing").into())
+}
+
+fn callback_call_ids(callback: &domain::CallbackTaskRecord) -> Result<Vec<String>> {
+    let reject = || ControlPlaneError::Conflict("native_recovery_history_missing");
+    callback.request_payload["tool_calls"]
+        .as_array()
+        .ok_or_else(reject)?
+        .iter()
+        .map(|call| {
+            call.get("call_id")
+                .or_else(|| call.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| reject().into())
+        })
+        .collect()
+}
+
 pub(super) fn qualify(
     flow: &domain::FlowRunRecord,
     callback: &domain::CallbackTaskRecord,
@@ -128,19 +171,7 @@ pub(super) fn validate_context(
     if metadata["configuration_digest"].as_str() != Some(sealed.configuration_digest()?.as_str()) {
         return Err(reject("native_recovery_configuration_mismatch"));
     }
-    let calls = callback.request_payload["tool_calls"]
-        .as_array()
-        .ok_or_else(|| reject("native_recovery_history_missing"))?;
-    let ids = calls
-        .iter()
-        .map(|call| {
-            call.get("call_id")
-                .or_else(|| call.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .ok_or_else(|| reject("native_recovery_history_missing"))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let ids = callback_call_ids(callback)?;
     super::super::compat::openai::history::validate_full_retry_input(
         &transport.wire_body()["input"],
         &metadata["history"],

@@ -159,6 +159,12 @@ where
             if command.source == PublishedCallbackResumeSource::OpenAiResponses
                 && context.flow_run.status == domain::FlowRunStatus::Failed
             {
+                let recovery_callback = inference_recovery::load_owned_evidence(
+                    &self.repository,
+                    &context.actor,
+                    &context.callback_task,
+                )
+                .await?;
                 if let Some(successor) = self
                     .repository
                     .find_published_flow_run_by_idempotency_key(
@@ -170,7 +176,7 @@ where
                 {
                     inference_recovery::validate_context(
                         &context.flow_run,
-                        &context.callback_task,
+                        &recovery_callback,
                         command,
                     )?;
                     let mut replay = self.native_result_for_flow_run(&successor).await?;
@@ -182,7 +188,7 @@ where
                 }
                 let grant = inference_recovery::qualify(
                     &context.flow_run,
-                    &context.callback_task,
+                    &recovery_callback,
                     command,
                     (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
                 )?;
@@ -591,7 +597,10 @@ where
             None
         };
         if successor.is_some() {
-            inference_recovery::validate_context(&flow_run, callback_task, command)?;
+            let recovery_callback =
+                inference_recovery::load_owned_evidence(&self.repository, actor, callback_task)
+                    .await?;
+            inference_recovery::validate_context(&flow_run, &recovery_callback, command)?;
         }
         let mut run = self
             .native_result_for_flow_run(successor.as_ref().unwrap_or(&flow_run))

@@ -26,9 +26,7 @@ use crate::application_public_api::{
     },
     protocol_translation::TranslationProtocol,
     publications::{ApplicationPublicationService, PublishApplicationCommand},
-    run_service::{
-        ApplicationPublishedRunControlRepository,
-    },
+    run_service::ApplicationPublishedRunControlRepository,
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use crate::ports::ProviderTransportPayload;
@@ -224,6 +222,19 @@ impl Fixture {
 #[tokio::test]
 async fn native_full_context_precommit_transport_admits_inference_only() {
     let f = fixture(Some(transport_failure())).await;
+    let public_callback = f
+        .repository
+        .get_published_callback_task(f.callback_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        public_callback
+            .request_payload
+            .get("provider_metadata")
+            .is_none(),
+        "public projection stays private-state-free"
+    );
     let PreparedPublishedCallbackResume::RecoverInference { grant } =
         f.prepare(&f.command).await.unwrap()
     else {
@@ -257,6 +268,10 @@ async fn native_full_context_precommit_transport_admits_inference_only() {
 #[tokio::test]
 async fn native_recovery_rejects_missing_changed_history_and_configuration() {
     let f = fixture(Some(transport_failure())).await;
+    assert!(matches!(
+        f.prepare(&f.command).await.unwrap(),
+        PreparedPublishedCallbackResume::RecoverInference { .. }
+    ));
     for mutation in 0..8 {
         let mut command = f.command.clone();
         if mutation == 0 {
@@ -278,11 +293,62 @@ async fn native_recovery_rejects_missing_changed_history_and_configuration() {
             command.native_transport =
                 Some(ProviderTransportPayload::openai_responses(body).unwrap());
         }
-        assert!(
-            f.prepare(&command).await.is_err(),
-            "mutation {mutation} must fail closed"
+        let expected = match mutation {
+            0 | 7 => "native_recovery_full_context_required",
+            6 => "native_recovery_configuration_mismatch",
+            _ => "native_recovery_history_mismatch",
+        };
+        let error = f.prepare(&command).await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("conflict: {expected}"),
+            "mutation {mutation}"
         );
     }
+    f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn private_recovery_evidence_stays_in_the_api_actor_scope() {
+    let f = fixture(Some(transport_failure())).await;
+    let actor = ApplicationApiKeyService::new(f.repository.clone())
+        .authenticate_bearer_token(&f.command.bearer_token)
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.prepare(&f.command).await.unwrap(),
+        PreparedPublishedCallbackResume::RecoverInference { .. }
+    ));
+    for field in 0..4 {
+        let mut other = actor.clone();
+        let foreign = Uuid::from_u128(0x99999999999999999999999999999999);
+        match field {
+            0 => other.workspace_id = foreign,
+            1 => other.application_id = foreign,
+            2 => other.api_key_id = foreign,
+            3 => other.creator_user_id = foreign,
+            _ => unreachable!(),
+        }
+        let error = f
+            .service
+            .prepare_callback_resume_for_actor(other, &f.command)
+            .await
+            .unwrap_err();
+        if field == 0 {
+            assert_eq!(
+                error.to_string(),
+                "conflict: native_recovery_history_missing"
+            );
+        } else {
+            assert!(matches!(
+                error.downcast_ref::<crate::errors::ControlPlaneError>(),
+                Some(crate::errors::ControlPlaneError::PermissionDenied(
+                    "application_public_callback_resume"
+                ))
+            ));
+        }
+    }
+    assert_eq!(f.repository.flow_run_count(), 1);
     f.assert_receipt_unchanged();
 }
 
