@@ -967,3 +967,6 @@ async fn provider_fault_after_tool_call_discards_uncommitted_candidates() {
         .unwrap();
     assert!(detail.callback_tasks.is_empty());
 }
+
+#[path = "_tests/checkpoint_ownership.rs"]
+mod checkpoint_ownership;

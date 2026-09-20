@@ -64,6 +64,7 @@ pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
         crate::orchestration_runtime::persistence::checkpoint_snapshot_from_record_with_context(
             repository,
             &context.checkpoint,
+            successor.id,
         )
         .await?;
     let metadata = snapshot

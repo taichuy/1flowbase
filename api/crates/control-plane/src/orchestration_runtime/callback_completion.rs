@@ -181,9 +181,12 @@ where
             .await
         } else {
             async {
-                let snapshot =
-                    checkpoint_snapshot_from_record_with_context(&self.repository, &checkpoint)
-                        .await?;
+                let snapshot = checkpoint_snapshot_from_record_with_context(
+                    &self.repository,
+                    &checkpoint,
+                    flow_run.id,
+                )
+                .await?;
                 let waiting_node_id = checkpoint_node_id(&checkpoint)?;
                 let execution = self
                     .resume_execution_segment(ResumeExecutionSegmentInput {
@@ -371,7 +374,8 @@ where
         }
 
         let snapshot =
-            checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint).await?;
+            checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint, flow_run.id)
+                .await?;
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
                 transport_connection_scope: command.transport_connection_scope.clone(),

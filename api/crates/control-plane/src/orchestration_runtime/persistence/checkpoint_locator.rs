@@ -404,26 +404,34 @@ pub(in crate::orchestration_runtime) fn checkpoint_snapshot_from_record(
         .into_checkpoint_snapshot(&checkpoint.variable_snapshot)
 }
 
+/// Materialize before crossing a run boundary: storage lineage is run-owned,
+/// while the complete frozen execution values may seed an authorized successor.
 pub(in crate::orchestration_runtime) async fn checkpoint_snapshot_from_record_with_context<R>(
     repository: &R,
     checkpoint: &domain::CheckpointRecord,
+    target_flow_run_id: Uuid,
 ) -> Result<orchestration_runtime::execution_state::CheckpointSnapshot>
 where
     R: crate::ports::OrchestrationRuntimeRepository,
 {
     let locator = CheckpointLocatorPayload::from_record(checkpoint)?;
-    let Some(context_version_id) = locator.context_version_id else {
-        return locator.into_checkpoint_snapshot(&checkpoint.variable_snapshot);
+    let mut snapshot = match locator.context_version_id {
+        Some(context_version_id) => {
+            let lineage = repository
+                .load_runtime_context_content_lineage(context_version_id)
+                .await?;
+            orchestration_runtime::execution_state::CheckpointSnapshot {
+                next_node_index: locator.next_node_index,
+                variable_pool: materialize_checkpoint_content(&lineage)?,
+                active_node_ids: locator.active_node_ids,
+            }
+        }
+        None => locator.into_checkpoint_snapshot(&checkpoint.variable_snapshot)?,
     };
-    let lineage = repository
-        .load_runtime_context_content_lineage(context_version_id)
-        .await?;
-    let variable_pool = materialize_checkpoint_content(&lineage)?;
-    Ok(orchestration_runtime::execution_state::CheckpointSnapshot {
-        next_node_index: locator.next_node_index,
-        variable_pool,
-        active_node_ids: locator.active_node_ids,
-    })
+    if checkpoint.flow_run_id != target_flow_run_id {
+        snapshot.variable_pool.remove(RECOVERY_CONTEXT_MARKER);
+    }
+    Ok(snapshot)
 }
 
 pub(in crate::orchestration_runtime) fn checkpoint_node_id(

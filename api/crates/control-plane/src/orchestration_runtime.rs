@@ -1245,8 +1245,12 @@ where
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
-        let snapshot =
-            checkpoint_snapshot_from_record_with_context(&self.repository, &checkpoint).await?;
+        let snapshot = checkpoint_snapshot_from_record_with_context(
+            &self.repository,
+            &checkpoint,
+            flow_run.id,
+        )
+        .await?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
         let resume_patch = command
             .input_payload

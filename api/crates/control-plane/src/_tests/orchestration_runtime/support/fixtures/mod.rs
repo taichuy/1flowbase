@@ -663,6 +663,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         crate::orchestration_runtime::persistence::checkpoint_snapshot_from_record_with_context(
             &self.repository,
             checkpoint,
+            checkpoint.flow_run_id,
         )
         .await
         .expect("checkpoint snapshot should be recoverable")
