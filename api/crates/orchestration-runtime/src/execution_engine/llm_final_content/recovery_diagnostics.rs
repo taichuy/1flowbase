@@ -112,7 +112,11 @@ fn failure(source: &Value) -> Option<Value> {
     {
         result["provider_error_kind"] = json!(kind);
     }
-    for field in ["socket_incarnation", "owner_socket_incarnation"] {
+    for field in [
+        "socket_incarnation",
+        "owner_socket_incarnation",
+        "transport_generation",
+    ] {
         if let Some(value) = source
             .get(field)
             .and_then(Value::as_u64)
