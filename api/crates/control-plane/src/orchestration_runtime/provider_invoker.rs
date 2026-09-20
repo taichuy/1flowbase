@@ -433,6 +433,12 @@ where
             .ok_or(ControlPlaneError::InvalidInput("resolved_provider_route"))?
             .clone();
         let instance = pin.instance;
+        if let Some(recovery) = input.run_context.get("native_inference_recovery") {
+            let expected = recovery.get("provider_instance_id").and_then(Value::as_str);
+            if expected != Some(instance.id.to_string().as_str()) {
+                return Err(anyhow!("provider_affinity_mismatch"));
+            }
+        }
         let installation = pin.installation;
         let package = pin.package;
         adapt_or_ensure_model_supports_content_blocks(
@@ -492,6 +498,8 @@ where
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
         let provider_stream_timing = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let native_completed_items =
+            Arc::new(Mutex::new(std::collections::BTreeMap::<usize, Value>::new()));
         let mut required_forward_handle = None;
         let mut diagnostic_forward_handle = None;
         let active_node = self
@@ -574,6 +582,8 @@ where
                 mpsc::channel::<ProviderStreamEvent>(PROVIDER_LIVE_EVENT_LANE_CAPACITY);
             let diagnostic_node_id = node_id.clone();
             let flow_execution_context_for_task = self.flow_execution_context.clone();
+            let native_completed_items_for_task = native_completed_items.clone();
+            let capture_native_history = self.provider_transport_payload.is_some();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut ingress_sequence = 0_u64;
@@ -593,6 +603,21 @@ where
                         provider_invoke_started,
                     );
                     let canonical_deltas = canonical_writer.write(&event)?;
+                    if capture_native_history {
+                        if let ProviderStreamEvent::OutputItem {
+                            phase: ProviderOutputItemPhase::Done,
+                            output_index,
+                            item,
+                        } = &event
+                        {
+                            let mut items = native_completed_items_for_task
+                                .lock()
+                                .map_err(|_| anyhow!("native output history lock poisoned"))?;
+                            if items.insert(*output_index, item.clone()).is_some() {
+                                return Err(anyhow!("native output history index repeated"));
+                            }
+                        }
+                    }
                     let tool_delivery =
                         committed_tool_delivery_candidate(&node_id, node_run_id, &event)?;
                     if let Some(delivery) = &tool_delivery {
@@ -868,6 +893,21 @@ where
             invocation_output.as_mut(),
         ) {
             let round_id = self.response_round_id.unwrap_or(flow_run_id);
+            let history = {
+                let items = native_completed_items
+                    .lock()
+                    .map_err(|_| anyhow!("native output history lock poisoned"))?;
+                // Missing native item indexes cannot prove a complete output sequence.
+                if items.keys().copied().eq(0..items.len()) {
+                    crate::application_public_api::compat::openai::history::completed_history(
+                        transport.wire_body(),
+                        self.native_history.as_ref(),
+                        &items.values().cloned().collect::<Vec<_>>(),
+                    )?
+                } else {
+                    None
+                }
+            };
             let metadata = &mut output.result.provider_metadata;
             if !metadata.is_object() {
                 *metadata = json!({});
@@ -875,6 +915,7 @@ where
             metadata["native_response"] = json!({
                 "response_id": format!("resp_{round_id}"),
                 "configuration_digest": transport.configuration_digest()?,
+                "history": history,
                 "user_messages_digest": transport.user_messages_digest()?.or_else(|| self.native_user_messages_digest.clone()),
             });
         }
@@ -1596,6 +1637,7 @@ where
             provider_continuation: self.provider_continuation.clone(),
             response_round_id: self.response_round_id,
             native_user_messages_digest: self.native_user_messages_digest.clone(),
+            native_history: self.native_history.clone(),
             model_pricing_cache_store: self.model_pricing_cache_store.clone(),
         }
     }

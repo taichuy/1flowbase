@@ -89,7 +89,11 @@ pub(crate) struct CompatibleResumePlan {
 
 pub(crate) enum CompatibleResumeAdmission {
     Resume(Box<CompatibleResumePlan>),
-    StartNewTurnFromHistory,
+    StartNewTurnFromHistory {
+        recovery: Option<
+            control_plane::application_public_api::callback_resume::NativeInferenceRecoveryGrant,
+        >,
+    },
 }
 
 #[expect(
@@ -350,7 +354,9 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
                         callback_task_id, ..
                     } => callback_task_id,
                 };
-                initial_run.metadata["response_round_id"] = json!(round_id);
+                if initial_run.metadata["native_inference_recovery_replay"] != true {
+                    initial_run.metadata["response_round_id"] = json!(round_id);
+                }
             }
             CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
                 initial_run: *initial_run,
@@ -358,7 +364,12 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
             }))
         }
         PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
-            CompatibleResumeAdmission::StartNewTurnFromHistory
+            CompatibleResumeAdmission::StartNewTurnFromHistory { recovery: None }
+        }
+        PreparedPublishedCallbackResume::RecoverInference { grant } => {
+            CompatibleResumeAdmission::StartNewTurnFromHistory {
+                recovery: Some(grant),
+            }
         }
     })
 }
@@ -389,7 +400,9 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     .await
     .map(|mut result| {
         if let Some(round_id) = round_id {
-            result.run.metadata["response_round_id"] = json!(round_id);
+            if result.run.metadata["native_inference_recovery_replay"] != true {
+                result.run.metadata["response_round_id"] = json!(round_id);
+            }
         }
         result.run
     })
@@ -569,6 +582,15 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
     command: ResumePublishedCallbackCommand,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    if initial_run.metadata["native_inference_recovery_replay"] == true {
+        return attach_compatible_typed_stream(
+            native::native_run_terminal_dependencies(&dependencies.native),
+            dependencies.native.runtime_event_stream.clone(),
+            initial_run,
+            None,
+        )
+        .await;
+    }
     let mcp_runtime_invoker = dependencies
         .native
         .runtime_invoker_factory
@@ -625,23 +647,37 @@ pub(crate) async fn start_compatible_typed_attach_stream(
     initial_run: NativeRunResult,
     from_sequence: Option<i64>,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let subscription = state
-        .runtime_event_stream
+    attach_compatible_typed_stream(
+        NativeRunTerminalDependencies::new(
+            state.store.clone(),
+            state.runtime_engine.clone(),
+            state.provider_runtime.clone(),
+            state.provider_secret_master_key.clone(),
+            state.model_billing_require_provider_usage,
+            state.infrastructure.provider_transport_store(),
+            state.runtime_event_stream.clone(),
+        ),
+        state.runtime_event_stream.clone(),
+        initial_run,
+        from_sequence,
+    )
+    .await
+}
+
+async fn attach_compatible_typed_stream(
+    terminal_dependencies: NativeRunTerminalDependencies,
+    runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+    initial_run: NativeRunResult,
+    from_sequence: Option<i64>,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let subscription = runtime_event_stream
         .subscribe(initial_run.id, from_sequence)
         .await
         .map_err(service_error)?;
     let (sender, events) = mpsc::channel(32);
     tokio::spawn(send_subscribed_compatible_typed_event_stream(
         SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: NativeRunTerminalDependencies::new(
-                state.store.clone(),
-                state.runtime_engine.clone(),
-                state.provider_runtime.clone(),
-                state.provider_secret_master_key.clone(),
-                state.model_billing_require_provider_usage,
-                state.infrastructure.provider_transport_store(),
-                state.runtime_event_stream.clone(),
-            ),
+            terminal_dependencies,
             initial_run: initial_run.clone(),
             from_sequence,
             ignored_waiting_callback_task_id: None,

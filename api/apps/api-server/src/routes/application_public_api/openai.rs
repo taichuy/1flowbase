@@ -247,7 +247,7 @@ pub async fn create_chat_completion(
                 );
                 return Ok(Json(to_openai_response(run, model, completion_id)?).into_response());
             }
-            Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
+            Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback delivery is complete; re-admit its full history as a new turn.
             }
             Err(error)
@@ -636,6 +636,7 @@ async fn dispatch_response_for_endpoint(
         .as_ref()
         .map(|previous| previous.flow_run_id);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
+    let mut inference_recovery = None;
     if endpoint == OpenAiResponsesEndpoint::Responses {
         let encoded_resume = correlate_openai_responses_callback(
             responses_envelope.raw_body(),
@@ -765,8 +766,8 @@ async fn dispatch_response_for_endpoint(
                             .await?;
                     return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
                 }
-                Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
-                    // The callback delivery is complete; re-admit its full history as a new turn.
+                Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { recovery }) => {
+                    inference_recovery = recovery;
                 }
                 Err(error)
                     if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
@@ -796,6 +797,9 @@ async fn dispatch_response_for_endpoint(
     };
     let translation_decision_count = translated.report.decisions.len();
     let mut request = translated.request;
+    if let Some(grant) = inference_recovery {
+        request.metadata.set_inference_recovery(grant);
+    }
     request.client_protocol_envelope = openai_protocol_context_from_ingress(
         ClientProtocolIngressPolicy::OpenAiResponses,
         raw_query.as_deref(),

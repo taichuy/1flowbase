@@ -253,10 +253,32 @@ where
             client_request.execution.model_parameters(),
         )?;
         let requested_model_id = client_request.model.clone();
-        let idempotency_key = client_request
-            .execution
-            .idempotency_key()
-            .map(ToOwned::to_owned);
+        let recovery = client_request.metadata.inference_recovery().cloned();
+        if let Some(grant) = &recovery {
+            if publication.id != grant.publication_version_id
+                || (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
+                    >= grant.absolute_deadline_unix_ms
+            {
+                return Err(NativeRunValidationError::InvalidState);
+            }
+        }
+        let idempotency_key = recovery
+            .as_ref()
+            .map(|grant| format!("native-inference-recovery:{}", grant.callback_task_id))
+            .or_else(|| {
+                client_request
+                    .execution
+                    .idempotency_key()
+                    .map(ToOwned::to_owned)
+            });
+        // This namespace is host-only, so a public idempotency key cannot forge a successor.
+        if recovery.is_none()
+            && idempotency_key
+                .as_deref()
+                .is_some_and(|key| key.starts_with("native-inference-recovery:"))
+        {
+            return Err(NativeRunValidationError::IdempotencyConflict);
+        }
         let idempotency_fingerprint = idempotency_key
             .as_ref()
             .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
@@ -290,6 +312,26 @@ where
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        if recovery.is_some() {
+            // Re-enter only the gateway's single inference pipeline. Re-running arbitrary
+            // workflow nodes could repeat unrelated business side effects.
+            let nodes = compiled_plan
+                .plan
+                .get("nodes")
+                .and_then(Value::as_object)
+                .ok_or(NativeRunValidationError::InvalidState)?;
+            if nodes
+                .values()
+                .filter(|node| node["node_type"] == "llm")
+                .count()
+                != 1
+                || nodes.values().any(|node| {
+                    !matches!(node["node_type"].as_str(), Some("start" | "llm" | "answer"))
+                })
+            {
+                return Err(NativeRunValidationError::InvalidState);
+            }
+        }
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let metadata = mapped.metadata;
@@ -305,6 +347,10 @@ where
                 .await
                 .map_err(|_| NativeRunValidationError::InvalidMapping)?
             {
+                if recovery.is_some() {
+                    // The create winner alone may stage/open/execute a recovery stream.
+                    return Err(NativeRunValidationError::IdempotencyConflict);
+                }
                 ensure_idempotency_fingerprint_matches(
                     &flow_run,
                     idempotency_fingerprint.as_deref(),
@@ -330,8 +376,16 @@ where
             input_payload,
             idempotency_fingerprint.as_deref(),
         );
-        let input_payload =
+        let mut input_payload =
             with_public_provider_transport_summary(input_payload, provider_transport_summary);
+        if let Some(grant) = &recovery {
+            if !input_payload["sys"].is_object() {
+                input_payload["sys"] = json!({});
+            }
+            input_payload["sys"]["native_inference_recovery"] = grant.durable_value();
+        } else if let Some(sys) = input_payload.get_mut("sys").and_then(Value::as_object_mut) {
+            sys.remove("native_inference_recovery");
+        }
         let create_input = CreateFlowRunInput {
             application_run_log_context,
             actor_user_id: actor.creator_user_id,
@@ -378,6 +432,9 @@ where
         .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let flow_run = created.flow_run;
         if !created.created {
+            if recovery.is_some() {
+                return Err(NativeRunValidationError::IdempotencyConflict);
+            }
             ensure_idempotency_fingerprint_matches(&flow_run, idempotency_fingerprint.as_deref())?;
             return Ok(native_result_from_flow_run(&flow_run, metadata));
         }

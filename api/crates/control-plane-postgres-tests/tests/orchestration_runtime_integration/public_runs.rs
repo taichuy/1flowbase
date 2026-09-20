@@ -411,3 +411,81 @@ async fn data_model_side_effect_receipts_upsert_and_get_by_workspace_key() {
         .is_none()
     );
 }
+
+#[tokio::test]
+async fn native_inference_recovery_successor_key_has_one_postgres_create_winner() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let api_key_id = seed_application_api_key(&store, &seeded).await;
+    let idempotency_key = format!("native-inference-recovery:{}", Uuid::now_v7());
+
+    let input = CreateFlowRunInput {
+        application_run_log_context: None,
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        flow_id: seeded.flow_id,
+        flow_draft_id: seeded.draft_id,
+        compiled_plan_id: compiled.id,
+        debug_session_id: String::new(),
+        flow_schema_version: compiled.schema_version.clone(),
+        document_hash: compiled.document_hash.clone(),
+        run_mode: FlowRunMode::PublishedApiRun,
+        target_node_id: None,
+        title: "Scheduled workflow".to_string(),
+        status: FlowRunStatus::Queued,
+        input_payload: json!({ "node-workflow-start": { "customer_id": "C-42" } }),
+        started_at: datetime!(2026-06-30 09:30:00 UTC),
+        api_key_id: Some(api_key_id),
+        publication_version_id: None,
+        assistant_conversation_id: None,
+        external_user: None,
+        external_conversation_id: None,
+        external_trace_id: Some(format!("workflow-schedule:{}", seeded.application_id)),
+        compatibility_mode: None,
+        idempotency_key: Some(idempotency_key.clone()),
+    };
+    let (first, second) = tokio::join!(
+        <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_published_flow_run(
+            &store, &input,
+        ),
+        <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_published_flow_run(
+            &store, &input,
+        ),
+    );
+    let first = first.unwrap();
+    let second = second.unwrap();
+    let fetched = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::find_published_flow_run_by_idempotency_key(
+        &store,
+        seeded.application_id,
+        Some(api_key_id),
+        &idempotency_key,
+    )
+    .await
+    .unwrap()
+    .expect("schedule run should be found without an api_key_id");
+    let persisted_count: i64 = sqlx::query_scalar(
+        r#"
+        select count(*)
+        from flow_runs
+        where application_id = $1
+          and run_mode = 'published_api_run'
+          and idempotency_key = $2
+        "#,
+    )
+    .bind(seeded.application_id)
+    .bind(&idempotency_key)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+
+    assert_ne!(first.created, second.created);
+    assert_eq!(first.flow_run.id, second.flow_run.id);
+    assert_eq!(fetched.id, first.flow_run.id);
+    assert_eq!(fetched.api_key_id, Some(api_key_id));
+    assert_eq!(fetched.run_mode, FlowRunMode::PublishedApiRun);
+    assert!(fetched.compatibility_mode.is_none());
+    assert_eq!(persisted_count, 1);
+}

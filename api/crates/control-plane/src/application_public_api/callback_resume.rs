@@ -1,3 +1,6 @@
+mod inference_recovery;
+pub use inference_recovery::NativeInferenceRecoveryGrant;
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -88,6 +91,7 @@ pub struct ResumePublishedCallbackResult {
 pub enum PreparedPublishedCallbackResume {
     Resume { initial_run: Box<NativeRunResult> },
     StartNewTurnFromHistory,
+    RecoverInference { grant: NativeInferenceRecoveryGrant },
 }
 
 struct PublishedCallbackResumeContext {
@@ -152,6 +156,38 @@ where
             .await?
         {
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
+            if command.source == PublishedCallbackResumeSource::OpenAiResponses
+                && context.flow_run.status == domain::FlowRunStatus::Failed
+            {
+                if let Some(successor) = self
+                    .repository
+                    .find_published_flow_run_by_idempotency_key(
+                        context.actor.application_id,
+                        Some(context.actor.api_key_id),
+                        &inference_recovery::recovery_key(context.callback_task.id),
+                    )
+                    .await?
+                {
+                    inference_recovery::validate_context(
+                        &context.flow_run,
+                        &context.callback_task,
+                        command,
+                    )?;
+                    let mut replay = self.native_result_for_flow_run(&successor).await?;
+                    replay.metadata["native_inference_recovery_replay"] = json!(true);
+                    replay.metadata["response_round_id"] = json!(successor.id);
+                    return Ok(PreparedPublishedCallbackResume::Resume {
+                        initial_run: Box::new(replay),
+                    });
+                }
+                let grant = inference_recovery::qualify(
+                    &context.flow_run,
+                    &context.callback_task,
+                    command,
+                    (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
+                )?;
+                return Ok(PreparedPublishedCallbackResume::RecoverInference { grant });
+            }
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
                 && callback_failure_allows_new_turn(&context.flow_run)
             {
@@ -536,12 +572,34 @@ where
             .get_published_flow_run(attempt.flow_run_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
+        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id)
+            || flow_run.created_by != actor.creator_user_id
+        {
             return Err(
                 ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
             );
         }
-        let run = self.native_result_for_flow_run(&flow_run).await?;
+        let successor = if command.source == PublishedCallbackResumeSource::OpenAiResponses {
+            self.repository
+                .find_published_flow_run_by_idempotency_key(
+                    actor.application_id,
+                    Some(actor.api_key_id),
+                    &inference_recovery::recovery_key(callback_task.id),
+                )
+                .await?
+        } else {
+            None
+        };
+        if successor.is_some() {
+            inference_recovery::validate_context(&flow_run, callback_task, command)?;
+        }
+        let mut run = self
+            .native_result_for_flow_run(successor.as_ref().unwrap_or(&flow_run))
+            .await?;
+        if successor.is_some() {
+            run.metadata["native_inference_recovery_replay"] = json!(true);
+            run.metadata["response_round_id"] = json!(run.id);
+        }
         Ok(ResumePublishedCallbackResult { run, attempt })
     }
 
@@ -571,7 +629,9 @@ where
             .get_published_flow_run(callback_task.flow_run_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id) {
+        if !published_run_belongs_to_actor(&flow_run, actor.application_id, actor.api_key_id)
+            || flow_run.created_by != actor.creator_user_id
+        {
             return Err(
                 ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
             );

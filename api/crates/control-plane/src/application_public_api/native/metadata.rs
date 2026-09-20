@@ -15,6 +15,7 @@ const METADATA_PATH: &str = "$.metadata";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    recovery: Option<crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant>,
     transport_connection_scope: Option<String>,
     application_run_log_context: Option<control_plane_contracts::ports::ApplicationRunLogContext>,
     responses_transport_requirement: ResponsesTransportRequirement,
@@ -60,6 +61,7 @@ impl NativeRequestMetadata {
         };
         Ok(Self {
             trace_id,
+            recovery: None,
             transport_connection_scope: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
@@ -71,12 +73,27 @@ impl NativeRequestMetadata {
     pub fn with_trace_id(trace_id: Option<String>) -> Self {
         Self {
             trace_id,
+            recovery: None,
             transport_connection_scope: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
             application_run_log_context: None,
         }
+    }
+
+    /// Only a Native admission can mint this non-wire recovery grant.
+    pub fn set_inference_recovery(
+        &mut self,
+        grant: crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant,
+    ) {
+        self.recovery = Some(grant);
+    }
+
+    pub(crate) fn inference_recovery(
+        &self,
+    ) -> Option<&crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant> {
+        self.recovery.as_ref()
     }
 
     pub fn application_run_log_context(

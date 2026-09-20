@@ -15,12 +15,10 @@ fn unix_millis(now: OffsetDateTime) -> i64 {
 }
 
 fn recovery_absolute_deadline(input: &ProviderInvocationInput, now: OffsetDateTime) -> i64 {
-    let now_ms = unix_millis(now);
     input
         .run_context
         .get("task_deadline_unix_ms")
         .and_then(Value::as_i64)
-        .filter(|deadline| *deadline > now_ms)
         .unwrap_or_else(|| unix_millis(now + time::Duration::minutes(30)))
 }
 
@@ -423,7 +421,10 @@ where
     };
     let recovery_deadline =
         recovery_absolute_deadline(&routing_probe.input, OffsetDateTime::now_utc());
-    let recovery_reproducible = routing_probe.input.previous_response_id.is_none();
+    // An opaque transport payload can still contain a cursor even when semantic messages do
+    // not. Full-context reconstruction must pass Native's separate owned-history admission.
+    let recovery_reproducible = recovery_input_mode == RecoveryInputMode::SemanticMapped
+        && routing_probe.input.previous_response_id.is_none();
     let configured_request_count = llm_request_count(node);
     let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
     let mut recovery_ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
@@ -431,7 +432,16 @@ where
         u16::try_from(AUTOMATIC_TRANSPORT_RETRY_LIMIT).unwrap_or(u16::MAX),
         recovery_reproducible,
         recovery_input_mode,
-        AiNativeRecoveryLedger::attempt_budget_for_invocations(request_count),
+        routing_probe
+            .input
+            .run_context
+            .get("native_inference_recovery")
+            .and_then(|grant| grant.get("remaining_attempts"))
+            .and_then(Value::as_u64)
+            .and_then(|remaining| u32::try_from(remaining).ok())
+            .unwrap_or_else(|| {
+                AiNativeRecoveryLedger::attempt_budget_for_invocations(request_count)
+            }),
     )
     .map_err(anyhow::Error::msg)?;
     let retry_enabled = node
@@ -1284,3 +1294,7 @@ where
         }),
     }
 }
+
+#[cfg(test)]
+#[path = "../_tests/llm_recovery_deadline.rs"]
+mod recovery_deadline_tests;

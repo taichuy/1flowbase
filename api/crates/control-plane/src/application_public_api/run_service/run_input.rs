@@ -24,6 +24,8 @@ pub(crate) fn freeze_run_input_environment(
         .remove("sys")
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default();
+    // Recovery authorization is attached by the Native owner after public input mapping.
+    sys.remove("native_inference_recovery");
     NativeExecutionModelParameters::freeze_published_reasoning_default(&mut sys, defaulted_effort);
     if requested_model_id.is_some() || external_model_parameters.is_some() {
         if let Some(requested_model_id) = requested_model_id {

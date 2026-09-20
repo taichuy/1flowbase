@@ -1174,13 +1174,15 @@ mod tests {
             control_plane::application_public_api::native::NativeRunStatus::Failed
         );
 
-        let admission = service
+        let error = service
             .prepare_callback_resume(&command)
             .await
-            .expect("exact Responses retry must remain replayable");
+            .expect_err("generic callbacks cannot authorize native inference recovery");
         assert!(matches!(
-            admission,
-            PreparedPublishedCallbackResume::Resume { .. }
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::Conflict(
+                "native_recovery_not_failed_inference"
+            ))
         ));
         let actor = ApplicationApiKeyService::new(repository.clone())
             .authenticate_bearer_token(&token)

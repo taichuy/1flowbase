@@ -6,6 +6,7 @@ async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -42,6 +43,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -89,6 +91,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -130,6 +133,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -174,6 +178,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -222,6 +227,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -274,6 +280,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -323,6 +330,7 @@ async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installatio
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -365,6 +373,7 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository: repository.clone(),
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -421,6 +430,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),

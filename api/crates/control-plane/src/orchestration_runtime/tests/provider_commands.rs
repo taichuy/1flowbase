@@ -68,6 +68,7 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: CapturingCompactRuntime {
             captured: captured.clone(),
@@ -205,6 +206,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: CapturingCountTokensRuntime {
             captured: captured.clone(),

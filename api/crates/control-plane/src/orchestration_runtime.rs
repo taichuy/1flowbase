@@ -288,6 +288,7 @@ struct RuntimeProviderInvoker<R, H> {
     provider_continuation: Option<crate::ports::ProviderContinuation>,
     response_round_id: Option<Uuid>,
     native_user_messages_digest: Option<String>,
+    native_history: Option<Value>,
     model_pricing_cache_store: Option<Arc<dyn CacheStore>>,
 }
 
@@ -519,6 +520,7 @@ where
             provider_continuation: None,
             response_round_id: None,
             native_user_messages_digest: None,
+            native_history: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
@@ -548,6 +550,7 @@ where
             provider_continuation: None,
             response_round_id: None,
             native_user_messages_digest: None,
+            native_history: None,
             model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
@@ -628,6 +631,15 @@ where
             .with_provider_transport_payload(transport)
             .with_transport_connection_scope_override(input.transport_connection_scope);
         invoker.response_round_id = input.response_round_id;
+        invoker.native_history = input
+            .snapshot
+            .variable_pool
+            .get(input.waiting_node_id)
+            .and_then(|node| {
+                node.pointer("/__llm_tool_callback/provider_metadata/native_response/history")
+            })
+            .filter(|value| value.is_object())
+            .cloned();
         invoker.native_user_messages_digest = input
             .snapshot
             .variable_pool

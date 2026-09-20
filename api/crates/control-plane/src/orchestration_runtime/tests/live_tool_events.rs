@@ -94,6 +94,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),

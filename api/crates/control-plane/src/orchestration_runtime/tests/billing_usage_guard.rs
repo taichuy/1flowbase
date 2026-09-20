@@ -54,6 +54,7 @@ fn billing_invoker_with_policy(
     RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime,
         workspace_id: Uuid::nil(),

@@ -52,6 +52,7 @@ fn credit_command_invoker(
     RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::with_capability_output(output),
         workspace_id: Uuid::nil(),

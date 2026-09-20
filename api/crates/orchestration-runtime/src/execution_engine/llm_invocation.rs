@@ -178,6 +178,16 @@ where
         "resolved_inputs".to_string(),
         Value::Object(resolved_inputs.clone()),
     )]);
+    if let Some(recovery) = variable_pool
+        .get("sys")
+        .and_then(|sys| sys.get("native_inference_recovery"))
+        .filter(|_| pending_llm_tool_callback_state(variable_pool, &node.node_id).is_none())
+    {
+        run_context.insert("native_inference_recovery".to_string(), recovery.clone());
+        if let Some(deadline) = recovery.get("absolute_deadline_unix_ms") {
+            run_context.insert("task_deadline_unix_ms".to_string(), deadline.clone());
+        }
+    }
     if let Some(media_tools) = visible_internal_llm_media_tool_context(node) {
         run_context.insert("visible_internal_llm_media_tools".to_string(), media_tools);
     }

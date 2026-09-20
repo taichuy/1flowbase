@@ -43,6 +43,7 @@ use uuid::Uuid;
 mod anthropic_compat;
 mod client_protocol_envelope;
 mod conversations;
+mod inference_recovery;
 mod native_run;
 mod openai_compat;
 mod publications;

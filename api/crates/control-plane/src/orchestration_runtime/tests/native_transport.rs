@@ -9,6 +9,7 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),
@@ -93,6 +94,7 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),
@@ -177,6 +179,7 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: test_support::InMemoryProviderRuntime::default(),
         workspace_id: Uuid::nil(),
@@ -271,6 +274,7 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
     let invoker = RuntimeProviderInvoker {
         response_round_id: None,
         native_user_messages_digest: None,
+        native_history: None,
         repository,
         runtime: runtime_port,
         workspace_id: Uuid::nil(),
