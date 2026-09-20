@@ -328,7 +328,10 @@
     "task_outcome_no_final_answer": "No final answer observed",
     "show_current_task": "Show current task",
     "show_log_conversation": "Show conversation",
-    "parent_task": "Parent task"
+    "parent_task": "Parent task",
+    "run_no_answer_generated": "This call finished without generating an answer.",
+    "run_prewarm_no_answer_generated": "This call is a prewarm and generated no answer.",
+    "run_error_without_output": "This call ended with an error and produced no output."
   },
   "archive_import": {
     "path_conflict": "The application path is already in use. Import failed.",

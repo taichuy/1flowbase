@@ -204,10 +204,8 @@
   padding: clamp(0.4rem, 1.8cqw, 0.5rem);
 }
 
-.agent-flow-editor__debug-workflow-thought-item
-  .ant-thought-chain-node-box,
-.agent-flow-editor__debug-workflow-thought-item
-  .ant-thought-chain-node-content,
+.agent-flow-editor__debug-workflow-thought-item .ant-thought-chain-node-box,
+.agent-flow-editor__debug-workflow-thought-item .ant-thought-chain-node-content,
 .agent-flow-editor__debug-workflow-thought-content {
   width: 100%;
 }
@@ -539,4 +537,49 @@
   display: inline-flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+/* System/developer context turns are part of the conversation: they get the
+   same card treatment as the other turns instead of bare text. */
+.agent-flow-editor__debug-bubble-list
+  .ant-bubble-start.agent-flow-editor__debug-system-bubble {
+  padding-inline-end: 0;
+}
+
+.agent-flow-editor__debug-system-bubble,
+.agent-flow-editor__debug-system-bubble .ant-bubble-body,
+.agent-flow-editor__debug-system-bubble .ant-bubble-content {
+  width: 100%;
+}
+
+/* The shared system variant centers its content for console notices; a context
+   turn is a full-width card, so scope the column layout to this bubble. */
+.agent-flow-editor__debug-system-bubble
+  .agent-flow-editor__debug-message--system {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.agent-flow-editor__debug-system-bubble .ant-bubble-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: clamp(0.5rem, 2cqw, 0.75rem);
+  border: 1px solid #dbe7e4;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+.agent-flow-editor__debug-message--system
+  .agent-flow-editor__debug-message-content {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f2937;
+  line-height: 1.7;
+  box-shadow: none;
 }

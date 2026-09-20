@@ -328,7 +328,10 @@
     "task_outcome_no_final_answer": "未观察到最终回答",
     "show_current_task": "返回当前任务",
     "show_log_conversation": "查看此会话",
-    "parent_task": "父任务"
+    "parent_task": "父任务",
+    "run_no_answer_generated": "本次调用已结束，未生成回答。",
+    "run_prewarm_no_answer_generated": "本次调用为预热（prewarm），未生成回答。",
+    "run_error_without_output": "本次调用以错误结束，未产生输出。"
   },
   "archive_import": {
     "path_conflict": "应用路径已被占用，无法导入。",

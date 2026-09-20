@@ -105,39 +105,39 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
             (
                 0,
                 "imported_context".to_string(),
-                Some("system".to_string()),
-                Some("Use concise Chinese.".to_string()),
-                false,
-            ),
-            (
-                1,
-                "imported_context".to_string(),
                 Some("user".to_string()),
                 Some("old question 1".to_string()),
                 false,
             ),
             (
-                2,
+                1,
                 "imported_context".to_string(),
                 Some("assistant".to_string()),
                 Some("old answer 1".to_string()),
                 false,
             ),
             (
-                3,
+                2,
                 "imported_context".to_string(),
                 Some("user".to_string()),
                 Some("old question 2".to_string()),
                 false,
             ),
             (
-                4,
+                3,
                 "imported_context".to_string(),
                 Some("assistant".to_string()),
                 Some("old answer 2".to_string()),
                 false,
             ),
-            (5, "current_run".to_string(), None, None, true),
+            (4, "current_run".to_string(), None, None, true),
+            (
+                1_000_000,
+                "imported_context".to_string(),
+                Some("system".to_string()),
+                Some("Use concise Chinese.".to_string()),
+                false,
+            ),
         ]
     );
 
@@ -154,18 +154,29 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
         )
         .await
         .unwrap();
-    assert_eq!(initial_page.total_count, 6);
+    // #2090: the context entry is served beside the page, so the paged stream
+    // counts and pages only conversation turns.
+    assert_eq!(initial_page.total_count, 5);
     assert!(initial_page.has_before);
     assert!(!initial_page.has_after);
-    assert_eq!(initial_page.before_cursor, Some(4));
+    assert_eq!(initial_page.before_cursor, Some(3));
     assert_eq!(initial_page.after_cursor, None);
+    assert_eq!(initial_page.newest_sequence, Some(4));
+    assert_eq!(initial_page.contexts.len(), 1);
+    assert_eq!(initial_page.contexts[0].role, "system");
+    assert_eq!(initial_page.contexts[0].context_source, "application_config");
+    assert_eq!(
+        initial_page.contexts[0].content,
+        "Use concise Chinese.",
+        "the effective system prompt stays discoverable beside the newest page"
+    );
     assert_eq!(
         initial_page
             .items
             .iter()
             .map(|item| (item.display_sequence, item.source_kind.as_str()))
             .collect::<Vec<_>>(),
-        vec![(4, "imported_context"), (5, "current_run")]
+        vec![(3, "imported_context"), (4, "current_run")]
     );
     assert_eq!(
         initial_page.items[1].query.as_deref(),
@@ -184,7 +195,7 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
             seeded.application_id,
             run.id,
             ListApplicationRunConversationMessageItemsPageInput {
-                before_sequence: Some(4),
+                before_sequence: Some(3),
                 after_sequence: None,
                 limit: 3,
             },
@@ -197,12 +208,15 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
             .iter()
             .map(|item| item.display_sequence)
             .collect::<Vec<_>>(),
-        vec![1, 2, 3]
+        vec![0, 1, 2]
     );
-    assert!(previous_page.has_before);
+    assert!(
+        !previous_page.has_before,
+        "the context entry is not a conversation turn, so nothing precedes the first history item"
+    );
     assert!(previous_page.has_after);
-    assert_eq!(previous_page.before_cursor, Some(1));
-    assert_eq!(previous_page.after_cursor, Some(3));
+    assert_eq!(previous_page.before_cursor, None);
+    assert_eq!(previous_page.after_cursor, Some(2));
 
     let empty_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
@@ -218,10 +232,11 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
         .await
         .unwrap();
     assert!(empty_page.items.is_empty());
-    assert_eq!(empty_page.total_count, 6);
+    assert_eq!(empty_page.total_count, 5);
     assert!(empty_page.has_before);
     assert!(!empty_page.has_after);
     assert_eq!(empty_page.before_cursor, Some(6));
+    assert_eq!(empty_page.newest_sequence, None);
 }
 
 #[tokio::test]
@@ -396,7 +411,8 @@ async fn terminal_projection_reads_llm_node_system_prompt_when_run_input_has_no_
     assert_eq!(
         projected_system,
         (
-            0,
+            // Context lives outside the conversation sequence range.
+            1_000_000,
             "system".to_string(),
             "Use the node effective system prompt.".to_string()
         )
@@ -455,29 +471,8 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
     .execute(store.pool())
     .await
     .unwrap();
-    sqlx::query(
-        r#"
-        update application_run_conversation_message_items
-        set display_sequence = display_sequence + 1000000000
-        where flow_run_id = $1
-        "#,
-    )
-    .bind(run.id)
-    .execute(store.pool())
-    .await
-    .unwrap();
-    sqlx::query(
-        r#"
-        update application_run_conversation_message_items
-        set display_sequence = display_sequence - 1000000001
-        where flow_run_id = $1
-        "#,
-    )
-    .bind(run.id)
-    .execute(store.pool())
-    .await
-    .unwrap();
-
+    // The writer serves context beside the conversation stream, so deleting the
+    // system row leaves exactly the pre-repair layout the migration expects.
     sqlx::raw_sql(include_str!(
         "../../../../storage/durable/postgres/migrations/20260630120000_repair_run_conversation_projection_system.sql"
     ))
@@ -616,7 +611,7 @@ async fn terminal_projection_keeps_imported_history_after_artifact_payload_updat
 }
 
 #[tokio::test]
-async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
+async fn non_terminal_run_projects_retained_input_before_the_call_finishes() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -631,6 +626,7 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
         started_at,
         json!({
             "node-start": {
+                "system": "Use concise Chinese.",
                 "query": "running question",
                 "model": "gpt-running"
             }
@@ -638,6 +634,7 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
     )
     .await;
 
+    // #2090 AC-001: a persisted request is visible while the call still runs.
     let projection_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &store,
@@ -651,8 +648,66 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
         )
         .await
         .unwrap();
-    assert_eq!(projection_page.total_count, 0);
-    assert!(projection_page.items.is_empty());
+    assert_eq!(projection_page.total_count, 1);
+    assert_eq!(
+        projection_page
+            .items
+            .iter()
+            .map(|item| (
+                item.role.as_deref(),
+                item.query.as_deref(),
+                item.model.as_deref(),
+                item.status.as_str(),
+                item.is_current,
+            ))
+            .collect::<Vec<_>>(),
+        vec![(None, Some("running question"), Some("gpt-running"), "running", true)]
+    );
+    assert_eq!(projection_page.contexts.len(), 1);
+    assert_eq!(
+        projection_page.output_state.as_ref().unwrap().output_source,
+        "none"
+    );
+
+    // A waiting transition is not a reason to forget what was already shown.
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::WaitingCallback,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    let waiting_page =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
+            &store,
+            seeded.application_id,
+            run.id,
+            ListApplicationRunConversationMessageItemsPageInput {
+                before_sequence: None,
+                after_sequence: None,
+                limit: 5,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        waiting_page
+            .items
+            .iter()
+            .map(|item| (item.query.as_deref(), item.status.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(Some("running question"), "waiting_callback")],
+        "a status transition keeps the input and reports the new status"
+    );
+    assert_eq!(
+        waiting_page.output_state.as_ref().unwrap().status,
+        "waiting_callback"
+    );
 
     let current_item =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_conversation_current_item(
@@ -662,11 +717,9 @@ async fn non_terminal_run_has_no_projection_but_returns_bounded_current_item() {
         )
         .await
         .unwrap()
-        .expect("running run should return current fallback item");
-    assert_eq!(current_item.status, "running");
+        .expect("running run still exposes a bounded current item");
+    assert_eq!(current_item.status, "waiting_callback");
     assert_eq!(current_item.query.as_deref(), Some("running question"));
-    assert_eq!(current_item.model.as_deref(), Some("gpt-running"));
-    assert_eq!(current_item.source_kind, "current_run");
 }
 
 #[tokio::test]
@@ -728,7 +781,7 @@ async fn terminal_projection_missing_rebuilds_conversation_message_projection() 
         )
         .await
         .unwrap();
-    assert_eq!(projection_page.total_count, 4);
+    assert_eq!(projection_page.total_count, 3);
     assert_eq!(
         projection_page
             .items
@@ -741,16 +794,22 @@ async fn terminal_projection_missing_rebuilds_conversation_message_projection() 
             ))
             .collect::<Vec<_>>(),
         vec![
-            (
-                0,
-                Some("system"),
-                Some("Use the recovered system prompt."),
-                false,
-            ),
-            (1, Some("user"), Some("old question"), false),
-            (2, Some("assistant"), Some("old answer"), false),
-            (3, None, None, true),
+            (0, Some("user"), Some("old question"), false),
+            (1, Some("assistant"), Some("old answer"), false),
+            (2, None, None, true),
         ]
+    );
+    assert_eq!(
+        projection_page
+            .contexts
+            .iter()
+            .map(|context| (
+                context.role.as_str(),
+                context.context_source.as_str(),
+                context.content.as_str(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![("system", "application_config", "Use the recovered system prompt.")]
     );
 }
 

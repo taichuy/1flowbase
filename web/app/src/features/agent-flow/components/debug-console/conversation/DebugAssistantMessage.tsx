@@ -41,6 +41,7 @@ function fallbackContent(message: AgentFlowDebugMessage) {
 export function DebugAssistantMessage({
   message,
   messageMain,
+  extraActions,
   onLoadArtifact,
   onLoadArtifacts,
   onOpenLog,
@@ -48,6 +49,7 @@ export function DebugAssistantMessage({
 }: {
   message: AgentFlowDebugMessage;
   messageMain?: ReactNode;
+  extraActions?: ReactNode;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onOpenLog?: (message: AgentFlowDebugMessage) => void;
@@ -151,6 +153,7 @@ export function DebugAssistantMessage({
               />
             </Tooltip>
           ) : null}
+          {extraActions}
         </Space>
       </fieldset>
     </article>

@@ -60,11 +60,19 @@ pub struct ListApplicationRunConversationMessageItemsPageInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunConversationMessageItemsPage {
     pub items: Vec<domain::ApplicationRunConversationMessageItem>,
+    /// System/developer context in effect for this run. Context is not part of
+    /// the paged conversation stream so the newest page never hides it.
+    pub contexts: Vec<domain::ApplicationRunConversationContextItem>,
+    pub output_state: Option<domain::ApplicationRunConversationOutputState>,
     pub total_count: i64,
     pub has_before: bool,
     pub has_after: bool,
     pub before_cursor: Option<i64>,
     pub after_cursor: Option<i64>,
+    /// Newest sequence in this page. Passing it back as `after_sequence` reads
+    /// only what was appended since, which lets a client catch up on more items
+    /// than one page holds without knowing the cursor format.
+    pub newest_sequence: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

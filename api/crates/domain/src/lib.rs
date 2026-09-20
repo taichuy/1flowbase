@@ -158,7 +158,8 @@ pub use network_egress::{
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{
     ApplicationConversationRunSummary, ApplicationRunChildTaskTrace,
-    ApplicationRunConversationMessageItem, ApplicationRunDetail, ApplicationRunLogSummary,
+    ApplicationRunConversationMessageItem, ApplicationRunConversationContextItem,
+    ApplicationRunConversationOutputState, ApplicationRunDetail, ApplicationRunLogSummary,
     ApplicationRunLogTask, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
     ApplicationRunSummary, ApplicationRunTaskRoundTrace, ApplicationRunTraceNodeContentRecord,
     ApplicationRunTraceNodeRecord, ApplicationRunTraceProjectionDiagnostic,

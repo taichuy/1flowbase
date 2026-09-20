@@ -187,6 +187,7 @@ fn run_conversation_projection_page_preserves_existing_response_shape_and_cursor
                     projection_version: 1,
                     created_at: now,
                     updated_at: now,
+                    output_source: None,
                 },
                 domain::ApplicationRunConversationMessageItem {
                     id: Uuid::now_v7(),
@@ -209,13 +210,17 @@ fn run_conversation_projection_page_preserves_existing_response_shape_and_cursor
                     projection_version: 1,
                     created_at: now,
                     updated_at: now,
+                    output_source: Some("persisted_answer".to_string()),
                 },
             ],
+            contexts: Vec::new(),
+            output_state: None,
             total_count: 6,
             has_before: true,
             has_after: false,
             before_cursor: Some(4),
             after_cursor: None,
+            newest_sequence: Some(5),
         },
     );
 

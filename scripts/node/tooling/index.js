@@ -34,6 +34,9 @@ const { main: runPageDebug } = require("../page-debug/core.js");
 const { main: runApiDebug } = require("../api-debug/core.js");
 const { main: runMockUiSync } = require("../mock-ui-sync/core.js");
 const { main: runRawJsonbReport } = require("../raw-jsonb-report/core.js");
+const {
+  main: runRebuildRunLogProjection,
+} = require("../rebuild-run-log-projection/core.js");
 const { main: runClaudeSkillSync } = require("../claude-skill-sync/core.js");
 const {
   getRepoRoot,
@@ -59,6 +62,7 @@ const TOOLING_COMMANDS = new Set([
   "mock-ui-sync",
   "page-debug",
   "raw-jsonb-report",
+  "rebuild-run-log-projection",
   "repo-hygiene",
   "runtime-gate",
   "schema-hygiene",
@@ -133,7 +137,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    "Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
+    "Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|rebuild-run-log-projection|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
   );
 }
 
@@ -235,6 +239,13 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === "page-debug") {
     return (deps.runPageDebugImpl || runPageDebug)(options.rest);
+  }
+
+  if (options.command === "rebuild-run-log-projection") {
+    return (deps.runRebuildRunLogProjectionImpl || runRebuildRunLogProjection)(
+      options.rest,
+      deps,
+    );
   }
 
   if (options.command === "raw-jsonb-report") {

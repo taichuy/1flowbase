@@ -544,6 +544,33 @@ pub struct ApplicationRunConversationMessageItem {
     pub projection_version: i32,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+    /// Where this item's visible output came from: a formal provider output
+    /// item, the run's persisted answer, the run's error, or nothing at all.
+    pub output_source: Option<String>,
+}
+
+/// A system/developer context entry that was in effect for a run. It is served
+/// next to the paginated conversation items so the effective context stays
+/// discoverable even when only the newest page is visible.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRunConversationContextItem {
+    pub id: Uuid,
+    pub flow_run_id: Uuid,
+    pub role: String,
+    pub context_source: String,
+    pub content: String,
+    pub display_sequence: i64,
+}
+
+/// Where one run's visible output came from, independent of the paged items.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplicationRunConversationOutputState {
+    pub flow_run_id: Uuid,
+    pub status: String,
+    pub call_kind: String,
+    pub request_kind: Option<String>,
+    pub output_source: String,
+    pub output_item_count: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

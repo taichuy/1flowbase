@@ -315,6 +315,28 @@ pub struct ApplicationConversationMessageResponse {
     pub model: Option<String>,
     pub answer: Option<String>,
     pub is_current: bool,
+    /// Where this item's visible output came from: a formal provider output
+    /// item, the call's persisted answer, its error, nothing at all, or no
+    /// output claim (`None` for prompts, context and tool results).
+    pub output_source: Option<String>,
+    /// Position in the run conversation stream. Clients order merged pages by
+    /// it instead of by arrival order.
+    pub sequence: Option<i64>,
+    /// Set for the system/developer context entries that open the conversation.
+    /// They carry the layer the context came from; the console renders them as
+    /// the first turns instead of a separate panel.
+    pub context_source: Option<String>,
+}
+
+/// Where one call's visible output came from, independent of the paged items.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunConversationOutputStateResponse {
+    pub run_id: String,
+    pub status: String,
+    pub call_kind: String,
+    pub request_kind: Option<String>,
+    pub output_source: String,
+    pub output_item_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -323,11 +345,19 @@ pub struct ApplicationConversationMessagesPageInfoResponse {
     pub has_after: bool,
     pub before_cursor: Option<String>,
     pub after_cursor: Option<String>,
+    /// Opaque cursor at the newest item of this page. Pass it as `after` to
+    /// read only what was appended since, so a client can catch up on more new
+    /// items than one page holds without knowing the cursor format.
+    pub newest_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationConversationMessagesPageResponse {
+    /// Conversation turns, preceded by the system/developer context entries in
+    /// force for this run. Context is part of every page, so paging never hides
+    /// it and the console needs no separate surface for it.
     pub items: Vec<ApplicationConversationMessageResponse>,
+    pub output_state: Option<ApplicationRunConversationOutputStateResponse>,
     pub page: ApplicationConversationMessagesPageInfoResponse,
 }
 

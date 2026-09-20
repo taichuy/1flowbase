@@ -912,15 +912,46 @@ export interface ConsoleApplicationConversationMessage {
   model?: string | null;
   answer?: string | null;
   is_current: boolean;
+  output_source?: ConsoleApplicationRunOutputSource | null;
+  /// Position in the run conversation stream; pages are merged by it.
+  sequence?: number | null;
+  /// Set for the system/developer context entries that open the conversation.
+  context_source?: ConsoleApplicationConversationContextSource | null;
+}
+
+export type ConsoleApplicationRunOutputSource =
+  | 'provider_output_item'
+  | 'persisted_answer'
+  | 'error'
+  | 'none';
+
+export type ConsoleApplicationConversationContextSource =
+  | 'client_request'
+  | 'application_config'
+  | 'effective_prompt';
+
+export interface ConsoleApplicationRunConversationOutputState {
+  run_id: string;
+  status: string;
+  call_kind: string;
+  request_kind?: string | null;
+  output_source: ConsoleApplicationRunOutputSource;
+  output_item_count: number;
 }
 
 export interface ConsoleApplicationConversationMessagesPage {
+  /// Conversation turns, preceded by the system/developer context entries in
+  /// force for the run.
   items: ConsoleApplicationConversationMessage[];
+  output_state?: ConsoleApplicationRunConversationOutputState | null;
   page: {
     has_before: boolean;
     has_after: boolean;
     before_cursor?: string | null;
     after_cursor?: string | null;
+    /// Opaque cursor at the newest item of this page; pass it as `after` to
+    /// read only what was appended since.
+    newest_cursor?: string | null;
   };
 }
 
