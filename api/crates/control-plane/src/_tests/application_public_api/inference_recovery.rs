@@ -588,13 +588,17 @@ async fn assert_recovery_successor_context(current_context: Option<ProtocolConte
             .as_object_mut()
             .unwrap()
             .remove(CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
-        let sys = payload["sys"].as_object_mut().unwrap();
-        for key in [
-            "native_inference_recovery",
-            "public_run_idempotency_fingerprint",
-            "public_provider_transport",
-        ] {
-            sys.remove(key);
+        if let Some(sys) = payload.get_mut("sys").and_then(Value::as_object_mut) {
+            for key in [
+                "native_inference_recovery",
+                "public_run_idempotency_fingerprint",
+                "public_provider_transport",
+            ] {
+                sys.remove(key);
+            }
+            if sys.is_empty() {
+                payload.as_object_mut().unwrap().remove("sys");
+            }
         }
     }
     assert_eq!(
