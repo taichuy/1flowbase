@@ -158,6 +158,20 @@ fn failure(source: &Value) -> Option<Value> {
             result[field] = json!(value);
         }
     }
+    if let Some(value) = source
+        .get("semantic_event_type_digest")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            value.strip_prefix("sha256:").is_some_and(|digest| {
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+        })
+    {
+        result["semantic_event_type_digest"] = json!(value);
+    }
     for field in ["routing_token_present", "association_present"] {
         if let Some(value) = source.get(field).and_then(Value::as_bool) {
             result[field] = json!(value);

@@ -89,3 +89,23 @@ fn recovery_visibility_facts_accept_bounds_without_coercing_untrusted_values() {
         assert_eq!(failure(&input).unwrap(), json!({}));
     }
 }
+
+#[test]
+fn semantic_event_type_digest_projection_rejects_arbitrary_strings_and_wrong_shapes() {
+    let valid = format!("sha256:{}", "a".repeat(64));
+    let input = json!({"semantic_event_type_digest":valid});
+    assert_eq!(failure(&input).unwrap(), input);
+    for value in [
+        json!("PRIVATE_CANARY"),
+        json!(format!("sha256:{}", "a".repeat(63))),
+        json!(format!("sha256:{}", "a".repeat(65))),
+        json!(format!("sha256:{}", "A".repeat(64))),
+        json!({"digest":valid}),
+        Value::Null,
+    ] {
+        assert_eq!(
+            failure(&json!({"semantic_event_type_digest":value})).unwrap(),
+            json!({})
+        );
+    }
+}
