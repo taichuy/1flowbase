@@ -188,9 +188,29 @@ where
     }
     let digest = transport.configuration_digest()?;
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
-        return Err(
-            ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),
-        );
+        // A full next sampling request may refresh tools or generation options. It must
+        // still prove this round's complete history and retain the frozen model route.
+        // Apply this to completed receipts too: their replay identity belongs to the
+        // durable callback owner, while failed inference replay has its own exact check.
+        let frozen_model = flow_run
+            .input_payload
+            .pointer("/sys/requested_model_id")
+            .and_then(Value::as_str)
+            .filter(|model| !model.is_empty());
+        let full_request_proven = previous_response_id.is_none()
+            && frozen_model.is_some()
+            && frozen_model == request.get("model").and_then(Value::as_str)
+            && super::compat::openai::history::validate_full_retry_input(
+                input_value,
+                &metadata["history"],
+                &call_id_list,
+            )
+            .is_ok();
+        if !full_request_proven {
+            return Err(
+                ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),
+            );
+        }
     }
     // State admission belongs to the callback-resume owner. A completed callback can be an
     // exact transport replay after the original terminal was lost; rejecting it here would hide

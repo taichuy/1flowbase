@@ -13,6 +13,16 @@ async fn fixture() -> (
     ApplicationApiKeyActor,
     Uuid,
 ) {
+    fixture_with_input(json!({})).await
+}
+
+async fn fixture_with_input(
+    input_payload: Value,
+) -> (
+    ApplicationPublicApiTestRepository,
+    ApplicationApiKeyActor,
+    Uuid,
+) {
     let harness = ApplicationPublicApiTestHarness::new();
     let owner = Uuid::now_v7();
     let app = harness.seed_application(owner, "Native admission");
@@ -46,7 +56,7 @@ async fn fixture() -> (
             target_node_id: None,
             title: "Native admission".into(),
             status: FlowRunStatus::Running,
-            input_payload: json!({}),
+            input_payload,
             started_at: OffsetDateTime::now_utc(),
             api_key_id: Some(actor.api_key_id),
             publication_version_id: None,
@@ -102,6 +112,138 @@ fn seed_round_with_response(
             "user_messages_digest":ProviderTransportPayload::openai_responses(body.clone()).unwrap().user_messages_digest().unwrap()
         }}
     }))
+}
+
+fn seed_proven_full_round(
+    repository: &ApplicationPublicApiTestRepository,
+    run: Uuid,
+    include_history: bool,
+) -> (CallbackTaskRecord, Value) {
+    let mut original = request();
+    original["input"] = json!([{"role":"user","content":"Read files"}]);
+    let output = vec![
+        json!({"type":"function_call","call_id":"function","name":"read","arguments":"{}"}),
+        json!({"type":"custom_tool_call","call_id":"custom","name":"exec","input":"read"}),
+    ];
+    let history = crate::application_public_api::compat::openai::history::completed_history(
+        &original, None, &output,
+    )
+    .unwrap()
+    .unwrap();
+    let transport = ProviderTransportPayload::openai_responses(original.clone()).unwrap();
+    let callback = repository.seed_pending_llm_tool_callback_task(
+        run,
+        json!({
+            "tool_calls":[{"id":"function","name":"read"},{"id":"custom","name":"exec"}],
+            "provider_metadata":{"native_response":{
+                "response_id":"resp_round",
+                "configuration_digest":transport.configuration_digest().unwrap(),
+                "user_messages_digest":transport.user_messages_digest().unwrap(),
+                "history":if include_history { history } else { Value::Null }
+            }}
+        }),
+    );
+    let mut full = original;
+    full["input"].as_array_mut().unwrap().extend(output);
+    full["input"]
+        .as_array_mut()
+        .unwrap()
+        .extend(request()["input"].as_array().unwrap().iter().cloned());
+    (callback, full)
+}
+
+#[tokio::test]
+async fn native_admission_accepts_proven_full_configuration_refresh_and_completed_replay() {
+    for (field, value) in [
+        (
+            "tools",
+            json!([{"type":"function","name":"new_tool","parameters":{"type":"object"}}]),
+        ),
+        ("instructions", json!("New sampling instructions")),
+        ("reasoning", json!({"effort":"high"})),
+    ] {
+        let (repository, actor, run) =
+            fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+        let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+        body[field] = value;
+        for completed in [false, true] {
+            if completed {
+                repository.complete_callback_task_for_test(callback.id);
+            }
+            let (admitted, result) =
+                correlate_native_responses_callback(&repository, &actor, &body)
+                    .await
+                    .expect("proven full configuration refresh must reach the callback owner")
+                    .unwrap();
+            assert_eq!(admitted.id, callback.id, "{field}, completed={completed}");
+            assert_eq!(result["tool_results"].as_array().unwrap().len(), 2);
+        }
+        assert!(repository.callback_resume_attempts().is_empty());
+        assert_eq!(repository.flow_run_count(), 1);
+    }
+}
+
+#[tokio::test]
+async fn native_admission_rejects_configuration_refresh_without_frozen_route_and_exact_history() {
+    for scenario in [
+        "model",
+        "delta",
+        "missing_history",
+        "tampered_history",
+        "extra_history",
+        "partial_outputs",
+        "missing_model",
+        "empty_model",
+    ] {
+        let frozen_input = match scenario {
+            "missing_model" => json!({}),
+            "empty_model" => json!({"sys":{"requested_model_id":""}}),
+            _ => json!({"sys":{"requested_model_id":"fixture"}}),
+        };
+        let (repository, actor, run) = fixture_with_input(frozen_input).await;
+        let (callback, mut body) =
+            seed_proven_full_round(&repository, run, scenario != "missing_history");
+        body["instructions"] = json!("Changed options require a complete proof");
+        match scenario {
+            "model" => body["model"] = json!("other-model"),
+            "delta" => {
+                body["previous_response_id"] = json!("resp_round");
+                body["input"] = request()["input"].clone();
+            }
+            "tampered_history" => body["input"][1]["arguments"] = json!("{\"changed\":true}"),
+            "extra_history" => body["input"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"role":"assistant","content":"Unproven extra context"})),
+            "partial_outputs" => {
+                body["input"].as_array_mut().unwrap().pop();
+            }
+            _ => {}
+        }
+        let error = correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .expect_err(scenario);
+        let expected = if scenario == "partial_outputs" {
+            "native_tool_output_incomplete_round"
+        } else {
+            "native_tool_output_configuration_mismatch"
+        };
+        assert_eq!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(&ControlPlaneError::Conflict(expected)),
+            "{scenario}"
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            CallbackTaskStatus::Pending
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
 }
 
 // #2036: HTTP full histories and WS deltas resume the same round without
