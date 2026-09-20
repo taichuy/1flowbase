@@ -1,3 +1,4 @@
+mod native_responses;
 use super::fixtures::{write_test_capability_package, write_test_provider_package};
 use super::*;
 

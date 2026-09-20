@@ -88,6 +88,7 @@ mod code_nodes;
 mod data_model_nodes;
 mod debug_lifecycle;
 mod http_request_nodes;
+mod native_responses_chain;
 mod runtime_events;
 mod sql_nodes;
 
