@@ -2,7 +2,7 @@
 title: "Issue 2085 三层 Gateway 故障修复与审计分工"
 memory_type: project
 created_at: "2026-09-19 17"
-updated_at: "2026-09-20 10"
+updated_at: "2026-09-20 11"
 decision_policy: verify_before_decision
 status: active
 tags: [gateway, responses, audit, issue-2085]
@@ -39,3 +39,26 @@ tags: [gateway, responses, audit, issue-2085]
   >65 分钟人工长测（项 8）待人工；首次 1011 底层触发原因仍未证明，方案不依赖「一小时必断」假设。
 - 结论口径（用户授权推送后更新）：**开发与已列自动化验证完成，插件已云端发布；长会话稳定性待人工验收。**
   云端打包成功不等于整体通过，不得据此宣称长会话稳定性已通过。
+
+## 2026-09-20 连接解绑/回调重入/合法后继实现轮（宿主准入阶段，非供应商 1011）
+
+- 谁在做什么：开发会话按 `tmp/test-governance/issue-2085/audit-orphan-mailbox/report.md` 实现宿主修复，
+  产物在 `tmp/test-governance/issue-2085/fix-orphan-mailbox/`；原审计会话独立审计，用户人工长测后验收。
+- 事故根因（已用受控变异锁定）：客户端 mailbox 式断开时 `close_connection_scope` 把仍在执行的 inflight lease
+  标记 `Orphaned`；原调用随后成功收尾时 `finish_invocation` 命中「关闭指令优先」分支直接返回，
+  `Orphaned`（连带 60 秒 in-flight orphan grace 语义）被永久保留，于是下一轮合法后继在 `prepare` 被拒。
+  还原该分支后回归测试复现出与事故完全一致的 `ProviderTransportAdmissionFailed: transport_session_orphaned`。
+- 修复口径（有界，不改插件）：`Orphaned` 只表达「交付已解绑」这一事实；`finish_invocation` 在
+  **匹配 lease sequence/deadline** 的前提下，按真实完成状态改写**保留租约**（WaitingTool 55min /
+  IdleAffinity 90s / Faulted / Closing），不重置状态；`prepare` 改为按**执行状态**判定——
+  inflight ⇒ `transport_session_inflight_unbound` 拒绝，已终态 ⇒ 允许同 owner 同 fence 重取
+  （`begin_invocation` 在锁内再校验 sequence 关闭竞态）。shutdown/scope 缺失/scope 关闭各自独立分支码 +
+  脱敏诊断 `transport_admission{session_id,generation,state,inflight,scope_bound}`。
+- 候选：宿主 `dev` @ `df5ca32a4d39d63a93e0db5c482d3ea235caf691`（本地提交未推送），
+  binary `fe66f3ee…`；插件未改动（`main` @ `faae1a4`，`openai@0.2.40`）。
+- 验证：协调器 28/28、control-plane 回调 15/15、registry 26/26、orchestration lib 438/3（3 项为既有失败）。
+  顺手修了 api-server lib 测试目标在改动前就存在的编译错误（`invocation_outcome.rs` 的 `&Box<T>` 比较）。
+- 未结算：真实 CLI 短程未执行（7800 跑的是上一轮候选，重启需用户授权；隔离实例需独立库与配置）；
+  未构建「真实 WS 入口 + 回调 owner + 协调器 + provider worker」单进程联合用例；
+  「处理中精确重传的有界等待/订阅」未实现（回调层保持 409/拒绝，不启动第二次执行）。
+- 结论口径：**开发与已列自动化验证完成；真实 CLI 短程未执行（阻塞已交接）；长会话稳定性待人工验收。**
