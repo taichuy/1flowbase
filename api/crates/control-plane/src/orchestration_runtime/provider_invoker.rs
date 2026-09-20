@@ -60,16 +60,34 @@ pub(super) fn committed_tool_delivery_candidate(
     )))
 }
 
+/// Add host evidence before billing can return the original transport error early.
+fn seal_native_failure_binding(error: anyhow::Error, binding: &Value) -> anyhow::Error {
+    if let Some(plugin_framework::PluginFrameworkError::RuntimeContract { error: original }) =
+        error.downcast_ref::<plugin_framework::PluginFrameworkError>()
+    {
+        let mut original = original.clone();
+        let mut details = original
+            .provider_details
+            .take()
+            .unwrap_or_else(|| json!({}));
+        if !details.is_object() {
+            details = json!({"original_provider_details": details});
+        }
+        details["native_inference_binding"] = binding.clone();
+        original.provider_details = Some(details);
+        return plugin_framework::PluginFrameworkError::runtime(original).into();
+    }
+    error
+}
+
 fn provider_execution_deadline_unix_ms(
     input: &ProviderInvocationInput,
     now: OffsetDateTime,
 ) -> i64 {
-    let now_unix_ms = i64::try_from(now.unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX);
     input
         .run_context
         .get("task_deadline_unix_ms")
         .and_then(Value::as_i64)
-        .filter(|deadline| *deadline > now_unix_ms)
         .unwrap_or_else(|| {
             i64::try_from((now + time::Duration::minutes(30)).unix_timestamp_nanos() / 1_000_000)
                 .unwrap_or(i64::MAX)
@@ -464,6 +482,25 @@ where
             runtime_config_ms = runtime_config_started.elapsed().as_millis() as u64,
             "runtime config finished"
         );
+
+        // Host seals exact effective provider configuration without persisting credentials.
+        let native_inference_binding = json!({
+            "provider_configuration_digest": format!("sha256:{:x}", Sha256::digest(
+                serde_json::to_vec(&input.provider_config)?)),
+            "provider_instance_id": instance.id.to_string(),
+            "node_id": input.trace_context.get("node_id"),
+            "provider_code": input.provider_code,
+            "protocol": input.protocol,
+            "model": input.model,
+            "installation_id": installation.id,
+            "plugin_version": installation.plugin_version,
+            "artifact_checksum": installation.artifact.local_checksum,
+        });
+        if let Some(recovery) = input.run_context.get("native_inference_recovery") {
+            if recovery.get("binding") != Some(&native_inference_binding) {
+                return Err(anyhow!("native_recovery_provider_configuration_mismatch"));
+            }
+        }
 
         let canonical_tool_registry = input.tools.clone();
         let actual_provider_code = input.provider_code.clone();
@@ -873,19 +910,7 @@ where
             Err(error) => (None, Some(error)),
         };
         if let Some(error) = forwarding_error {
-            invocation_error = Some(error);
-        }
-        // A native Responses turn may already have emitted a provider-owned continuation
-        // before billing can classify the final usage. Preserve that one-shot state even when
-        // fail-closed billing must reject the turn; the client still needs the continuation to
-        // submit the provider's next approval/input turn.
-        if let Some(output) = invocation_output.as_ref() {
-            if let Err(error) = self
-                .stage_provider_continuation(runtime, output.result.response_id.as_deref())
-                .await
-            {
-                invocation_error.get_or_insert(error);
-            }
+            invocation_error.get_or_insert(error);
         }
         if let (Some(transport), Some(flow_run_id), Some(output)) = (
             &self.provider_transport_payload,
@@ -898,7 +923,13 @@ where
                     .lock()
                     .map_err(|_| anyhow!("native output history lock poisoned"))?;
                 // Missing native item indexes cannot prove a complete output sequence.
-                if items.keys().copied().eq(0..items.len()) {
+                if invocation_error.is_none()
+                    && matches!(output.result.finish_reason,
+                        Some(plugin_framework::provider_contract::ProviderFinishReason::Stop
+                        | plugin_framework::provider_contract::ProviderFinishReason::ToolCall
+                        | plugin_framework::provider_contract::ProviderFinishReason::McpCall))
+                    && items.keys().copied().eq(0..items.len())
+                {
                     crate::application_public_api::compat::openai::history::completed_history(
                         transport.wire_body(),
                         self.native_history.as_ref(),
@@ -916,10 +947,27 @@ where
                 "response_id": format!("resp_{round_id}"),
                 "configuration_digest": transport.configuration_digest()?,
                 "history": history,
+                "binding": native_inference_binding,
                 "user_messages_digest": transport.user_messages_digest()?.or_else(|| self.native_user_messages_digest.clone()),
             });
         }
-        fee_lifecycle
+        let continuation_history = invocation_output
+            .as_ref()
+            .and_then(|output| {
+                output
+                    .result
+                    .provider_metadata
+                    .pointer("/native_response/history")
+            })
+            .filter(|value| value.is_object())
+            .cloned();
+        if let Some(error) = invocation_error.take() {
+            invocation_error = Some(seal_native_failure_binding(
+                error,
+                &native_inference_binding,
+            ));
+        }
+        let billing_result = fee_lifecycle
             .dispatch(fee_lifecycle::ProviderFeeEvent::AfterUsage {
                 reservation: Box::new(billing),
                 outcome: Box::new(fee_lifecycle::ProviderFeeOutcome {
@@ -932,7 +980,27 @@ where
                     native_responses_passthrough,
                 }),
             })
-            .await?;
+            .await;
+        // Preserve provider continuation even on late billing failure, but only successful
+        // host completion may carry a complete history proof into the next response round.
+        if let Some(output) = invocation_output.as_ref() {
+            let history = if billing_result.is_ok() && invocation_error.is_none() {
+                continuation_history
+            } else {
+                None
+            };
+            if let Err(error) = self
+                .stage_provider_continuation_with_history(
+                    runtime,
+                    output.result.response_id.as_deref(),
+                    history,
+                )
+                .await
+            {
+                invocation_error.get_or_insert(error);
+            }
+        }
+        billing_result?;
         if let Some(error) = invocation_error {
             return Err(error);
         }
@@ -1671,6 +1739,9 @@ where
         provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     ) -> Self {
         let mut invoker = self.clone();
+        invoker.native_history = provider_transport_payload
+            .as_ref()
+            .and_then(|payload| payload.native_history().cloned());
         invoker.provider_transport_payload = provider_transport_payload;
         invoker
     }
@@ -1684,10 +1755,21 @@ where
         invoker
     }
 
+    #[cfg(test)]
     async fn stage_provider_continuation(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         response_id: Option<&str>,
+    ) -> Result<()> {
+        self.stage_provider_continuation_with_history(runtime, response_id, None)
+            .await
+    }
+
+    async fn stage_provider_continuation_with_history(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        response_id: Option<&str>,
+        history: Option<Value>,
     ) -> Result<()> {
         let Some(response_id) = response_id.filter(|value| !value.trim().is_empty()) else {
             return Ok(());
@@ -1709,7 +1791,8 @@ where
                 &runtime.protocol,
                 &runtime.model,
             ),
-        )?;
+        )?
+        .with_native_history(history);
         store
             .put_continuation(
                 crate::ports::ProviderContinuationSlotId::for_response_round(

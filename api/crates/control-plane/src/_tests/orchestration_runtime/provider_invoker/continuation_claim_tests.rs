@@ -320,3 +320,80 @@ fn issue_1743_continuation_route_requires_affinity_and_native_capability() {
         .ensure_continuation_route(&runtime, &std::collections::BTreeSet::from([capability]))
         .expect("matching affinity with native capability is legal");
 }
+
+#[tokio::test]
+async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
+    use crate::application_public_api::compat::openai::history::{
+        completed_history, validate_full_retry_input,
+    };
+    use crate::ports::{
+        ProviderContinuationSlotId, ProviderTransportPayload, ProviderTransportStore,
+    };
+    let provider_id = Uuid::now_v7();
+    let warm_flow = Uuid::now_v7();
+    let store = Arc::new(Issue1743ContinuationStore::default());
+    let warm_invoker = issue_1743_invoker(warm_flow, store.clone(), None);
+    let first_input = json!([{"role":"user","content":"perform three tools"}]);
+    let warm = completed_history(&json!({"generate":false,"input":first_input}), None, &[])
+        .unwrap()
+        .unwrap();
+    warm_invoker
+        .stage_provider_continuation_with_history(
+            &issue_1743_runtime(provider_id),
+            Some("resp_warm"),
+            Some(warm),
+        )
+        .await
+        .unwrap();
+    let continuation = store
+        .consume_continuation(ProviderContinuationSlotId::for_flow_run(warm_flow))
+        .await
+        .unwrap();
+    let bound = ProviderTransportPayload::openai_responses(
+        json!({"previous_response_id":"resp_public","input":[]}),
+    )
+    .unwrap()
+    .bind_openai_continuation(continuation)
+    .unwrap();
+    let mut invoker = issue_1743_invoker(Uuid::now_v7(), store.clone(), None)
+        .with_provider_transport_payload(Some(bound));
+    let mut full = first_input.as_array().unwrap().clone();
+    for round in 0..3 {
+        let call_id = format!("call_{round}");
+        let call = json!({"type":"function_call","call_id":call_id,"name":"exec","arguments":"{}"});
+        let transport = invoker.provider_transport_payload.as_ref().unwrap();
+        let history = completed_history(
+            transport.wire_body(),
+            invoker.native_history.as_ref(),
+            &[call.clone()],
+        )
+        .unwrap()
+        .unwrap();
+        full.push(call);
+        let result = json!({"type":"function_call_output","call_id":call_id,"output":"once"});
+        full.push(result.clone());
+        validate_full_retry_input(&json!(full), &history, &[call_id]).unwrap();
+        invoker
+            .stage_provider_continuation_with_history(
+                &issue_1743_runtime(provider_id),
+                Some("resp_next"),
+                Some(history),
+            )
+            .await
+            .unwrap();
+        let continuation = store
+            .consume_continuation(ProviderContinuationSlotId::for_flow_run(
+                invoker.flow_run_id.unwrap(),
+            ))
+            .await
+            .unwrap();
+        invoker = invoker.with_provider_transport_payload(Some(
+            ProviderTransportPayload::openai_responses(
+                json!({"previous_response_id":"resp_public","input":[result]}),
+            )
+            .unwrap()
+            .bind_openai_continuation(continuation)
+            .unwrap(),
+        ));
+    }
+}

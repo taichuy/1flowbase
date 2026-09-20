@@ -73,7 +73,57 @@ fn normalization_preserves_unknown_fields_and_opaque_content() {
     assert_eq!(normalize_item(&original).unwrap(), expected);
     let semantic = json!({"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"reason"}],"encrypted_content":"cipher","unknown":{"opaque":"value"}});
     assert_eq!(normalize_item(&semantic).unwrap(), semantic);
-    assert!(completed_history(&json!({"input":[]}), None, &[])
+    assert_eq!(
+        completed_history(&json!({"input":[]}), None, &[])
+            .unwrap()
+            .unwrap()["item_count"],
+        0
+    );
+}
+
+#[test]
+fn successful_empty_prewarm_then_incremental_round_matches_full_history() {
+    let input = json!([{"role":"user","content":"work"}]);
+    let warm = completed_history(&json!({"generate":false,"input":input}), None, &[])
         .unwrap()
-        .is_none());
+        .unwrap();
+    assert_eq!(warm["item_count"], 1);
+    let call = json!({"type":"function_call","call_id":"call_1","name":"exec","arguments":"{}"});
+    let first = completed_history(
+        &json!({"previous_response_id":"resp_warm","input":[]}),
+        Some(&warm),
+        &[call.clone()],
+    )
+    .unwrap()
+    .unwrap();
+    validate_full_retry_input(
+        &json!([input[0],call,{"type":"function_call_output","call_id":"call_1","output":"ok"}]),
+        &first,
+        &["call_1".into()],
+    )
+    .unwrap();
+}
+
+#[test]
+fn evidence_absence_corruption_and_content_changes_are_distinct() {
+    assert_eq!(
+        validate_full_retry_input(&json!([]), &Value::Null, &[])
+            .unwrap_err()
+            .to_string(),
+        "native_history_evidence_missing"
+    );
+    assert_eq!(
+        validate_full_retry_input(&json!([]), &json!({"version":1}), &[])
+            .unwrap_err()
+            .to_string(),
+        "native_history_evidence_invalid"
+    );
+    let history = completed_history(
+        &json!({"input":[{"role":"user","content":"original"}]}),
+        None,
+        &[],
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(validate_full_retry_input(&json!([{"role":"user","content":"changed"},{"type":"function_call_output","call_id":"c","output":"ok"}]), &history, &["c".into()]).unwrap_err().to_string(), "native_history_mismatch");
 }

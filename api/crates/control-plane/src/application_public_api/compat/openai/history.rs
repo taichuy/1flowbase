@@ -23,7 +23,9 @@ impl History {
     }
 
     fn parse(value: &Value) -> Result<Self> {
-        let history: Self = serde_json::from_value(value.clone())?;
+        ensure!(!value.is_null(), "native_history_evidence_missing");
+        let history: Self = serde_json::from_value(value.clone())
+            .map_err(|_| anyhow::anyhow!("native_history_evidence_invalid"))?;
         ensure!(
             history.version == 1
                 && history.digest.len() == 64
@@ -49,14 +51,12 @@ impl History {
 
 /// Build only from the host-owned request and completed native output. An incremental
 /// request without trusted predecessor evidence cannot establish complete history.
+/// The caller must establish successful completion, including a successful empty prewarm.
 pub(crate) fn completed_history(
     body: &Value,
     predecessor: Option<&Value>,
     output: &[Value],
 ) -> Result<Option<Value>> {
-    if output.is_empty() {
-        return Ok(None);
-    }
     let mut history = if body
         .get("previous_response_id")
         .is_some_and(|id| !id.is_null())

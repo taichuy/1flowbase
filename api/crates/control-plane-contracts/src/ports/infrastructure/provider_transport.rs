@@ -325,6 +325,8 @@ pub struct ProviderTransportAffinity {
 pub struct ProviderContinuation {
     response_id: String,
     affinity: ProviderTransportAffinity,
+    // Host-produced evidence; never read from the client wire body. Slot + affinity own it.
+    native_history: Option<Value>,
 }
 
 impl fmt::Debug for ProviderContinuation {
@@ -349,7 +351,18 @@ impl ProviderContinuation {
         Ok(Self {
             response_id,
             affinity,
+            native_history: None,
         })
+    }
+
+    /// Attached only by the host after successful completion of the response round.
+    pub fn with_native_history(mut self, history: Option<Value>) -> Self {
+        self.native_history = history;
+        self
+    }
+
+    pub fn native_history(&self) -> Option<&Value> {
+        self.native_history.as_ref()
     }
 
     pub fn response_id(&self) -> &str {
@@ -462,6 +475,7 @@ pub struct ProviderTransportPayload {
     digest: String,
     size_bytes: usize,
     affinity: Option<ProviderTransportAffinity>,
+    native_history: Option<Value>,
 }
 
 impl ProviderTransportPayload {
@@ -480,6 +494,7 @@ impl ProviderTransportPayload {
             digest,
             size_bytes: encoded.len(),
             affinity: None,
+            native_history: None,
         })
     }
 
@@ -505,12 +520,18 @@ impl ProviderTransportPayload {
             Value::String(continuation.response_id),
         );
         self.affinity = Some(continuation.affinity);
+        self.native_history = continuation.native_history;
         let encoded = serde_json::to_vec(&self.wire_body)?;
         let mut canonical = Vec::new();
         write_canonical_json(&self.wire_body, &mut canonical)?;
         self.digest = format!("sha256:{:x}", Sha256::digest(&canonical));
         self.size_bytes = encoded.len();
         Ok(self)
+    }
+
+    /// Trusted predecessor proof carried outside the client-controlled wire body.
+    pub fn native_history(&self) -> Option<&Value> {
+        self.native_history.as_ref()
     }
 
     pub const fn protocol(&self) -> ProviderTransportProtocol {

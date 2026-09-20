@@ -73,3 +73,41 @@ fn callback_scope_override_changes_only_host_transport_owner() {
         "HTTP resume clears obsolete WS ownership without changing tool/cursor content"
     );
 }
+
+#[test]
+fn provider_execution_does_not_refresh_expired_deadline() {
+    let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
+    let expired = now.unix_timestamp() * 1_000 - 1;
+    let mut input = ProviderInvocationInput::default();
+    input
+        .run_context
+        .insert("task_deadline_unix_ms".into(), Value::from(expired));
+    assert_eq!(provider_execution_deadline_unix_ms(&input, now), expired);
+}
+
+#[test]
+fn native_failure_binding_preserves_original_transport_facts() {
+    let original = ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        "original disconnect",
+    )
+    .with_provider_details(json!({"close_code":1011,"native_inference_binding":{"forged":true}}));
+    let binding = json!({"provider_instance_id":"host-owned"});
+    let error = seal_native_failure_binding(
+        plugin_framework::PluginFrameworkError::runtime(original.clone()).into(),
+        &binding,
+    );
+    let plugin_framework::PluginFrameworkError::RuntimeContract { error } = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .unwrap()
+    else {
+        panic!("typed error lost")
+    };
+    assert_eq!(error.kind, original.kind);
+    assert_eq!(error.message, original.message);
+    assert_eq!(error.provider_details.as_ref().unwrap()["close_code"], 1011);
+    assert_eq!(
+        error.provider_details.as_ref().unwrap()["native_inference_binding"],
+        binding
+    );
+}

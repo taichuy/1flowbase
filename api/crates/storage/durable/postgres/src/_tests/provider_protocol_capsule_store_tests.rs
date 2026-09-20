@@ -315,3 +315,37 @@ async fn continuation_claim_is_atomic_and_expiry_and_terminal_cleanup_are_bounde
     assert_eq!(store.clear_expired().await.unwrap(), 1);
     assert!(store.get_continuation(expiring).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn trusted_response_history_survives_capsule_restart_and_single_atomic_claim() {
+    let (pool, flow_run_id) = seeded_flow_run().await;
+    let slot = ProviderContinuationSlotId::for_response_round(flow_run_id, Uuid::now_v7());
+    let history = json!({"version":1,"item_count":2,"digest":"ordered-proof"});
+    let continuation = ProviderContinuation::new(
+        "resp_prewarm",
+        ProviderTransportAffinity::new("instance", "openai", "openai_responses", "model"),
+    )
+    .unwrap()
+    .with_native_history(Some(history.clone()));
+    capsule_store(pool.clone())
+        .put_continuation(slot, continuation)
+        .await
+        .unwrap();
+    let restarted = capsule_store(pool);
+    assert_eq!(
+        restarted
+            .get_continuation(slot)
+            .await
+            .unwrap()
+            .unwrap()
+            .native_history(),
+        Some(&history)
+    );
+    let (a, b) = tokio::join!(
+        restarted.consume_continuation(slot),
+        restarted.consume_continuation(slot)
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert_eq!(a.or(b).unwrap().native_history(), Some(&history));
+    assert!(restarted.get_continuation(slot).await.unwrap().is_none());
+}
