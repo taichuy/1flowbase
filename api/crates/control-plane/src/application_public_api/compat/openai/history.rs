@@ -111,6 +111,18 @@ pub(crate) fn validate_full_retry_input(
     trusted_history: &Value,
     owned_call_ids: &[String],
 ) -> Result<()> {
+    let remainder = full_context_remainder(input, trusted_history, owned_call_ids)?;
+    ensure!(remainder.is_empty(), "native_history_item_count_mismatch");
+    Ok(())
+}
+
+/// Proves the ordered history and complete callback-output segment once, then returns
+/// the appended context. Output contents remain bound to the durable callback receipt.
+pub(crate) fn full_context_remainder<'a>(
+    input: &'a Value,
+    trusted_history: &Value,
+    owned_call_ids: &[String],
+) -> Result<&'a [Value]> {
     let expected = History::parse(trusted_history)?;
     // A v1 hash cannot attest the v2 client equivalence contract. Preserve old
     // continuation proofs as v1, but require a fresh trusted round for recovery.
@@ -121,11 +133,11 @@ pub(crate) fn validate_full_retry_input(
     let items = input
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
-    ensure!(
-        expected.item_count > 0
-            && expected.item_count.checked_add(owned_call_ids.len()) == Some(items.len()),
-        "native_history_item_count_mismatch"
-    );
+    let output_end = expected
+        .item_count
+        .checked_add(owned_call_ids.len())
+        .filter(|end| expected.item_count > 0 && *end <= items.len())
+        .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
     let mut actual = History::empty(CURRENT_VERSION);
     for item in &items[..expected.item_count] {
         actual.append(item)?;
@@ -136,7 +148,7 @@ pub(crate) fn validate_full_retry_input(
         remaining.len() == owned_call_ids.len() && !remaining.is_empty(),
         "native_history_tool_outputs_invalid"
     );
-    for item in &items[expected.item_count..] {
+    for item in &items[expected.item_count..output_end] {
         ensure!(
             matches!(
                 item.get("type").and_then(Value::as_str),
@@ -154,7 +166,22 @@ pub(crate) fn validate_full_retry_input(
         );
     }
     ensure!(remaining.is_empty(), "native_history_tool_outputs_invalid");
-    Ok(())
+    let remainder = &items[output_end..];
+    // A later tool round has its own correlation owner. It is never merely context
+    // appended to this receipt, including when the public service is called directly.
+    ensure!(
+        remainder.iter().all(|item| !matches!(
+            item.get("type").and_then(Value::as_str),
+            Some(
+                "function_call"
+                    | "custom_tool_call"
+                    | "function_call_output"
+                    | "custom_tool_call_output"
+            )
+        )),
+        "native_history_tool_outputs_invalid"
+    );
+    Ok(remainder)
 }
 
 fn canonical_json(value: &Value) -> Value {

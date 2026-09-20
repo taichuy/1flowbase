@@ -157,7 +157,8 @@ where
         {
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
             if command.source == PublishedCallbackResumeSource::OpenAiResponses
-                && context.flow_run.status == domain::FlowRunStatus::Failed
+                && (command.native_transport.is_some()
+                    || context.flow_run.status == domain::FlowRunStatus::Failed)
             {
                 let recovery_callback = inference_recovery::load_owned_evidence(
                     &self.repository,
@@ -165,6 +166,19 @@ where
                     &context.callback_task,
                 )
                 .await?;
+                if inference_recovery::is_full_context_continuation(
+                    &context.flow_run,
+                    &recovery_callback,
+                    command,
+                )? {
+                    return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                }
+                if context.flow_run.status != domain::FlowRunStatus::Failed {
+                    let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
+                    return Ok(PreparedPublishedCallbackResume::Resume {
+                        initial_run: Box::new(initial_run),
+                    });
+                }
                 if let Some(successor) = self
                     .repository
                     .find_published_flow_run_by_idempotency_key(

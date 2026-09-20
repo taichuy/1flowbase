@@ -154,7 +154,8 @@ async fn fixture_with_protocol_context(
         .await
         .unwrap();
     repository.configure_runnable_published_generate_route(application.id);
-    let mut request: NativeRunRequest = serde_json::from_value(json!({"query":"work"})).unwrap();
+    let mut request: NativeRunRequest =
+        serde_json::from_value(json!({"query":"work", "model":"fixture"})).unwrap();
     request.client_protocol_envelope = protocol_context;
     let run = ApplicationNativeRunService::new(repository.clone())
         .create_native_run(CreateNativeRunCommand {
@@ -216,7 +217,7 @@ async fn fixture_with_protocol_context(
             callback_task_id: callback.id,
         },
         source: PublishedCallbackResumeSource::OpenAiResponses,
-        response_payload: json!({"tool_results":[{"tool_call_id":"call_1","output":"done"}]}),
+        response_payload: json!({"tool_results":[{"tool_call_id":"call_1","content":"done"}]}),
         response_mode: Some("blocking".into()),
     };
     let consumer = SettlingConsumer {
@@ -620,6 +621,12 @@ async fn assert_recovery_successor_context(current_context: Option<ProtocolConte
         assert_eq!(replay.run.id, successor.id);
         assert_eq!(replay.attempt.flow_run_id, f.flow_run_id);
     }
+    let extended = appended_context(&f.command);
+    assert!(matches!(
+        f.prepare(&extended).await.unwrap(),
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory
+    ));
+    assert_eq!(f.repository.flow_run_count(), original_count + 1);
     f.assert_receipt_unchanged();
 }
 
@@ -717,4 +724,71 @@ async fn completed_callback_configuration_refresh_keeps_receipt_identity() {
         f.service.resume_callback(command).await.unwrap();
         f.assert_receipt_unchanged();
     }
+}
+
+fn appended_context(command: &ResumePublishedCallbackCommand) -> ResumePublishedCallbackCommand {
+    let mut command = command.clone();
+    let mut body = command.native_transport.take().unwrap().into_wire_body();
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"type":"reasoning","summary":[],"encrypted_content":"new-reasoning"}),
+        json!({"role":"assistant","content":"Queued agent context"}),
+        json!({"type":"future_context_boundary","opaque":{"preserved":true}}),
+    ]);
+    command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+    command
+}
+
+#[tokio::test]
+async fn consumed_full_context_extension_starts_new_turn_without_recovery_successor() {
+    for failure in [None, Some(transport_failure())] {
+        let f = fixture(failure).await;
+        let count = f.repository.flow_run_count();
+        for refresh in [false, true] {
+            let mut command = appended_context(&f.command);
+            if refresh {
+                let mut body = command.native_transport.take().unwrap().into_wire_body();
+                body["tools"] =
+                    json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
+                body["reasoning"] = json!({"effort":"high"});
+                command.native_transport =
+                    Some(ProviderTransportPayload::openai_responses(body).unwrap());
+            }
+            let original_body = command.native_transport.clone().unwrap();
+            assert!(matches!(
+                f.prepare(&command).await.unwrap(),
+                PreparedPublishedCallbackResume::StartNewTurnFromHistory
+            ));
+            assert_eq!(command.native_transport.as_ref(), Some(&original_body));
+        }
+        assert_eq!(f.repository.flow_run_count(), count);
+        f.assert_receipt_unchanged();
+    }
+}
+
+#[tokio::test]
+async fn consumed_full_context_extension_cannot_bypass_receipt_or_history_identity() {
+    let f = fixture(Some(transport_failure())).await;
+    for mutation in 0..8 {
+        let mut command = appended_context(&f.command);
+        let mut body = command.native_transport.take().unwrap().into_wire_body();
+        match mutation {
+            0 => body["input"][1]["encrypted_content"] = json!("tampered"),
+            1 => body["input"][5]["output"] = json!("tampered"),
+            2 => body["input"][5]["call_id"] = json!("foreign"),
+            3 => body["model"] = json!("foreign"),
+            4 => command.response_payload["tool_results"][0]["content"] = json!("tampered"),
+            5 => command.source = PublishedCallbackResumeSource::OpenAiChat,
+            6 => body["input"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"type":"function_call_output","call_id":"call_1","output":"done"})),
+            7 => body["input"].as_array_mut().unwrap().push(
+                json!({"type":"function_call","call_id":"next","name":"exec","arguments":"{}"}),
+            ),
+            _ => unreachable!(),
+        }
+        command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+        assert!(f.prepare(&command).await.is_err(), "mutation {mutation}");
+    }
+    f.assert_receipt_unchanged();
 }

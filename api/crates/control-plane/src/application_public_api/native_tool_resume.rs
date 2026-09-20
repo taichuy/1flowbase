@@ -200,12 +200,14 @@ where
         let full_request_proven = previous_response_id.is_none()
             && frozen_model.is_some()
             && frozen_model == request.get("model").and_then(Value::as_str)
-            && super::compat::openai::history::validate_full_retry_input(
+            && super::compat::openai::history::full_context_remainder(
                 input_value,
                 &metadata["history"],
                 &call_id_list,
             )
-            .is_ok();
+            .is_ok_and(|remainder| {
+                remainder.is_empty() || callback.status == CallbackTaskStatus::Completed
+            });
         if !full_request_proven {
             return Err(
                 ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),

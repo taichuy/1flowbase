@@ -296,3 +296,37 @@ fn official_empty_reasoning_content_equivalence_preserves_nonempty_opaque_parts(
         );
     }
 }
+
+#[test]
+fn ordered_full_context_proof_distinguishes_retry_from_extension() {
+    let (input, output) = seed();
+    let history = completed_history(&json!({"input":input}), None, &output)
+        .unwrap()
+        .unwrap();
+    let mut items = input.as_array().unwrap().clone();
+    items.extend(output);
+    items.push(json!({"type":"function_call_output","call_id":"call_1","output":"ok"}));
+    let retry = json!(items);
+    assert!(full_context_remainder(&retry, &history, &["call_1".into()])
+        .unwrap()
+        .is_empty());
+    let suffix = json!({"type":"future_context_boundary","opaque":[1,2,3]});
+    items.push(suffix.clone());
+    let extended = json!(items);
+    assert_eq!(
+        full_context_remainder(&extended, &history, &["call_1".into()]).unwrap(),
+        &[suffix]
+    );
+    assert!(validate_full_retry_input(&extended, &history, &["call_1".into()]).is_err());
+    let mut tampered = extended.clone();
+    tampered[1]["encrypted_content"] = json!("changed");
+    assert!(full_context_remainder(&tampered, &history, &["call_1".into()]).is_err());
+    for extra in [
+        json!({"type":"function_call_output","call_id":"call_1","output":"ok"}),
+        json!({"type":"custom_tool_call","call_id":"next","name":"exec","input":"go"}),
+    ] {
+        let mut changed = extended.clone();
+        changed.as_array_mut().unwrap().push(extra);
+        assert!(full_context_remainder(&changed, &history, &["call_1".into()]).is_err());
+    }
+}

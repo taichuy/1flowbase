@@ -539,3 +539,38 @@ async fn native_admission_rejects_cancelled_waits() {
     assert_eq!(repository.flow_run_count(), 1);
     assert!(repository.callback_resume_attempts().is_empty());
 }
+
+#[tokio::test]
+async fn completed_full_context_extension_allows_configuration_refresh_before_resume_owner() {
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+    let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"type":"reasoning","summary":[]}),
+        json!({"role":"assistant","content":"New context"}),
+        json!({"type":"future_context_boundary","opaque":true}),
+    ]);
+    body["tools"] = json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .is_err(),
+        "pending configuration refresh still requires exact full-round proof"
+    );
+    repository.complete_callback_task_for_test(callback.id);
+    let original = body.clone();
+    let (admitted, results) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(admitted.id, callback.id);
+    assert_eq!(results["tool_results"].as_array().unwrap().len(), 2);
+    assert_eq!(body, original);
+    body["model"] = json!("foreign");
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .is_err()
+    );
+    assert!(repository.callback_resume_attempts().is_empty());
+}
