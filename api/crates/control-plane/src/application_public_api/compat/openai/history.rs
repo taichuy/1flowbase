@@ -5,7 +5,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+#[path = "history/canonical.rs"]
 mod canonical;
+#[path = "history/legacy.rs"]
 mod legacy;
 
 const CURRENT_VERSION: u32 = 2;

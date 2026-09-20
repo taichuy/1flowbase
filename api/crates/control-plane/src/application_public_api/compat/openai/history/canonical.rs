@@ -159,7 +159,18 @@ pub(super) fn normalize_item(item: &Value) -> Result<Value> {
         ItemKind::CustomToolCall => optional_fields(object, &["namespace", "status"]),
         ItemKind::FunctionCallOutput => optional_fields(object, &["call_id", "name", "namespace"]),
         ItemKind::CustomToolCallOutput => optional_fields(object, &["name"]),
-        ItemKind::Reasoning => optional_fields(object, &["content", "encrypted_content"]),
+        ItemKind::Reasoning => {
+            optional_fields(object, &["content", "encrypted_content"]);
+            // Codex's should_serialize_reasoning_content omits an empty list.
+            // Do not copy its broader omission of non-ReasoningText content:
+            // opaque or future nonempty parts remain semantic evidence here.
+            if object
+                .get("content")
+                .is_some_and(|v| v.as_array().is_some_and(Vec::is_empty))
+            {
+                object.remove("content");
+            }
+        }
         ItemKind::Compaction => {
             object.insert("type".into(), json!("compaction"));
         }

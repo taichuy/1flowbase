@@ -268,3 +268,31 @@ fn proof_versions_are_domain_separated_and_legacy_is_not_upgraded() {
     .unwrap()
     .is_none());
 }
+
+#[test]
+fn official_empty_reasoning_content_equivalence_preserves_nonempty_opaque_parts() {
+    // Source: openai/codex7498521d protocol/models.rs:1623,
+    // #[serde(skip_serializing_if = "should_serialize_reasoning_content")].
+    let absent = json!({"type":"reasoning","summary":[],"encrypted_content":"cipher"});
+    let mut empty = absent.clone();
+    empty["content"] = json!([]);
+    assert_eq!(
+        normalize_item(&empty).unwrap(),
+        normalize_item(&absent).unwrap()
+    );
+    for content in [
+        json!([{"type":"reasoning_text","text":"semantic"}]),
+        json!([{"type":"future_opaque","encrypted":"cipher"}]),
+    ] {
+        let mut nonempty = absent.clone();
+        nonempty["content"] = content;
+        assert_ne!(
+            normalize_item(&nonempty).unwrap(),
+            normalize_item(&absent).unwrap()
+        );
+        assert_eq!(
+            normalize_item(&nonempty).unwrap()["content"],
+            nonempty["content"]
+        );
+    }
+}
