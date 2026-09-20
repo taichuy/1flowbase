@@ -444,7 +444,15 @@ impl AiNativeRecoveryLedger {
         if !self.reproducible {
             return OuterReplayDecision::NonReproducible;
         }
-        if self.outer_retries_used >= self.outer_retry_budget {
+        if self.outer_retries_used >= self.outer_retry_budget
+            || u32::from(
+                receipt
+                    .consumed_attempts()
+                    .expect("receipt was validated above"),
+            ) >= self
+                .total_attempt_budget
+                .saturating_sub(self.total_attempts_charged)
+        {
             return OuterReplayDecision::AttemptBudgetExhausted;
         }
         if now_unix_ms >= self.absolute_deadline_unix_ms {

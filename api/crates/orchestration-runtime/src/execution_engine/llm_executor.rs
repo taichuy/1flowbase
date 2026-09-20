@@ -1020,6 +1020,10 @@ where
         }
         // Account the final successful provider call too; a success does not
         // authorize another invocation, but its real consumption is auditable.
+        super::llm_final_content::attach_recovery_diagnostics(
+            &mut attempt,
+            Some(&output.result.provider_metadata),
+        );
         let ai_native_recovery = Some({
             let outer_attempt = u16::try_from(attempt_index).unwrap_or(u16::MAX);
             match provider_recovery_receipt.as_ref() {

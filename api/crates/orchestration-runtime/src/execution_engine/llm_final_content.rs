@@ -1,6 +1,10 @@
 #[path = "llm_final_content/recovery_diagnostics.rs"]
 mod recovery_diagnostics;
 
+pub(super) fn attach_recovery_diagnostics(payload: &mut Value, details: Option<&Value>) {
+    recovery_diagnostics::attach(payload, details);
+}
+
 use super::*;
 
 pub(super) fn parse_structured_llm_output(text: &str) -> Result<Value> {

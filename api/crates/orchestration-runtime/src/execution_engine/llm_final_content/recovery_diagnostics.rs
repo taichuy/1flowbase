@@ -50,6 +50,8 @@ fn failure(source: &Value) -> Option<Value> {
                 "network_error",
                 "provider_typed",
                 "provider_untyped",
+                "owner_rejected",
+                "attempt_admission",
             ][..],
         ),
         (
@@ -61,6 +63,9 @@ fn failure(source: &Value) -> Option<Value> {
                 "policy_rejected",
                 "transport_disconnected",
                 "unclassified",
+                "deadline_exceeded",
+                "budget_exhausted",
+                "authorization_rejected",
             ][..],
         ),
         (
@@ -72,6 +77,9 @@ fn failure(source: &Value) -> Option<Value> {
                 "upstream policy rejected the request; reason redacted",
                 "websocket disconnected before response.completed",
                 "provider failure; unclassified details redacted",
+                "provider recovery deadline exceeded",
+                "provider recovery attempt budget exhausted",
+                "upstream authorization rejected the request",
             ][..],
         ),
     ] {
