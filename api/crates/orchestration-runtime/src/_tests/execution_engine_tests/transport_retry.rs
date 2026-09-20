@@ -3,12 +3,78 @@ use std::collections::VecDeque;
 use super::*;
 use crate::execution_engine::full_jitter_delay_ms;
 use crate::execution_state::FlowDebugExecutionOutcome;
+use extension_contracts::error::ExtensionContractError;
+use extension_contracts::provider_contract::{CommitLevel, RecoveryDisposition};
 use time::OffsetDateTime;
 
 struct SequencedTransportInvoker {
-    outputs: Mutex<VecDeque<ProviderInvocationOutput>>,
+    attempts: Mutex<VecDeque<ScriptedAttempt>>,
     invocation_ids: Arc<Mutex<Vec<String>>>,
     emit_typed_recovery_receipts: bool,
+}
+
+/// One scripted provider attempt. `Error` exercises the real `invoke_llm -> Err`
+/// path, where the typed recovery receipt must travel inside the error's
+/// `provider_details` exactly as the real provider worker emits it.
+enum ScriptedAttempt {
+    Output(ProviderInvocationOutput),
+    Error {
+        kind: ProviderRuntimeErrorKind,
+        disposition: RecoveryDisposition,
+        commit_level: CommitLevel,
+        /// `None` models a failure observed before any socket existed.
+        socket_incarnation: Option<u64>,
+    },
+    /// An error with no `provider_details` at all: the pre-fix
+    /// `missing_typed_receipt` shape.
+    ErrorWithoutDetails {
+        kind: ProviderRuntimeErrorKind,
+    },
+    /// An error whose `provider_details` carries a corrupt receipt: the receipt
+    /// is present but untrustworthy and must never authorize a replay.
+    ErrorWithRawDetails {
+        kind: ProviderRuntimeErrorKind,
+        details: Value,
+    },
+}
+
+/// Build the exact `provider_details` object a real worker attaches to its
+/// failed invocation, using the canonical contract type so the wire key and the
+/// receipt shape cannot drift from the parser under test.
+fn error_receipt_details(
+    input: &ProviderInvocationInput,
+    disposition: RecoveryDisposition,
+    commit_level: CommitLevel,
+    socket_incarnation: Option<u64>,
+) -> anyhow::Result<Value> {
+    let directive: extension_contracts::provider_contract::ProviderRecoveryDirective =
+        serde_json::from_value(
+            input.run_context
+                [extension_contracts::provider_contract::PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+                .clone(),
+        )?;
+    let receipt = extension_contracts::provider_contract::ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: extension_contracts::provider_contract::RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: directive.transport_epoch,
+        socket_incarnation: socket_incarnation
+            .map(extension_contracts::provider_contract::SocketIncarnation::new)
+            .transpose()
+            .map_err(anyhow::Error::msg)?,
+        commit_level,
+        disposition,
+        reason: extension_contracts::provider_contract::RecoveryReason::TransportDisconnected,
+    };
+    Ok(raw_receipt_details(serde_json::to_value(receipt)?))
+}
+
+fn raw_receipt_details(receipt: Value) -> Value {
+    let mut details = serde_json::Map::new();
+    details.insert(
+        extension_contracts::provider_contract::PROVIDER_RECOVERY_RECEIPT_METADATA_KEY.to_string(),
+        receipt,
+    );
+    Value::Object(details)
 }
 
 #[async_trait]
@@ -28,12 +94,61 @@ impl ProviderInvoker for SequencedTransportInvoker {
                     .expect("each attempt must have an invocation id")
                     .clone(),
             );
-        let mut output = self
-            .outputs
+        let attempt = self
+            .attempts
             .lock()
-            .expect("outputs mutex poisoned")
+            .expect("attempts mutex poisoned")
             .pop_front()
             .ok_or_else(|| anyhow::anyhow!("unexpected provider attempt"))?;
+        let mut output = match attempt {
+            ScriptedAttempt::Output(output) => output,
+            ScriptedAttempt::Error {
+                kind,
+                disposition,
+                commit_level,
+                socket_incarnation,
+            } => {
+                return Err(anyhow::Error::new(
+                    ExtensionContractError::RuntimeContract {
+                        error: Box::new(ProviderRuntimeError {
+                            kind,
+                            message: "upstream connection reset".to_string(),
+                            provider_summary: None,
+                            provider_details: Some(error_receipt_details(
+                                &input,
+                                disposition,
+                                commit_level,
+                                socket_incarnation,
+                            )?),
+                        }),
+                    },
+                ))
+            }
+            ScriptedAttempt::ErrorWithoutDetails { kind } => {
+                return Err(anyhow::Error::new(
+                    ExtensionContractError::RuntimeContract {
+                        error: Box::new(ProviderRuntimeError {
+                            kind,
+                            message: "upstream connection reset".to_string(),
+                            provider_summary: None,
+                            provider_details: None,
+                        }),
+                    },
+                ))
+            }
+            ScriptedAttempt::ErrorWithRawDetails { kind, details } => {
+                return Err(anyhow::Error::new(
+                    ExtensionContractError::RuntimeContract {
+                        error: Box::new(ProviderRuntimeError {
+                            kind,
+                            message: "upstream connection reset".to_string(),
+                            provider_summary: None,
+                            provider_details: Some(details),
+                        }),
+                    },
+                ))
+            }
+        };
         let retryable_transport_failure = output.events.iter().any(|event| {
             matches!(
                 event,
@@ -128,10 +243,16 @@ fn provider_error_output(
 fn sequenced_invoker(
     outputs: impl IntoIterator<Item = ProviderInvocationOutput>,
 ) -> (SequencedTransportInvoker, Arc<Mutex<Vec<String>>>) {
+    scripted_invoker(outputs.into_iter().map(ScriptedAttempt::Output))
+}
+
+fn scripted_invoker(
+    attempts: impl IntoIterator<Item = ScriptedAttempt>,
+) -> (SequencedTransportInvoker, Arc<Mutex<Vec<String>>>) {
     let invocation_ids = Arc::new(Mutex::new(Vec::new()));
     (
         SequencedTransportInvoker {
-            outputs: Mutex::new(outputs.into_iter().collect()),
+            attempts: Mutex::new(attempts.into_iter().collect()),
             invocation_ids: invocation_ids.clone(),
             emit_typed_recovery_receipts: true,
         },
@@ -313,4 +434,156 @@ fn automatic_transport_retry_uses_bounded_full_jitter() {
     assert_eq!(full_jitter_delay_ms(0, 201), 0);
     assert_eq!(full_jitter_delay_ms(3, u64::MAX), u64::MAX % 1_001);
     assert!(full_jitter_delay_ms(usize::MAX, u64::MAX) <= 1_000);
+}
+
+// The cases below pin the host-side `invoke_llm -> Err` path. Before this change
+// that path always passed `None` to the AI Native decision, so the typed receipt
+// the provider attached to its error could never authorize a bounded recovery -
+// the incident's `missing_typed_receipt` symptom.
+
+fn err_attempt(
+    disposition: RecoveryDisposition,
+    commit_level: CommitLevel,
+    socket_incarnation: Option<u64>,
+) -> ScriptedAttempt {
+    ScriptedAttempt::Error {
+        kind: ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        disposition,
+        commit_level,
+        socket_incarnation,
+    }
+}
+
+#[tokio::test]
+async fn err_path_typed_logical_retry_receipt_authorizes_one_bounded_retry() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = scripted_invoker([
+        err_attempt(
+            RecoveryDisposition::LogicalInvocationRetry,
+            CommitLevel::LifecycleOnly,
+            Some(6),
+        ),
+        ScriptedAttempt::Output(final_provider_output("recovered via err path".to_string())),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow should execute");
+    let attempts = llm_attempts(&outcome);
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0]["ai_native_recovery"]["decision"], json!("retry"));
+    assert_eq!(attempts[0]["ai_native_recovery"]["outer_attempt"], json!(0));
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["provider_inner_receipt"]["socket_incarnation"],
+        json!(6)
+    );
+    assert_eq!(attempts[0]["error_code"], json!("provider_transport_unavailable"));
+    assert_eq!(attempts[1]["is_retry"], json!(true));
+    assert_eq!(attempts[1]["status"], json!("succeeded"));
+
+    let ids = invocation_ids.lock().expect("invocation ids mutex poisoned");
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+}
+
+#[tokio::test]
+async fn err_path_corrupt_receipt_is_invalid_not_retryable() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = scripted_invoker([
+        ScriptedAttempt::ErrorWithRawDetails {
+            kind: ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+            // A recoverable disposition that never names its socket and omits
+            // the epoch: present, but not trustworthy.
+            details: raw_receipt_details(json!({
+                "attempt": 0,
+                "transport": "ai_native_websocket",
+                "commit_level": "lifecycle_only",
+                "disposition": "same_epoch_reconnect",
+                "reason": "transport_disconnected",
+            })),
+        },
+        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow failure should remain an execution outcome");
+    assert_eq!(llm_attempts(&outcome).len(), 1);
+    assert_eq!(
+        llm_attempts(&outcome)[0]["ai_native_recovery"]["decision"],
+        json!("invalid_receipt")
+    );
+    assert_eq!(
+        invocation_ids
+            .lock()
+            .expect("invocation ids mutex poisoned")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn err_path_terminal_socketless_receipt_stops_without_replay() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = scripted_invoker([
+        err_attempt(
+            RecoveryDisposition::TerminalInterruption,
+            CommitLevel::Terminal,
+            None,
+        ),
+        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow failure should remain an execution outcome");
+    let attempts = llm_attempts(&outcome);
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["decision"],
+        json!("semantic_terminal")
+    );
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["original_terminal_preserved"],
+        json!(true)
+    );
+    assert_eq!(
+        attempts[0]["error_code"],
+        json!("provider_transport_unavailable")
+    );
+    assert!(matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)));
+    assert_eq!(
+        invocation_ids
+            .lock()
+            .expect("invocation ids mutex poisoned")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn err_path_without_any_receipt_reports_missing_typed_receipt() {
+    let plan = base_plan();
+    let (invoker, invocation_ids) = scripted_invoker([
+        ScriptedAttempt::ErrorWithoutDetails {
+            kind: ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+        },
+        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
+        .await
+        .expect("flow failure should remain an execution outcome");
+    assert_eq!(llm_attempts(&outcome).len(), 1);
+    assert_eq!(
+        llm_attempts(&outcome)[0]["ai_native_recovery"]["decision"],
+        json!("missing_typed_receipt")
+    );
+    assert_eq!(
+        invocation_ids
+            .lock()
+            .expect("invocation ids mutex poisoned")
+            .len(),
+        1
+    );
 }

@@ -260,6 +260,12 @@ impl AiNativeRecoveryLedger {
             // semantic commit/terminal it refuses another outer attempt instead of issuing a
             // directive that could replay committed input.
             initial_commit_level: CommitLevel::LifecycleOnly,
+            // AI Native owns the semantic barrier, not the provider-side socket or cursor
+            // binding. `None` therefore means "no host binding claim" rather than "the cursor
+            // is unowned": the provider owns the physical connection and the cursor owner
+            // records, and reports the binding it actually observed in its typed receipt.
+            // A host that can prove a durable, connection-independent cursor may instead
+            // assert `CursorProvenance::durable()` here as a constraint.
             cursor_provenance: None,
         }
     }
@@ -318,6 +324,25 @@ impl AiNativeRecoveryLedger {
             }
         }
         result
+    }
+
+    /// Terminal decision for a recovery receipt that was present but could not
+    /// be trusted. It never retries, and it records `InvalidReceipt` instead of
+    /// collapsing into `MissingTypedReceipt`, so the audit trail keeps
+    /// "the provider sent nothing" distinct from "the provider sent something
+    /// the host refused".
+    pub fn reject_invalid_receipt(&self, outer_attempt: u16) -> AiNativeRecoveryReceipt {
+        AiNativeRecoveryReceipt {
+            outer_attempt,
+            transport_epoch: self.current_epoch,
+            provider_directive: self.provider_directive(),
+            provider_inner_receipt: None,
+            provider_inner_attempt: None,
+            provider_final_commit: None,
+            provider_disposition: None,
+            decision: OuterReplayDecision::InvalidReceipt,
+            original_terminal_preserved: true,
+        }
     }
 
     fn replay_decision(

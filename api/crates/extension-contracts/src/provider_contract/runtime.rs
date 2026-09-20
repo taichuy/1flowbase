@@ -139,17 +139,7 @@ impl ProviderInvocationResult {
     }
 
     pub fn recovery_receipt(&self) -> Result<Option<ProviderRecoveryReceipt>, String> {
-        let Some(value) = self
-            .provider_metadata
-            .as_object()
-            .and_then(|metadata| metadata.get(PROVIDER_RECOVERY_RECEIPT_METADATA_KEY))
-        else {
-            return Ok(None);
-        };
-        let receipt: ProviderRecoveryReceipt = serde_json::from_value(value.clone())
-            .map_err(|_| "provider recovery receipt is invalid".to_string())?;
-        receipt.validate()?;
-        Ok(Some(receipt))
+        recovery_receipt_from_details(&self.provider_metadata)
     }
 
     pub fn set_invocation_timing_receipt(

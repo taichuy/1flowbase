@@ -167,6 +167,29 @@ impl CursorProvenance {
     }
 }
 
+/// Parse the typed recovery receipt a Provider may attach to an error or to a
+/// successful result.
+///
+/// `container` is a free-form `provider_details` / `provider_metadata` object.
+/// The single owner of the key lives here so the error path and the output path
+/// cannot drift apart. A receipt that is present but malformed is an error
+/// rather than `None`: a corrupted receipt must never be silently downgraded to
+/// "no receipt", which would authorize an unbounded outer attempt.
+pub fn recovery_receipt_from_details(
+    container: &serde_json::Value,
+) -> Result<Option<ProviderRecoveryReceipt>, String> {
+    let Some(value) = container
+        .as_object()
+        .and_then(|object| object.get(PROVIDER_RECOVERY_RECEIPT_METADATA_KEY))
+    else {
+        return Ok(None);
+    };
+    let receipt: ProviderRecoveryReceipt = serde_json::from_value(value.clone())
+        .map_err(|_| "provider recovery receipt is invalid".to_string())?;
+    receipt.validate()?;
+    Ok(Some(receipt))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecoveryDisposition {
@@ -320,9 +343,14 @@ impl ProviderRecoveryReceipt {
             ));
         }
         match (self.transport, self.socket_incarnation) {
-            (RecoveryTransport::AiNativeWebSocket, None) => Err(
-                "AI Native WebSocket recovery receipt requires a socket incarnation".to_string(),
-            ),
+            // A terminal receipt claims no reconnect and no resumption, so a
+            // failure observed before any socket existed may report the real
+            // outcome without inventing an incarnation. Every non-terminal
+            // WebSocket receipt still has to name the socket it intends to use.
+            (RecoveryTransport::AiNativeWebSocket, None) if !self.disposition.is_terminal() => {
+                Err("AI Native WebSocket recovery receipt requires a socket incarnation"
+                    .to_string())
+            }
             (RecoveryTransport::ProviderHttp, Some(_)) => {
                 Err("provider HTTP recovery receipt cannot claim a socket incarnation".to_string())
             }
