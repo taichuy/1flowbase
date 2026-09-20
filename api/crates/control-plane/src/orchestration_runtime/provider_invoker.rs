@@ -70,25 +70,25 @@ fn seal_native_failure_binding(
         error.downcast_ref::<plugin_framework::PluginFrameworkError>()
     {
         let mut original = original.clone();
-        let mut details = original
-            .provider_details
-            .take()
-            .unwrap_or_else(|| json!({}));
-        if !details.is_object() {
-            details = json!({"original_provider_details": details});
-        }
-        details["native_inference_binding"] = binding.clone();
+        let mut details = match original.provider_details.take() {
+            Some(Value::Object(details)) => details,
+            Some(value) => {
+                serde_json::Map::from_iter([("original_provider_details".into(), value)])
+            }
+            None => serde_json::Map::new(),
+        };
+        details.insert("native_inference_binding".into(), binding.clone());
         // This is the failed invocation's request, which may differ from the preceding
         // successful callback round after a legitimate full-context configuration change.
         // Never trust a provider-supplied value for host admission evidence.
-        details
-            .as_object_mut()
-            .unwrap()
-            .remove("native_inference_configuration_digest");
+        details.remove("native_inference_configuration_digest");
         if let Some(digest) = configuration_digest {
-            details["native_inference_configuration_digest"] = json!(digest);
+            details.insert(
+                "native_inference_configuration_digest".into(),
+                json!(digest),
+            );
         }
-        original.provider_details = Some(details);
+        original.provider_details = Some(Value::Object(details));
         return plugin_framework::PluginFrameworkError::runtime(*original).into();
     }
     error
