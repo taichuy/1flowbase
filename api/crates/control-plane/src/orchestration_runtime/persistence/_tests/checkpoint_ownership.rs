@@ -67,7 +67,7 @@ async fn successor_checkpoint_re_roots_materialized_lineage_without_losing_froze
     )
     .await
     .unwrap();
-    let same_prepared = prepare_recovery_checkpoint(&service.repository, "node-llm", &same_run)
+    let same_prepared = prepare_recovery_checkpoint(&service.repository, "node-tool", &same_run)
         .await
         .unwrap();
     assert_eq!(same_prepared.parent_context_version_id, Some(delta.id));
@@ -77,7 +77,7 @@ async fn successor_checkpoint_re_roots_materialized_lineage_without_losing_froze
         "predecessor environment"
     );
     assert!(
-        same_run.variable_pool.contains_key("node-llm"),
+        same_run.variable_pool.contains_key("node-tool"),
         "base callback state must survive the delta"
     );
 
@@ -93,7 +93,7 @@ async fn successor_checkpoint_re_roots_materialized_lineage_without_losing_froze
     assert_eq!(successor.variable_pool, frozen_values);
     assert_eq!(successor.next_node_index, same_run.next_node_index);
     assert_eq!(successor.active_node_ids, same_run.active_node_ids);
-    let prepared = prepare_recovery_checkpoint(&service.repository, "node-llm", &successor)
+    let prepared = prepare_recovery_checkpoint(&service.repository, "node-tool", &successor)
         .await
         .unwrap();
     assert_eq!(
@@ -116,8 +116,8 @@ async fn successor_checkpoint_re_roots_legacy_inline_snapshot_too() {
     let service = OrchestrationRuntimeService::for_tests();
     let source_id = Uuid::now_v7();
     let mut checkpoint = super::checkpoint_record(
-        json!({"node_id":"node-llm", "next_node_index":1, "active_node_ids":["node-llm"]}),
-        json!({"env":{"frozen":true}, "node-llm":{"history":[1,2]},
+        json!({"node_id":"node-tool", "next_node_index":1, "active_node_ids":["node-tool"]}),
+        json!({"env":{"frozen":true}, "node-tool":{"history":[1,2]},
             RECOVERY_CONTEXT_MARKER:{"context_version_id":Uuid::now_v7(), "sequence":9}}),
     );
     checkpoint.flow_run_id = source_id;
@@ -139,7 +139,7 @@ async fn successor_checkpoint_re_roots_legacy_inline_snapshot_too() {
     let mut expected = checkpoint.variable_snapshot.as_object().unwrap().clone();
     expected.remove(RECOVERY_CONTEXT_MARKER);
     assert_eq!(successor.variable_pool, expected);
-    let prepared = prepare_recovery_checkpoint(&service.repository, "node-llm", &successor)
+    let prepared = prepare_recovery_checkpoint(&service.repository, "node-tool", &successor)
         .await
         .unwrap();
     assert_eq!(prepared.parent_context_version_id, None);
