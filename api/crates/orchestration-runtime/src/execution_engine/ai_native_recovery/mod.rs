@@ -175,6 +175,11 @@ pub struct AiNativeRecoveryReceipt {
     pub provider_disposition: Option<RecoveryDisposition>,
     pub decision: OuterReplayDecision,
     pub original_terminal_preserved: bool,
+    pub total_attempt_budget: u32,
+    /// Conservative debit: absent/untrusted receipts debit the whole allocation.
+    pub total_attempts_charged: u32,
+    /// None means the provider's actual consumption is not known.
+    pub provider_attempts_consumed: Option<u16>,
 }
 
 /// Invocation-local semantic barrier and attempt ledger. The absolute deadline is
@@ -183,6 +188,8 @@ pub struct AiNativeRecoveryLedger {
     absolute_deadline_unix_ms: i64,
     outer_retry_budget: u16,
     outer_retries_used: u16,
+    total_attempt_budget: u32,
+    total_attempts_charged: u32,
     current_epoch: TransportEpoch,
     semantic_committed: bool,
     semantic_terminal: bool,
@@ -203,6 +210,33 @@ impl AiNativeRecoveryLedger {
         reproducible: bool,
         input_mode: RecoveryInputMode,
     ) -> Result<Self, &'static str> {
+        Self::with_total_attempt_budget(
+            absolute_deadline_unix_ms,
+            outer_retry_budget,
+            reproducible,
+            input_mode,
+            (u32::from(outer_retry_budget) + 1) * u32::from(DEFAULT_PROVIDER_INNER_ATTEMPTS),
+        )
+    }
+
+    pub fn attempt_budget_for_invocations(invocations: usize) -> u32 {
+        u32::try_from(invocations)
+            .unwrap_or(u32::MAX / u32::from(DEFAULT_PROVIDER_INNER_ATTEMPTS))
+            .saturating_mul(u32::from(DEFAULT_PROVIDER_INNER_ATTEMPTS))
+    }
+
+    /// Freeze the existing configured + automatic invocation allowance once.
+    /// Epoch rotation and new provider allocations never replenish this budget.
+    pub fn with_total_attempt_budget(
+        absolute_deadline_unix_ms: i64,
+        outer_retry_budget: u16,
+        reproducible: bool,
+        input_mode: RecoveryInputMode,
+        total_attempt_budget: u32,
+    ) -> Result<Self, &'static str> {
+        if total_attempt_budget == 0 {
+            return Err("AI Native total attempt budget must be positive");
+        }
         if absolute_deadline_unix_ms <= 0 {
             return Err("AI Native recovery deadline must be positive");
         }
@@ -210,6 +244,8 @@ impl AiNativeRecoveryLedger {
             absolute_deadline_unix_ms,
             outer_retry_budget,
             outer_retries_used: 0,
+            total_attempt_budget,
+            total_attempts_charged: 0,
             current_epoch: allocate_transport_epoch()?,
             semantic_committed: false,
             semantic_terminal: false,
@@ -232,13 +268,16 @@ impl AiNativeRecoveryLedger {
 
     pub const fn allows_configured_replay_at(&self, now_unix_ms: i64) -> bool {
         !self.semantic_replay_blocked()
+            && self.total_attempts_charged < self.total_attempt_budget
             && self.reproducible
             && now_unix_ms < self.absolute_deadline_unix_ms
     }
 
     pub fn rotate_epoch_for_configured_replay(&mut self) -> Result<(), &'static str> {
-        if self.semantic_replay_blocked() {
-            return Err("committed AI Native invocation cannot rotate for replay");
+        if self.semantic_replay_blocked()
+            || self.total_attempts_charged >= self.total_attempt_budget
+        {
+            return Err("committed or exhausted AI Native invocation cannot rotate for replay");
         }
         self.current_epoch = allocate_transport_epoch()?;
         Ok(())
@@ -246,7 +285,11 @@ impl AiNativeRecoveryLedger {
 
     pub fn provider_directive(&self) -> ProviderRecoveryDirective {
         let budget = RecoveryBudget {
-            max_inner_attempts: DEFAULT_PROVIDER_INNER_ATTEMPTS,
+            max_inner_attempts: self
+                .total_attempt_budget
+                .saturating_sub(self.total_attempts_charged)
+                .min(u32::from(DEFAULT_PROVIDER_INNER_ATTEMPTS))
+                as u16,
             absolute_deadline_unix_ms: self.absolute_deadline_unix_ms,
         };
         let policy = match self.input_mode {
@@ -304,8 +347,24 @@ impl AiNativeRecoveryLedger {
         token_bucket: &mut PartitionedRetryTokenBucket,
         outer_attempt: u16,
     ) -> AiNativeRecoveryReceipt {
-        let decision = self.replay_decision(receipt, partition, now_unix_ms, token_bucket);
         let provider_directive = self.provider_directive();
+        let mut decision = self.replay_decision(receipt, partition, now_unix_ms, token_bucket);
+        let provider_attempts_consumed = if decision == OuterReplayDecision::StaleEpochNoop {
+            None
+        } else {
+            let consumed = receipt
+                .filter(|receipt| receipt.validate_against(&provider_directive).is_ok())
+                .and_then(|receipt| receipt.consumed_attempts().ok());
+            self.total_attempts_charged += u32::from(
+                consumed.unwrap_or(provider_directive.policy.budget().max_inner_attempts),
+            );
+            consumed
+        };
+        if decision == OuterReplayDecision::Retry
+            && self.total_attempts_charged >= self.total_attempt_budget
+        {
+            decision = OuterReplayDecision::AttemptBudgetExhausted;
+        }
         let result = AiNativeRecoveryReceipt {
             outer_attempt,
             transport_epoch: self.current_epoch,
@@ -316,6 +375,9 @@ impl AiNativeRecoveryLedger {
             provider_disposition: receipt.map(|receipt| receipt.disposition),
             decision,
             original_terminal_preserved: decision != OuterReplayDecision::Retry,
+            total_attempt_budget: self.total_attempt_budget,
+            total_attempts_charged: self.total_attempts_charged,
+            provider_attempts_consumed,
         };
         if decision == OuterReplayDecision::Retry {
             self.outer_retries_used = self.outer_retries_used.saturating_add(1);
@@ -331,17 +393,23 @@ impl AiNativeRecoveryLedger {
     /// collapsing into `MissingTypedReceipt`, so the audit trail keeps
     /// "the provider sent nothing" distinct from "the provider sent something
     /// the host refused".
-    pub fn reject_invalid_receipt(&self, outer_attempt: u16) -> AiNativeRecoveryReceipt {
+    pub fn reject_invalid_receipt(&mut self, outer_attempt: u16) -> AiNativeRecoveryReceipt {
+        let provider_directive = self.provider_directive();
+        self.total_attempts_charged +=
+            u32::from(provider_directive.policy.budget().max_inner_attempts);
         AiNativeRecoveryReceipt {
             outer_attempt,
             transport_epoch: self.current_epoch,
-            provider_directive: self.provider_directive(),
+            provider_directive,
             provider_inner_receipt: None,
             provider_inner_attempt: None,
             provider_final_commit: None,
             provider_disposition: None,
             decision: OuterReplayDecision::InvalidReceipt,
             original_terminal_preserved: true,
+            total_attempt_budget: self.total_attempt_budget,
+            total_attempts_charged: self.total_attempts_charged,
+            provider_attempts_consumed: None,
         }
     }
 
@@ -400,17 +468,9 @@ pub fn decide_outer_replay_with_default_bucket(
     let bucket =
         DEFAULT_RETRY_BUCKET.get_or_init(|| Mutex::new(PartitionedRetryTokenBucket::default()));
     let Ok(mut bucket) = bucket.lock() else {
-        return AiNativeRecoveryReceipt {
-            outer_attempt,
-            transport_epoch: ledger.current_epoch(),
-            provider_directive: ledger.provider_directive(),
-            provider_inner_receipt: receipt.cloned(),
-            provider_inner_attempt: receipt.map(|receipt| receipt.attempt),
-            provider_final_commit: receipt.map(|receipt| receipt.commit_level),
-            provider_disposition: receipt.map(|receipt| receipt.disposition),
-            decision: OuterReplayDecision::PartitionTokenExhausted,
-            original_terminal_preserved: true,
-        };
+        let mut observation = ledger.reject_invalid_receipt(outer_attempt);
+        observation.decision = OuterReplayDecision::PartitionTokenExhausted;
+        return observation;
     };
     ledger.decide_outer_replay(receipt, partition, now_unix_ms, &mut bucket, outer_attempt)
 }
@@ -816,3 +876,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/attempt_budget.rs"]
+mod attempt_budget_tests;

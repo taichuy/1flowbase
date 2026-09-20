@@ -219,6 +219,10 @@ impl RecoveryDisposition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryBudget {
+    /// Total authorized upstream attempts, including the initial attempt.
+    /// One attempt starts before connection acquisition and includes its send/read;
+    /// connection, send and read failures each consume that same attempt once.
+    /// A reconnect or HTTP fallback starts another attempt; backoff consumes none.
     pub max_inner_attempts: u16,
     pub absolute_deadline_unix_ms: i64,
 }
@@ -314,6 +318,8 @@ pub enum RecoveryReason {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderRecoveryReceipt {
+    /// Zero-based index of the last actual upstream attempt (not retry count).
+    /// Successful recovery must include the successful attempt in this index.
     pub attempt: u16,
     pub transport: RecoveryTransport,
     pub transport_epoch: TransportEpoch,
@@ -325,6 +331,13 @@ pub struct ProviderRecoveryReceipt {
 }
 
 impl ProviderRecoveryReceipt {
+    /// Actual consumed attempts represented by a valid receipt. The wire keeps
+    /// its published zero-based index; accounting must use this count instead.
+    pub fn consumed_attempts(&self) -> Result<u16, String> {
+        self.validate()?;
+        Ok(self.attempt + 1)
+    }
+
     pub const fn is_pre_commit_http_fallback(&self) -> bool {
         matches!(
             (self.transport, self.disposition),
@@ -347,10 +360,9 @@ impl ProviderRecoveryReceipt {
             // failure observed before any socket existed may report the real
             // outcome without inventing an incarnation. Every non-terminal
             // WebSocket receipt still has to name the socket it intends to use.
-            (RecoveryTransport::AiNativeWebSocket, None) if !self.disposition.is_terminal() => {
-                Err("AI Native WebSocket recovery receipt requires a socket incarnation"
-                    .to_string())
-            }
+            (RecoveryTransport::AiNativeWebSocket, None) if !self.disposition.is_terminal() => Err(
+                "AI Native WebSocket recovery receipt requires a socket incarnation".to_string(),
+            ),
             (RecoveryTransport::ProviderHttp, Some(_)) => {
                 Err("provider HTTP recovery receipt cannot claim a socket incarnation".to_string())
             }

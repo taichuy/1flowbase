@@ -424,15 +424,16 @@ where
     let recovery_deadline =
         recovery_absolute_deadline(&routing_probe.input, OffsetDateTime::now_utc());
     let recovery_reproducible = routing_probe.input.previous_response_id.is_none();
-    let mut recovery_ledger = AiNativeRecoveryLedger::new(
+    let configured_request_count = llm_request_count(node);
+    let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
+    let mut recovery_ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
         recovery_deadline,
         u16::try_from(AUTOMATIC_TRANSPORT_RETRY_LIMIT).unwrap_or(u16::MAX),
         recovery_reproducible,
         recovery_input_mode,
+        AiNativeRecoveryLedger::attempt_budget_for_invocations(request_count),
     )
     .map_err(anyhow::Error::msg)?;
-    let configured_request_count = llm_request_count(node);
-    let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -805,8 +806,7 @@ where
                     && provider_error_allows_retry(&provider_error)
                     && configured_retries_used + 1 < configured_request_count
                     && !typed_commit_blocks_replay
-                    && recovery_ledger
-                        .allows_configured_replay_at(unix_millis(attempt_finished_at))
+                    && recovery_ledger.allows_configured_replay_at(unix_millis(attempt_finished_at))
                 {
                     Some(LlmRetryClass::Configured)
                 } else {
@@ -1017,7 +1017,9 @@ where
         if let Some(account) = provider_observability.user_account {
             attempt["user_account"] = account;
         }
-        let ai_native_recovery = error_payload.as_ref().map(|_| {
+        // Account the final successful provider call too; a success does not
+        // authorize another invocation, but its real consumption is auditable.
+        let ai_native_recovery = Some({
             let outer_attempt = u16::try_from(attempt_index).unwrap_or(u16::MAX);
             match provider_recovery_receipt.as_ref() {
                 Ok(receipt) => decide_outer_replay_with_default_bucket(

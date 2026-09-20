@@ -2673,3 +2673,23 @@ fn terminal_websocket_receipt_may_report_a_socketless_failure() {
             .contains("requires a socket incarnation"));
     }
 }
+
+#[test]
+fn recovery_attempt_index_and_consumed_count_respect_total_budget() {
+    for budget in [1, 2, 16] {
+        let directive = ProviderRecoveryDirective {
+            policy: RecoveryPolicy::NativeOpaque { budget: RecoveryBudget { max_inner_attempts: budget, absolute_deadline_unix_ms: 100 } },
+            transport_epoch: TransportEpoch::new(1).unwrap(), initial_commit_level: CommitLevel::LifecycleOnly, cursor_provenance: None,
+        };
+        let mut receipt = ProviderRecoveryReceipt {
+            attempt: budget - 1, transport: RecoveryTransport::AiNativeWebSocket,
+            transport_epoch: directive.transport_epoch, socket_incarnation: None,
+            commit_level: CommitLevel::Terminal, disposition: RecoveryDisposition::TerminalInterruption,
+            reason: RecoveryReason::BudgetExhausted,
+        };
+        assert!(receipt.validate_against(&directive).is_ok());
+        assert_eq!(receipt.consumed_attempts().unwrap(), budget);
+        receipt.attempt = budget;
+        assert!(receipt.validate_against(&directive).is_err());
+    }
+}
