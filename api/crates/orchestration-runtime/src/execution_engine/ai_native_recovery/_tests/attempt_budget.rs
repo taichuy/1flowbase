@@ -150,3 +150,21 @@ fn legal_exhausted_terminal_is_accepted_but_overflow_is_not() {
         assert_eq!(result.total_attempts_charged, total);
     }
 }
+
+#[test]
+fn validated_terminal_receipt_blocks_rotation_even_with_unspent_budget() {
+    let mut ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
+        100,
+        1,
+        true,
+        RecoveryInputMode::NativeOpaque,
+        4,
+    )
+    .unwrap();
+    let mut last = receipt(&ledger, 0);
+    last.commit_level = CommitLevel::Terminal;
+    last.disposition = RecoveryDisposition::TerminalInterruption;
+    assert_eq!(decide(&mut ledger, Some(&last)).total_attempts_charged, 1);
+    assert!(!ledger.allows_configured_replay_at(1));
+    assert!(ledger.rotate_epoch_for_configured_replay().is_err());
+}
