@@ -312,25 +312,15 @@ where
             .await
             .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
-        if recovery.is_some() {
-            // Re-enter only the gateway's single inference pipeline. Re-running arbitrary
-            // workflow nodes could repeat unrelated business side effects.
-            let nodes = compiled_plan
-                .plan
-                .get("nodes")
-                .and_then(Value::as_object)
-                .ok_or(NativeRunValidationError::InvalidState)?;
-            if nodes
-                .values()
-                .filter(|node| node["node_type"] == "llm")
-                .count()
-                != 1
-                || nodes.values().any(|node| {
-                    !matches!(node["node_type"].as_str(), Some("start" | "llm" | "answer"))
-                })
-            {
-                return Err(NativeRunValidationError::InvalidState);
-            }
+        if let Some(grant) = &recovery {
+            let plan: orchestration_runtime::compiled_plan::CompiledPlan =
+                serde_json::from_value(compiled_plan.plan.clone())
+                    .map_err(|_| NativeRunValidationError::InvalidState)?;
+            orchestration_runtime::execution_engine::validate_native_inference_recovery_scope(
+                &plan,
+                &grant.node_id,
+            )
+            .map_err(|_| NativeRunValidationError::InvalidState)?;
         }
         let mapped = NativeInputMapper::map(&request, &publication.mapping_snapshot)
             .map_err(|_| NativeRunValidationError::InvalidMapping)?;
@@ -359,19 +349,23 @@ where
             }
         }
 
-        let environment_variables = self
-            .repository
-            .list_application_environment_variables(actor.workspace_id, actor.application_id)
-            .await
-            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
         let started_at = OffsetDateTime::now_utc();
-        let input_payload = freeze_run_input_environment(
-            mapped.node_input_payload,
-            &environment_variables,
-            requested_model_id.as_deref(),
-            model_admission.parameters.as_ref(),
-            model_admission.defaulted_effort.as_deref(),
-        );
+        let input_payload = if let Some(grant) = &recovery {
+            grant.frozen_input_payload.clone()
+        } else {
+            let environment_variables = self
+                .repository
+                .list_application_environment_variables(actor.workspace_id, actor.application_id)
+                .await
+                .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+            freeze_run_input_environment(
+                mapped.node_input_payload,
+                &environment_variables,
+                requested_model_id.as_deref(),
+                model_admission.parameters.as_ref(),
+                model_admission.defaulted_effort.as_deref(),
+            )
+        };
         let input_payload = with_public_run_idempotency_fingerprint(
             input_payload,
             idempotency_fingerprint.as_deref(),

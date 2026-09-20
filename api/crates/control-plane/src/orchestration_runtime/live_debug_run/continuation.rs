@@ -18,6 +18,7 @@ use super::super::{
 
 mod engine;
 mod helpers;
+mod native_recovery;
 
 use super::{fail_flow_run, load_run_detail, project_committed_terminal};
 use engine::continue_flow_debug_run_inner;

@@ -63,10 +63,13 @@ where
         .get_compiled_plan(compiled_plan_id)
         .await?
         .ok_or_else(|| anyhow!("compiled plan not found"))?;
-    let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
+    let mut compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
         serde_json::from_value(compiled_record.plan)?;
     crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(&compiled_plan)?;
 
+    let recovery_snapshot =
+        super::native_recovery::load_snapshot(&service.repository, &flow_run, &mut compiled_plan)
+            .await?;
     let mut variable_pool = flow_run
         .input_payload
         .as_object()
@@ -90,6 +93,9 @@ where
         &mut variable_pool,
     );
 
+    if let Some(snapshot) = &recovery_snapshot {
+        variable_pool = snapshot.variable_pool.clone();
+    }
     let flow_execution_context = service.runtime_flow_execution_context(
         actor.clone(),
         flow_run.authorized_account.clone(),
@@ -140,14 +146,20 @@ where
         runtime_context =
             runtime_context.with_http_response_file_persister(Arc::new(http_file_persister));
     }
-    let outcome = orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
-        &compiled_plan,
-        &Value::Object(variable_pool),
-        runtime_context,
-        &invoker,
-        &lifecycle,
-    )
-    .await?;
+    let outcome = if let Some(snapshot) = &recovery_snapshot {
+        let node_id = flow_run
+            .input_payload
+            .pointer("/sys/native_inference_recovery/node_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("native_recovery_grant_invalid"))?;
+        orchestration_runtime::execution_engine::recover_native_inference_with_runtime_context_and_lifecycle(
+            &compiled_plan, snapshot, node_id, runtime_context, &invoker, &lifecycle,
+        ).await?
+    } else {
+        orchestration_runtime::execution_engine::start_flow_debug_run_with_runtime_context_and_lifecycle(
+            &compiled_plan, &Value::Object(variable_pool), runtime_context, &invoker, &lifecycle,
+        ).await?
+    };
     let tool_delivery_events = flow_execution_context.take_tool_delivery_events()?;
     let prepared_node_runs = lifecycle.prepared_node_runs()?;
 

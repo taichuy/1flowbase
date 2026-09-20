@@ -415,6 +415,13 @@ pub(crate) fn build_provider_error_payload(
         payload["stream_termination"] = stream_termination;
     }
     recovery_diagnostics::attach(&mut payload, error.provider_details.as_ref());
+    if let Some(binding) = error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get("native_inference_binding"))
+    {
+        payload["native_inference_binding"] = binding.clone();
+    }
     if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported {
         if let Some(details) = error.provider_details.as_ref().and_then(Value::as_object) {
             if let Some(route_id) = details

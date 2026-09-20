@@ -6,7 +6,7 @@ use extension_contracts::provider_contract::{
 };
 
 /// Host-created, non-deserializable admission. Public request metadata cannot mint this grant.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct NativeInferenceRecoveryGrant {
     pub(crate) callback_task_id: Uuid,
     pub(crate) failed_flow_run_id: Uuid,
@@ -14,6 +14,23 @@ pub struct NativeInferenceRecoveryGrant {
     pub(crate) remaining_attempts: u32,
     pub(crate) absolute_deadline_unix_ms: i64,
     pub(crate) provider_instance_id: String,
+    pub(crate) node_id: String,
+    pub(crate) node_run_id: Uuid,
+    pub(crate) binding: Value,
+    pub(crate) history: Value,
+    pub(crate) frozen_input_payload: Value,
+}
+
+impl std::fmt::Debug for NativeInferenceRecoveryGrant {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeInferenceRecoveryGrant")
+            .field("callback_task_id", &self.callback_task_id)
+            .field("failed_flow_run_id", &self.failed_flow_run_id)
+            .field("node_id", &self.node_id)
+            .field("remaining_attempts", &self.remaining_attempts)
+            .finish_non_exhaustive()
+    }
 }
 
 pub(crate) fn recovery_key(callback_task_id: Uuid) -> String {
@@ -24,7 +41,8 @@ impl NativeInferenceRecoveryGrant {
     pub(crate) fn durable_value(&self) -> Value {
         json!({"callback_task_id":self.callback_task_id,"failed_flow_run_id":self.failed_flow_run_id,
             "remaining_attempts":self.remaining_attempts,"absolute_deadline_unix_ms":self.absolute_deadline_unix_ms,
-            "provider_instance_id":self.provider_instance_id})
+            "provider_instance_id":self.provider_instance_id, "node_id":self.node_id,
+            "node_run_id":self.node_run_id, "binding":self.binding, "history":self.history})
     }
 }
 
@@ -129,7 +147,29 @@ pub(super) fn qualify(
         return Err(reject("native_recovery_deadline_exceeded"));
     }
     validate_context(flow, callback, command)?;
+    let binding = error
+        .get("native_inference_binding")
+        .filter(|value| value.is_object())
+        .ok_or_else(|| reject("native_recovery_binding_missing"))?;
+    if callback
+        .request_payload
+        .pointer("/provider_metadata/native_response/binding")
+        != Some(binding)
+    {
+        return Err(reject("native_recovery_configuration_mismatch"));
+    }
+    let node_id = binding
+        .get("node_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| reject("native_recovery_binding_missing"))?;
     Ok(NativeInferenceRecoveryGrant {
+        node_id: node_id.to_owned(),
+        node_run_id: callback.node_run_id,
+        binding: binding.clone(),
+        history: callback.request_payload["provider_metadata"]["native_response"]["history"]
+            .clone(),
+        frozen_input_payload: flow.input_payload.clone(),
         callback_task_id: callback.id,
         failed_flow_run_id: flow.id,
         publication_version_id: flow
@@ -177,6 +217,13 @@ pub(super) fn validate_context(
         &metadata["history"],
         &ids,
     )
-    .map_err(|_| reject("native_recovery_history_mismatch"))?;
+    .map_err(|error| {
+        reject(match error.to_string().as_str() {
+            "native_history_evidence_missing" => "native_recovery_history_missing",
+            "native_history_evidence_invalid" => "native_recovery_history_invalid",
+            "native_history_tool_outputs_invalid" => "native_recovery_tool_output_mismatch",
+            _ => "native_recovery_history_mismatch",
+        })
+    })?;
     Ok(())
 }

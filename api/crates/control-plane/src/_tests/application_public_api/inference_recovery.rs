@@ -83,9 +83,16 @@ struct Fixture {
     callback_task_id: Uuid,
 }
 
+fn inference_binding() -> Value {
+    json!({"provider_configuration_digest":"sha256:fixture", "provider_instance_id":Uuid::from_u128(99).to_string(),
+        "node_id":"node-published-llm", "provider_code":"fixture", "protocol":"responses", "model":"fixture",
+        "installation_id":Uuid::from_u128(100), "plugin_version":"fixture", "artifact_checksum":"fixture"})
+}
+
 fn transport_failure() -> Value {
     let deadline = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + 60_000;
     json!({"error_code":"provider_transport_unavailable", "failed_after_first_token":false,
+    "native_inference_binding":inference_binding(),
     "provider_instance_id":Uuid::from_u128(99).to_string(),
     "ai_native_recovery":{
         "decision":"non_reproducible", "provider_final_commit":"lifecycle_only",
@@ -160,7 +167,7 @@ async fn fixture(failure: Option<Value>) -> Fixture {
     .unwrap();
     let callback = repository.seed_pending_llm_tool_callback_task(run.id, json!({
         "tool_calls":[{"id":"call_1","name":"exec","arguments":{}}],
-        "provider_metadata":{"native_response":{"configuration_digest":sealed.configuration_digest().unwrap(),"history":history}}
+        "provider_metadata":{"native_response":{"binding":inference_binding(),"configuration_digest":sealed.configuration_digest().unwrap(),"history":history}}
     }));
     let mut body = original;
     body["input"].as_array_mut().unwrap().extend(output);
@@ -243,6 +250,8 @@ async fn native_full_context_precommit_transport_admits_inference_only() {
     assert_eq!(grant.callback_task_id, f.callback_task_id);
     assert_eq!(grant.failed_flow_run_id, f.flow_run_id);
     assert_eq!(grant.remaining_attempts, 2);
+    assert_eq!(grant.node_id, "node-published-llm");
+    assert_eq!(grant.binding, inference_binding());
     assert_eq!(grant.provider_instance_id, Uuid::from_u128(99).to_string());
     assert_eq!(
         f.repository
@@ -415,6 +424,7 @@ async fn recovery_successor_duplicates_project_same_linked_run() {
     };
     let mut request: NativeRunRequest =
         serde_json::from_value(json!({"query":"reconstructed"})).unwrap();
+    let frozen_input = grant.frozen_input_payload.clone();
     let expected_budget = grant.remaining_attempts;
     let expected_deadline = grant.absolute_deadline_unix_ms;
     request.metadata.set_inference_recovery(grant);
@@ -477,6 +487,11 @@ async fn recovery_successor_duplicates_project_same_linked_run() {
         persisted.input_payload["sys"]["native_inference_recovery"]["failed_flow_run_id"],
         json!(f.flow_run_id)
     );
+    assert_eq!(
+        persisted.input_payload["node-start"], frozen_input["node-start"],
+        "recovery must not remap the replacement query into original workflow input"
+    );
+    assert_eq!(persisted.input_payload["env"], frozen_input["env"]);
     for _ in 0..2 {
         let PreparedPublishedCallbackResume::Resume { initial_run } =
             f.prepare(&f.command).await.unwrap()
@@ -493,4 +508,41 @@ async fn recovery_successor_duplicates_project_same_linked_run() {
         assert_eq!(replay.attempt.flow_run_id, f.flow_run_id);
     }
     f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn recovery_requires_the_failed_invocations_host_binding() {
+    for (field, expected) in [
+        (None, "native_recovery_binding_missing"),
+        (
+            Some("provider_configuration_digest"),
+            "native_recovery_configuration_mismatch",
+        ),
+        (Some("node_id"), "native_recovery_configuration_mismatch"),
+        (Some("model"), "native_recovery_configuration_mismatch"),
+        (
+            Some("artifact_checksum"),
+            "native_recovery_configuration_mismatch",
+        ),
+    ] {
+        let mut failure = transport_failure();
+        if let Some(field) = field {
+            failure["native_inference_binding"][field] = json!("changed");
+        } else {
+            failure
+                .as_object_mut()
+                .unwrap()
+                .remove("native_inference_binding");
+        }
+        let fixture = fixture(Some(failure)).await;
+        assert_eq!(
+            fixture
+                .prepare(&fixture.command)
+                .await
+                .unwrap_err()
+                .to_string(),
+            format!("conflict: {expected}")
+        );
+        fixture.assert_receipt_unchanged();
+    }
 }

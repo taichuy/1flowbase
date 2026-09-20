@@ -181,6 +181,7 @@ where
     if let Some(recovery) = variable_pool
         .get("sys")
         .and_then(|sys| sys.get("native_inference_recovery"))
+        .filter(|grant| grant.get("node_id").and_then(Value::as_str) == Some(node.node_id.as_str()))
         .filter(|_| pending_llm_tool_callback_state(variable_pool, &node.node_id).is_none())
     {
         run_context.insert("native_inference_recovery".to_string(), recovery.clone());

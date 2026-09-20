@@ -57,6 +57,11 @@ mod llm_callbacks;
 mod llm_context;
 mod llm_error_payloads;
 pub(crate) mod llm_final_content;
+mod native_inference_recovery;
+pub use native_inference_recovery::{
+    recover_native_inference_with_runtime_context_and_lifecycle,
+    validate_native_inference_recovery_scope,
+};
 mod llm_invocation;
 pub(crate) mod llm_metrics;
 mod llm_node_outputs;
