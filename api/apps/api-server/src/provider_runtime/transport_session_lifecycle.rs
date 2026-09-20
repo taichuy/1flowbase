@@ -289,9 +289,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let recovery_directive = input
             .recovery_directive()
             .map_err(|_| transport_error("provider_recovery_directive_invalid"))?;
-        if self.shutdown.load(Ordering::Acquire) {
-            return Err(transport_error("transport_session_orphaned"));
-        }
+        let scope_requested = connection_scope_id.is_some();
 
         let owner_id = TransportOwnerId::new(protocol_session_id.to_string())?;
         let session_id = TransportSessionId::new(hash_identity(&[
@@ -306,6 +304,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             &input.protocol,
             &input.model,
         ]))?;
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err(admission_error(
+                "transport_session_shutdown",
+                admission_details(&session_id, None, None, None, scope_requested),
+            ));
+        }
         let target = TransportRuntimeTargetId::new(target_id.to_string())?;
         let provider_id = TransportProviderId::new(input.provider_instance_id.clone())?;
         let invocation_deadline = u64::try_from(context.deadline_unix_ms)
@@ -320,15 +324,25 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .lock()
                     .expect("transport scopes")
                     .get(&id)
-                    .and_then(Weak::upgrade)
-                    .ok_or_else(|| transport_error("transport_session_orphaned"))?;
+                    .and_then(Weak::upgrade);
+                let Some(scope) = scope else {
+                    // The request names a delivery scope this host no longer owns:
+                    // either it was already closed, or the reference is stale.
+                    return Err(admission_error(
+                        "transport_session_scope_unknown",
+                        admission_details(&session_id, None, None, None, true),
+                    ));
+                };
                 if scope
                     .state
                     .lock()
                     .expect("transport connection bindings")
                     .closed
                 {
-                    return Err(transport_error("transport_session_orphaned"));
+                    return Err(admission_error(
+                        "transport_session_scope_closed",
+                        admission_details(&session_id, None, None, None, true),
+                    ));
                 }
                 Some(scope)
             }
@@ -345,10 +359,27 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         let fence = if let Some(fence) = registry.fence(&session_id) {
             let state = registry.state(&fence)?;
             if state == TransportSessionState::Orphaned {
-                return Err(transport_error("transport_session_orphaned"));
+                // Unbinding the delivery is a fact, not a verdict. Only the
+                // execution state decides whether a successor may start here, and
+                // a second execution for the same logical call is never opened:
+                // while the original invocation is still in flight the request is
+                // refused with its own branch; once it finished, the same owner
+                // identity, target and fence may reclaim the session (the
+                // sequence check inside `begin_invocation` re-checks this under the
+                // registry lock, closing the finish/race window).
+                let inflight = registry.invocation_inflight(&fence)?;
+                if inflight {
+                    return Err(admission_error(
+                        "transport_session_inflight_unbound",
+                        admission_details(&session_id, Some(&fence), Some(state), Some(true), true),
+                    ));
+                }
             }
             if registry.runtime_target_id(&fence)? != &target {
-                return Err(transport_error("transport_session_evicted"));
+                return Err(admission_error(
+                    "transport_session_evicted",
+                    admission_details(&session_id, Some(&fence), Some(state), None, scope_requested),
+                ));
             }
             if matches!(
                 state,
@@ -1250,6 +1281,56 @@ fn transport_error(code: &'static str) -> anyhow::Error {
         code,
     ))
     .into()
+}
+
+/// Stable, secret-free admission diagnostics.
+///
+/// `branch` is the exact rejection branch, so an incident can be located without
+/// guessing which check refused the request. Only opaque identities, counters,
+/// the logical state and booleans may enter here: no prompt, credential, cursor
+/// value, payload or raw scope identifier.
+fn admission_error(branch: &'static str, details: serde_json::Value) -> anyhow::Error {
+    tracing::warn!(
+        reject_branch = branch,
+        admission = %details,
+        "provider transport admission rejected"
+    );
+    let mut error = ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderTransportAdmissionFailed,
+        branch,
+    );
+    error.provider_details = Some(serde_json::json!({ "transport_admission": details }));
+    PluginFrameworkError::runtime(error).into()
+}
+
+fn admission_details(
+    session_id: &TransportSessionId,
+    fence: Option<&TransportFence>,
+    state: Option<TransportSessionState>,
+    inflight: Option<bool>,
+    connection_scope_bound: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id.as_str(),
+        "generation": fence.map(|fence| fence.generation.get()),
+        "state": state.map(session_state_code),
+        "inflight": inflight,
+        "connection_scope_bound": connection_scope_bound,
+    })
+}
+
+fn session_state_code(state: TransportSessionState) -> &'static str {
+    match state {
+        TransportSessionState::Opening => "opening",
+        TransportSessionState::Active => "active",
+        TransportSessionState::WaitingTool => "waiting_tool",
+        TransportSessionState::IdleAffinity => "idle_affinity",
+        TransportSessionState::IdleReleased => "idle_released",
+        TransportSessionState::Orphaned => "orphaned",
+        TransportSessionState::Draining => "draining",
+        TransportSessionState::Faulted => "faulted",
+        TransportSessionState::Closing => "closing",
+    }
 }
 
 #[allow(dead_code)]
