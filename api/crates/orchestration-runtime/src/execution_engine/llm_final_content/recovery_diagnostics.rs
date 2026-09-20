@@ -43,6 +43,40 @@ fn failure(source: &Value) -> Option<Value> {
     // validates projection data; it never selects an action or parses an error.
     for (field, allowed) in [
         (
+            "websocket_error_kind",
+            &[
+                "connection_closed",
+                "already_closed",
+                "io",
+                "tls",
+                "capacity",
+                "protocol",
+                "write_buffer_full",
+                "utf8",
+                "attack_attempt",
+                "url",
+                "http",
+                "http_format",
+                "queue_count_limit",
+                "queue_bytes_limit",
+                "write_timeout",
+                "owner_cancelled",
+                "owner_stopped",
+            ][..],
+        ),
+        ("failure_phase", &["idle", "active", "closing"][..]),
+        (
+            "recovery_decision",
+            &[
+                "retry_websocket",
+                "retry_http",
+                "terminal",
+                "committed",
+                "budget_exhausted",
+                "deadline_exceeded",
+            ][..],
+        ),
+        (
             "io_error_kind",
             &[
                 "connection_refused",
@@ -106,6 +140,11 @@ fn failure(source: &Value) -> Option<Value> {
             result[field] = json!(value);
         }
     }
+    for field in ["routing_token_present", "association_present"] {
+        if let Some(value) = source.get(field).and_then(Value::as_bool) {
+            result[field] = json!(value);
+        }
+    }
     if let Some(kind) = source
         .get("provider_error_kind")
         .and_then(|value| serde_json::from_value::<ProviderRuntimeErrorKind>(value.clone()).ok())
@@ -126,6 +165,7 @@ fn failure(source: &Value) -> Option<Value> {
         }
     }
     for (field, max) in [
+        ("idle_duration_ms", 86_400_000),
         ("close_code", 4999),
         ("attempt", 15),
         ("consumed_attempts", 16),
@@ -140,3 +180,7 @@ fn failure(source: &Value) -> Option<Value> {
     }
     Some(result)
 }
+
+#[cfg(test)]
+#[path = "_tests/recovery_diagnostics.rs"]
+mod tests;
