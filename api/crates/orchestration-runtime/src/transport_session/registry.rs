@@ -251,6 +251,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         let now = self.clock.now();
         self.maintain_at(now);
         let target = completion.state();
+        let config = self.config.clone();
         let record = self.record_mut(&lease.fence)?;
         let Some(invocation) = record.logical.invocation.as_ref() else {
             return Err(RegistryError::NoInflight);
@@ -272,8 +273,19 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             TransportSessionState::Draining
                 | TransportSessionState::Faulted
                 | TransportSessionState::Closing
-                | TransportSessionState::Orphaned
         ) {
+            return Ok(());
+        }
+        // `Orphaned` records one fact: the delivery was unbound while this
+        // invocation was still in flight. It is not a permanent property of the
+        // call. The sequence/deadline checks above already proved this lease
+        // still owns the session, so the real completion now decides retention:
+        // the delivery stays unbound, but the session is retained under the
+        // completion's own state lease instead of the in-flight orphan grace,
+        // so a legitimate successor is not reaped before it can return.
+        if record.logical.state == TransportSessionState::Orphaned {
+            record.logical.state_deadline =
+                capped_state_deadline_for(&config, record, target, now);
             return Ok(());
         }
         if !valid_transition(record.logical.state, target) && record.logical.state != target {
@@ -283,6 +295,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             });
         }
         self.set_state(&lease.fence, target, now)
+    }
+
+    /// Read-only: does this fence still own an in-flight invocation? Delivery
+    /// binding is tracked separately, so callers must not infer execution state
+    /// from the logical session state alone.
+    pub fn invocation_inflight(&self, fence: &TransportFence) -> Result<bool, RegistryError> {
+        Ok(self.record(fence)?.logical.invocation.is_some())
     }
 
     pub fn renew_state_lease(&mut self, fence: &TransportFence) -> Result<(), RegistryError> {
@@ -823,7 +842,19 @@ fn capped_state_deadline(
     record: &SessionRecord,
     now: TransportInstant,
 ) -> TransportDeadline {
-    let lease = match record.logical.state {
+    capped_state_deadline_for(config, record, record.logical.state, now)
+}
+
+/// State lease for an explicit state rather than the record's current one, so a
+/// completion can retain the session under its own state's retention without
+/// rewriting the state itself.
+fn capped_state_deadline_for(
+    config: &TransportRegistryConfig,
+    record: &SessionRecord,
+    state: TransportSessionState,
+    now: TransportInstant,
+) -> TransportDeadline {
+    let lease = match state {
         TransportSessionState::Opening
         | TransportSessionState::Active
         | TransportSessionState::IdleReleased => {

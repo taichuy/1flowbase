@@ -1746,3 +1746,27 @@ async fn llm_json_schema_response_rejects_invalid_structured_output() {
 
     assert!(error.to_string().contains("invalid structured LLM output"));
 }
+
+#[test]
+fn recovery_failure_projection_preserves_first_and_last_without_secrets() {
+    let runtime = base_plan().nodes["node-llm"].llm_runtime.as_ref().unwrap().clone();
+    let error = ProviderRuntimeError::new(ProviderRuntimeErrorKind::ProviderTransportUnavailable, "safe terminal")
+        .with_provider_details(json!({
+            "1flowbase_provider_recovery_diagnostics": {
+                "first_failure": {"kind":"websocket_close", "close_code":1011, "reason_category":"proxy_failed", "reason":"upstream websocket proxy failed", "attempt":0, "consumed_attempts":1, "socket_incarnation":3, "raw_url":"https://private/?key=SECRET_CANARY"},
+                "last_failure": {"kind":"websocket_close", "close_code":1008, "reason_category":"continuation_unavailable", "reason":"upstream continuation connection is unavailable", "attempt":1, "consumed_attempts":2, "socket_incarnation":4, "owner_socket_incarnation":3, "sticky_token":"SECRET_CANARY"},
+                "association_valid":false,
+                "attempts":[{"kind":"provider_untyped", "reason":"SECRET_CANARY", "attempt":999}],
+                "private_body":"SECRET_CANARY"
+            },
+            "1flowbase_provider_recovery_original_error":{"message":"SECRET_CANARY"}
+        }));
+    let payload = crate::execution_engine::llm_final_content::build_provider_error_payload(&runtime, &error);
+    let diag = &payload["1flowbase_provider_recovery_diagnostics"];
+    assert_eq!(diag["first_failure"]["close_code"], 1011);
+    assert_eq!(diag["last_failure"]["close_code"], 1008);
+    assert_eq!(diag["last_failure"]["owner_socket_incarnation"], 3);
+    assert_eq!(diag["association_valid"], false);
+    assert!(!payload.to_string().contains("SECRET_CANARY"));
+    assert!(diag["attempts"][0].get("attempt").is_none());
+}

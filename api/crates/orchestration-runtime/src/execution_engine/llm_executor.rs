@@ -37,6 +37,23 @@ fn attach_ai_native_recovery_receipt(attempt: &mut Value, receipt: &AiNativeReco
     attempt["ai_native_recovery"] = serde_json::to_value(receipt).unwrap_or(Value::Null);
 }
 
+/// Parse the typed recovery receipt a Provider attached to a failed invocation.
+///
+/// `Ok(None)` means the Provider reported no recovery detail at all; `Err` means
+/// a receipt was present but could not be trusted. The two are kept apart so the
+/// audit trail never rewrites a refused receipt into a missing one, and so only
+/// the explicit `Ok(Some(..))` case can ever reach the replay decision.
+fn parse_provider_recovery_receipt(
+    provider_error: &ProviderRuntimeError,
+) -> Result<Option<extension_contracts::provider_contract::ProviderRecoveryReceipt>, String> {
+    provider_error
+        .provider_details
+        .as_ref()
+        .map_or(Ok(None), |details| {
+            extension_contracts::provider_contract::recovery_receipt_from_details(details)
+        })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LlmRetryClass {
     AutomaticTransport,
@@ -407,15 +424,16 @@ where
     let recovery_deadline =
         recovery_absolute_deadline(&routing_probe.input, OffsetDateTime::now_utc());
     let recovery_reproducible = routing_probe.input.previous_response_id.is_none();
-    let mut recovery_ledger = AiNativeRecoveryLedger::new(
+    let configured_request_count = llm_request_count(node);
+    let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
+    let mut recovery_ledger = AiNativeRecoveryLedger::with_total_attempt_budget(
         recovery_deadline,
         u16::try_from(AUTOMATIC_TRANSPORT_RETRY_LIMIT).unwrap_or(u16::MAX),
         recovery_reproducible,
         recovery_input_mode,
+        AiNativeRecoveryLedger::attempt_budget_for_invocations(request_count),
     )
     .map_err(anyhow::Error::msg)?;
-    let configured_request_count = llm_request_count(node);
-    let request_count = configured_request_count + AUTOMATIC_TRANSPORT_RETRY_LIMIT;
     let retry_enabled = node
         .config
         .get("retry_enabled")
@@ -751,36 +769,78 @@ where
                 {
                     attempt["user_account"] = json!(account);
                 }
-                let recovery_receipt = decide_outer_replay_with_default_bucket(
-                    &mut recovery_ledger,
-                    None,
-                    retry_partition,
-                    unix_millis(attempt_finished_at),
-                    u16::try_from(attempt_index).unwrap_or(u16::MAX),
+                // The typed recovery receipt is parsed from the same closed
+                // contract key the success path uses. A present-but-invalid
+                // receipt stays distinguishable from an absent one so a
+                // corrupted receipt can never authorize a replay.
+                let provider_recovery_receipt = parse_provider_recovery_receipt(&provider_error);
+                let recovery_receipt = match provider_recovery_receipt.as_ref() {
+                    Ok(receipt) => decide_outer_replay_with_default_bucket(
+                        &mut recovery_ledger,
+                        receipt.as_ref(),
+                        retry_partition,
+                        unix_millis(attempt_finished_at),
+                        u16::try_from(attempt_index).unwrap_or(u16::MAX),
+                    ),
+                    Err(_) => recovery_ledger
+                        .reject_invalid_receipt(u16::try_from(attempt_index).unwrap_or(u16::MAX)),
+                };
+                let typed_commit_blocks_replay = matches!(
+                    recovery_receipt.decision,
+                    OuterReplayDecision::SemanticCommitted
+                        | OuterReplayDecision::SemanticTerminal
+                        | OuterReplayDecision::InvalidReceipt
+                        | OuterReplayDecision::StaleEpochNoop
                 );
                 attach_ai_native_recovery_receipt(&mut attempt, &recovery_receipt);
+                error_payload["ai_native_recovery"] = json!(recovery_receipt);
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
                 let billing_allows_retry = fee_details
                     .and_then(|details| details.pointer("/_1flowbase_billing/billing_status"))
                     .and_then(Value::as_str)
                     != Some("reconciliation_failed");
-                let retry_class = (billing_allows_retry
+                let retry_class = if recovery_receipt.decision == OuterReplayDecision::Retry {
+                    Some(LlmRetryClass::AutomaticTransport)
+                } else if billing_allows_retry
                     && retry_enabled
                     && provider_error_allows_retry(&provider_error)
-                    && configured_retries_used + 1 < configured_request_count)
-                    .then_some(LlmRetryClass::Configured);
+                    && configured_retries_used + 1 < configured_request_count
+                    && !typed_commit_blocks_replay
+                    && provider_recovery_receipt.as_ref().is_ok_and(|receipt| {
+                        receipt.is_none()
+                            || recovery_ledger
+                                .allows_configured_replay_at(unix_millis(attempt_finished_at))
+                    })
+                {
+                    Some(LlmRetryClass::Configured)
+                } else {
+                    None
+                };
                 if let Some(retry_class) = retry_class {
                     let automatic_retry_ordinal = automatic_transport_retries_used;
                     match retry_class {
                         LlmRetryClass::AutomaticTransport => {
                             automatic_transport_retries_used += 1;
                         }
-                        LlmRetryClass::Configured => configured_retries_used += 1,
+                        LlmRetryClass::Configured => {
+                            configured_retries_used += 1;
+                            if provider_recovery_receipt
+                                .as_ref()
+                                .is_ok_and(|receipt| receipt.is_some())
+                            {
+                                // A provider-internal logical retry already rotated the
+                                // epoch inside `decide_outer_replay`.
+                                recovery_ledger
+                                    .rotate_epoch_for_configured_replay()
+                                    .map_err(anyhow::Error::msg)?;
+                            } else {
+                                recovery_ledger
+                                    .rotate_epoch_for_configured_retry()
+                                    .map_err(anyhow::Error::msg)?;
+                            }
+                        }
                     }
-                    recovery_ledger
-                        .rotate_epoch_for_configured_retry()
-                        .map_err(anyhow::Error::msg)?;
                     retry_reason = error_payload
                         .get("error_code")
                         .and_then(Value::as_str)
@@ -817,8 +877,6 @@ where
         canonicalize_provider_output_tool_call_names(&mut output, &invocation_tools);
         recovery_ledger.observe_events(&output.events);
         let provider_recovery_receipt = output.result.recovery_receipt();
-        let provider_recovery_receipt_invalid = provider_recovery_receipt.is_err();
-        let provider_recovery_receipt = provider_recovery_receipt.ok().flatten();
         let provider_observability = take_provider_observability_metadata(&mut output.result);
 
         let usage = collect_usage(&output.events, &output.result.usage);
@@ -973,17 +1031,32 @@ where
         if let Some(account) = provider_observability.user_account {
             attempt["user_account"] = account;
         }
-        let ai_native_recovery = error_payload.as_ref().map(|_| {
-            decide_outer_replay_with_default_bucket(
-                &mut recovery_ledger,
-                provider_recovery_receipt.as_ref(),
-                retry_partition,
-                unix_millis(attempt_finished_at),
-                u16::try_from(attempt_index).unwrap_or(u16::MAX),
-            )
+        // Account the final successful provider call too; a success does not
+        // authorize another invocation, but its real consumption is auditable.
+        super::llm_final_content::attach_recovery_diagnostics(
+            &mut attempt,
+            Some(&output.result.provider_metadata),
+        );
+        let ai_native_recovery = Some({
+            let outer_attempt = u16::try_from(attempt_index).unwrap_or(u16::MAX);
+            match provider_recovery_receipt.as_ref() {
+                Ok(receipt) => decide_outer_replay_with_default_bucket(
+                    &mut recovery_ledger,
+                    receipt.as_ref(),
+                    retry_partition,
+                    unix_millis(attempt_finished_at),
+                    outer_attempt,
+                ),
+                // Present but untrustworthy: never a retry, and never reported as
+                // "the provider sent nothing".
+                Err(_) => recovery_ledger.reject_invalid_receipt(outer_attempt),
+            }
         });
         if let Some(receipt) = ai_native_recovery.as_ref() {
             attach_ai_native_recovery_receipt(&mut attempt, receipt);
+            if let Some(payload) = error_payload.as_mut() {
+                payload["ai_native_recovery"] = json!(receipt);
+            }
         }
         attempt_metrics.push(attempt.clone());
 
@@ -1007,8 +1080,12 @@ where
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
                 && configured_retries_used + 1 < configured_request_count
-                && !typed_commit_blocks_replay
-                && !provider_recovery_receipt_invalid;
+                && provider_recovery_receipt.as_ref().is_ok_and(|receipt| {
+                    receipt.is_none()
+                        || recovery_ledger
+                            .allows_configured_replay_at(unix_millis(attempt_finished_at))
+                })
+                && !typed_commit_blocks_replay;
             let retry_class = if ai_native_recovery
                 .as_ref()
                 .is_some_and(|receipt| receipt.decision == OuterReplayDecision::Retry)
@@ -1025,9 +1102,18 @@ where
                     LlmRetryClass::AutomaticTransport => automatic_transport_retries_used += 1,
                     LlmRetryClass::Configured => {
                         configured_retries_used += 1;
-                        recovery_ledger
-                            .rotate_epoch_for_configured_retry()
-                            .map_err(anyhow::Error::msg)?;
+                        if provider_recovery_receipt
+                            .as_ref()
+                            .is_ok_and(|receipt| receipt.is_some())
+                        {
+                            recovery_ledger
+                                .rotate_epoch_for_configured_replay()
+                                .map_err(anyhow::Error::msg)?;
+                        } else {
+                            recovery_ledger
+                                .rotate_epoch_for_configured_retry()
+                                .map_err(anyhow::Error::msg)?;
+                        }
                     }
                 }
                 retry_reason = error_payload

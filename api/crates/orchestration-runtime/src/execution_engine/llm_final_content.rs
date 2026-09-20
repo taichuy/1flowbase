@@ -1,3 +1,10 @@
+#[path = "llm_final_content/recovery_diagnostics.rs"]
+mod recovery_diagnostics;
+
+pub(super) fn attach_recovery_diagnostics(payload: &mut Value, details: Option<&Value>) {
+    recovery_diagnostics::attach(payload, details);
+}
+
 use super::*;
 
 pub(super) fn parse_structured_llm_output(text: &str) -> Result<Value> {
@@ -407,6 +414,7 @@ pub(crate) fn build_provider_error_payload(
     {
         payload["stream_termination"] = stream_termination;
     }
+    recovery_diagnostics::attach(&mut payload, error.provider_details.as_ref());
     if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported {
         if let Some(details) = error.provider_details.as_ref().and_then(Value::as_object) {
             if let Some(route_id) = details

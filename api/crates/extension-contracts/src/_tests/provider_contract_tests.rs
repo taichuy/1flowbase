@@ -28,7 +28,7 @@ use extension_contracts::provider_contract::{
     TransportEpoch, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
     PROVIDER_RECOVERY_RECEIPT_METADATA_KEY, PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY,
-    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY,
+    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY, recovery_receipt_from_details,
 };
 use serde_json::json;
 
@@ -2589,4 +2589,107 @@ fn closure_evidence_rejects_contradictory_or_unbound_identity() {
         .generation = 9;
     receipt.physical_state = ProviderPhysicalTransportState::Ready;
     assert!(receipt.validate().is_err());
+}
+
+const RECOVERY_RECEIPT_WIRE_KEY: &str = "1flowbase_provider_recovery";
+
+#[test]
+fn recovery_receipt_is_parsed_from_the_shared_details_key_on_both_paths() {
+    assert_eq!(RECOVERY_RECEIPT_WIRE_KEY, PROVIDER_RECOVERY_RECEIPT_METADATA_KEY);
+    let epoch = TransportEpoch::new(149).unwrap();
+    let receipt = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: epoch,
+        socket_incarnation: Some(SocketIncarnation::new(6).unwrap()),
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::SameEpochReconnect,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    let details = json!({ RECOVERY_RECEIPT_WIRE_KEY: &receipt });
+    assert_eq!(
+        recovery_receipt_from_details(&details).unwrap(),
+        Some(receipt.clone())
+    );
+
+    // The success path and the error path share exactly one parser.
+    let mut result = ProviderInvocationResult {
+        provider_metadata: json!({}),
+        ..ProviderInvocationResult::default()
+    };
+    result.set_recovery_receipt(receipt.clone()).unwrap();
+    assert_eq!(result.recovery_receipt().unwrap(), Some(receipt));
+
+    // Absent, non-object and malformed containers stay distinguishable from a
+    // present-but-corrupt receipt: only the latter is an error.
+    assert_eq!(recovery_receipt_from_details(&json!({})).unwrap(), None);
+    assert_eq!(recovery_receipt_from_details(&json!(null)).unwrap(), None);
+    let corrupt = json!({
+        RECOVERY_RECEIPT_WIRE_KEY: {
+            "attempt": 0,
+            "transport": "ai_native_websocket",
+            "transport_epoch": 149,
+            "socket_incarnation": 6,
+            "commit_level": "lifecycle_only",
+            "disposition": "same_epoch_reconnect"
+        }
+    });
+    assert!(recovery_receipt_from_details(&corrupt).is_err());
+}
+
+#[test]
+fn terminal_websocket_receipt_may_report_a_socketless_failure() {
+    let epoch = TransportEpoch::new(149).unwrap();
+    // A failure observed before any socket existed reports the real terminal
+    // outcome without fabricating an incarnation.
+    let socketless = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: epoch,
+        socket_incarnation: None,
+        commit_level: CommitLevel::Terminal,
+        disposition: RecoveryDisposition::TerminalInterruption,
+        reason: RecoveryReason::TransportDisconnected,
+    };
+    socketless.validate().unwrap();
+    let details = json!({ RECOVERY_RECEIPT_WIRE_KEY: &socketless });
+    assert!(recovery_receipt_from_details(&details).unwrap().is_some());
+
+    // A recoverable WebSocket receipt still has to name the socket it intends to
+    // reconnect on.
+    for disposition in [
+        RecoveryDisposition::SameEpochReconnect,
+        RecoveryDisposition::LogicalInvocationRetry,
+    ] {
+        let invalid = ProviderRecoveryReceipt {
+            socket_incarnation: None,
+            commit_level: CommitLevel::LifecycleOnly,
+            disposition,
+            ..socketless.clone()
+        };
+        assert!(invalid
+            .validate()
+            .unwrap_err()
+            .contains("requires a socket incarnation"));
+    }
+}
+
+#[test]
+fn recovery_attempt_index_and_consumed_count_respect_total_budget() {
+    for budget in [1, 2, 16] {
+        let directive = ProviderRecoveryDirective {
+            policy: RecoveryPolicy::NativeOpaque { budget: RecoveryBudget { max_inner_attempts: budget, absolute_deadline_unix_ms: 100 } },
+            transport_epoch: TransportEpoch::new(1).unwrap(), initial_commit_level: CommitLevel::LifecycleOnly, cursor_provenance: None,
+        };
+        let mut receipt = ProviderRecoveryReceipt {
+            attempt: budget - 1, transport: RecoveryTransport::AiNativeWebSocket,
+            transport_epoch: directive.transport_epoch, socket_incarnation: None,
+            commit_level: CommitLevel::Terminal, disposition: RecoveryDisposition::TerminalInterruption,
+            reason: RecoveryReason::BudgetExhausted,
+        };
+        assert!(receipt.validate_against(&directive).is_ok());
+        assert_eq!(receipt.consumed_attempts().unwrap(), budget);
+        receipt.attempt = budget;
+        assert!(receipt.validate_against(&directive).is_err());
+    }
 }

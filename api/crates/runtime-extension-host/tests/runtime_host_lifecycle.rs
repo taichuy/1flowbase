@@ -520,3 +520,76 @@ async fn root_2007_ac_002_contribution_execution_identity() {
         .await
         .is_err());
 }
+
+/// #2085 acceptance 1: a real provider worker emits the typed recovery receipt
+/// inside its stdio error frame; the Runtime Host must preserve that typed error
+/// (details included) so the AI Native decision layer can consume it. The receipt
+/// is deliberately socketless and terminal, which is exactly the case the old
+/// host->AI Native Err path could not express.
+#[tokio::test]
+async fn host_preserves_the_typed_recovery_receipt_from_a_worker_error() {
+    let package = LifecycleProviderPackage::new();
+    let host = Arc::new(
+        RuntimeExtensionHost::new_with_artifact_resolver(
+            OffsetDateTime::now_utc(),
+            Arc::new(FixtureArtifactResolver(package.path().to_path_buf())),
+        )
+        .unwrap(),
+    );
+    host.activate_provider(RuntimePackageActivation {
+        plugin_id: LIFECYCLE_PLUGIN_ID.to_string(),
+        artifact: RuntimeArtifactReference::new("lifecycle-artifact").unwrap(),
+        source_identity: Some("lifecycle-fixture".to_string()),
+        legacy_eligibility: None,
+    })
+    .await
+    .expect("package activation is valid while the host is starting");
+    host.mark_ready().unwrap();
+
+    let request = RuntimeExecutionRequest {
+        request_id: RuntimeRequestId::new("recovery-error-request").unwrap(),
+        target: RuntimeTargetId::new(LIFECYCLE_PLUGIN_ID).unwrap(),
+        input: ProviderInvocationInput {
+            provider_instance_id: "lifecycle-instance".to_string(),
+            provider_code: "lifecycle_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            model: "recovery_error".to_string(),
+            provider_config: serde_json::json!({ "mode": "recovery_error" }),
+            ..ProviderInvocationInput::default()
+        },
+        principal: None,
+    };
+
+    let error = host
+        .execute_stream(request, RuntimeStreamSinks::default())
+        .await
+        .expect_err("a typed worker error must surface as a failed invocation");
+    let RuntimeBackendError::Contract(contract) = error else {
+        panic!("a preserved provider contract error was expected, got a flattened failure");
+    };
+    let extension_contracts::error::ExtensionContractError::RuntimeContract { error } = *contract
+    else {
+        panic!("the worker error must stay a typed runtime contract error");
+    };
+    assert!(
+        error.message.contains("1011"),
+        "the original upstream failure text must survive: {}",
+        error.message
+    );
+    let details = error
+        .provider_details
+        .as_ref()
+        .expect("the worker's provider_details must survive the host boundary");
+    let receipt = &details["1flowbase_provider_recovery"];
+    assert_eq!(receipt["transport_epoch"], serde_json::json!(149));
+    assert_eq!(receipt["disposition"], serde_json::json!("terminal_interruption"));
+    assert_eq!(receipt["commit_level"], serde_json::json!("terminal"));
+    assert!(
+        receipt.get("socket_incarnation").is_none(),
+        "the host must not invent a socket incarnation for a pre-connect failure"
+    );
+    assert!(details["1flowbase_provider_recovery_original_error"]["message"]
+        .as_str()
+        .expect("the preserved original failure must be a typed message")
+        .contains("1011"));
+}

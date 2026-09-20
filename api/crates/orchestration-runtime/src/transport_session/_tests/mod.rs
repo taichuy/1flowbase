@@ -856,3 +856,80 @@ fn close_release_late_evidence_cannot_modify_rotated_generation() {
         .closure_evidence
         .is_none());
 }
+
+/// The delivery-unbound fact must survive a completion, but it must not keep the
+/// *in-flight* orphan grace, which would reap a session whose tool round is still
+/// coming back. Retention follows the real completion instead.
+#[test]
+fn orphaned_completion_keeps_the_unbound_fact_and_uses_the_completion_lease() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("orphan-completion")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry.mark_invocation_orphaned(&lease).unwrap();
+    assert!(registry.invocation_inflight(&fence).unwrap());
+    let in_flight_ttl = registry.safe_snapshot().sessions[0].state_ttl;
+    assert_eq!(in_flight_ttl, Duration::from_secs(6));
+
+    registry
+        .finish_invocation(&lease, InvocationCompletion::WaitingTool)
+        .unwrap();
+
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Orphaned,
+        "unbinding the delivery is a preserved fact, not a state rewrite"
+    );
+    assert!(!registry.invocation_inflight(&fence).unwrap());
+    assert_eq!(
+        registry.safe_snapshot().sessions[0].state_ttl,
+        Duration::from_secs(55),
+        "a completed tool round is retained under the waiting-tool lease"
+    );
+
+    clock.advance(Duration::from_secs(6));
+    registry.maintain();
+    assert!(
+        registry.tombstone(&session_id("orphan-completion")).is_none(),
+        "the in-flight orphan grace no longer reaps a completed call"
+    );
+
+    let successor = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    assert!(successor.sequence() > lease.sequence());
+    assert_eq!(
+        registry.state(&fence).unwrap(),
+        TransportSessionState::Active
+    );
+    assert!(registry.invocation_inflight(&fence).unwrap());
+}
+
+#[test]
+fn a_stale_lease_cannot_extend_another_invocations_orphan_retention() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock.clone(), config(1)).unwrap();
+    let fence = registry.admit(request("orphan-stale")).unwrap();
+    registry.activate(&fence).unwrap();
+    let stale = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry
+        .finish_invocation(&stale, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    let current = registry
+        .begin_invocation(&fence, invocation_request(None))
+        .unwrap();
+    registry.mark_invocation_orphaned(&current).unwrap();
+    let before = registry.safe_snapshot();
+
+    assert_eq!(
+        registry.finish_invocation(&stale, InvocationCompletion::WaitingTool),
+        Err(RegistryError::StaleInvocation)
+    );
+    assert!(registry.invocation_inflight(&fence).unwrap());
+    assert_eq!(registry.safe_snapshot(), before);
+}
