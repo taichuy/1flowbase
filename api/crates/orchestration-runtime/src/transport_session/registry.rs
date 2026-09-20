@@ -260,10 +260,13 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             return Err(RegistryError::StaleInvocation);
         }
         record.logical.invocation = None;
-        // A failed invocation retires a draining physical connection. Other
-        // concurrent close/orphan directives still own their terminal state.
-        if record.logical.state == TransportSessionState::Draining
-            && target == TransportSessionState::Faulted
+        // A failed invocation retires its physical connection even if delivery
+        // was unbound. Emit the fault transition so close evidence is required
+        // before a successor can rotate the generation.
+        if matches!(
+            record.logical.state,
+            TransportSessionState::Draining | TransportSessionState::Orphaned
+        ) && target == TransportSessionState::Faulted
         {
             return self.set_state(&lease.fence, target, now);
         }

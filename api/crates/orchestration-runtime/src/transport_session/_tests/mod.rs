@@ -933,3 +933,64 @@ fn a_stale_lease_cannot_extend_another_invocations_orphan_retention() {
     assert!(registry.invocation_inflight(&fence).unwrap());
     assert_eq!(registry.safe_snapshot(), before);
 }
+
+#[test]
+fn orphaned_failed_invocation_requires_physical_release_before_successor_generation() {
+    let clock = FakeClock::default();
+    let mut registry = TransportSessionRegistry::new(clock, config(1)).unwrap();
+    let first = registry.admit(request("orphaned-prewarm-failure")).unwrap();
+    registry.activate(&first).unwrap();
+    let failed = registry
+        .begin_invocation(&first, invocation_request(None))
+        .unwrap();
+    registry.mark_invocation_orphaned(&failed).unwrap();
+    registry.drain_events();
+
+    registry
+        .finish_invocation(&failed, InvocationCompletion::Faulted)
+        .unwrap();
+
+    assert!(!registry.invocation_inflight(&first).unwrap());
+    assert_eq!(
+        registry.state(&first).unwrap(),
+        TransportSessionState::Faulted
+    );
+    assert!(
+        registry.drain_events().into_iter().any(|event| matches!(
+            event,
+            LifecycleEvent::StateChanged {
+                fence,
+                from: TransportSessionState::Orphaned,
+                to: TransportSessionState::Faulted,
+                ..
+            } if fence == first
+        )),
+        "the coordinator must receive the fault transition that requests physical close"
+    );
+    assert!(
+        registry
+            .begin_invocation(&first, invocation_request(None))
+            .is_err(),
+        "a failed physical generation cannot accept another invocation"
+    );
+    assert!(
+        registry.rotate_generation(&first).is_err(),
+        "clearing inflight is not physical release evidence"
+    );
+    registry.record_close_acknowledgement(&first, true).unwrap();
+    assert!(
+        registry.rotate_generation(&first).is_err(),
+        "a peer ACK alone is not proof of local release"
+    );
+    registry
+        .record_closure_evidence(&first, &released_evidence(&first, 7))
+        .unwrap();
+    let next = registry.rotate_generation(&first).unwrap();
+    assert!(next.generation > first.generation);
+    registry.activate(&next).unwrap();
+    let successor = registry
+        .begin_invocation(&next, invocation_request(None))
+        .unwrap();
+    assert_eq!(successor.sequence(), failed.sequence() + 1);
+    assert!(registry.invocation_inflight(&next).unwrap());
+}
