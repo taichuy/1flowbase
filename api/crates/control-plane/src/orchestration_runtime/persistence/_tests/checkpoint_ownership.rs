@@ -76,9 +76,10 @@ async fn successor_checkpoint_re_roots_materialized_lineage_without_losing_froze
         same_run.variable_pool["env"]["frozen"],
         "predecessor environment"
     );
-    assert!(
-        same_run.variable_pool.contains_key("node-tool"),
-        "base callback state must survive the delta"
+    assert_eq!(
+        same_run.variable_pool["node-start"]["query"],
+        "order_123",
+        "the original frozen input must survive the sparse delta"
     );
 
     let successor = checkpoint_snapshot_from_record_with_context(
