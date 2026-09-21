@@ -1519,6 +1519,11 @@ async fn collect_blocking_native_response(
         let (run, envelope, delivery) = event.into_parts();
         if let Some(recorder) = recorder {
             recorder.bind_run(run.id, None);
+            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                if let Some(node_run_id) = envelope.node_run_id {
+                    recorder.link_llm_node(run.id, node_run_id);
+                }
+            }
         }
         collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
         deliveries.extend(delivery);

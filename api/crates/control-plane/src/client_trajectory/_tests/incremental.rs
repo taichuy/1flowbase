@@ -128,3 +128,40 @@ async fn maximum_request_fits_admission_and_oversized_decode_is_incomplete() {
         .is_empty());
     assert!(decoder.incomplete);
 }
+
+#[tokio::test]
+async fn observed_nodes_are_deduplicated_without_reassigning_the_client_capture() {
+    let writer = Arc::new(MemoryWriter::default());
+    let recorder = capture(writer.clone());
+    let flow = Uuid::now_v7();
+    let nodes = [Uuid::now_v7(), Uuid::now_v7()];
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
+    for node in [nodes[0], nodes[1], nodes[0]] {
+        recorder.link_llm_node(flow, node);
+    }
+    recorder.record(
+        ClientTrajectoryFrameKind::ResponseJson,
+        b"{\"object\":\"response\",\"output\":[]}",
+    );
+    recorder.finish();
+    recorder.wait_finished().await;
+    let records = writer.records.lock().unwrap();
+    assert!(complete(&records));
+    let links: BTreeSet<_> = records
+        .iter()
+        .filter_map(|r| match r.fact {
+            ClientTrajectoryFact::NodeLink { node_run_id } => Some(node_run_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(links, BTreeSet::from(nodes));
+    assert_eq!(
+        records
+            .iter()
+            .filter(|r| matches!(r.fact, ClientTrajectoryFact::NodeLink { .. }))
+            .count(),
+        2
+    );
+    assert!(records.iter().all(|r| r.node_run_id.is_none()));
+    assert_eq!(raw(&records, "submitted"), b"{}");
+}

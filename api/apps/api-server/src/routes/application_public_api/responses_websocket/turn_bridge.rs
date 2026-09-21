@@ -134,6 +134,11 @@ async fn project_observed_turn(
         let (run_snapshot, envelope, mut delivery) = input.into_parts();
         if let Some(recorder) = recorder.as_ref() {
             recorder.bind_run(run_snapshot.id, None);
+            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                if let Some(node_run_id) = envelope.node_run_id {
+                    recorder.link_llm_node(run_snapshot.id, node_run_id);
+                }
+            }
         }
         // A projection failure drops the receipt before any write: released.
         let projected = projector

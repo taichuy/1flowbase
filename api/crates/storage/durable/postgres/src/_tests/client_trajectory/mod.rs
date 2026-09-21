@@ -489,3 +489,154 @@ async fn client_trajectory_integrity_preserves_pending_and_prioritizes_real_loss
         );
     }
 }
+
+#[tokio::test]
+async fn client_trajectory_node_links_filter_real_shared_captures_without_relabeling_steps() {
+    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let nodes = [Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()];
+    for node in nodes {
+        sqlx::query("insert into node_runs(id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,$1::text,'llm','LLM','succeeded' from flow_runs where id=$2")
+            .bind(node).bind(flow).execute(store.pool()).await.unwrap();
+    }
+    let request = Uuid::now_v7();
+    begin(&store, flow, None, request).await;
+    append(
+        &store,
+        flow,
+        None,
+        request,
+        ClientTrajectoryFact::Step {
+            step: step(flow, None, request, request, "submitted", "request"),
+        },
+    )
+    .await;
+    section(
+        &store,
+        flow,
+        None,
+        request,
+        request,
+        "raw",
+        json!({"body":"actual client request"}),
+    )
+    .await;
+    for node_run_id in [nodes[0], nodes[1], nodes[0]] {
+        append(
+            &store,
+            flow,
+            None,
+            request,
+            ClientTrajectoryFact::NodeLink { node_run_id },
+        )
+        .await;
+    }
+    for node in &nodes[..2] {
+        let page = store
+            .client_trajectory_page(flow, Some(*node), None, 10)
+            .await
+            .unwrap();
+        assert_eq!(page.integrity, "pending");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].request_id, request);
+        assert!(
+            page.items[0].node_run_id.is_none(),
+            "client capture remains shared, never relabeled as supplier content"
+        );
+        let raw = store
+            .client_trajectory_section(flow, Some(*node), request, "raw", None, 10)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(raw.items[0].value["body"], "actual client request");
+    }
+    let unrelated = store
+        .client_trajectory_page(flow, Some(nodes[2]), None, 10)
+        .await
+        .unwrap();
+    assert!(unrelated.items.is_empty());
+    assert_eq!(unrelated.integrity, "not_recorded");
+    assert!(store
+        .client_trajectory_section(flow, Some(nodes[2]), request, "raw", None, 10)
+        .await
+        .unwrap()
+        .is_none());
+    let (_, other_flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    assert!(store
+        .append_client_trajectory(&AppendClientTrajectoryInput {
+            flow_run_id: flow,
+            node_run_id: None,
+            request_id: request,
+            observed_at: AT.into(),
+            fact: ClientTrajectoryFact::NodeLink {
+                node_run_id: other_flow
+            }
+        })
+        .await
+        .is_err());
+    let count: i64 =
+        sqlx::query_scalar("select count(*) from client_trajectory_node_links where request_id=$1")
+            .bind(request)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(count, 2);
+}
+
+#[tokio::test]
+async fn client_trajectory_append_allows_fk_readers_and_serializes_event_sequences() {
+    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let mut fk_reader = store.pool().begin().await.unwrap();
+    sqlx::query("select id from flow_runs where id=$1 for key share")
+        .bind(flow)
+        .fetch_one(&mut *fk_reader)
+        .await
+        .unwrap();
+    let request = Uuid::now_v7();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        store.append_client_trajectory(&AppendClientTrajectoryInput {
+            flow_run_id: flow,
+            node_run_id: None,
+            request_id: request,
+            observed_at: AT.into(),
+            fact: ClientTrajectoryFact::Integrity {
+                status: "pending".into(),
+                dropped_count: 0,
+                persist_failed_count: 0,
+            },
+        }),
+    )
+    .await;
+    fk_reader.rollback().await.unwrap();
+    result
+        .expect("non-key observation append must coexist with FK reader")
+        .unwrap();
+    let mut writers = Vec::new();
+    for _ in 0..4 {
+        let store = store.clone();
+        writers.push(tokio::spawn(async move {
+            for _ in 0..8 {
+                append(
+                    &store,
+                    flow,
+                    None,
+                    request,
+                    ClientTrajectoryFact::Section {
+                        step_id: request,
+                        section: "raw".into(),
+                        value: json!({"body":"fragment"}),
+                    },
+                )
+                .await;
+            }
+        }));
+    }
+    for writer in writers {
+        writer.await.unwrap();
+    }
+    let (count,unique):(i64,i64)=sqlx::query_as("select count(*),count(distinct sequence) from runtime_events where flow_run_id=$1 and event_type='client_protocol_trajectory'").bind(flow).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(count, 33);
+    assert_eq!(count, unique);
+}

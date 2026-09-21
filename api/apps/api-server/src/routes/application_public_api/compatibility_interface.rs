@@ -1014,6 +1014,11 @@ async fn project_observed_compatibility_stream(
         let (run, envelope, mut delivery) = event.into_parts();
         if let Some(recorder) = recorder.as_ref() {
             recorder.bind_run(run.id, None);
+            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                if let Some(node_run_id) = envelope.node_run_id {
+                    recorder.link_llm_node(run.id, node_run_id);
+                }
+            }
         }
         let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
         let frames = projection.runtime_event_to_sse(&run, envelope);

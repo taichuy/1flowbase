@@ -12,7 +12,7 @@ pub use crate::ports::{ClientTrajectoryFrameKind, ClientTrajectoryTransport};
 use base64::Engine;
 use serde_json::json;
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
@@ -48,6 +48,7 @@ struct Frame {
 }
 struct Shared {
     scope: Mutex<Option<Scope>>,
+    node_links: Mutex<BTreeMap<Uuid, String>>,
     notify: Notify,
     finished: AtomicBool,
     dropped: AtomicU64,
@@ -94,6 +95,7 @@ impl ClientTrajectoryRecorder {
         let (sender, receiver) = mpsc::channel(QUEUE_RECORDS);
         let state = Arc::new(Shared {
             scope: Mutex::new(None),
+            node_links: Mutex::new(BTreeMap::new()),
             notify: Notify::new(),
             finished: AtomicBool::new(false),
             dropped: AtomicU64::new(0),
@@ -142,6 +144,25 @@ impl ClientTrajectoryRecorder {
         }
         self.owner.state.notify.notify_one();
         true
+    }
+    /// Associate only an observed Native LLM event; a capture may traverse several nodes.
+    pub fn link_llm_node(&self, flow_run_id: Uuid, node_run_id: Uuid) {
+        if !self.bind_run(flow_run_id, None) {
+            return;
+        }
+        let Ok(mut links) = self.owner.state.node_links.lock() else {
+            self.mark_incomplete();
+            return;
+        };
+        if links.contains_key(&node_run_id) {
+            return;
+        }
+        if links.len() >= 1024 {
+            self.mark_incomplete();
+            return;
+        }
+        links.insert(node_run_id, observed_at());
+        self.owner.state.notify.notify_one();
     }
     /// Copies at most the available byte/record budget. Neither queue admission nor
     /// database persistence waits on the business forwarding path.
@@ -215,6 +236,7 @@ async fn persist(
     };
     let kind = match &input.fact {
         ClientTrajectoryFact::Integrity { .. } => "integrity",
+        ClientTrajectoryFact::NodeLink { .. } => "node_link",
         ClientTrajectoryFact::Step { .. } => "step",
         ClientTrajectoryFact::Section { section, .. } => section.as_str(),
     };
@@ -254,6 +276,39 @@ impl classify::FactSink for PersistenceSink<'_> {
             self.failed,
         )
         .await;
+    }
+}
+
+async fn persist_node_links(
+    repository: &dyn FactWriter,
+    scope: Scope,
+    id: Uuid,
+    state: &Shared,
+    linked: &mut BTreeSet<Uuid>,
+    failed: &mut u64,
+) {
+    let pending: Vec<_> = state
+        .node_links
+        .lock()
+        .map(|links| {
+            links
+                .iter()
+                .filter(|(node, _)| !linked.contains(node))
+                .map(|(node, at)| (*node, at.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    for (node_run_id, at) in pending {
+        persist(
+            repository,
+            scope,
+            id,
+            at,
+            ClientTrajectoryFact::NodeLink { node_run_id },
+            failed,
+        )
+        .await;
+        linked.insert(node_run_id);
     }
 }
 
@@ -297,7 +352,17 @@ async fn worker(
         .await;
         let mut classifier = classify::Classifier::new(id, scope.flow, scope.node, transport);
         let mut decoder = decode::Decoder::default();
+        let mut linked = BTreeSet::new();
         loop {
+            persist_node_links(
+                repository.as_ref(),
+                scope,
+                id,
+                &state,
+                &mut linked,
+                &mut failed,
+            )
+            .await;
             if state.finished.load(Ordering::Acquire) {
                 receiver.close();
             }
@@ -343,6 +408,15 @@ async fn worker(
             }
             // Frame permit released each iteration, so arbitrarily long streams drain.
         }
+        persist_node_links(
+            repository.as_ref(),
+            scope,
+            id,
+            &state,
+            &mut linked,
+            &mut failed,
+        )
+        .await;
         decoder.finish();
         let dropped = state.dropped.load(Ordering::Acquire)
             + u64::from(

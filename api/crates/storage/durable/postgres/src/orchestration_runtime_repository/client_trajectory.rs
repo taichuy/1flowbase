@@ -26,7 +26,7 @@ impl PgControlPlaneStore {
         // Client delivery occurs after a business terminal commit. This dedicated
         // observational append does not reopen a run or relax the execution append fence.
         let exists: Option<Uuid> =
-            sqlx::query_scalar("select id from flow_runs where id=$1 for update")
+            sqlx::query_scalar("select id from flow_runs where id=$1 for no key update")
                 .bind(input.flow_run_id)
                 .fetch_optional(&mut *tx)
                 .await?;
@@ -39,6 +39,11 @@ impl PgControlPlaneStore {
             .bind(input.flow_run_id)
             .fetch_one(&mut *tx)
             .await?;
+            anyhow::ensure!(valid, "client trajectory node scope mismatch");
+        }
+        if let ClientTrajectoryFact::NodeLink { node_run_id } = &input.fact {
+            let valid: bool = sqlx::query_scalar("select exists(select 1 from node_runs where id=$1 and flow_run_id=$2 and node_type='llm')")
+                .bind(node_run_id).bind(input.flow_run_id).fetch_one(&mut *tx).await?;
             anyhow::ensure!(valid, "client trajectory node scope mismatch");
         }
         let scope = sqlx::query(
@@ -112,7 +117,7 @@ impl PgControlPlaneStore {
         limit: i64,
     ) -> Result<ClientTrajectoryPage> {
         let limit = limit.clamp(1, 100);
-        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)")
+        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures c where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=c.request_id and l.node_run_id=$2))")
             .bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
         let rows = sqlx::query(r#"
             select s.metadata,s.event_sequence,related.id as related_step_id,related.namespace as related_namespace
@@ -126,7 +131,7 @@ impl PgControlPlaneStore {
                     and p.metadata->'available_sections' ? 'parameters'
                 order by p.event_sequence desc limit 1
             ) related on s.metadata->>'origin'='submitted' and s.metadata->'available_sections' ? 'result'
-            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2) and s.event_sequence>$3
+            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence>$3
             order by s.event_sequence limit $4
         "#).bind(flow_run_id).bind(node_run_id).bind(cursor.unwrap_or(0)).bind(limit+1).fetch_all(self.pool()).await?;
         let more = rows.len() > limit as usize;
@@ -176,7 +181,7 @@ impl PgControlPlaneStore {
         {
             return Ok(None);
         }
-        let step = sqlx::query("select request_id,metadata from client_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and id=$3")
+        let step = sqlx::query("select request_id,metadata from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3")
             .bind(flow_run_id).bind(node_run_id).bind(step_id).fetch_optional(self.pool()).await?;
         let Some(step) = step else { return Ok(None) };
         let metadata: Value = step.get("metadata");

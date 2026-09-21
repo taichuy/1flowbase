@@ -7,7 +7,8 @@ pub(super) async fn lock_flow_run_event_sequence(
     tx: &mut Transaction<'_, Postgres>,
     flow_run_id: Uuid,
 ) -> Result<()> {
-    sqlx::query("select id from flow_runs where id = $1 for update")
+    // Serialize sequence writers without excluding FK readers of the unchanged run key.
+    sqlx::query("select id from flow_runs where id = $1 for no key update")
         .bind(flow_run_id)
         .fetch_optional(&mut **tx)
         .await?;
