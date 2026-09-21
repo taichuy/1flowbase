@@ -298,3 +298,5 @@ fn handshake_freezes_safe_context_and_allocates_distinct_missing_session_ids() {
     let second = super::auth::responses_handshake_headers(&HeaderMap::new());
     assert_ne!(first["session-id"], second["session-id"]);
 }
+
+mod client_capture;

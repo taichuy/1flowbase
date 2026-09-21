@@ -1,3 +1,4 @@
+use control_plane::client_trajectory::ClientTrajectoryRecorder;
 use std::sync::Arc;
 
 use axum::{body::Bytes, response::IntoResponse};
@@ -54,6 +55,7 @@ impl ResponsesTurnBridge {
         &self,
         response: Value,
         frames: mpsc::Sender<String>,
+        recorder: Option<ClientTrajectoryRecorder>,
     ) -> Result<(), ResponsesTurnBridgeError> {
         // The authenticated actor is retained for the entire socket lifetime.
         // Do not reinterpret any client frame as authentication context.
@@ -66,6 +68,7 @@ impl ResponsesTurnBridge {
             self.authorization.handshake_headers.clone(),
             body,
             self.authorization.transport_scope.id().to_string(),
+            recorder.clone(),
         )
         .await
         {
@@ -89,17 +92,30 @@ impl ResponsesTurnBridge {
         };
         let (model, previous_response_id, runtime, projection_mode) = prepared.into_parts();
         let (events, completion) = runtime.into_parts();
-        project_turn(
+        project_observed_turn(
             events,
             completion,
             ResponsesWebSocketProjector::with_mode(model, previous_response_id, projection_mode),
             frames,
+            recorder,
         )
         .await
     }
 }
 
 pub(super) async fn project_turn(
+    events: mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
+    projector: ResponsesWebSocketProjector,
+    frames: mpsc::Sender<String>,
+) -> Result<(), ResponsesTurnBridgeError> {
+    project_observed_turn(events, completion, projector, frames, None).await
+}
+
+async fn project_observed_turn(
     mut events: mpsc::Receiver<CompatibilityStreamEvent>,
     completion: InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -107,6 +123,7 @@ pub(super) async fn project_turn(
     >,
     mut projector: ResponsesWebSocketProjector,
     frames: mpsc::Sender<String>,
+    recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<(), ResponsesTurnBridgeError> {
     // The socket actor may abort this task or projection/writing may fail.
     // Detaching this handle preserves the sole Kernel finalization owner;
@@ -114,6 +131,9 @@ pub(super) async fn project_turn(
     let completion = tokio::spawn(completion.complete());
     while let Some(input) = events.recv().await {
         let (run_snapshot, envelope, mut delivery) = input.into_parts();
+        if let Some(recorder) = recorder.as_ref() {
+            recorder.bind_run(run_snapshot.id, None);
+        }
         // A projection failure drops the receipt before any write: released.
         let projected = projector
             .project(&run_snapshot, envelope)

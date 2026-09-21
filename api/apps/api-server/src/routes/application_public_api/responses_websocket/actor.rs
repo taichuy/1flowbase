@@ -1,3 +1,10 @@
+use super::super::client_observer::CaptureGuard;
+use control_plane::{
+    client_trajectory::{
+        ClientTrajectoryFrameKind, ClientTrajectoryRecorder, ClientTrajectoryTransport,
+    },
+    ports::OrchestrationRuntimeRepository,
+};
 use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
@@ -178,14 +185,16 @@ pub(crate) async fn run_connection(
     let transport_scope = authorization.transport_scope.clone();
     let terminations = state.provider_runtime.subscribe_transport_terminations();
     let services = state.provider_runtime.clone();
+    let repository: Arc<dyn OrchestrationRuntimeRepository> = Arc::new(state.store.clone());
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));
-    run_connection_loop_with_terminations(
+    run_observed_connection_loop(
         socket,
-        move |response, frames| {
+        move |response, frames, recorder| {
             let bridge = bridge.clone();
-            async move { bridge.execute(response, frames).await }
+            async move { bridge.execute(response, frames, recorder).await }
         },
         Some((transport_scope.clone(), terminations)),
+        Some(repository),
     )
     .await;
     services
@@ -207,7 +216,7 @@ where
 pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: WebSocket,
     execute: F,
-    mut terminations: Option<(
+    terminations: Option<(
         Arc<crate::provider_runtime::TransportConnectionScope>,
         tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
     )>,
@@ -217,9 +226,33 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
         + Send
         + 'static,
 {
+    run_observed_connection_loop(
+        socket,
+        move |response, frames, _| execute(response, frames),
+        terminations,
+        None,
+    )
+    .await;
+}
+
+pub(super) async fn run_observed_connection_loop<F, Fut>(
+    socket: WebSocket,
+    execute: F,
+    mut terminations: Option<(
+        Arc<crate::provider_runtime::TransportConnectionScope>,
+        tokio::sync::broadcast::Receiver<crate::provider_runtime::TransportTerminationNotice>,
+    )>,
+    repository: Option<Arc<dyn OrchestrationRuntimeRepository>>,
+) where
+    F: Fn(Value, mpsc::Sender<String>, Option<ClientTrajectoryRecorder>) -> Fut,
+    Fut: std::future::Future<Output = Result<(), super::turn_bridge::ResponsesTurnBridgeError>>
+        + Send
+        + 'static,
+{
     let (mut sender, mut receiver) = socket.split();
     let mut terminal_delivered = false;
-    let mut queued_response: Option<Message> = None;
+    let mut queued_response: Option<(Message, Option<CaptureGuard>)> = None;
+    let mut capture: Option<CaptureGuard> = None;
     let mut actor = ResponsesConnectionActor::new();
     type ActiveTurn = (
         TurnId,
@@ -240,10 +273,14 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                     let terminal = serde_json::from_str::<Value>(&frame).ok().is_some_and(|event| {
                         matches!(event.get("type").and_then(Value::as_str), Some("response.completed" | "response.failed" | "response.incomplete" | "response.cancelled" | "error"))
                     });
+                    if let Some(capture) = capture.as_ref() {
+                        capture.recorder.record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes());
+                    }
                     if sender.send(Message::Text(frame)).await.is_err() {
                         break;
                     }
                     terminal_delivered |= terminal;
+                    if terminal { if let Some(capture) = capture.as_mut() { capture.finish(); } }
                     active = Some((turn, task, frames));
                 }
                 result = &mut task => {
@@ -293,12 +330,13 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                             break;
                         }
                         message => {
+                            let incoming_capture = capture_message(repository.as_ref(), &message);
                             match decode_client_message(message.clone()) {
                                 Ok(Some(ResponsesWebSocketClientRequest::Create { response })) => {
                                     // A delivered protocol terminal permits one next request,
                                     // but its dispatch must wait for the independent Kernel receipt.
                                     if terminal_delivered && queued_response.is_none() {
-                                        queued_response = Some(message);
+                                        queued_response = Some((message, incoming_capture));
                                         active = Some((turn, task, frames));
                                         continue;
                                     }
@@ -338,7 +376,7 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
                         if !terminal_delivered {
-                            send_transport_terminal(&mut sender, &notice.code, true).await;
+                            send_transport_terminal(&mut sender, &notice.code, true, capture.as_mut()).await;
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
@@ -352,10 +390,10 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
             continue;
         }
 
-        let message = if let Some(message) = queued_response.take() {
-            message
+        let (message, incoming_capture) = if let Some(queued) = queued_response.take() {
+            queued
         } else {
-            tokio::select! {
+            let message = tokio::select! {
                 message = receiver.next() => {
                     let Some(Ok(message)) = message else {
                         actor.begin_close();
@@ -366,7 +404,7 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
                         if !terminal_delivered {
-                            send_transport_terminal(&mut sender, &notice.code, false).await;
+                            send_transport_terminal(&mut sender, &notice.code, false, None).await;
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
@@ -376,7 +414,9 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                     }
                     continue;
                 }
-            }
+            };
+            let incoming_capture = capture_message(repository.as_ref(), &message);
+            (message, incoming_capture)
         };
         match message {
             Message::Ping(payload) => {
@@ -396,9 +436,13 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
                         Ok(ConnectionAction::StartTurn { turn, response }) => {
                             let (frame_sender, frame_receiver) = mpsc::channel(1);
                             terminal_delivered = false;
+                            let recorder = incoming_capture
+                                .as_ref()
+                                .map(|capture| capture.recorder.clone());
+                            capture = incoming_capture;
                             active = Some((
                                 turn,
-                                tokio::spawn(execute(response, frame_sender)),
+                                tokio::spawn(execute(response, frame_sender, recorder)),
                                 frame_receiver,
                             ));
                         }
@@ -434,6 +478,19 @@ pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     }
 }
 
+fn capture_message(
+    repository: Option<&Arc<dyn OrchestrationRuntimeRepository>>,
+    message: &Message,
+) -> Option<CaptureGuard> {
+    let (Some(repository), Message::Text(text)) = (repository, message) else {
+        return None;
+    };
+    let recorder =
+        ClientTrajectoryRecorder::new(repository.clone(), ClientTrajectoryTransport::Websocket);
+    recorder.record(ClientTrajectoryFrameKind::Request, text.as_bytes());
+    Some(CaptureGuard::new(recorder))
+}
+
 async fn receive_termination(
     terminations: &mut Option<(
         Arc<crate::provider_runtime::TransportConnectionScope>,
@@ -458,6 +515,7 @@ async fn send_transport_terminal(
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     code: &str,
     active: bool,
+    capture: Option<&mut CaptureGuard>,
 ) {
     let frame = if active {
         serde_json::json!({
@@ -467,7 +525,20 @@ async fn send_transport_terminal(
     } else {
         serde_json::json!({ "type": "error", "code": code, "message": code })
     };
-    let _ = sender.send(Message::Text(frame.to_string())).await;
+    let frame = frame.to_string();
+    if let Some(capture) = capture.as_ref() {
+        capture
+            .recorder
+            .record(ClientTrajectoryFrameKind::ResponseJson, frame.as_bytes());
+    }
+    let sent = sender.send(Message::Text(frame)).await.is_ok();
+    if let Some(capture) = capture {
+        if sent {
+            capture.finish();
+        } else {
+            capture.fail();
+        }
+    }
 }
 
 fn transition_close_frame(error: ConnectionTransitionError) -> Option<CloseFrame<'static>> {

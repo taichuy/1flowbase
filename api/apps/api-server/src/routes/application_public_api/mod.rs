@@ -11,6 +11,7 @@ pub(crate) mod native_read_interface;
 pub(crate) mod native_websocket;
 pub mod openai;
 pub(crate) mod responses_websocket;
+mod client_observer;
 pub mod sse;
 pub(crate) mod stream_terminal_fallback;
 pub(crate) mod tool_callback_ids;
