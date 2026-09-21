@@ -254,7 +254,7 @@ export function getApplicationRunsTableColumns(
       width: 160,
       render: (_value, run) =>
         run.total_cost != null
-          ? formatNumber(run.total_cost, { maximumSignificantDigits: 21 })
+          ? `${formatNumber(run.total_cost, { maximumSignificantDigits: 21 })} $`
           : '—'
     },
     {
