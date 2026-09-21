@@ -37,7 +37,6 @@ where
     where
         R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
-        command.response_payload = escape_json_nul_characters(command.response_payload);
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;

@@ -298,9 +298,8 @@ where
     pub async fn resume_callback_for_actor(
         &self,
         actor: super::api_keys::ApplicationApiKeyActor,
-        mut command: ResumePublishedCallbackCommand,
+        command: ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
-        command.response_payload = escape_json_nul_characters(command.response_payload);
         let context = self
             .resolve_resume_context_for_actor(actor, &command)
             .await?;
@@ -853,20 +852,4 @@ fn published_run_belongs_to_actor(
     flow_run.run_mode == domain::FlowRunMode::PublishedApiRun
         && flow_run.application_id == application_id
         && flow_run.api_key_id == Some(api_key_id)
-}
-
-fn escape_json_nul_characters(value: Value) -> Value {
-    match value {
-        Value::String(text) => Value::String(text.replace('\0', "\\u0000")),
-        Value::Array(items) => {
-            Value::Array(items.into_iter().map(escape_json_nul_characters).collect())
-        }
-        Value::Object(object) => Value::Object(
-            object
-                .into_iter()
-                .map(|(key, value)| (key, escape_json_nul_characters(value)))
-                .collect(),
-        ),
-        Value::Null | Value::Bool(_) | Value::Number(_) => value,
-    }
 }

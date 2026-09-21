@@ -258,7 +258,9 @@ async fn native_admission_configuration_refresh_requires_frozen_route_and_proven
 #[tokio::test]
 async fn native_admission_correlates_current_suffix_and_preserves_output_values() {
     let (repository, actor, run) = fixture().await;
-    let body = request();
+    let mut body = request();
+    body["input"][0]["output"] = json!("actual\0 versus literal \\u0000");
+    body["input"][1]["output"][0]["text"] = json!("custom\0output");
     let callback = seed_round(&repository, run, &body);
     let expected = json!({"tool_results":[
         {"tool_call_id":"function","content":body["input"][0]["output"]},

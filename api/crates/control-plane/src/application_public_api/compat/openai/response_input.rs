@@ -1286,7 +1286,7 @@ pub(super) fn openai_message_content(
 pub(super) fn openai_content(content: &Value) -> Result<OpenAiMappedContent, OpenAiCompatError> {
     if let Some(text) = content.as_str() {
         return Ok(OpenAiMappedContent {
-            text: escape_openai_json_nul_characters(text),
+            text: text.to_owned(),
             content_blocks: None,
         });
     }
@@ -1304,8 +1304,7 @@ pub(super) fn openai_content(content: &Value) -> Result<OpenAiMappedContent, Ope
                     if !text.is_empty() {
                         text.push('\n');
                     }
-                    let value = escape_openai_json_nul_characters(value);
-                    text.push_str(&value);
+                    text.push_str(value);
                     blocks.push(json!({ "type": "text", "text": value }));
                 }
             }
@@ -1329,10 +1328,6 @@ pub(super) fn openai_content(content: &Value) -> Result<OpenAiMappedContent, Ope
         text,
         content_blocks: has_media_blocks.then_some(Value::Array(blocks)),
     })
-}
-
-pub(super) fn escape_openai_json_nul_characters(text: &str) -> String {
-    text.replace('\0', "\\u0000")
 }
 
 pub(super) fn openai_image_content_block(part: &Value) -> Option<Value> {

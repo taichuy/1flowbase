@@ -67,3 +67,15 @@ fn trace_projection_helpers_keep_stable_persistence_vectors() {
         "flow_run_updated_at:1234567890/node_runs:1/callback_tasks:2/events:3/stitched:4/subagents:5"
     );
 }
+
+#[test]
+fn flow_run_title_displays_nul_without_changing_source_payload() {
+    let input = json!({ "query": "before\0after\\u0000" });
+    let original = input.clone();
+    assert_eq!(
+        derive_flow_run_title_from_input_payload(&input).as_deref(),
+        Some("before␀after\\u0000")
+    );
+    assert_eq!(build_flow_run_title(Some("\0"), "fallback"), "␀");
+    assert_eq!(input, original);
+}

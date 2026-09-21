@@ -1042,10 +1042,15 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 }
 
 #[tokio::test]
-async fn complete_callback_task_escapes_nul_characters_before_persisting_response() {
+async fn complete_callback_task_preserves_nul_in_response_and_execution() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service.seed_waiting_callback_run("Support Agent").await;
 
+    let payload = json!({
+        "result": "STDERR:\n\0after\\u0000",
+        "key\0tail": ["value\0tail", "literal\\u0000"],
+        "key\\u0000tail": "distinct key"
+    });
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
@@ -1053,7 +1058,7 @@ async fn complete_callback_task_escapes_nul_characters_before_persisting_respons
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
             callback_task_id: seeded.callback_task_id,
-            response_payload: json!({ "result": "STDERR:\n\0after" }),
+            response_payload: payload.clone(),
         })
         .await
         .unwrap();
@@ -1062,14 +1067,8 @@ async fn complete_callback_task_escapes_nul_characters_before_persisting_respons
         .callback_task_for_tests(seeded.callback_task_id)
         .await;
     assert_eq!(callback_task.status, domain::CallbackTaskStatus::Completed);
-    assert_eq!(
-        callback_task.response_payload.as_ref().unwrap()["result"],
-        json!("STDERR:\n\\u0000after")
-    );
-    assert_eq!(
-        completed.flow_run.output_payload["answer"],
-        json!("STDERR:\n\\u0000after")
-    );
+    assert_eq!(callback_task.response_payload.as_ref().unwrap(), &payload);
+    assert_eq!(completed.flow_run.output_payload["answer"], payload["result"]);
 }
 
 #[tokio::test]
