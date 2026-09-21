@@ -127,3 +127,31 @@ async fn prebind_frames_retain_weighted_budget_and_overflow_is_nonblocking() {
     );
     assert_eq!(recorder.owner.bytes.available_permits(), QUEUE_BYTES);
 }
+
+#[tokio::test]
+async fn normal_database_contention_does_not_block_forwarding_or_discard_capture() {
+    let writer = Arc::new(SlowFactWriter::default());
+    let recorder =
+        ClientTrajectoryRecorder::with_writer(writer.clone(), ClientTrajectoryTransport::Http);
+    recorder.bind_run(Uuid::now_v7(), None);
+    writer.entered.notified().await;
+    let started = std::time::Instant::now();
+    recorder.record(ClientTrajectoryFrameKind::Request, b"{}");
+    recorder.record(
+        ClientTrajectoryFrameKind::ResponseJson,
+        b"{\"object\":\"response\",\"output\":[]}",
+    );
+    recorder.finish();
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "capture admission must not await the database"
+    );
+    // Real conversation projection held the sequence lock for ~2.4s. This
+    // fixture rejects the former 2s observational deadline without sleeping on forwarding.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    writer.release.notify_one();
+    recorder.wait_finished().await;
+    let records = writer.records.lock().unwrap();
+    assert!(complete(&records));
+    assert_eq!(raw(&records, "submitted"), b"{}");
+}

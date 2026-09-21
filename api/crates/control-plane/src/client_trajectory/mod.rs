@@ -33,7 +33,9 @@ const QUEUE_BYTES: usize = decode::AGGREGATE_BYTES
 // resident frame, including frames retained before binding and during persistence.
 const FRAME_OVERHEAD_BYTES: usize = 512;
 const QUEUE_RECORDS: usize = QUEUE_BYTES / FRAME_OVERHEAD_BYTES;
-const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+// Persistence runs only in the bounded sidecar. Its total deadline must allow
+// the PostgreSQL default 5s pool acquisition plus a bounded transaction budget.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Scope {
