@@ -418,6 +418,166 @@ async fn provider_output_items_arrive_before_terminal_on_required_lane() {
 }
 
 #[tokio::test]
+async fn native_wire_deltas_and_canonical_text_keep_order_with_paused_capacity_one_subscriber() {
+    use control_plane::orchestration_runtime::debug_stream_events;
+    let fragments = [
+        "HAND", "OFF", "_", "69", "faf", "c", "3", "c", "-", "3", "ac", "0", "-", "4", "ebb", "-",
+        "968", "1", "-", "82", "ef", "452", "b", "358", "1",
+    ];
+    let expected = "HANDOFF_69fafc3c-3ac0-4ebb-9681-82ef452b3581";
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    let run_id = Uuid::now_v7();
+    let node_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+    // The subscriber stays paused until the complete production-ordered batch
+    // is retained: each raw provider delta precedes its canonical text delta.
+    for fragment in fragments {
+        stream
+            .append(
+                run_id,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node_id,
+                    json!({"type":"response.output_text.delta","delta":fragment}),
+                ),
+            )
+            .await
+            .unwrap();
+        stream
+            .append(
+                run_id,
+                debug_stream_events::text_delta("llm", node_id, fragment.into()),
+            )
+            .await
+            .unwrap();
+    }
+    stream
+        .append(
+            run_id,
+            debug_stream_events::provider_responses_output_delta(
+                "llm",
+                node_id,
+                json!({"type":"response.output_text.done","text":expected}),
+            ),
+        )
+        .await
+        .unwrap();
+    stream
+        .append_terminal_if_missing_and_close(
+            run_id,
+            debug_stream_events::flow_finished(run_id, json!({})),
+        )
+        .await
+        .unwrap();
+    let mut raw = Vec::new();
+    let mut canonical = String::new();
+    let mut seen = 0_i64;
+    while let Some(event) =
+        tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+            .await
+            .expect("required lane must continue through terminal")
+    {
+        seen += 1;
+        assert_eq!(
+            event.sequence, seen,
+            "later canonical facts must not overtake earlier raw deltas"
+        );
+        if event.event_type == "provider_responses_output_delta" {
+            assert_eq!(event.durability, RuntimeEventDurability::Ephemeral);
+            assert!(!event.persist_required);
+            if let Some(delta) = event.payload["event"]["delta"].as_str() {
+                raw.push(delta.to_owned());
+            }
+        } else if event.event_type == "text_delta" {
+            canonical.push_str(event.payload["text"].as_str().unwrap());
+        } else if event.event_type == "flow_finished" {
+            assert_eq!(
+                seen, 52,
+                "terminal must follow all 25 raw/canonical pairs and done"
+            );
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(seen, 52);
+    assert_eq!(raw, fragments);
+    assert_eq!(raw.concat(), expected);
+    assert_eq!(canonical, expected);
+    assert_eq!(
+        subscription
+            .live_events
+            .diagnostic_delivery_snapshot()
+            .dropped_total,
+        0
+    );
+}
+
+#[tokio::test]
+async fn all_native_responses_output_event_kinds_use_required_delivery_but_remain_ephemeral() {
+    use control_plane::orchestration_runtime::debug_stream_events;
+    let kinds = [
+        "response.output_text.delta",
+        "response.output_text.done",
+        "response.content_part.added",
+        "response.content_part.done",
+        "response.reasoning_summary_part.added",
+        "response.reasoning_summary_part.done",
+        "response.reasoning_summary_text.delta",
+        "response.reasoning_summary_text.done",
+        "response.reasoning_text.delta",
+        "response.reasoning_text.done",
+        "response.custom_tool_call_input.delta",
+        "response.custom_tool_call_input.done",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.done",
+    ];
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    let run_id = Uuid::now_v7();
+    let node_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+    for kind in kinds {
+        stream
+            .append(
+                run_id,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node_id,
+                    json!({"type":kind,"delta":"same-token"}),
+                ),
+            )
+            .await
+            .unwrap();
+    }
+    stream
+        .append_terminal_if_missing_and_close(
+            run_id,
+            debug_stream_events::flow_finished(run_id, json!({})),
+        )
+        .await
+        .unwrap();
+    for (index, kind) in kinds.iter().enumerate() {
+        let event = tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(event.sequence, index as i64 + 1);
+        assert_eq!(event.payload["event"]["type"], *kind);
+        assert_eq!(event.durability, RuntimeEventDurability::Ephemeral);
+        assert!(!event.persist_required);
+    }
+    let terminal = subscription.live_events.recv().await.unwrap();
+    assert_eq!(terminal.event_type, "flow_finished");
+    assert_eq!(terminal.sequence, kinds.len() as i64 + 1);
+}
+
+#[tokio::test]
 async fn required_lane_applies_backpressure_at_capacity_without_dropping() {
     let run_id = Uuid::now_v7();
     let (required, _diagnostic, mut receiver) = RuntimeEventReceiver::bounded_lanes(1);

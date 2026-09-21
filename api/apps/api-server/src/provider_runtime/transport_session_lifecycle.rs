@@ -33,14 +33,18 @@ use tokio::sync::{broadcast, Mutex, Notify};
 
 use super::ProviderRuntimeExecutionContext;
 
-#[path = "transport_session_lifecycle/prewarm_handoff.rs"]
-mod prewarm_handoff;
-use prewarm_handoff::PrewarmHandoff;
-
 const CONTROL_DEADLINE: Duration = Duration::from_secs(5);
 const CONTROL_OVERALL_DEADLINE: Duration = Duration::from_secs(30);
 const CONTROL_MAX_ATTEMPTS: u8 = 5;
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(1);
+const HANDOFF_MAX_WAIT: Duration = Duration::from_secs(30);
+
+fn handoff_wait_budget(now: TransportInstant, deadline: Option<TransportInstant>) -> Duration {
+    deadline
+        .map(|deadline| Duration::from_millis(deadline.as_millis().saturating_sub(now.as_millis())))
+        .unwrap_or(HANDOFF_MAX_WAIT)
+        .min(HANDOFF_MAX_WAIT)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TransportTerminationNotice {
@@ -170,7 +174,7 @@ pub(crate) struct TransportSessionCoordinator<C = SystemTransportClock> {
     notices: broadcast::Sender<TransportTerminationNotice>,
     shutdown: AtomicBool,
     shutdown_notify: Notify,
-    prewarm_handoff: PrewarmHandoff,
+    invocation_changed: Notify,
     scheduler: StdMutex<Option<tokio::task::JoinHandle<()>>>,
     dispatcher: Mutex<()>,
     pending_commands: StdMutex<VecDeque<LifecycleCommand>>,
@@ -204,7 +208,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             notices,
             shutdown: AtomicBool::new(false),
             shutdown_notify: Notify::new(),
-            prewarm_handoff: PrewarmHandoff::default(),
+            invocation_changed: Notify::new(),
             scheduler: StdMutex::new(None),
             dispatcher: Mutex::new(()),
             pending_commands: StdMutex::new(VecDeque::new()),
@@ -264,7 +268,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 let _ = registry.mark_invocation_orphaned(lease);
             }
         }
-        self.prewarm_handoff.changed.notify_waiters();
+        self.invocation_changed.notify_waiters();
     }
 
     fn detach_lease(&self, lease: &InvocationLease) {
@@ -280,6 +284,56 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             }
             true
         });
+    }
+
+    /// A read-only liveness check also used before cancellable handoff lock waits.
+    /// Closing a scope is still serialized by the dispatcher; until that close
+    /// is committed, the handoff deadline bounds contention rather than claiming
+    /// that the scope has already closed.
+    fn admission_scope(
+        &self,
+        connection_scope_id: Option<&str>,
+        session_id: &TransportSessionId,
+    ) -> anyhow::Result<Option<Arc<TransportConnectionScope>>> {
+        let scope_requested = connection_scope_id.is_some();
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err(admission_error(
+                "transport_session_shutdown",
+                admission_details(session_id, None, None, None, scope_requested),
+            ));
+        }
+        let connection_scope = match connection_scope_id {
+            Some(id) => {
+                let scope = self
+                    .connection_scopes
+                    .lock()
+                    .expect("transport scopes")
+                    .get(id)
+                    .and_then(Weak::upgrade);
+                let Some(scope) = scope else {
+                    // The request names a delivery scope this host no longer owns:
+                    // either it was already closed, or the reference is stale.
+                    return Err(admission_error(
+                        "transport_session_scope_unknown",
+                        admission_details(session_id, None, None, None, true),
+                    ));
+                };
+                if scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .closed
+                {
+                    return Err(admission_error(
+                        "transport_session_scope_closed",
+                        admission_details(session_id, None, None, None, true),
+                    ));
+                }
+                Some(scope)
+            }
+            None => None,
+        };
+        Ok(connection_scope)
     }
 
     pub(crate) async fn prepare(
@@ -327,53 +381,53 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         loop {
             // Register before observing state; completion between inspection and await
             // must wake this waiter. Never retain registry/dispatcher locks while waiting.
-            let changed = self.prewarm_handoff.changed.notified();
+            let changed = self.invocation_changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            let _dispatcher = self.dispatcher.lock().await;
-            if self.shutdown.load(Ordering::Acquire) {
-                return Err(admission_error(
-                    "transport_session_shutdown",
-                    admission_details(&session_id, None, None, None, scope_requested),
-                ));
-            }
-            let connection_scope = match connection_scope_id.as_ref() {
-                Some(id) => {
-                    let scope = self
-                        .connection_scopes
-                        .lock()
-                        .expect("transport scopes")
-                        .get(id)
-                        .and_then(Weak::upgrade);
-                    let Some(scope) = scope else {
-                        // The request names a delivery scope this host no longer owns:
-                        // either it was already closed, or the reference is stale.
-                        return Err(admission_error(
-                            "transport_session_scope_unknown",
-                            admission_details(&session_id, None, None, None, true),
-                        ));
-                    };
-                    if scope
-                        .state
-                        .lock()
-                        .expect("transport connection bindings")
-                        .closed
-                    {
-                        return Err(admission_error(
-                            "transport_session_scope_closed",
-                            admission_details(&session_id, None, None, None, true),
-                        ));
-                    }
-                    Some(scope)
+            let _dispatcher = if let Some(deadline) = handoff_deadline {
+                let _ = self.admission_scope(connection_scope_id.as_deref(), &session_id)?;
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(transport_error("transport_invocation_deadline_exceeded"));
                 }
-                None => None,
+                tokio::select! {
+                    result = tokio::time::timeout_at(deadline, self.dispatcher.lock()) => {
+                        result.map_err(|_| transport_error("transport_invocation_deadline_exceeded"))?
+                    }
+                    _ = changed.as_mut() => continue,
+                }
+            } else {
+                self.dispatcher.lock().await
             };
-            self.registry.lock().await.maintain();
-            self.dispatch_pending_events_locked().await;
+            let connection_scope =
+                self.admission_scope(connection_scope_id.as_deref(), &session_id)?;
+            if handoff_deadline.is_none() {
+                // Initial admission retains its existing control owner. A resumed
+                // handoff must not drain or await provider Close work: cancelling
+                // that dispatched future could lose its command/stdio retirement.
+                // Existing finish/maintenance/shutdown owners dispatch those events.
+                self.registry.lock().await.maintain();
+                self.dispatch_pending_events_locked().await;
+            }
 
-            let mut registry = self.registry.lock().await;
+            let mut registry = if let Some(deadline) = handoff_deadline {
+                tokio::select! {
+                    result = tokio::time::timeout_at(deadline, self.registry.lock()) => {
+                        result.map_err(|_| transport_error("transport_invocation_deadline_exceeded"))?
+                    }
+                    _ = changed.as_mut() => continue,
+                }
+            } else {
+                self.registry.lock().await
+            };
+            if handoff_deadline.is_some() {
+                // Leave any newly generated lifecycle events queued for their
+                // existing owner; admission still checks the maintained state.
+                registry.maintain();
+            }
             let now = registry.safe_snapshot().observed_at;
-            if invocation_deadline.is_some_and(|deadline| deadline <= now) {
+            if invocation_deadline.is_some_and(|deadline| deadline <= now)
+                || handoff_deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline)
+            {
                 return Err(transport_error("transport_invocation_deadline_exceeded"));
             }
             let fence = if let Some(fence) = registry.fence(&session_id) {
@@ -381,25 +435,18 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 if state == TransportSessionState::Orphaned {
                     // Unbinding the delivery is a fact, not a verdict. Only the
                     // execution state decides whether a successor may start here, and
-                    // a second execution for the same logical call is never opened:
-                    // ordinary in-flight calls are refused. Only a non-generating
-                    // prewarm may hand off after bounded completion; the same owner
-                    // identity, target and fence may reclaim the session (the
-                    // sequence check inside `begin_invocation` re-checks this under the
-                    // registry lock, closing the finish/race window).
+                    // a second execution is never opened while its predecessor runs.
+                    // A replacement delivery with the same owner identity and target
+                    // may wait for actual completion. Waking restarts admission; the
+                    // registry's sequence and inflight checks still arbitrate racers.
                     let inflight = registry.invocation_inflight(&fence)?;
                     if inflight {
                         if registry.runtime_target_id(&fence)? == &target
-                            && self.prewarm_handoff.contains(&fence)
                             && connection_scope.is_some()
                         {
                             let deadline = *handoff_deadline.get_or_insert_with(|| {
-                                let remaining_ms = invocation_deadline
-                                    .map(|deadline| {
-                                        deadline.as_millis().saturating_sub(now.as_millis())
-                                    })
-                                    .unwrap_or(30_000);
-                                tokio::time::Instant::now() + Duration::from_millis(remaining_ms)
+                                tokio::time::Instant::now()
+                                    + handoff_wait_budget(now, invocation_deadline)
                             });
                             drop(registry);
                             drop(_dispatcher);
@@ -506,7 +553,6 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     },
                 )
                 .map_err(map_registry_use_error)?;
-            self.prewarm_handoff.record(input, transport, &lease);
             let physical_deadline_unix_ms =
                 i64::try_from(registry.physical_hard_deadline(&fence)?.as_millis())
                     .unwrap_or(i64::MAX);
@@ -544,7 +590,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .leases
                     .insert(lease.fence.session_id.as_str().into(), lease.clone());
             }
-            self.dispatch_pending_events_locked().await;
+            // Handoff has committed its lease: return it without an await that
+            // could strand it behind an unrelated Close. Control ownership is
+            // the same at successful exit as it is at admission entry.
+            if handoff_deadline.is_none() {
+                self.dispatch_pending_events_locked().await;
+            }
             return Ok(Some(PreparedTransportInvocation {
                 lease,
                 transport,
@@ -637,6 +688,10 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .finish_invocation(&prepared.lease, completion)
             .map_err(map_registry_use_error)?;
         drop(registry);
+        // Successful orphaned completion clears inflight without a StateChanged
+        // event. Notify independently of lifecycle commands so it cannot strand
+        // a replacement delivery waiting on this lease.
+        self.invocation_changed.notify_waiters();
         self.dispatch_pending_events().await;
         Ok(())
     }
@@ -649,7 +704,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
 
     pub(crate) async fn shutdown(&self, timeout: Duration) {
         self.shutdown.store(true, Ordering::Release);
-        self.prewarm_handoff.changed.notify_waiters();
+        self.invocation_changed.notify_waiters();
         self.registry
             .lock()
             .await
@@ -685,7 +740,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             primary.map(|failure| (lease.fence.clone(), failure)),
         )
         .await;
-        self.prewarm_handoff.changed.notify_waiters();
+        self.invocation_changed.notify_waiters();
     }
 
     async fn maintain_and_dispatch(&self) {
@@ -715,9 +770,8 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 .collect::<Vec<_>>();
             (commands, registry.safe_snapshot())
         };
-        let retired_prewarm = self.prewarm_handoff.retain_inflight(&snapshot);
-        if retired_prewarm || !new_commands.is_empty() {
-            self.prewarm_handoff.changed.notify_waiters();
+        if !new_commands.is_empty() {
+            self.invocation_changed.notify_waiters();
         }
         let commands = {
             let mut pending = self

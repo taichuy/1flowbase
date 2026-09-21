@@ -21,14 +21,14 @@ impl PgControlPlaneStore {
                 payload,
                 resume_timeline_description,
                 resume_timeline_description_projected
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, ($7::jsonb -> 0), $8, true, jsonb_strip_nulls(jsonb_build_object('payload', ($7::jsonb -> 1))) )
             returning
                 id,
                 flow_run_id,
                 node_run_id,
                 sequence,
                 event_type,
-                payload,
+                runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
                 created_at
             "#,
         )
@@ -38,7 +38,7 @@ impl PgControlPlaneStore {
         .bind(input.node_run_id)
         .bind(next_sequence)
         .bind(&input.event_type)
-        .bind(&input.payload)
+        .bind(lossless_json_parameter(&(&input.payload)))
         .bind(resume_timeline_description)
         .fetch_one(&mut *tx)
         .await?;
@@ -70,8 +70,8 @@ impl PgControlPlaneStore {
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let scope_id = flow_run_scope_id_for_update(&mut tx, inputs[0].flow_run_id).await?;
-        // PostgreSQL encodes the bind count as u16; each event binds 9 columns.
-        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 9;
+        // PostgreSQL encodes the bind count as u16; each event binds 10 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 10;
         let mut records = Vec::with_capacity(inputs.len());
         for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
             let mut builder = QueryBuilder::<Postgres>::new(
@@ -85,19 +85,22 @@ impl PgControlPlaneStore {
                     event_type,
                     payload,
                     resume_timeline_description,
-                    resume_timeline_description_projected
+                    resume_timeline_description_projected,
+                    raw_json_payloads
                 ) "#,
             );
             builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
+                let (projection, originals) = lossless_json_columns("payload", &input.payload);
                 row.push_bind(Uuid::now_v7())
                     .push_bind(scope_id)
                     .push_bind(input.flow_run_id)
                     .push_bind(input.node_run_id)
                     .push_bind(first_sequence + (chunk_index * MAX_BATCH_ROWS + index) as i64)
                     .push_bind(&input.event_type)
-                    .push_bind(&input.payload)
+                    .push_bind(projection)
                     .push_bind(resume_timeline_description(&input.payload))
-                    .push_bind(true);
+                    .push_bind(true)
+                    .push_bind(originals);
             });
             builder.push(
                 r#"
@@ -107,7 +110,7 @@ impl PgControlPlaneStore {
                     node_run_id,
                     sequence,
                     event_type,
-                    payload,
+                    runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
                     created_at
                 "#,
             );
@@ -204,7 +207,7 @@ impl PgControlPlaneStore {
                 payload,
                 visibility,
                 durability
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, jsonb_strip_nulls(jsonb_build_object('payload', ($13::jsonb -> 1))) )
             returning
                 id,
                 flow_run_id,
@@ -218,7 +221,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                payload,
+                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                 visibility,
                 durability,
                 created_at
@@ -236,7 +239,7 @@ impl PgControlPlaneStore {
         .bind(input.trust_level.as_str())
         .bind(input.item_id)
         .bind(input.ledger_ref.as_deref())
-        .bind(&input.payload)
+        .bind(lossless_json_parameter(&(&input.payload)))
         .bind(input.visibility.as_str())
         .bind(input.durability.as_str())
         .fetch_one(&mut *tx)
@@ -268,8 +271,8 @@ impl PgControlPlaneStore {
         lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
-        // PostgreSQL encodes the bind count as u16; each event binds 15 columns.
-        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 15;
+        // PostgreSQL encodes the bind count as u16; each event binds 16 columns.
+        const MAX_BATCH_ROWS: usize = u16::MAX as usize / 16;
         let mut records = Vec::with_capacity(inputs.len());
         for (chunk_index, chunk) in inputs.chunks(MAX_BATCH_ROWS).enumerate() {
             let mut builder = QueryBuilder::<Postgres>::new(
@@ -289,10 +292,12 @@ impl PgControlPlaneStore {
                     ledger_ref,
                     payload,
                     visibility,
-                    durability
+                    durability,
+                    raw_json_payloads
                 ) "#,
             );
             builder.push_values(chunk.iter().enumerate(), |mut row, (index, input)| {
+                let (projection, originals) = lossless_json_columns("payload", &input.payload);
                 row.push_bind(Uuid::now_v7())
                     .push_bind(input.flow_run_id)
                     .push_bind(input.node_run_id)
@@ -305,9 +310,10 @@ impl PgControlPlaneStore {
                     .push_bind(input.trust_level.as_str())
                     .push_bind(input.item_id)
                     .push_bind(input.ledger_ref.as_deref())
-                    .push_bind(&input.payload)
+                    .push_bind(projection)
                     .push_bind(input.visibility.as_str())
-                    .push_bind(input.durability.as_str());
+                    .push_bind(input.durability.as_str())
+                    .push_bind(originals);
             });
             builder.push(
                 r#"
@@ -324,7 +330,7 @@ impl PgControlPlaneStore {
                     trust_level,
                     item_id,
                     ledger_ref,
-                    payload,
+                    runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                     visibility,
                     durability,
                     created_at

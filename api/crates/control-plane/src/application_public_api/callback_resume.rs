@@ -161,7 +161,8 @@ where
         {
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
             if command.source == PublishedCallbackResumeSource::OpenAiResponses
-                && context.flow_run.status == domain::FlowRunStatus::Failed
+                && (command.native_transport.is_some()
+                    || context.flow_run.status == domain::FlowRunStatus::Failed)
             {
                 if context.callback_task.status != domain::CallbackTaskStatus::Completed
                     || context.callback_task.callback_kind != "llm_tool_calls"
@@ -177,6 +178,19 @@ where
                     &context.callback_task,
                 )
                 .await?;
+                if inference_recovery::is_full_context_continuation(
+                    &context.flow_run,
+                    &recovery_callback,
+                    command,
+                )? {
+                    return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                }
+                if context.flow_run.status != domain::FlowRunStatus::Failed {
+                    let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
+                    return Ok(PreparedPublishedCallbackResume::Resume {
+                        initial_run: Box::new(initial_run),
+                    });
+                }
                 if let Some(successor) = self
                     .repository
                     .find_published_flow_run_by_idempotency_key(
@@ -298,9 +312,8 @@ where
     pub async fn resume_callback_for_actor(
         &self,
         actor: super::api_keys::ApplicationApiKeyActor,
-        mut command: ResumePublishedCallbackCommand,
+        command: ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
-        command.response_payload = escape_json_nul_characters(command.response_payload);
         let context = self
             .resolve_resume_context_for_actor(actor, &command)
             .await?;
@@ -853,20 +866,4 @@ fn published_run_belongs_to_actor(
     flow_run.run_mode == domain::FlowRunMode::PublishedApiRun
         && flow_run.application_id == application_id
         && flow_run.api_key_id == Some(api_key_id)
-}
-
-fn escape_json_nul_characters(value: Value) -> Value {
-    match value {
-        Value::String(text) => Value::String(text.replace('\0', "\\u0000")),
-        Value::Array(items) => {
-            Value::Array(items.into_iter().map(escape_json_nul_characters).collect())
-        }
-        Value::Object(object) => Value::Object(
-            object
-                .into_iter()
-                .map(|(key, value)| (key, escape_json_nul_characters(value)))
-                .collect(),
-        ),
-        Value::Null | Value::Bool(_) | Value::Number(_) => value,
-    }
 }

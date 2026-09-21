@@ -28,7 +28,15 @@ fn normalize_title(value: Option<&str>) -> Option<String> {
         return None;
     }
 
-    Some(trimmed.chars().take(FLOW_RUN_TITLE_MAX_CHARS).collect())
+    // Titles are display projections. Keep the original query in the run payload;
+    // show NUL explicitly instead of passing it to a PostgreSQL text column.
+    Some(
+        trimmed
+            .chars()
+            .map(|character| if character == '\0' { '␀' } else { character })
+            .take(FLOW_RUN_TITLE_MAX_CHARS)
+            .collect(),
+    )
 }
 
 fn find_query_text(value: &Value) -> Option<&str> {

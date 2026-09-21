@@ -99,6 +99,8 @@ pub struct ProviderWorkerSupervisorSnapshot {
 pub(crate) struct ProviderWorkerSupervisor {
     admission: StdMutex<AdmissionState>,
     drained: Notify,
+    quiesce_owner: Mutex<()>,
+    capacity_slot: StdMutex<Option<tokio::sync::OwnedSemaphorePermit>>,
     worker: Mutex<ProviderWorker>,
     process_control: ProviderWorkerProcessControl,
     last_cleanup: StdMutex<Option<ProviderWorkerCleanupReceipt>>,
@@ -148,10 +150,16 @@ impl ProviderWorkerSupervisor {
                 in_flight: 0,
             }),
             drained: Notify::new(),
+            quiesce_owner: Mutex::new(()),
+            capacity_slot: StdMutex::new(None),
             worker: Mutex::new(worker),
             process_control,
             last_cleanup: StdMutex::new(None),
         }))
+    }
+
+    pub(super) fn retain_capacity(&self, slot: tokio::sync::OwnedSemaphorePermit) {
+        *self.capacity_slot.lock().expect("capacity slot") = Some(slot);
     }
 
     pub(crate) fn incarnation(&self) -> FrameworkResult<u64> {
@@ -179,6 +187,12 @@ impl ProviderWorkerSupervisor {
 
     pub(crate) fn begin_quiesce(&self) -> FrameworkResult<()> {
         let mut admission = self.lock_admission()?;
+        if matches!(
+            admission.lifecycle.state(),
+            ProviderWorkerLifecycleState::Quiescing | ProviderWorkerLifecycleState::Inactive
+        ) {
+            return Ok(());
+        }
         admission
             .lifecycle
             .transition(ProviderWorkerLifecycleEvent::BeginQuiesce)
@@ -272,6 +286,12 @@ impl ProviderWorkerSupervisor {
         deadline: Duration,
         drained_reason: ProviderWorkerCleanupReason,
     ) -> FrameworkResult<ProviderWorkerCleanupReceipt> {
+        let _owner = self.quiesce_owner.lock().await;
+        if self.lock_admission()?.lifecycle.state() == ProviderWorkerLifecycleState::Inactive {
+            return self
+                .last_cleanup_receipt()?
+                .ok_or_else(lifecycle_lock_error);
+        }
         let drained = tokio::time::timeout(deadline, self.wait_until_drained())
             .await
             .is_ok();
@@ -326,6 +346,12 @@ impl ProviderWorkerSupervisor {
             .last_cleanup
             .lock()
             .map_err(|_| lifecycle_lock_error())? = Some(receipt.clone());
+        if receipt.exited {
+            self.capacity_slot
+                .lock()
+                .map_err(|_| lifecycle_lock_error())?
+                .take();
+        }
         Ok(receipt)
     }
 

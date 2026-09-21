@@ -145,7 +145,7 @@ async fn native_callback_completion_keeps_custom_call_and_response_round_identit
         (
             3,
             "provider_output_item_done",
-            json!({"output_index":0,"item":item}),
+            json!({"output_index":0,"item":item,"committed_delivery":true}),
         ),
         (
             4,

@@ -432,7 +432,7 @@ fn opencode_chat_stream_options_include_usage_is_a_dropped_hint() {
 }
 
 #[test]
-fn stale_chat_tool_output_escapes_nul_before_native_history() {
+fn stale_chat_tool_output_preserves_nul_in_native_history() {
     let translated = translate_chat_completion_request(json!({
         "model": "1flowbase",
         "messages": [
@@ -450,11 +450,11 @@ fn stale_chat_tool_output_escapes_nul_before_native_history() {
             { "role": "user", "content": "continue" }
         ]
     }))
-    .expect("NUL tool history should remain representable in PostgreSQL JSON");
+    .expect("protocol translation must preserve tool history content");
 
     assert_eq!(
         translated.request.history[2]["content"],
-        json!("STDERR:\n\\u0000after")
+        json!("STDERR:\n\0after")
     );
 }
 
@@ -1449,4 +1449,20 @@ fn issue_2046_request_index_owns_the_continuation_identity() {
             .wire_body(),
         &request
     );
+}
+
+#[test]
+fn openai_text_translation_preserves_nul_and_literal_escape_in_each_content_shape() {
+    let text = "before\0after\\u0000";
+    for content in [json!(text), json!([{ "type": "input_text", "text": text }])] {
+        let mapped = super::response_input::openai_content(&content).unwrap();
+        assert_eq!(mapped.text, text);
+    }
+    let mapped = super::response_input::openai_content(&json!([
+        { "type": "text", "text": text },
+        { "type": "image_url", "image_url": "https://example.com/image.png" }
+    ]))
+    .unwrap();
+    assert_eq!(mapped.text, text);
+    assert_eq!(mapped.content_blocks.unwrap()[0]["text"], json!(text));
 }

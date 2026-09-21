@@ -23,7 +23,7 @@ impl PgControlPlaneStore {
         let callback_row = sqlx::query(
             r#"
             select task.id, task.flow_run_id, task.node_run_id, task.callback_kind, task.status,
-                   task.request_payload, task.response_payload, task.external_ref_payload,
+                   runtime_original_json(task.request_payload, task.raw_json_payloads, 'request_payload') as request_payload, runtime_original_json(task.response_payload, task.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(task.external_ref_payload, task.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
                    task.created_at, task.completed_at, run.status as flow_run_status
               from flow_run_callback_tasks task
               join flow_runs run on run.id = task.flow_run_id
@@ -113,9 +113,13 @@ impl PgControlPlaneStore {
             sqlx::query(
                 r#"
                 update flow_run_tool_callback_inbox
-                   set status = 'received', result_payload = $6,
-                       result_fingerprint = $7, received_at = now(), updated_at = now()
-                 where scope_id = $1 and application_id = $2 and flow_run_id = $3
+                   set status = 'received',
+                result_payload = ($6::jsonb -> 0),
+                result_fingerprint = $7,
+                received_at = now(),
+                updated_at = now(),
+                raw_json_payloads = (flow_run_tool_callback_inbox.raw_json_payloads - 'result_payload') || jsonb_strip_nulls(jsonb_build_object('result_payload', ($6::jsonb -> 1)))
+            where scope_id = $1 and application_id = $2 and flow_run_id = $3
                    and callback_task_id = $4 and tool_call_id = $5 and status = 'pending'
                 "#,
             )
@@ -124,7 +128,7 @@ impl PgControlPlaneStore {
             .bind(input.flow_run_id)
             .bind(input.callback_task_id)
             .bind(&result.tool_call_id)
-            .bind(&result.result_payload)
+            .bind(lossless_json_parameter(&(&result.result_payload)))
             .bind(&result.result_fingerprint)
             .execute(&mut *tx)
             .await?;
@@ -146,7 +150,7 @@ impl PgControlPlaneStore {
         }
 
         let result_payloads = sqlx::query_scalar::<_, Value>(
-            "select result_payload from flow_run_tool_callback_inbox where callback_task_id = $1 order by tool_ordinal",
+            "select runtime_original_json(result_payload, flow_run_tool_callback_inbox.raw_json_payloads, 'result_payload') as result_payload from flow_run_tool_callback_inbox where callback_task_id = $1 order by tool_ordinal",
         )
         .bind(input.callback_task_id)
         .fetch_all(&mut *tx)
@@ -155,21 +159,24 @@ impl PgControlPlaneStore {
         let callback_row = sqlx::query(
             r#"
             update flow_run_callback_tasks
-               set status = 'completed', response_payload = $2, completed_at = now()
-             where id = $1 and status = 'pending'
-            returning id, flow_run_id, node_run_id, callback_kind, status, request_payload,
-                      response_payload, external_ref_payload, created_at, completed_at
+               set status = 'completed',
+                response_payload = ($2::jsonb -> 0),
+                completed_at = now(),
+                raw_json_payloads = (flow_run_callback_tasks.raw_json_payloads - 'response_payload') || jsonb_strip_nulls(jsonb_build_object('response_payload', ($2::jsonb -> 1)))
+            where id = $1 and status = 'pending'
+            returning id, flow_run_id, node_run_id, callback_kind, status, runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
+                      runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') as external_ref_payload, created_at, completed_at
             "#,
         )
         .bind(input.callback_task_id)
-        .bind(&response_payload)
+        .bind(lossless_json_parameter(&(&response_payload)))
         .fetch_one(&mut *tx)
         .await?;
         let callback_task = map_callback_task_record(callback_row)?;
 
         let claim_token = Uuid::now_v7();
         let claim_row = sqlx::query(&format!(
-            "insert into flow_run_resume_claims (id, scope_id, application_id, flow_run_id, checkpoint_id, callback_task_id, resume_kind, status, request_payload, claim_token, lease_expires_at) values ($1, $2, $3, $4, $5, $6, 'callback', 'processing', $7, $8, now() + interval '5 minutes') returning {RESUME_CLAIM_COLUMNS}"
+            "insert into flow_run_resume_claims (id, scope_id, application_id, flow_run_id, checkpoint_id, callback_task_id, resume_kind, status, request_payload, claim_token, lease_expires_at, raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, 'callback', 'processing', ($7::jsonb -> 0), $8, now() + interval '5 minutes', jsonb_strip_nulls(jsonb_build_object('request_payload', ($7::jsonb -> 1))) ) returning {RESUME_CLAIM_COLUMNS}"
         ))
         .bind(Uuid::now_v7())
         .bind(input.scope_id)
@@ -177,7 +184,7 @@ impl PgControlPlaneStore {
         .bind(input.flow_run_id)
         .bind(input.checkpoint_id)
         .bind(input.callback_task_id)
-        .bind(&response_payload)
+        .bind(lossless_json_parameter(&(&response_payload)))
         .bind(claim_token)
         .fetch_one(&mut *tx)
         .await?;

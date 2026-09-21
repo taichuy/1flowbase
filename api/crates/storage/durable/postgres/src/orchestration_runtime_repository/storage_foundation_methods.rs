@@ -52,9 +52,8 @@ async fn put_canonical_runtime_content_in_transaction(
         r#"
         insert into runtime_canonical_contents (
             id, scope_id, application_id, content_hash, content, byte_size
-        )
-        select $1, $2, applications.id, $3, $4, $5
-          from applications
+        , raw_json_payloads)
+        select $1, $2, applications.id, $3, ($4::jsonb -> 0), $5, jsonb_strip_nulls(jsonb_build_object('content', ($4::jsonb -> 1))) from applications
          where applications.id = $6 and applications.scope_id = $2
         on conflict (application_id, content_hash) do nothing
         returning id
@@ -63,7 +62,7 @@ async fn put_canonical_runtime_content_in_transaction(
     .bind(Uuid::now_v7())
     .bind(scope_id)
     .bind(&content_hash)
-    .bind(content)
+    .bind(lossless_json_parameter(&(content)))
     .bind(byte_size)
     .bind(application_id)
     .fetch_optional(&mut **tx)
@@ -73,7 +72,7 @@ async fn put_canonical_runtime_content_in_transaction(
         None => {
             sqlx::query_as::<_, (Uuid, Value, i64)>(
                 r#"
-            select id, content, byte_size
+            select id, runtime_original_json(content, runtime_canonical_contents.raw_json_payloads, 'content') as content, byte_size
               from runtime_canonical_contents
              where scope_id = $1 and application_id = $2 and content_hash = $3
             "#,
@@ -227,7 +226,7 @@ impl PgControlPlaneStore {
         }
         let previous = sqlx::query(
             r#"
-            select p.id, c.content
+            select p.id, runtime_original_json(c.content, c.raw_json_payloads, 'content') as content
               from runtime_invocation_context_bindings b
               join runtime_context_projections p on p.id = b.context_version_id
               join runtime_canonical_contents c on c.id = p.actual_content_id
@@ -346,7 +345,7 @@ impl PgControlPlaneStore {
         .await?;
         let row = sqlx::query(
             r#"
-            select id, scope_id, application_id, content_hash, content, byte_size, created_at
+            select id, scope_id, application_id, content_hash, runtime_original_json(content, runtime_canonical_contents.raw_json_payloads, 'content') as content, byte_size, created_at
               from runtime_canonical_contents where id = $1
             "#,
         )

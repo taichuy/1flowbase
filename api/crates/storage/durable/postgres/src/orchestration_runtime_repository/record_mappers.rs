@@ -224,6 +224,21 @@ pub(super) fn map_callback_task_record(row: PgRow) -> Result<domain::CallbackTas
     })
 }
 
+/// Preserve the existing tool-callback privacy projection after decoding the
+/// entire original in Rust. PostgreSQL JSON extraction rejects decoded NUL.
+pub(super) fn map_callback_task_tool_summary_record(
+    row: PgRow,
+) -> Result<domain::CallbackTaskRecord> {
+    let mut record = map_callback_task_record(row)?;
+    if record.callback_kind == "llm_tool_calls" {
+        record.request_payload = serde_json::json!({
+            "tool_calls": record.request_payload.get("tool_calls").cloned().unwrap_or(serde_json::Value::Null),
+        });
+        record.external_ref_payload = None;
+    }
+    Ok(record)
+}
+
 pub(super) fn map_flow_run_callback_resume_attempt_record(
     row: &PgRow,
 ) -> Result<domain::FlowRunCallbackResumeAttemptRecord> {

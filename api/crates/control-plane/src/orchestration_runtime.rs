@@ -53,7 +53,6 @@ pub mod debug_stream_events;
 mod debug_variable_cache;
 mod http_response_files;
 pub(crate) mod inputs;
-mod json_payload;
 mod live_debug_run;
 mod llm_observability_refs;
 mod payloads;
@@ -79,7 +78,6 @@ use self::{
         build_compiled_plan_input, build_complete_flow_run_input, build_complete_node_run_input,
         build_flow_run_input, build_node_run_input,
     },
-    json_payload::escape_json_nul_characters,
     payloads::persisted_node_output_payload,
     persistence::{
         checkpoint_node_id, checkpoint_snapshot_from_record_with_context, next_node_started_at,

@@ -185,6 +185,82 @@ pub(super) fn qualify(
     })
 }
 
+/// A consumed receipt followed by new context starts a normal invocation. Failure
+/// recovery budgets and configuration identity apply only to replay of the old input.
+/// The caller has already checked ownership, source and exact accepted tool outputs.
+pub(super) fn is_full_context_continuation(
+    flow: &domain::FlowRunRecord,
+    callback: &domain::CallbackTaskRecord,
+    command: &ResumePublishedCallbackCommand,
+) -> Result<bool> {
+    let Some(transport) = command.native_transport.as_ref() else {
+        return Ok(false);
+    };
+    let body = transport.wire_body();
+    if body.get("previous_response_id").is_some() {
+        return Ok(false);
+    }
+    let ids = callback_call_ids(callback)?;
+    let Some(metadata) = callback
+        .request_payload
+        .pointer("/provider_metadata/native_response")
+    else {
+        return Ok(false);
+    };
+    let Ok(remainder) = super::super::compat::openai::history::full_context_remainder(
+        &body["input"],
+        &metadata["history"],
+        &ids,
+    ) else {
+        return Ok(false);
+    };
+    if remainder.is_empty() {
+        return Ok(false);
+    }
+    let items = body["input"].as_array().ok_or(ControlPlaneError::Conflict(
+        "native_recovery_history_invalid",
+    ))?;
+    let output_end = items.len() - remainder.len();
+    let accepted = command.response_payload["tool_results"].as_array();
+    let outputs_match = accepted.is_some_and(|results| {
+        results.len() == ids.len()
+            && items[output_end - ids.len()..output_end]
+                .iter()
+                .all(|output| {
+                    results.iter().any(|result| {
+                        result["tool_call_id"] == output["call_id"]
+                            && result.get("content") == output.get("output")
+                    })
+                })
+    });
+    if !outputs_match {
+        return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
+    }
+    // Full continuations may refresh tools/options, but may not change the model
+    // route attached to this receipt. Legacy records require the same configuration.
+    let sealed =
+        super::super::native::NativeExecutionModelParameters::seal_published_reasoning_default(
+            &flow.input_payload,
+            transport.clone(),
+        )?;
+    let model_matches = flow
+        .input_payload
+        .pointer("/sys/requested_model_id")
+        .and_then(Value::as_str)
+        .filter(|model| !model.is_empty())
+        .map(|model| body.get("model").and_then(Value::as_str) == Some(model));
+    if model_matches == Some(false)
+        || (model_matches.is_none()
+            && metadata["configuration_digest"].as_str()
+                != Some(sealed.configuration_digest()?.as_str()))
+    {
+        return Err(
+            ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),
+        );
+    }
+    Ok(true)
+}
+
 /// Duplicates retain their original budget, but must still match the admitted context.
 pub(super) fn validate_context(
     flow: &domain::FlowRunRecord,

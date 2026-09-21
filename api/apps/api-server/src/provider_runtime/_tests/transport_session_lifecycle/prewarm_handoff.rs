@@ -202,7 +202,7 @@ async fn orphaned_prewarm_handoff_wakes_on_shutdown() {
 }
 
 #[tokio::test]
-async fn completed_prewarm_does_not_authorize_waiting_for_a_later_generation_call() {
+async fn completed_prewarm_is_followed_by_an_independent_normal_handoff() {
     let coordinator = TransportSessionCoordinator::new_with_clock(
         Arc::new(FakeTransportRuntime::new([])),
         transport_config(),
@@ -227,23 +227,20 @@ async fn completed_prewarm_does_not_authorize_waiting_for_a_later_generation_cal
         .unwrap();
     coordinator.close_connection_scope(&scope).await;
     let new_scope = coordinator.open_connection_scope();
-    let error = tokio::time::timeout(
-        Duration::from_secs(1),
-        coordinator.prepare(
-            "runtime-a",
-            &mut scope_input(&new_scope, "model-a"),
-            &context(2_025_000),
-        ),
-    )
-    .await
-    .unwrap()
-    .err()
-    .unwrap();
-    assert!(reason(error).contains("transport_session_inflight_unbound"));
-    assert!(coordinator
-        .registry
-        .lock()
+    let mut input = scope_input(&new_scope, "model-a");
+    let ctx = context(2_025_000);
+    let mut waiting = Box::pin(coordinator.prepare("runtime-a", &mut input, &ctx));
+    assert_pending(waiting.as_mut()).await;
+    let lease = normal.lease.clone();
+    coordinator
+        .finish(normal, &successful_output(generation))
         .await
-        .invocation_inflight(&normal.lease.fence)
-        .unwrap());
+        .unwrap();
+    let successor = tokio::time::timeout(Duration::from_secs(1), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(successor.lease.fence, lease.fence);
+    assert_eq!(successor.lease.sequence(), lease.sequence() + 1);
 }

@@ -15,6 +15,107 @@ use uuid::Uuid;
 use super::super::projector::ResponsesWebSocketProjector;
 use crate::routes::application_public_api::compat_sse::ResponsesProjectionMode;
 
+#[tokio::test]
+async fn transparent_websocket_preserves_all_live_native_fragments_before_terminal() {
+    use crate::host_infrastructure::LocalRuntimeEventStream;
+    use control_plane::ports::{RuntimeEventStream, RuntimeEventStreamPolicy};
+    let fragments = [
+        "HAND", "OFF", "_", "69", "faf", "c", "3", "c", "-", "3", "ac", "0", "-", "4", "ebb", "-",
+        "968", "1", "-", "82", "ef", "452", "b", "358", "1",
+    ];
+    let expected = "HANDOFF_69fafc3c-3ac0-4ebb-9681-82ef452b3581";
+    let mut run = native_run(0x20990000000000000000000000000010);
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    stream
+        .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run.id, Some(0)).await.unwrap();
+    let node = Uuid::now_v7();
+    for fragment in fragments {
+        stream
+            .append(
+                run.id,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node,
+                    json!({"type":"response.output_text.delta","delta":fragment}),
+                ),
+            )
+            .await
+            .unwrap();
+        stream
+            .append(
+                run.id,
+                debug_stream_events::text_delta("llm", node, fragment.into()),
+            )
+            .await
+            .unwrap();
+    }
+    stream
+        .append(
+            run.id,
+            debug_stream_events::provider_responses_output_delta(
+                "llm",
+                node,
+                json!({"type":"response.output_text.done","text":expected}),
+            ),
+        )
+        .await
+        .unwrap();
+    stream
+        .append_terminal_if_missing_and_close(
+            run.id,
+            debug_stream_events::flow_finished(run.id, json!({})),
+        )
+        .await
+        .unwrap();
+    let mut projector = transparent_projector("fixture", None);
+    let mut frames = Vec::new();
+    let mut seen = 0_i64;
+    while let Some(envelope) = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        subscription.live_events.recv(),
+    )
+    .await
+    .unwrap()
+    {
+        seen += 1;
+        assert_eq!(
+            envelope.sequence, seen,
+            "the common forwarding cursor requires ordered live events"
+        );
+        if envelope.event_type == "flow_finished" {
+            run.status = NativeRunStatus::Succeeded;
+        }
+        frames.extend(projector.project(&run, envelope).unwrap());
+        tokio::task::yield_now().await;
+    }
+    let frames = decoded(frames);
+    let deltas = frames
+        .iter()
+        .filter(|event| event["type"] == "response.output_text.delta")
+        .map(|event| event["delta"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        deltas, fragments,
+        "done/completed must not stand in for missing live fragments"
+    );
+    assert_eq!(deltas.concat(), expected);
+    assert_eq!(frames.last().unwrap()["type"], "response.completed");
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|event| event["type"] == "response.completed")
+            .count(),
+        1
+    );
+    assert_eq!(seen, 52);
+    for (index, frame) in frames.iter().enumerate() {
+        assert_eq!(frame["sequence_number"], index as u64);
+    }
+}
+
 fn committed_provider_output_item_done(
     node_id: &str,
     node_run_id: Uuid,

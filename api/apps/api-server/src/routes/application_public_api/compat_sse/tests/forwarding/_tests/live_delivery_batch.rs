@@ -81,3 +81,162 @@ async fn typed_responses_stream_drains_live_batch_before_later_notifications() {
     assert_eq!(delivery_statuses(&state, &ids).await, vec!["acked"; 3]);
     assert_eq!(claimable_delivery_count(&state, run.id).await, 0);
 }
+
+#[tokio::test]
+async fn native_deltas_survive_real_subscription_typed_cursor_and_transparent_sse() {
+    let fragments = [
+        "HAND", "OFF", "_", "69", "faf", "c", "3", "c", "-", "3", "ac", "0", "-", "4", "ebb", "-",
+        "968", "1", "-", "82", "ef", "452", "b", "358", "1",
+    ];
+    let expected = "HANDOFF_69fafc3c-3ac0-4ebb-9681-82ef452b3581";
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: domain::FlowRunStatus::Succeeded,
+            output_payload: json!({"answer":expected,"__canonical_answer_presentation":true}),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+    let stream = Arc::new(LocalRuntimeEventStream::with_broadcast_capacity_for_tests(
+        1,
+    ));
+    stream
+        .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let subscription = stream.subscribe(run.id, Some(0)).await.unwrap();
+    let node = Uuid::now_v7();
+    // Subscribe first, then hold the consumer while the raw/canonical pairs
+    // accumulate. This exercises live lanes, not sorted replay-only projection.
+    for fragment in fragments {
+        stream
+            .append(
+                run.id,
+                debug_stream_events::provider_responses_output_delta(
+                    "llm",
+                    node,
+                    json!({"type":"response.output_text.delta","delta":fragment}),
+                ),
+            )
+            .await
+            .unwrap();
+        stream
+            .append(
+                run.id,
+                debug_stream_events::text_delta("llm", node, fragment.into()),
+            )
+            .await
+            .unwrap();
+    }
+    stream
+        .append(
+            run.id,
+            debug_stream_events::provider_responses_output_delta(
+                "llm",
+                node,
+                json!({"type":"response.output_text.done","text":expected}),
+            ),
+        )
+        .await
+        .unwrap();
+    stream
+        .append_terminal_if_missing_and_close(
+            run.id,
+            debug_stream_events::flow_finished(run.id, json!({})),
+        )
+        .await
+        .unwrap();
+    let (sender, mut receiver) = mpsc::channel(1);
+    let dependencies = NativeRunTerminalDependencies::new(
+        state.store.clone(),
+        state.runtime_engine.clone(),
+        state.provider_runtime.clone(),
+        state.provider_secret_master_key.clone(),
+        state.model_billing_require_provider_usage,
+        state.infrastructure.provider_transport_store(),
+        stream,
+    );
+    let mut forwarding = tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            terminal_dependencies: dependencies,
+            initial_run: run.clone(),
+            from_sequence: None,
+            ignored_waiting_callback_task_id: None,
+            subscription,
+            sender,
+        },
+    ));
+    let mut mapper = OpenAiResponseStreamMapper::with_mode(
+        "fixture".into(),
+        None,
+        ResponsesProjectionMode::TransparentProviderResponses,
+    );
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut projected = Vec::new();
+        let mut raw_sequences = Vec::new();
+        while let Some(input) = receiver.recv().await {
+            let (snapshot, envelope, receipt) = input.into_parts();
+            assert!(
+                receipt.is_none(),
+                "text streaming must not invent durable delivery claims"
+            );
+            if envelope.event_type == "provider_responses_output_delta"
+                && envelope.payload["event"]["type"] == "response.output_text.delta"
+            {
+                assert_eq!(envelope.durability, RuntimeEventDurability::Ephemeral);
+                assert!(!envelope.persist_required);
+                raw_sequences.push(envelope.sequence);
+            }
+            projected.extend(mapper.runtime_event_to_sse(&snapshot, envelope));
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            raw_sequences,
+            (0..25).map(|index| index * 2 + 1).collect::<Vec<i64>>()
+        );
+        projected
+    })
+    .await;
+    if result.is_err() {
+        forwarding.abort();
+        let _ = forwarding.await;
+        panic!("live raw deltas must flow through the real shared cursor to terminal");
+    }
+    tokio::time::timeout(Duration::from_secs(1), &mut forwarding)
+        .await
+        .unwrap()
+        .unwrap();
+    let body = axum::body::to_bytes(
+        test_projected_events_response(result.unwrap()).into_body(),
+        usize::MAX,
+    )
+    .await
+    .unwrap();
+    let payloads = std::str::from_utf8(&body)
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let deltas = payloads
+        .iter()
+        .filter(|event| event["type"] == "response.output_text.delta")
+        .map(|event| event["delta"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(deltas, fragments);
+    assert_eq!(deltas.concat(), expected);
+    assert_eq!(
+        payloads
+            .iter()
+            .filter(|event| event["type"] == "response.completed")
+            .count(),
+        1
+    );
+    assert_eq!(payloads.last().unwrap()["type"], "response.completed");
+}

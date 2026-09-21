@@ -16,13 +16,12 @@ impl PgControlPlaneStore {
         ) else {
             return Ok(Vec::new());
         };
-        let task_run_id: Option<String> = sqlx::query_scalar(
-            "select log_context->>'log_task_run_id' from flow_runs where id=$1",
-        )
-        .bind(successor.id)
-        .fetch_optional(&mut **tx)
-        .await?
-        .flatten();
+        let task_run_id: Option<String> =
+            sqlx::query_scalar("select log_context->>'log_task_run_id' from flow_runs where id=$1")
+                .bind(successor.id)
+                .fetch_optional(&mut **tx)
+                .await?
+                .flatten();
         let Some(task_run_id) = task_run_id else {
             return Ok(Vec::new());
         };
@@ -35,7 +34,11 @@ impl PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             update flow_runs
-            set status='cancelled', error_payload=$9, finished_at=$8, updated_at=$8
+            set status='cancelled',
+                error_payload = ($9::jsonb -> 0),
+                finished_at=$8,
+                updated_at=$8,
+                raw_json_payloads = (flow_runs.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', ($9::jsonb -> 1)))
             where id<>$1
               and application_id=$2
               and api_key_id=$3
@@ -49,7 +52,7 @@ impl PgControlPlaneStore {
               and log_context->>'log_task_run_id'=$11
             returning id,application_id,flow_id,flow_draft_id,compiled_plan_id,
               debug_session_id,flow_schema_version,document_hash,run_mode,target_node_id,
-              title,status,input_payload,output_payload,error_payload,created_by,
+              title,status,runtime_original_json(input_payload, flow_runs.raw_json_payloads, 'input_payload') as input_payload,runtime_original_json(output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload,runtime_original_json(error_payload, flow_runs.raw_json_payloads, 'error_payload') as error_payload,created_by,
               null::text as authorized_account,api_key_id,publication_version_id,
               external_user,external_conversation_id,external_trace_id,compatibility_mode,
               idempotency_key,started_at,finished_at,created_at,updated_at
@@ -63,7 +66,7 @@ impl PgControlPlaneStore {
         .bind(protocol)
         .bind(thread_id)
         .bind(completed_at)
-        .bind(&error_payload)
+        .bind(lossless_json_parameter(&(&error_payload)))
         .bind(turn_id)
         .bind(&task_run_id)
         .fetch_all(&mut **tx)
@@ -88,34 +91,28 @@ impl PgControlPlaneStore {
             .fetch_all(&mut **tx)
             .await?;
             sqlx::query(
-                "update flow_run_callback_resume_attempts set status='cancelled', completed_at=$2, updated_at=$2, error_payload=$3 where flow_run_id=$1 and status in ('received','processing')",
+                "update flow_run_callback_resume_attempts set status='cancelled',\n                completed_at=$2,\n                updated_at=$2,\n                error_payload = ($3::jsonb -> 0),\n                raw_json_payloads = (flow_run_callback_resume_attempts.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', ($3::jsonb -> 1)))\n            where flow_run_id=$1 and status in ('received','processing')",
             )
             .bind(predecessor.id)
             .bind(completed_at)
-            .bind(&error_payload)
+            .bind(lossless_json_parameter(&(&error_payload)))
             .execute(&mut **tx)
             .await?;
 
-            Self::upsert_application_run_log_summary_projection_for_flow_run(
-                tx,
-                &predecessor,
-            )
-            .await?;
-            Self::replace_application_run_conversation_message_items_projection(
-                tx,
-                &predecessor,
-            )
-            .await?;
+            Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &predecessor)
+                .await?;
+            Self::replace_application_run_conversation_message_items_projection(tx, &predecessor)
+                .await?;
             let scope_id = flow_run_scope_id_for_update(tx, predecessor.id).await?;
             let sequence = next_event_sequence(tx, predecessor.id).await?;
             sqlx::query(
-                "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected) values($1,$2,$3,null,$4,'flow_run_cancelled',$5,null,true)",
+                "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected, raw_json_payloads) values( $1, $2, $3, null, $4, 'flow_run_cancelled', ($5::jsonb -> 0), null, true, jsonb_strip_nulls(jsonb_build_object('payload', ($5::jsonb -> 1))) )",
             )
             .bind(Uuid::now_v7())
             .bind(scope_id)
             .bind(predecessor.id)
             .bind(sequence)
-            .bind(&error_payload)
+            .bind(lossless_json_parameter(&(&error_payload)))
             .execute(&mut **tx)
             .await?;
             for callback in callbacks {
@@ -124,30 +121,30 @@ impl PgControlPlaneStore {
                 let callback_kind: String = callback.get("callback_kind");
                 let sequence = next_event_sequence(tx, predecessor.id).await?;
                 sqlx::query(
-                    "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected) values($1,$2,$3,$4,$5,'public_run_callback_cancelled',$6,null,true)",
+                    "insert into flow_run_events(id,scope_id,flow_run_id,node_run_id,sequence,event_type,payload,resume_timeline_description,resume_timeline_description_projected, raw_json_payloads) values( $1, $2, $3, $4, $5, 'public_run_callback_cancelled', ($6::jsonb -> 0), null, true, jsonb_strip_nulls(jsonb_build_object('payload', ($6::jsonb -> 1))) )",
                 )
                 .bind(Uuid::now_v7())
                 .bind(scope_id)
                 .bind(predecessor.id)
                 .bind(node_run_id)
                 .bind(sequence)
-                .bind(json!({
+                .bind(lossless_json_parameter(&(json!({
                     "callback_task_id": callback_id,
                     "callback_kind": callback_kind,
                     "reason": "local_summary_superseded",
                     "successor_flow_run_id": successor.id,
-                }))
+                }))))
                 .execute(&mut **tx)
                 .await?;
             }
             let runtime_sequence = next_runtime_event_sequence(tx, predecessor.id).await?;
             sqlx::query(
-                "insert into runtime_events(id,flow_run_id,node_run_id,span_id,parent_span_id,sequence,event_type,layer,source,trust_level,item_id,ledger_ref,payload,visibility,durability) values($1,$2,null,null,null,$3,'flow_cancelled','agent_transition','host','host_fact',null,null,$4,'workspace','durable')",
+                "insert into runtime_events(id,flow_run_id,node_run_id,span_id,parent_span_id,sequence,event_type,layer,source,trust_level,item_id,ledger_ref,payload,visibility,durability, raw_json_payloads) values( $1, $2, null, null, null, $3, 'flow_cancelled', 'agent_transition', 'host', 'host_fact', null, null, ($4::jsonb -> 0), 'workspace', 'durable', jsonb_strip_nulls(jsonb_build_object('payload', ($4::jsonb -> 1))) )",
             )
             .bind(Uuid::now_v7())
             .bind(predecessor.id)
             .bind(runtime_sequence)
-            .bind(&error_payload)
+            .bind(lossless_json_parameter(&(&error_payload)))
             .execute(&mut **tx)
             .await?;
             append_flow_run_recovery_state_in_transaction(tx, &predecessor).await?;
@@ -218,9 +215,9 @@ impl PgControlPlaneStore {
                 .bind(previous).bind(run.id).bind(run.application_id).bind(key).bind(run.external_user.as_deref()).fetch_optional(&mut **tx).await?;
             value["caused_by_run_id"] = json!(cause);
         }
-        sqlx::query("update flow_runs set log_context=$2 where id=$1")
+        sqlx::query("update flow_runs set log_context=($2::jsonb -> 0), raw_json_payloads=(raw_json_payloads - 'log_context') || jsonb_strip_nulls(jsonb_build_object('log_context', $2::jsonb -> 1)) where id=$1")
             .bind(run.id)
-            .bind(value)
+            .bind(lossless_json_parameter(&value))
             .execute(&mut **tx)
             .await?;
         Ok(())
@@ -241,11 +238,11 @@ impl PgControlPlaneStore {
         // Reuse the original persisted native message projection. A result may
         // arrive in a later call, but only within the same authenticated log
         // conversation and with the exact call ID and result type.
-        sqlx::query_scalar(r#"
-            select m.native_message || jsonb_build_object('tool_result',result.native_message->'_source_item')
+        let rows = sqlx::query(r#"
+            select runtime_original_json(m.native_message, m.raw_json_payloads, 'native_message') as native_message, result.native_message as result_message
             from application_run_conversation_message_items m
             left join lateral (
-                select r.native_message from application_run_conversation_message_items r
+                select runtime_original_json(r.native_message, r.raw_json_payloads, 'native_message') as native_message from application_run_conversation_message_items r
                 where r.application_id=m.application_id and r.scope_id=m.scope_id
                   and r.log_conversation_id=m.log_conversation_id
                   and r.source_item_key='result:'||(m.native_message#>>'{_source_item,call_id}')
@@ -257,6 +254,18 @@ impl PgControlPlaneStore {
             ) result on not coalesce((m.native_message->>'_log_conflicting')::boolean,false)
             where m.application_id=$1 and m.flow_run_id=$2 and m.source_item_key like 'output:%'
             order by m.display_sequence,m.id
-        "#).bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await.map_err(Into::into)
+        "#).bind(application_id).bind(flow_run_id).fetch_all(self.pool()).await?;
+        rows.into_iter()
+            .map(|row| {
+                let mut message: Value = row.try_get("native_message")?;
+                let result: Option<Value> = row.try_get("result_message")?;
+                message["tool_result"] = result
+                    .as_ref()
+                    .and_then(|value| value.get("_source_item"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                Ok(message)
+            })
+            .collect()
     }
 }

@@ -1140,7 +1140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn responses_exact_retry_replays_failed_terminal_without_starting_a_new_turn() {
+    async fn responses_generic_callback_cannot_mint_native_recovery() {
         let (repository, mut consumer, token, run) = callback_fixture().await;
         consumer.terminal_error = Some(json!({
             "error_code": "provider_upstream_error",
@@ -1181,7 +1181,7 @@ mod tests {
         assert!(matches!(
             error.downcast_ref::<ControlPlaneError>(),
             Some(ControlPlaneError::Conflict(
-                "native_recovery_not_failed_inference"
+                "native_recovery_history_missing"
             ))
         ));
         let actor = ApplicationApiKeyService::new(repository.clone())
@@ -1202,6 +1202,7 @@ mod tests {
         assert_eq!(replay.attempt.id, first.attempt.id);
         assert_eq!(replay.run.status, first.run.status);
         assert_eq!(consumer.call_count(), 1);
+        assert_eq!(repository.callback_resume_attempts().len(), 1);
     }
 
     #[tokio::test]

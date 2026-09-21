@@ -313,11 +313,7 @@ impl PgControlPlaneStore {
                     trace_relation_kind,
                     projection_version,
                     source_watermark
-                ) values (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                    $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
-                    $23, $24, $25, $26, $27, $28, $29, $30
-                )
+                , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, ($19::jsonb -> 0), $20, $21, $22, ($23::jsonb ->> 0), $24, $25, $26, $27, $28, $29, $30, jsonb_strip_nulls(jsonb_build_object('metrics_payload', ($19::jsonb -> 1), 'content_ref', ($23::jsonb -> 1))) )
                 "#,
             )
             .bind(Uuid::now_v7())
@@ -338,11 +334,11 @@ impl PgControlPlaneStore {
             .bind(node.started_at)
             .bind(node.finished_at)
             .bind(node.duration_ms)
-            .bind(&node.metrics_payload)
+            .bind(lossless_json_parameter(&(&node.metrics_payload)))
             .bind(node.has_children)
             .bind(node.child_count)
             .bind(node.has_content)
-            .bind(&node.content_ref)
+            .bind(lossless_text_parameter(&node.content_ref))
             .bind(node.source_flow_run_id)
             .bind(node.source_trace_node_id)
             .bind(node.parent_callback_task_id)
@@ -365,7 +361,7 @@ impl PgControlPlaneStore {
                     content_kind,
                     payload,
                     source_refs
-                ) values ($1, $2, $3, $4, $5, $6, $7)
+                , raw_json_payloads) values ( $1, $2, $3, $4, $5, ($6::jsonb -> 0), ($7::jsonb -> 0), jsonb_strip_nulls(jsonb_build_object('payload', ($6::jsonb -> 1), 'source_refs', ($7::jsonb -> 1))) )
                 "#,
             )
             .bind(Uuid::now_v7())
@@ -373,8 +369,8 @@ impl PgControlPlaneStore {
             .bind(scope_id)
             .bind(content.trace_node_id)
             .bind(&content.content_kind)
-            .bind(&content.payload)
-            .bind(&content.source_refs)
+            .bind(lossless_json_parameter(&(&content.payload)))
+            .bind(lossless_json_parameter(&(&content.source_refs)))
             .execute(&mut *tx)
             .await?;
         }
@@ -607,8 +603,8 @@ impl PgControlPlaneStore {
             select
                 contents.trace_node_id,
                 contents.content_kind,
-                contents.payload,
-                contents.source_refs,
+                runtime_original_json(contents.payload, contents.raw_json_payloads, 'payload') as payload,
+                runtime_original_json(contents.source_refs, contents.raw_json_payloads, 'source_refs') as source_refs,
                 contents.created_at,
                 contents.updated_at
             from application_run_trace_node_contents contents
@@ -779,11 +775,11 @@ fn trace_node_select_sql(predicate: &str) -> String {
             started_at,
             finished_at,
             duration_ms,
-            metrics_payload,
+            runtime_original_json(metrics_payload, application_run_trace_nodes.raw_json_payloads, 'metrics_payload') as metrics_payload,
             has_children,
             child_count,
             has_content,
-            content_ref,
+            content_ref, raw_json_payloads ->> 'content_ref' as content_ref_original,
             source_flow_run_id,
             source_trace_node_id,
             parent_callback_task_id,
@@ -856,7 +852,7 @@ fn map_application_run_trace_node_record(
         has_children: row.get("has_children"),
         child_count: row.get("child_count"),
         has_content: row.get("has_content"),
-        content_ref: row.get("content_ref"),
+        content_ref: original_optional_text(&row, "content_ref")?,
         source_flow_run_id: row.get("source_flow_run_id"),
         source_trace_node_id: row.get("source_trace_node_id"),
         parent_callback_task_id: row.get("parent_callback_task_id"),

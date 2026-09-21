@@ -1453,7 +1453,7 @@ async fn a_late_close_of_the_old_delivery_cannot_orphan_the_admitted_successor()
 }
 
 #[tokio::test]
-async fn unbound_inflight_execution_refuses_a_second_call_with_its_own_branch() {
+async fn unbound_inflight_execution_without_replacement_scope_is_refused() {
     let coordinator = TransportSessionCoordinator::new_with_clock(
         Arc::new(FakeTransportRuntime::new([])),
         transport_config(),
@@ -1475,12 +1475,10 @@ async fn unbound_inflight_execution_refuses_a_second_call_with_its_own_branch() 
     coordinator.close_connection_scope(&scope).await;
 
     let next_scope = coordinator.open_connection_scope();
+    let mut unscoped = scope_input(&next_scope, "model-a");
+    take_transport_connection_scope(&mut unscoped);
     let error = coordinator
-        .prepare(
-            "runtime-a",
-            &mut scope_input(&next_scope, "model-a"),
-            &context(2_100_000),
-        )
+        .prepare("runtime-a", &mut unscoped, &context(2_100_000))
         .await
         .err()
         .expect("an unbound in-flight execution must not start a second call");
@@ -1573,3 +1571,6 @@ mod close_control;
 
 #[path = "transport_session_lifecycle/prewarm_handoff.rs"]
 mod prewarm_handoff;
+
+#[path = "transport_session_lifecycle/invocation_handoff.rs"]
+mod invocation_handoff;

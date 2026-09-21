@@ -43,9 +43,8 @@ fn application_run_conversation_contexts(
     effective_system: Option<String>,
 ) -> Vec<ApplicationRunConversationContext> {
     let mut contexts = Vec::new();
-    let native_context = input_payload.get(
-        extension_contracts::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY,
-    );
+    let native_context = input_payload
+        .get(extension_contracts::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY);
 
     if let Some(system) = native_context
         .and_then(|value| value.get("system"))
@@ -419,7 +418,7 @@ impl PgControlPlaneStore {
         revision: Option<String>,
     ) -> Result<Option<Vec<(i64, String, Value)>>> {
         let context: Option<Value> =
-            sqlx::query_scalar("select log_context from flow_runs where id=$1")
+            sqlx::query_scalar("select runtime_original_json(log_context, raw_json_payloads, 'log_context') from flow_runs where id=$1")
                 .bind(run.id)
                 .fetch_one(&mut **tx)
                 .await?;
@@ -428,33 +427,66 @@ impl PgControlPlaneStore {
         };
         let rows = sqlx::query(
             r#"with scope_runs as materialized (
-                select id,log_context from flow_runs where id=$1
+                select id,log_context,raw_json_payloads from flow_runs where id=$1
                 union
-                select f.id,f.log_context from application_run_log_conversation_runs($2,$3::uuid) member
+                select f.id,f.log_context,f.raw_json_payloads from application_run_log_conversation_runs($2,$3::uuid) member
                 join flow_runs f on f.id=member.run_id
             ), facts as (
                 select f.id as run_id,e.sequence,
                     'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
                         else coalesce(e.payload->'item'->>'type','unknown') end||':'||
                         coalesce(e.payload->'item'->>'call_id',e.payload->'item'->>'id',e.id::text) as source_key,
-                    e.payload->'item' as item
+                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as original,
+                    null::bigint as result_ordinal
                 from scope_runs f join runtime_events e on e.flow_run_id=f.id
                 where e.event_type='provider_output_item_done' and e.payload->'item' is not null
                 union all
                 select f.id,-1000000+r.ordinality,
-                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),r.item
+                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),
+                    runtime_original_json(f.log_context, f.raw_json_payloads, 'log_context'), r.ordinality
                 from scope_runs f cross join lateral jsonb_array_elements(
                     coalesce(f.log_context->'tool_results','[]'::jsonb)) with ordinality r(item,ordinality)
-            ), owners as (
-                select distinct on(source_key) * from facts order by source_key,run_id,sequence
             )
-            select o.source_key,o.item,
-                exists(select 1 from facts f where f.source_key=o.source_key and f.item is distinct from o.item) as conflicting
-            from owners o where run_id=$1 order by sequence,source_key"#,
+            select run_id, sequence, source_key, original, result_ordinal from facts order by source_key, run_id, sequence"#,
         ).bind(run.id).bind(run.application_id)
             .bind(context.get("log_conversation_id").and_then(Value::as_str).and_then(|v| Uuid::parse_str(v).ok()))
             .fetch_all(&mut **tx).await?;
 
+        // JSONB is a searchable projection. Compare restored values here so a
+        // real NUL and a literal escape remain different facts.
+        let mut groups = std::collections::BTreeMap::<String, Vec<(Uuid, i64, Value)>>::new();
+        for row in rows {
+            let original: Value = row.try_get("original")?;
+            let ordinal: Option<i64> = row.try_get("result_ordinal")?;
+            let item = match ordinal {
+                Some(ordinal) => ordinal
+                    .checked_sub(1)
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| {
+                        original
+                            .get("tool_results")
+                            .and_then(Value::as_array)
+                            .and_then(|results| results.get(index))
+                    }),
+                None => original.get("item"),
+            }
+            .cloned()
+            .ok_or_else(|| anyhow!("native log fact projection does not match its original"))?;
+            groups.entry(row.try_get("source_key")?).or_default().push((
+                row.try_get("run_id")?,
+                row.try_get("sequence")?,
+                item,
+            ));
+        }
+        let mut facts = Vec::new();
+        for (key, candidates) in groups {
+            let (owner, sequence, item) = &candidates[0];
+            if *owner == run.id {
+                let conflicting = candidates.iter().any(|(_, _, other)| other != item);
+                facts.push((*sequence, key, item.clone(), conflicting));
+            }
+        }
+        facts.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
         let mut items: Vec<(i64, String, Value)> = Vec::new();
         // Context is not a conversation turn: it is projected in its own
         // sequence range and served beside the page so it stays discoverable
@@ -496,15 +528,15 @@ impl PgControlPlaneStore {
                 conversation_sequence += 1;
             }
         }
-        for row in rows.iter() {
-            let key: String = row.try_get("source_key")?;
-            let item: Value = row.try_get("item")?;
+        for (_, key, item, observed_conflict) in &facts {
+            let key = key.clone();
+            let item = item.clone();
             let role = if key.starts_with("result:") {
                 "tool"
             } else {
                 "assistant"
             };
-            let mut conflicting: bool = row.try_get("conflicting")?;
+            let mut conflicting = *observed_conflict;
             // Historical conflict observations survive projection rebuilds.
             let retained = if key.starts_with("result:") {
                 "conflicting_result_call_ids"
@@ -526,9 +558,8 @@ impl PgControlPlaneStore {
         // marked as persisted evidence rather than as a provider message. A
         // formal answer item arriving later replaces it on the next
         // reprojection, so the answer is never counted twice.
-        let has_formal_answer = rows.iter().any(|row| {
-            row.get::<String, _>("source_key").starts_with("output:")
-                && native_output_item_is_answer(&row.get::<Value, _>("item"))
+        let has_formal_answer = facts.iter().any(|(_, key, item, _)| {
+            key.starts_with("output:") && native_output_item_is_answer(item)
         });
         if !has_formal_answer {
             if let Some(answer) = application_conversation_answer_text(&run.output_payload) {
@@ -574,8 +605,7 @@ fn native_output_item_is_answer(item: &Value) -> bool {
     if item.get("phase").and_then(Value::as_str) == Some("final_answer") {
         return true;
     }
-    item.get("content").is_some()
-        && item.get("role").and_then(Value::as_str) == Some("assistant")
+    item.get("content").is_some() && item.get("role").and_then(Value::as_str) == Some("assistant")
 }
 
 fn native_log_item_text(item: &Value) -> String {

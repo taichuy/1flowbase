@@ -190,8 +190,9 @@ where
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
         // A full next sampling request may refresh tools or generation options. It must
         // still prove this round's complete history and retain the frozen model route.
-        // Apply this to completed receipts too: their replay identity belongs to the
-        // durable callback owner, while failed inference replay has its own exact check.
+        // A pending tool result may arrive with newly available tools and appended
+        // context in the same sampling request. Its consumption still belongs to the
+        // callback owner; completed receipts and exact inference replay are classified there.
         let frozen_model = flow_run
             .input_payload
             .pointer("/sys/requested_model_id")
@@ -200,7 +201,7 @@ where
         let full_request_proven = previous_response_id.is_none()
             && frozen_model.is_some()
             && frozen_model == request.get("model").and_then(Value::as_str)
-            && super::compat::openai::history::validate_full_retry_input(
+            && super::compat::openai::history::full_context_remainder(
                 input_value,
                 &metadata["history"],
                 &call_id_list,

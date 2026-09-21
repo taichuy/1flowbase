@@ -184,7 +184,7 @@ async fn native_admission_accepts_proven_full_configuration_refresh_and_complete
 }
 
 #[tokio::test]
-async fn native_admission_rejects_configuration_refresh_without_frozen_route_and_exact_history() {
+async fn native_admission_configuration_refresh_requires_frozen_route_and_proven_history() {
     for scenario in [
         "model",
         "delta",
@@ -214,25 +214,32 @@ async fn native_admission_rejects_configuration_refresh_without_frozen_route_and
             "extra_history" => body["input"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!({"role":"assistant","content":"Unproven extra context"})),
+                .push(json!({"role":"assistant","content":"Appended sampling context"})),
             "partial_outputs" => {
                 body["input"].as_array_mut().unwrap().pop();
             }
             _ => {}
         }
-        let error = correlate_native_responses_callback(&repository, &actor, &body)
-            .await
-            .expect_err(scenario);
-        let expected = if scenario == "partial_outputs" {
-            "native_tool_output_incomplete_round"
+        let result = correlate_native_responses_callback(&repository, &actor, &body).await;
+        if scenario == "extra_history" {
+            let (admitted, outputs) = result
+                .expect("a proven full history permits appended context and refreshed instructions")
+                .expect("pending callback must retain its consumption owner");
+            assert_eq!(admitted.id, callback.id);
+            assert_eq!(outputs["tool_results"].as_array().unwrap().len(), 2);
         } else {
-            "native_tool_output_configuration_mismatch"
-        };
-        assert_eq!(
-            error.downcast_ref::<ControlPlaneError>(),
-            Some(&ControlPlaneError::Conflict(expected)),
-            "{scenario}"
-        );
+            let error = result.expect_err(scenario);
+            let expected = if scenario == "partial_outputs" {
+                "native_tool_output_incomplete_round"
+            } else {
+                "native_tool_output_configuration_mismatch"
+            };
+            assert_eq!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(&ControlPlaneError::Conflict(expected)),
+                "{scenario}"
+            );
+        }
         assert_eq!(
             repository
                 .get_published_callback_task(callback.id)
@@ -251,7 +258,9 @@ async fn native_admission_rejects_configuration_refresh_without_frozen_route_and
 #[tokio::test]
 async fn native_admission_correlates_current_suffix_and_preserves_output_values() {
     let (repository, actor, run) = fixture().await;
-    let body = request();
+    let mut body = request();
+    body["input"][0]["output"] = json!("actual\0 versus literal \\u0000");
+    body["input"][1]["output"][0]["text"] = json!("custom\0output");
     let callback = seed_round(&repository, run, &body);
     let expected = json!({"tool_results":[
         {"tool_call_id":"function","content":body["input"][0]["output"]},
@@ -538,4 +547,148 @@ async fn native_admission_rejects_cancelled_waits() {
     );
     assert_eq!(repository.flow_run_count(), 1);
     assert!(repository.callback_resume_attempts().is_empty());
+}
+
+#[derive(Clone)]
+struct RecordingNativeCallbackConsumer {
+    repository: ApplicationPublicApiTestRepository,
+    calls: std::sync::Arc<
+        std::sync::Mutex<
+            Vec<crate::application_public_api::callback_resume::CompletePublishedCallbackInput>,
+        >,
+    >,
+}
+
+#[async_trait::async_trait]
+impl crate::application_public_api::callback_resume::ApplicationPublishedCallbackConsumer
+    for RecordingNativeCallbackConsumer
+{
+    async fn complete_published_callback(
+        &self,
+        input: crate::application_public_api::callback_resume::CompletePublishedCallbackInput,
+    ) -> Result<domain::FlowRunRecord> {
+        let callback = self
+            .repository
+            .get_published_callback_task(input.callback_task_id)
+            .await?
+            .expect("owned pending callback fixture");
+        self.repository.complete_callback_task_for_test(callback.id);
+        self.calls.lock().unwrap().push(input);
+        Ok(self
+            .repository
+            .get_published_flow_run(callback.flow_run_id)
+            .await?
+            .expect("original callback flow"))
+    }
+}
+
+#[tokio::test]
+async fn full_context_extension_configuration_refresh_keeps_pending_callback_owner() {
+    use crate::application_public_api::callback_resume::{
+        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
+    };
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+    let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+    body["input"].as_array_mut().unwrap().extend([
+        json!({"type":"reasoning","summary":[]}),
+        json!({"role":"assistant","content":"New context"}),
+        json!({"role":"developer","content":[{"type":"input_text","text":"Apps became available"}]}),
+        json!({"type":"future_context_boundary","opaque":true}),
+    ]);
+    body["tools"] = json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
+    let original = body.clone();
+    for mutation in 0..3 {
+        let mut invalid = body.clone();
+        match mutation {
+            0 => invalid["model"] = json!("foreign"),
+            1 => invalid["input"][1]["arguments"] = json!("tampered"),
+            2 => invalid["input"].as_array_mut().unwrap().push(
+                json!({"type":"function_call_output","call_id":"foreign","output":"not this round"}),
+            ),
+            _ => unreachable!(),
+        }
+        assert!(
+            correlate_native_responses_callback(&repository, &actor, &invalid)
+                .await
+                .is_err(),
+            "pending refresh mutation {mutation}"
+        );
+    }
+    let (admitted, results) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(admitted.id, callback.id);
+    assert_eq!(admitted.status, CallbackTaskStatus::Pending);
+    assert_eq!(results["tool_results"].as_array().unwrap().len(), 2);
+    assert!(repository.callback_resume_attempts().is_empty());
+
+    let consumer = RecordingNativeCallbackConsumer {
+        repository: repository.clone(),
+        calls: Default::default(),
+    };
+    let service =
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+    let mut command = ResumePublishedCallbackCommand {
+        transport_connection_scope: None,
+        reserved_attempt_id: None,
+        native_transport: Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap()),
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask {
+            callback_task_id: admitted.id,
+        },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: results.clone(),
+        response_mode: Some("streaming".into()),
+    };
+    let PreparedPublishedCallbackResume::Resume { initial_run } = service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("pending refresh must resume its original callback, never start or recover an invocation");
+    };
+    assert_eq!(initial_run.id, run);
+    command.reserved_attempt_id = Some(
+        service
+            .reserve_native_callback_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+    );
+    for _ in 0..2 {
+        let resumed = service
+            .resume_callback_for_actor(actor.clone(), command.clone())
+            .await
+            .unwrap();
+        assert_eq!(resumed.run.id, run);
+    }
+    {
+        let calls = consumer.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].callback_task_id, callback.id);
+        assert_eq!(calls[0].response_payload, results);
+        assert_eq!(
+            calls[0].native_transport.as_ref().unwrap().wire_body(),
+            &original
+        );
+    }
+    let (completed, _) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.id, callback.id);
+    assert_eq!(completed.status, CallbackTaskStatus::Completed);
+    assert_eq!(body, original);
+    assert_eq!(repository.callback_resume_attempts().len(), 1);
+    assert_eq!(repository.flow_run_count(), 1);
+
+    body["model"] = json!("foreign");
+    assert!(
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .is_err()
+    );
 }

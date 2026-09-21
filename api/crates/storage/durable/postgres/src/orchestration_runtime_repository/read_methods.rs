@@ -12,15 +12,11 @@ impl PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                case
-                    when callback_kind = 'llm_tool_calls'
-                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
-                    else request_payload
-                end as request_payload,
-                response_payload,
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
+                runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then null
-                    else external_ref_payload
+                    else runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload')
                 end as external_ref_payload,
                 created_at,
                 completed_at
@@ -32,7 +28,7 @@ impl PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         let Some(callback_task) = callback_task_row
-            .map(map_callback_task_record)
+            .map(map_callback_task_tool_summary_record)
             .transpose()?
         else {
             return Ok(None);
@@ -50,8 +46,8 @@ impl PgControlPlaneStore {
                 checkpoints.node_run_id,
                 checkpoints.status,
                 checkpoints.reason,
-                checkpoints.locator_payload,
-                coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+                runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
+                coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot')) as variable_snapshot,
                 null::jsonb as external_ref_payload,
                 checkpoints.created_at
             from flow_run_checkpoints checkpoints
@@ -62,6 +58,7 @@ impl PgControlPlaneStore {
             left join runtime_canonical_contents contents
               on contents.id = shadow_rows.canonical_content_id
              and contents.content = checkpoints.variable_snapshot
+             and (contents.raw_json_payloads -> 'content') is not distinct from (checkpoints.raw_json_payloads -> 'variable_snapshot')
             where checkpoints.flow_run_id = $1
               and checkpoints.node_run_id = $2
             order by checkpoints.created_at desc, checkpoints.id desc
@@ -77,7 +74,7 @@ impl PgControlPlaneStore {
             .ok_or_else(|| anyhow!("checkpoint not found for callback task"))?;
         let waiting_node_row = sqlx::query(
             r#"
-            select id, status, output_payload
+            select id, status, runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload
             from node_runs
             where id = $1
               and flow_run_id = $2
@@ -166,7 +163,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                payload,
+                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                 visibility,
                 durability,
                 created_at
@@ -229,7 +226,7 @@ impl PgControlPlaneStore {
                 trust_level,
                 item_id,
                 ledger_ref,
-                payload,
+                runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                 visibility,
                 durability,
                 created_at
