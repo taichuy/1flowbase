@@ -595,6 +595,19 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         durability: domain::RuntimeEventDurability::Durable,
         payload: json!({"item":{"type":"custom_tool_call","id":"tool-0","call_id":"call-0","name":"exec","input":"different payload"}}),
     }).await.unwrap();
+    let conflict_before_read: serde_json::Value = sqlx::query_scalar(
+        "select runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 and source_item_key='output:tool:call-0'",
+    ).bind(ids[0]).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        conflict_before_read["_log_conflicting"],
+        json!(true),
+        "the fact writer updates the original owner before any GET"
+    );
+    assert_eq!(
+        conflict_before_read["_source_item"]["input"],
+        json!("console.log(0)"),
+        "marking conflict must retain the original protocol evidence"
+    );
     store
         .list_application_run_conversation_message_items_page(
             seeded.application_id,

@@ -481,9 +481,22 @@ impl PgControlPlaneStore {
         let mut facts = Vec::new();
         for (key, candidates) in groups {
             let (owner, sequence, item) = &candidates[0];
+            let conflicting = candidates.iter().any(|(_, _, other)| other != item);
             if *owner == run.id {
-                let conflicting = candidates.iter().any(|(_, _, other)| other != item);
                 facts.push((*sequence, key, item.clone(), conflicting));
+            } else if conflicting {
+                // This derivation is called only by the projection writer. A later
+                // member can contradict a fact owned by an earlier run; update that
+                // derived marker in the same transaction without changing its evidence.
+                sqlx::query(r#"
+                    update application_run_conversation_message_items
+                    set native_message=jsonb_set(native_message,'{_log_conflicting}','true'),
+                        raw_json_payloads=case when raw_json_payloads ? 'native_message'
+                            then jsonb_set(raw_json_payloads,'{native_message,_log_conflicting}','true')
+                            else raw_json_payloads end
+                    where flow_run_id=$1 and source_item_key=$2
+                      and native_message->>'_log_conflicting' is distinct from 'true'
+                "#).bind(owner).bind(&key).execute(&mut **tx).await?;
             }
         }
         facts.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));

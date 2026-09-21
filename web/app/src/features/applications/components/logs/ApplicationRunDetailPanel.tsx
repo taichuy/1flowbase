@@ -602,7 +602,7 @@ function RunConversation({
         messages={messages}
         runContext={runConversationContext}
         showClearAction={false}
-        showComposer
+        showComposer={false}
         status={conversationSessionStatus(conversationItems, outputState)}
         stopping={false}
         subtitle={<RunIdSubtitle runId={runId} />}

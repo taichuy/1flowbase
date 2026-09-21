@@ -190,6 +190,8 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
     publish_application_public_api(&app, &cookie, &csrf, &application_id).await;
     let token = create_application_public_api_key(&app, &cookie, &csrf, &application_id).await;
 
+    // The empty start-node model_list publishes the default public model 1flowbase.
+    // It is distinct from the workflow provider model fixture_chat.
     let create = app
         .clone()
         .oneshot(
@@ -201,7 +203,7 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
                 .body(Body::from(
                     json!({
                         "query": "请总结退款政策",
-                        "model": "fixture_chat",
+                        "model": "1flowbase",
                         "title": "公开 API 退款总结",
                         "expand_id": "customer-42",
                         "execution": {
@@ -272,7 +274,7 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
     );
     assert_eq!(
         list_payload["data"]["items"][0]["requested_model_id"].as_str(),
-        Some("fixture_chat")
+        Some("1flowbase")
     );
     assert_eq!(
         list_payload["data"]["items"][0]["reasoning_effort"].as_str(),
