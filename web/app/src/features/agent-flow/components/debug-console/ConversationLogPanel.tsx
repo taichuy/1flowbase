@@ -185,6 +185,10 @@ function ConversationLogDetailContent({
           (message.detailRunId ?? message.runId) ? (
             <ProviderTrajectory
               runId={(message.detailRunId ?? message.runId)!}
+              compatibility_mode={overviewCompatibilityModeLabel(
+                message,
+                overview
+              )}
               loader={traceLoader}
             />
           ) : null}

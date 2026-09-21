@@ -9,6 +9,20 @@ import type { ConversationLogTraceLoader } from '../conversation-log-trace-model
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 
+// Presentation only: raw evidence keeps its exact text, Native JSON is indented.
+function displayBody(
+  body: string,
+  view: ProviderTrajectoryView,
+  encoding: string
+) {
+  if (view !== 'semantic' || encoding !== 'utf8') return body;
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2);
+  } catch {
+    return body;
+  }
+}
+
 export function TrajectoryStepDetail({
   step,
   loader
@@ -103,7 +117,7 @@ export function TrajectoryStepDetail({
         .flatMap((page) => page.items)
         .map((evidence) => (
           <pre key={evidence.event_id} className="provider-trajectory__body">
-            {evidence.body}
+            {displayBody(evidence.body, view, evidence.encoding)}
           </pre>
         ))}
       {body.hasNextPage ? (

@@ -25,10 +25,12 @@ import './provider-trajectory.css';
 export function ProviderTrajectory({
   runId,
   nodeRunId,
-  loader
+  loader,
+  compatibility_mode
 }: {
   runId: string;
   nodeRunId?: string;
+  compatibility_mode?: string;
   loader: ConversationLogTraceLoader;
 }) {
   const zIndex = useWindowWorkspaceOverlayZIndex();
@@ -57,7 +59,7 @@ export function ProviderTrajectory({
         onCancel={() => setOpen(false)}
         footer={null}
         width="min(1440px, calc(100vw - 32px))"
-        title={title}
+        title={compatibility_mode ? `${title} · ${compatibility_mode}` : title}
         destroyOnHidden
         styles={{ body: { padding: 0, minHeight: 0 } }}
       >
