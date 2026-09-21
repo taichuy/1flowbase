@@ -534,3 +534,57 @@ async fn resumed_handoff_leaves_queued_close_for_existing_dispatch_owner() {
         .unwrap();
     assert_close_retained(&coordinator, &runtime, &close_fence).await;
 }
+
+#[tokio::test]
+async fn successful_handoff_returns_lease_before_unrelated_close_is_dispatched() {
+    let (coordinator, runtime, first, unrelated) = unrelated_close_fixture().await;
+    let close_fence = unrelated.lease.fence.clone();
+    let old = first.lease.clone();
+    let scope = coordinator.open_connection_scope();
+    let waiting = parked_waiter(&coordinator, &scope, 2_025_000).await;
+    // Reproduce completion before its independent dispatcher runs. Unlike the
+    // timeout case above, this waiter can now enter the successful return path.
+    {
+        let mut registry = coordinator.registry.lock().await;
+        registry
+            .finish_invocation(&old, InvocationCompletion::IdleAffinity)
+            .unwrap();
+        registry
+            .finish_invocation(&unrelated.lease, InvocationCompletion::Faulted)
+            .unwrap();
+    }
+    coordinator.invocation_changed.notify_waiters();
+    let next = waiter_result(waiting).await.unwrap().unwrap();
+    assert_eq!(next.lease.fence, old.fence);
+    assert_eq!(next.lease.sequence(), old.sequence() + 1);
+    assert_eq!(runtime.started.load(AtomicOrdering::SeqCst), 0);
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&next.lease.fence)
+        .unwrap());
+
+    // The admission waiter neither drains nor cancels the unrelated Close.
+    // Its original maintenance owner still executes it once to real release.
+    let maintenance = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.maintain_and_dispatch().await })
+    };
+    tokio::time::timeout(Duration::from_secs(1), runtime.entered.notified())
+        .await
+        .unwrap();
+    assert!(!maintenance.is_finished());
+    runtime.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(1), maintenance)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_close_retained(&coordinator, &runtime, &close_fence).await;
+    assert!(coordinator
+        .registry
+        .lock()
+        .await
+        .invocation_inflight(&next.lease.fence)
+        .unwrap());
+}

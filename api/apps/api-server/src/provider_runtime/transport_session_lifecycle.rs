@@ -590,7 +590,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     .leases
                     .insert(lease.fence.session_id.as_str().into(), lease.clone());
             }
-            self.dispatch_pending_events_locked().await;
+            // Handoff has committed its lease: return it without an await that
+            // could strand it behind an unrelated Close. Control ownership is
+            // the same at successful exit as it is at admission entry.
+            if handoff_deadline.is_none() {
+                self.dispatch_pending_events_locked().await;
+            }
             return Ok(Some(PreparedTransportInvocation {
                 lease,
                 transport,
