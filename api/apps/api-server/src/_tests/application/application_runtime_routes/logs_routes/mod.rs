@@ -37,6 +37,20 @@ async fn fund_log_fixture(app: &axum::Router, cookie: &str, csrf: &str) {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
+// Test app construction does not start background workers. Exercise the same
+// durable writer queue before checking its read-only HTTP projections.
+async fn flush_trace_fixture(state: &crate::app_state::ApiState) {
+    for _ in 0..64 {
+        if !crate::workers::trace_projection::refresh_next_trace_projection(state)
+            .await
+            .expect("trace projection writer succeeds")
+        {
+            return;
+        }
+    }
+    panic!("isolated trace fixture did not drain its bounded write queue");
+}
+
 async fn start_full_debug_run(
     app: &axum::Router,
     cookie: &str,

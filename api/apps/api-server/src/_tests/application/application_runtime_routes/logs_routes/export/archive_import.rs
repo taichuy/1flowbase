@@ -49,8 +49,20 @@ async fn application_runtime_routes_logs_archive_import_restores_visible_target_
         overview_payload["data"]["flow_run"]["id"],
         json!(first_target_run_id)
     );
+    assert!(
+        overview_payload["data"]["flow_run"]
+            .get("input_payload")
+            .is_none(),
+        "overview remains body-free after import"
+    );
+    let imported_detail = get_console_json(
+        &app,
+        &cookie,
+        format!("/api/console/applications/{application_id}/logs/runs/{first_target_run_id}"),
+    )
+    .await;
     assert_eq!(
-        overview_payload["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        imported_detail["data"]["flow_run"]["input_payload"]["node-start"]["query"],
         json!(query)
     );
 

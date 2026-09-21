@@ -224,6 +224,8 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
     .await
     .unwrap();
 
+    flush_trace_fixture(&state).await;
+
     let trace_tree = app
         .clone()
         .oneshot(

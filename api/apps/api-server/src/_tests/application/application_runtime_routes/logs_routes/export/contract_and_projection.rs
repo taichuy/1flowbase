@@ -387,8 +387,20 @@ async fn application_runtime_routes_logs_archive_import_accepts_zip_format() {
     let (overview_status, overview_payload) =
         get_run_overview(&app, &cookie, &application_id, target_run_id).await;
     assert_eq!(overview_status, StatusCode::OK, "{}", overview_payload);
+    assert!(
+        overview_payload["data"]["flow_run"]
+            .get("input_payload")
+            .is_none(),
+        "overview remains body-free after import"
+    );
+    let imported_detail = get_console_json(
+        &app,
+        &cookie,
+        format!("/api/console/applications/{application_id}/logs/runs/{target_run_id}"),
+    )
+    .await;
     assert_eq!(
-        overview_payload["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        imported_detail["data"]["flow_run"]["input_payload"]["node-start"]["query"],
         json!("zip import test")
     );
 }
