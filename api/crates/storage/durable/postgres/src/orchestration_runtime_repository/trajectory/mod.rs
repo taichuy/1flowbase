@@ -1,7 +1,7 @@
 use super::*;
 use control_plane_contracts::ports::{
     ProviderTrajectoryBody, ProviderTrajectoryEvidence, ProviderTrajectoryPage,
-    ProviderTrajectoryRepository, ProviderTrajectoryStep,
+    ProviderTrajectoryRepository, ProviderTrajectoryStep, ProviderTrajectoryView,
 };
 
 #[async_trait]
@@ -14,54 +14,15 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         limit: i64,
     ) -> Result<ProviderTrajectoryPage> {
         let limit = limit.clamp(1, 100);
-        let counts = sqlx::query(r#"
-            with observations as (
-                select metadata->>'invocation_id' as invocation_id,
-                    metadata->>'provider_attempt_index' as attempt,
-                    count(*) as observed
-                from provider_protocol_trajectory_events
-                where flow_run_id=$1 and node_run_id=$2 and event_type='provider_protocol_observation'
-                group by 1,2
-            ), latest_integrity as (
-                select distinct on (metadata->>'invocation_id',metadata->>'provider_attempt_index')
-                    metadata->>'invocation_id' as invocation_id,
-                    metadata->>'provider_attempt_index' as attempt, metadata
-                from provider_protocol_trajectory_events
-                where flow_run_id=$1 and node_run_id=$2 and event_type='provider_protocol_integrity'
-                order by metadata->>'invocation_id',metadata->>'provider_attempt_index',event_sequence desc
-            ), attempts as (
-                select coalesce(o.observed,0) as observed,
-                    coalesce((i.metadata->>'observed_count')::bigint,0) as expected,
-                    coalesce((i.metadata->>'persist_failed_count')::bigint,0) as failed,
-                    coalesce((i.metadata->>'dropped_count')::bigint,0) as dropped,
-                    coalesce(i.metadata->>'status'='complete',false) as complete,
-                    coalesce(i.metadata->>'status'='unavailable',false) as unavailable
-                from observations o full join latest_integrity i using(invocation_id,attempt)
-            )
-            select coalesce(sum(observed),0)::bigint as observation_count,
-                coalesce(sum(failed),0)::bigint as persist_failed_count,
-                coalesce(sum(dropped),0)::bigint as dropped_count,
-                coalesce(bool_and(complete and expected=observed and failed=0 and dropped=0),false) as complete,
-                coalesce(bool_and(observed=0 and unavailable),true) as unavailable
-            from attempts
-        "#).bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
-        let observation_count: i64 = counts.get("observation_count");
-        let persist_failed_count: i64 = counts.get("persist_failed_count");
-        let complete: bool = counts.get("complete");
-        let unavailable: bool = counts.get("unavailable");
-        let dropped_count: i64 = counts.get("dropped_count");
-        let integrity = if dropped_count > 0 || persist_failed_count > 0 {
-            "incomplete"
-        } else if unavailable && observation_count == 0 {
-            "not_recorded"
-        } else if complete {
-            "complete"
-        } else {
-            "incomplete"
-        };
+        let counts = sqlx::query(include_str!("integrity.sql"))
+            .bind(flow_run_id)
+            .bind(node_run_id)
+            .fetch_one(self.pool())
+            .await?;
         let rows = sqlx::query(
             r#"
-            select event_id,event_sequence,'provider_semantic_step' as event_type,metadata,created_at
+            select event_id,event_sequence,'provider_semantic_step' as event_type,
+                metadata || jsonb_build_object('source',coalesce(metadata->>'source','supplier_protocol')) as metadata,created_at
             from provider_semantic_trajectory_steps
             where flow_run_id=$1 and node_run_id=$2 and event_sequence > $3
             order by event_sequence asc limit $4
@@ -94,21 +55,14 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         } else {
             None
         };
-        let semantic = sqlx::query("select count(*) as count, coalesce(bool_or(metadata->>'status' in ('incomplete','unavailable')),false) as incomplete from provider_semantic_trajectory_steps where flow_run_id=$1 and node_run_id=$2")
-            .bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
-        let integrity = if semantic.get::<bool, _>("incomplete") {
-            "incomplete"
-        } else if semantic.get::<i64, _>("count") == 0 && integrity == "complete" {
-            "not_recorded"
-        } else {
-            integrity
-        };
         Ok(ProviderTrajectoryPage {
             items,
             next_cursor,
-            observation_count,
-            persist_failed_count,
-            integrity: integrity.into(),
+            observation_count: counts.get("observation_count"),
+            persist_failed_count: counts.get("persist_failed_count"),
+            integrity: counts.get("integrity"),
+            protocol_integrity: counts.get("protocol_integrity"),
+            protocol_persist_failed_count: counts.get("protocol_persist_failed_count"),
         })
     }
 
@@ -119,31 +73,88 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         event_id: Uuid,
         cursor: Option<i64>,
         limit: i64,
+        view: ProviderTrajectoryView,
     ) -> Result<Option<ProviderTrajectoryBody>> {
-        // Resolve an authorized semantic step to its exact attempt and evidence range.
-        // Original event ids remain valid: history is retained without synthetic semantics.
+        // Resolve only the scoped index. Semantic details never read raw evidence.
         let scope = sqlx::query(
             r#"
-            select invocation_id,provider_attempt_index,
-                (metadata->>'raw_sequence_start')::bigint as first,
-                (metadata->>'raw_sequence_end')::bigint as last
+            select invocation_id,provider_attempt_index,event_sequence,metadata,body_event_id,
+                coalesce(metadata->>'source','supplier_protocol') as source,false as raw
             from provider_semantic_trajectory_steps
             where flow_run_id=$1 and node_run_id=$2 and event_id=$3
             union all
-            select metadata->>'invocation_id', (metadata->>'provider_attempt_index')::bigint,
-                (metadata->>'sequence')::bigint,(metadata->>'sequence')::bigint
+            select metadata->>'invocation_id',(metadata->>'provider_attempt_index')::bigint,
+                event_sequence,metadata,event_id,'supplier_protocol',true
             from provider_protocol_trajectory_events
             where flow_run_id=$1 and node_run_id=$2 and event_id=$3
-                and event_type='provider_protocol_observation'
+                and event_type='provider_protocol_observation' and $4
             limit 1
         "#,
         )
         .bind(flow_run_id)
         .bind(node_run_id)
         .bind(event_id)
+        .bind(view == ProviderTrajectoryView::Protocol)
         .fetch_optional(self.pool())
         .await?;
         let Some(scope) = scope else { return Ok(None) };
+        let source: String = scope.get("source");
+        let native = source == "ai_native";
+        let metadata: Value = scope.get("metadata");
+        if view == ProviderTrajectoryView::Semantic {
+            let sequence: i64 = scope.get("event_sequence");
+            let items = if cursor.is_some_and(|cursor| cursor >= sequence) {
+                vec![]
+            } else {
+                let body = if native {
+                    let payload: Value = sqlx::query_scalar(
+                        "select runtime_original_json(payload,raw_json_payloads,'payload') from runtime_events where id=$1 and flow_run_id=$2 and node_run_id=$3"
+                    ).bind(scope.get::<Uuid,_>("body_event_id")).bind(flow_run_id).bind(node_run_id)
+                        .fetch_one(self.pool()).await?;
+                    payload
+                        .get("body")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| anyhow!("native trajectory body missing"))?
+                        .to_owned()
+                } else {
+                    let mut historical = metadata.clone();
+                    historical["source"] = Value::String(source.clone());
+                    serde_json::to_string(&historical)?
+                };
+                vec![ProviderTrajectoryEvidence {
+                    event_id,
+                    sequence,
+                    body,
+                    encoding: "utf8".into(),
+                }]
+            };
+            return Ok(Some(ProviderTrajectoryBody {
+                event_id,
+                source,
+                evidence_scope: "step".into(),
+                items,
+                next_cursor: None,
+            }));
+        }
+        let raw: bool = scope.get("raw");
+        let first = if native {
+            None
+        } else {
+            metadata
+                .get(if raw {
+                    "sequence"
+                } else {
+                    "raw_sequence_start"
+                })
+                .and_then(Value::as_i64)
+        };
+        let last = if native {
+            None
+        } else {
+            metadata
+                .get(if raw { "sequence" } else { "raw_sequence_end" })
+                .and_then(Value::as_i64)
+        };
         let limit = limit.clamp(1, 16);
         let rows = sqlx::query(
             r#"
@@ -154,7 +165,8 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
                 and p.event_type='provider_protocol_observation'
                 and p.metadata->>'invocation_id'=$3
                 and (p.metadata->>'provider_attempt_index')::bigint=$4
-                and (p.metadata->>'sequence')::bigint between $5 and $6
+                and ($5::bigint is null or (p.metadata->>'sequence')::bigint >= $5)
+                and ($6::bigint is null or (p.metadata->>'sequence')::bigint <= $6)
                 and (p.metadata->>'sequence')::bigint > $7
             order by (p.metadata->>'sequence')::bigint limit $8
         "#,
@@ -163,8 +175,16 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         .bind(node_run_id)
         .bind(scope.get::<String, _>("invocation_id"))
         .bind(scope.get::<i64, _>("provider_attempt_index"))
-        .bind(scope.get::<i64, _>("first"))
-        .bind(scope.get::<i64, _>("last"))
+        .bind(if native {
+            None
+        } else {
+            Some(first.unwrap_or(1))
+        })
+        .bind(if native {
+            None
+        } else {
+            Some(last.unwrap_or(0))
+        })
         .bind(cursor.unwrap_or(0))
         .bind(limit + 1)
         .fetch_all(self.pool())
@@ -198,6 +218,8 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         };
         Ok(Some(ProviderTrajectoryBody {
             event_id,
+            source: "supplier_protocol".into(),
+            evidence_scope: if native { "invocation" } else { "step" }.into(),
             items,
             next_cursor,
         }))

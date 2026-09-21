@@ -1,5 +1,6 @@
 use control_plane_contracts::ports::{
     AppendRuntimeEventInput, OrchestrationRuntimeRepository, ProviderTrajectoryRepository,
+    ProviderTrajectoryView,
 };
 use serde_json::json;
 use storage_durable_postgres::PgControlPlaneStore;
@@ -93,14 +94,28 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
     assert_eq!(next.items[0].metadata["raw_sequence_end"], 2);
     assert!(next.next_cursor.is_none());
     let body = store
-        .provider_trajectory_body(flow_run_id, node_run_id, first.id, None, 1)
+        .provider_trajectory_body(
+            flow_run_id,
+            node_run_id,
+            first.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol,
+        )
         .await
         .unwrap()
         .unwrap();
     assert_eq!(body.items[0].body, original);
     assert!(body.next_cursor.is_none());
     let evidence = store
-        .provider_trajectory_body(flow_run_id, node_run_id, reply.id, None, 1)
+        .provider_trajectory_body(
+            flow_run_id,
+            node_run_id,
+            reply.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol,
+        )
         .await
         .unwrap()
         .unwrap();
@@ -108,29 +123,64 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
     assert_eq!(evidence.items[0].body, original);
     assert_eq!(evidence.next_cursor, Some(1));
     let evidence_next = store
-        .provider_trajectory_body(flow_run_id, node_run_id, reply.id, evidence.next_cursor, 1)
+        .provider_trajectory_body(
+            flow_run_id,
+            node_run_id,
+            reply.id,
+            evidence.next_cursor,
+            1,
+            ProviderTrajectoryView::Protocol,
+        )
         .await
         .unwrap()
         .unwrap();
     assert_eq!(evidence_next.items[0].body, "x".repeat(1_000_000));
     assert!(evidence_next.next_cursor.is_none());
     assert!(store
-        .provider_trajectory_body(flow_run_id, Uuid::now_v7(), reply.id, None, 1)
+        .provider_trajectory_body(
+            flow_run_id,
+            Uuid::now_v7(),
+            reply.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol
+        )
         .await
         .unwrap()
         .is_none());
     assert!(store
-        .provider_trajectory_body(Uuid::now_v7(), node_run_id, reply.id, None, 1)
+        .provider_trajectory_body(
+            Uuid::now_v7(),
+            node_run_id,
+            reply.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol
+        )
         .await
         .unwrap()
         .is_none());
     assert!(store
-        .provider_trajectory_body(flow_run_id, Uuid::now_v7(), first.id, None, 1)
+        .provider_trajectory_body(
+            flow_run_id,
+            Uuid::now_v7(),
+            first.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol
+        )
         .await
         .unwrap()
         .is_none());
     assert!(store
-        .provider_trajectory_body(Uuid::now_v7(), node_run_id, first.id, None, 1)
+        .provider_trajectory_body(
+            Uuid::now_v7(),
+            node_run_id,
+            first.id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol
+        )
         .await
         .unwrap()
         .is_none());
@@ -161,3 +211,5 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
         "incomplete"
     );
 }
+
+mod native;

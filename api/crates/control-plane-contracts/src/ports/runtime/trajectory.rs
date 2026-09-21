@@ -1,6 +1,14 @@
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrajectoryView {
+    #[default]
+    Semantic,
+    Protocol,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderTrajectoryStep {
@@ -19,6 +27,8 @@ pub struct ProviderTrajectoryPage {
     pub observation_count: i64,
     pub persist_failed_count: i64,
     pub integrity: String,
+    pub protocol_integrity: String,
+    pub protocol_persist_failed_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +42,8 @@ pub struct ProviderTrajectoryEvidence {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderTrajectoryBody {
     pub event_id: Uuid,
+    pub source: String,
+    pub evidence_scope: String,
     pub items: Vec<ProviderTrajectoryEvidence>,
     pub next_cursor: Option<i64>,
 }
@@ -52,5 +64,6 @@ pub trait ProviderTrajectoryRepository: Send + Sync {
         event_id: Uuid,
         cursor: Option<i64>,
         limit: i64,
+        view: ProviderTrajectoryView,
     ) -> anyhow::Result<Option<ProviderTrajectoryBody>>;
 }
