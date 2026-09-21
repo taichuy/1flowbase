@@ -265,7 +265,6 @@ async fn write<F, Fut>(
     Fut: std::future::Future<Output = bool>,
 {
     use std::sync::atomic::Ordering::Relaxed;
-    let mut projector = super::semantic_trajectory::SemanticProjector::default();
     let mut host_dropped = 0;
     let mut success = false;
     let mut done = false;
@@ -302,55 +301,18 @@ async fn write<F, Fut>(
         if count != host_dropped {
             capture.dropped_count += count - host_dropped;
             host_dropped = count;
-            if let Some(integrity) = capture.integrity(run, false) {
-                projector.observe(&integrity);
-            }
         }
         if let Some(mut payload) = capture.observe(Some(run), &observation.event) {
             payload.payload["sequence"] = json!(observation.sequence);
-            // Bound the entire projection/write batch, not just each individual row.
-            // A single raw frame may project multiple semantic steps.
-            let deadline = drain_deadline
-                .unwrap_or_else(|| tokio::time::Instant::now() + WRITE_TIMEOUT)
-                .min(tokio::time::Instant::now() + WRITE_TIMEOUT);
-            let batch = async {
-                if persist(&mut writer, &payload).await {
-                    for semantic in projector.observe(&payload) {
-                        if !persist(&mut writer, &semantic).await {
-                            capture.persist_failed_count += 1;
-                        }
-                    }
-                } else {
-                    capture.persist_failed_count += 1;
-                }
-            };
-            if tokio::time::timeout_at(deadline, batch).await.is_err() {
+            if !persist(&mut writer, &payload).await {
                 capture.persist_failed_count += 1;
-            }
-            if capture.persist_failed_count > 0 || capture.capture_failed {
-                if let Some(integrity) = capture.integrity(run, false) {
-                    projector.observe(&integrity);
-                }
             }
         }
     }
     capture.dropped_count += dropped.load(Relaxed).saturating_sub(host_dropped);
     if let Some(integrity) = capture.integrity(run, success) {
-        let batch = async {
-            for semantic in projector.observe(&integrity) {
-                if !persist(&mut writer, &semantic).await {
-                    capture.persist_failed_count += 1;
-                }
-            }
-        };
-        if tokio::time::timeout(WRITE_TIMEOUT, batch).await.is_err() {
-            capture.persist_failed_count += 1;
-        }
-        // Rebuild after semantic failures: never publish complete after a failed write.
-        if let Some(integrity) = capture.integrity(run, success) {
-            if !persist(&mut writer, &integrity).await {
-                tracing::warn!(%run, "provider protocol integrity persistence failed");
-            }
+        if !persist(&mut writer, &integrity).await {
+            tracing::warn!(%run, "provider protocol integrity persistence failed");
         }
     }
 }

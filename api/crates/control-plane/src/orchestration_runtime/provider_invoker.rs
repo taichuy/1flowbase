@@ -17,9 +17,9 @@ use crate::installed_provider_package::load_installed_provider_package;
 mod failover_queue;
 mod fee_lifecycle;
 mod main_instance_routing;
+mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;
-mod semantic_trajectory;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
@@ -614,16 +614,30 @@ where
             }
         }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
-        let (protocol_observation, protocol_completion) = protocol_observation::start(
+        let native_capture = native_trajectory::start(
             self.repository.clone(),
             self.flow_run_id,
-            protocol_observation::Capture::new(
-                active_node
-                    .as_ref()
-                    .map(|node| (node.node_id.clone(), node.node_run_id)),
-                &input,
-            ),
+            active_node
+                .as_ref()
+                .map(|node| (node.node_id.clone(), node.node_run_id)),
+            &input,
         );
+        let native_observer = native_capture.observer();
+        let (protocol_observation, protocol_completion) =
+            if std::env::var("FLOWBASE_PROVIDER_PROTOCOL_CAPTURE").as_deref() == Ok("1") {
+                protocol_observation::start(
+                    self.repository.clone(),
+                    self.flow_run_id,
+                    protocol_observation::Capture::new(
+                        active_node
+                            .as_ref()
+                            .map(|node| (node.node_id.clone(), node.node_run_id)),
+                        &input,
+                    ),
+                )
+            } else {
+                (None, protocol_observation::Completion::default())
+            };
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,
             node_run_id,
@@ -661,6 +675,7 @@ where
                             &mut event,
                             &canonical_tool_registry_for_task,
                         );
+                    native_observer.observe(&event);
                     record_first_token_timing(
                         &first_token_timing_for_task,
                         &event,
@@ -935,6 +950,14 @@ where
             } else {
                 (None, None)
             };
+        native_capture.finish(
+            invocation_result.as_ref().ok().map(|output| &output.result),
+            invocation_result
+                .as_ref()
+                .err()
+                .map(|_| "invocation failed"),
+            forwarding_error.is_none(),
+        );
         protocol_completion.finish(invocation_result.is_ok() && forwarding_error.is_none());
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {

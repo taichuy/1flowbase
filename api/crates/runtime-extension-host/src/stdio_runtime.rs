@@ -149,7 +149,7 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(&executable_path, &mut process.stdin, request, false).await?;
         let mut timeout_state = ProviderStreamTimeoutState::new();
         let (completion_sender, mut completion_receiver) =
             tokio::sync::mpsc::unbounded_channel::<HostCallCompletion>();
@@ -429,7 +429,7 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(&executable_path, &mut process.stdin, request, false).await?;
 
         let mut timeout_state = ProviderStreamTimeoutState::new();
         while let Some(line) = next_provider_stdout_line(
@@ -470,7 +470,13 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(
+            &executable_path,
+            &mut process.stdin,
+            request,
+            protocol_observation.is_some(),
+        )
+        .await?;
 
         let mut events = Vec::new();
         let mut result = None;
@@ -815,7 +821,7 @@ pub async fn call_executable(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serialize_provider_stdio_request(request)
+        let mut payload = serialize_provider_stdio_request(request, false)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         payload.push(b'\n');
         stdin
@@ -835,15 +841,21 @@ pub async fn call_executable(
 
 /// Negotiate additive events outside the strict ProviderInvocationInput schema.
 /// Older providers ignore unknown outer request fields; callers cannot supply this field.
-fn serialize_provider_stdio_request(request: &ProviderStdioRequest) -> serde_json::Result<Vec<u8>> {
+fn serialize_provider_stdio_request(
+    request: &ProviderStdioRequest,
+    capture_protocol: bool,
+) -> serde_json::Result<Vec<u8>> {
     let mut wire = serde_json::to_value(request)?;
-    if matches!(
-        request.method,
-        extension_contracts::provider_contract::ProviderStdioMethod::Invoke
-    ) && matches!(
-        request.input.get("operation").and_then(Value::as_str),
-        None | Some("generate")
-    ) {
+    if capture_protocol
+        && matches!(
+            request.method,
+            extension_contracts::provider_contract::ProviderStdioMethod::Invoke
+        )
+        && matches!(
+            request.input.get("operation").and_then(Value::as_str),
+            None | Some("generate")
+        )
+    {
         wire[extension_contracts::provider_contract::PROVIDER_HOST_CAPABILITIES_FIELD] =
             serde_json::json!([
                 extension_contracts::provider_contract::PROVIDER_PROTOCOL_OBSERVATION_CAPABILITY
@@ -930,8 +942,9 @@ async fn write_worker_request(
     executable_path: &Path,
     stdin: &mut ChildStdin,
     request: &ProviderStdioRequest,
+    capture_protocol: bool,
 ) -> FrameworkResult<()> {
-    let mut payload = serialize_provider_stdio_request(request)
+    let mut payload = serialize_provider_stdio_request(request, capture_protocol)
         .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
     payload.push(b'\n');
     stdin
@@ -1285,12 +1298,17 @@ mod tests {
             input: serde_json::json!({"model": "fixture", "run_context": {"host_capabilities": ["untrusted"]}}),
         };
         let wire: Value =
-            serde_json::from_slice(&serialize_provider_stdio_request(&request).unwrap()).unwrap();
+            serde_json::from_slice(&serialize_provider_stdio_request(&request, true).unwrap())
+                .unwrap();
         assert_eq!(
             wire["host_capabilities"],
             serde_json::json!(["protocol_observation_v1"])
         );
         assert_eq!(wire["input"], request.input);
+        let off: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&request, false).unwrap())
+                .unwrap();
+        assert!(off.get("host_capabilities").is_none());
         // The old stdio envelope ignores new outer metadata without changing strict input.
         let legacy: ProviderStdioRequest = serde_json::from_value(wire).unwrap();
         assert_eq!(legacy, request);
@@ -1299,7 +1317,8 @@ mod tests {
             ..request
         };
         let wire: Value =
-            serde_json::from_slice(&serialize_provider_stdio_request(&unary).unwrap()).unwrap();
+            serde_json::from_slice(&serialize_provider_stdio_request(&unary, true).unwrap())
+                .unwrap();
         assert!(wire.get("host_capabilities").is_none());
     }
 

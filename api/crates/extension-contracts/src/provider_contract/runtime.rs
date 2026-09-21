@@ -382,7 +382,7 @@ impl std::error::Error for ProviderCompactError {}
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderStreamEvent {
     /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
-    /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// This is an optional diagnostic lane, independent of the host Native semantic trajectory.
     /// Emit only when outer stdio host_capabilities declares protocol_observation_v1.
     /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
     /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.
@@ -457,7 +457,7 @@ pub enum ProviderStreamEvent {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRuntimeLine {
     /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
-    /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// This is an optional diagnostic lane, independent of the host Native semantic trajectory.
     /// Emit only when outer stdio host_capabilities declares protocol_observation_v1.
     /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
     /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.

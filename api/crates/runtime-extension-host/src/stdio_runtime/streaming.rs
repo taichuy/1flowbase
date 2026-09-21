@@ -51,7 +51,7 @@ pub async fn call_executable_streaming(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serialize_provider_stdio_request(request)
+        let mut payload = serialize_provider_stdio_request(request, protocol_observation.is_some())
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         payload.push(b'\n');
         stdin
