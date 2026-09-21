@@ -202,8 +202,10 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
         ]
     );
     assert!(
-        page.items.iter().all(|item| item.role.as_deref() != Some("system")
-            && item.role.as_deref() != Some("developer")),
+        page.items
+            .iter()
+            .all(|item| item.role.as_deref() != Some("system")
+                && item.role.as_deref() != Some("developer")),
         "context never becomes part of the paged conversation stream"
     );
 }
@@ -303,7 +305,8 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
         }),
     )
     .await;
-    let replaced = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    let replaced =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(replaced.total_count, 2);
     assert_eq!(
         replaced
@@ -454,7 +457,8 @@ async fn native_projection_refreshes_when_late_facts_arrive() {
     )
     .await;
 
-    let refreshed = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    let refreshed =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(
         refreshed
             .items
@@ -517,7 +521,8 @@ async fn run_conversation_keeps_message_ids_and_reports_updated_existing_items()
 
     // #2090 AC-004: an updated item keeps its identity so a client can replace
     // the stale copy instead of showing both.
-    let finished = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    let finished =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(finished.items[0].id, prompt_id);
     assert_eq!(finished.items[0].status, "succeeded");
     assert_eq!(
@@ -612,7 +617,9 @@ async fn run_conversation_after_cursor_drains_a_backlog_larger_than_one_page() {
             .iter()
             .map(|(_, content)| content.as_str())
             .collect::<Vec<_>>(),
-        (6..13).map(|index| format!("answer-{index}")).collect::<Vec<_>>()
+        (6..13)
+            .map(|index| format!("answer-{index}"))
+            .collect::<Vec<_>>()
     );
     let sequences = collected
         .iter()

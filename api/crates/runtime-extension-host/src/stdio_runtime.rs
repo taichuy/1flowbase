@@ -125,6 +125,14 @@ struct ProviderWorkerProcess {
     stdout: Lines<BufReader<ChildStdout>>,
 }
 
+#[derive(Clone)]
+struct StreamingCallContext {
+    required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+    host_calls: Option<ProviderHostCallContext>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ProviderWorkerProcessControl {
     child: Arc<Mutex<Child>>,
@@ -331,10 +339,12 @@ impl ProviderWorker {
             self.call_streaming_inner(
                 request,
                 timeout_limits,
-                required_live_events,
-                diagnostic_live_events,
-                event_observer,
-                host_calls,
+                StreamingCallContext {
+                    required_live_events,
+                    diagnostic_live_events,
+                    event_observer,
+                    host_calls,
+                },
                 &mut outcome,
             ),
         )
@@ -453,10 +463,7 @@ impl ProviderWorker {
         &mut self,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        host_calls: Option<ProviderHostCallContext>,
+        context: StreamingCallContext,
         outcome: &mut ProviderStreamOutcome,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let executable_path = self.executable_path.clone();
@@ -499,7 +506,7 @@ impl ProviderWorker {
                     &executable_path,
                     &mut process.stdin,
                     frame,
-                    host_calls.as_ref(),
+                    context.host_calls.as_ref(),
                     &completion_sender,
                     &mut active_host_calls,
                 )
@@ -524,12 +531,12 @@ impl ProviderWorker {
                     if let Some(event) = other.into_stream_event() {
                         outcome.observe(&event);
                         timeout_state.record_stream_event(&event);
-                        if let Some(event_observer) = &event_observer {
+                        if let Some(event_observer) = &context.event_observer {
                             let _ = event_observer.send(());
                         }
                         forward_provider_live_event(
-                            required_live_events.as_ref(),
-                            diagnostic_live_events.as_ref(),
+                            context.required_live_events.as_ref(),
+                            context.diagnostic_live_events.as_ref(),
                             event.clone(),
                         )
                         .await?;

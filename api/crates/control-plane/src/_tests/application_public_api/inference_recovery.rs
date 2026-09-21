@@ -488,7 +488,7 @@ async fn assert_recovery_successor_context(current_context: Option<ProtocolConte
     let frozen_input = grant.frozen_input_payload.clone();
     let expected_budget = grant.remaining_attempts;
     let expected_deadline = grant.absolute_deadline_unix_ms;
-    request.metadata.set_inference_recovery(grant);
+    request.metadata.set_inference_recovery(*grant);
     let actor = ApplicationApiKeyService::new(f.repository.clone())
         .authenticate_bearer_token(&f.command.bearer_token)
         .await

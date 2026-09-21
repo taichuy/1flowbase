@@ -368,7 +368,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         }
         PreparedPublishedCallbackResume::RecoverInference { grant } => {
             CompatibleResumeAdmission::StartNewTurnFromHistory {
-                recovery: Some(grant),
+                recovery: Some(*grant),
             }
         }
     })

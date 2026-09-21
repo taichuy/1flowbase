@@ -86,7 +86,12 @@ pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
     {
         snapshot.variable_pool.insert("sys".into(), json!({}));
     }
-    snapshot.variable_pool.get_mut("sys").unwrap()["native_inference_recovery"] = grant.clone();
+    let system_variables = snapshot
+        .variable_pool
+        .get_mut("sys")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("native_recovery_checkpoint_mismatch"))?;
+    system_variables.insert("native_inference_recovery".into(), grant.clone());
     let binding = &grant["binding"];
     let text = |key: &str| -> Result<String> {
         binding[key]

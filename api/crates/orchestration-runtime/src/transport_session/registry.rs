@@ -287,8 +287,7 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         // completion's own state lease instead of the in-flight orphan grace,
         // so a legitimate successor is not reaped before it can return.
         if record.logical.state == TransportSessionState::Orphaned {
-            record.logical.state_deadline =
-                capped_state_deadline_for(&config, record, target, now);
+            record.logical.state_deadline = capped_state_deadline_for(&config, record, target, now);
             return Ok(());
         }
         if !valid_transition(record.logical.state, target) && record.logical.state != target {

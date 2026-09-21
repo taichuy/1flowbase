@@ -368,7 +368,12 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         routes("system.system-runtime"),
         vec![
             ("GET", "/api/console/system/release-status"),
+            ("GET", "/api/console/system/runtime-processes"),
             ("GET", "/api/console/system/runtime-profile"),
+            (
+                "POST",
+                "/api/console/system/runtime-profile/processes/{pid}/terminate",
+            ),
         ]
     );
     let mcp_routes = routes("system.mcp-management");

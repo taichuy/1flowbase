@@ -89,9 +89,13 @@ pub struct ResumePublishedCallbackResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreparedPublishedCallbackResume {
-    Resume { initial_run: Box<NativeRunResult> },
+    Resume {
+        initial_run: Box<NativeRunResult>,
+    },
     StartNewTurnFromHistory,
-    RecoverInference { grant: NativeInferenceRecoveryGrant },
+    RecoverInference {
+        grant: Box<NativeInferenceRecoveryGrant>,
+    },
 }
 
 struct PublishedCallbackResumeContext {
@@ -159,6 +163,14 @@ where
             if command.source == PublishedCallbackResumeSource::OpenAiResponses
                 && context.flow_run.status == domain::FlowRunStatus::Failed
             {
+                if context.callback_task.status != domain::CallbackTaskStatus::Completed
+                    || context.callback_task.callback_kind != "llm_tool_calls"
+                {
+                    return Err(ControlPlaneError::Conflict(
+                        "native_recovery_not_failed_inference",
+                    )
+                    .into());
+                }
                 let recovery_callback = inference_recovery::load_owned_evidence(
                     &self.repository,
                     &context.actor,
@@ -192,7 +204,9 @@ where
                     command,
                     (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
                 )?;
-                return Ok(PreparedPublishedCallbackResume::RecoverInference { grant });
+                return Ok(PreparedPublishedCallbackResume::RecoverInference {
+                    grant: Box::new(grant),
+                });
             }
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
                 && callback_failure_allows_new_turn(&context.flow_run)

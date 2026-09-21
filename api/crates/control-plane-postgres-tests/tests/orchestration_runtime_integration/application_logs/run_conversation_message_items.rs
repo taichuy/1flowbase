@@ -164,10 +164,12 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
     assert_eq!(initial_page.newest_sequence, Some(4));
     assert_eq!(initial_page.contexts.len(), 1);
     assert_eq!(initial_page.contexts[0].role, "system");
-    assert_eq!(initial_page.contexts[0].context_source, "application_config");
     assert_eq!(
-        initial_page.contexts[0].content,
-        "Use concise Chinese.",
+        initial_page.contexts[0].context_source,
+        "application_config"
+    );
+    assert_eq!(
+        initial_page.contexts[0].content, "Use concise Chinese.",
         "the effective system prompt stays discoverable beside the newest page"
     );
     assert_eq!(
@@ -661,7 +663,13 @@ async fn non_terminal_run_projects_retained_input_before_the_call_finishes() {
                 item.is_current,
             ))
             .collect::<Vec<_>>(),
-        vec![(None, Some("running question"), Some("gpt-running"), "running", true)]
+        vec![(
+            None,
+            Some("running question"),
+            Some("gpt-running"),
+            "running",
+            true
+        )]
     );
     assert_eq!(projection_page.contexts.len(), 1);
     assert_eq!(
@@ -809,7 +817,11 @@ async fn terminal_projection_missing_rebuilds_conversation_message_projection() 
                 context.content.as_str(),
             ))
             .collect::<Vec<_>>(),
-        vec![("system", "application_config", "Use the recovered system prompt.")]
+        vec![(
+            "system",
+            "application_config",
+            "Use the recovered system prompt."
+        )]
     );
 }
 

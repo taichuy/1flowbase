@@ -306,8 +306,18 @@ fn ac_002_013_system_route_bindings_are_explicit_and_stable() {
             ),
             (
                 "GET",
+                "/api/console/system/runtime-processes",
+                "system.runtime_processes.view",
+            ),
+            (
+                "GET",
                 "/api/console/system/release-status",
                 "system.release_status.view",
+            ),
+            (
+                "POST",
+                "/api/console/system/runtime-profile/processes/:pid/terminate",
+                "system.runtime_process.terminate",
             ),
         ],
     );

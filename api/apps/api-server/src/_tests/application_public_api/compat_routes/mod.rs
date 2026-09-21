@@ -433,7 +433,8 @@ async fn publish_application_with_provider(
                     "supported_efforts": ["low", "medium", "high"]
                 }
             },
-            "deepseek-v4-flash"
+            "deepseek-v4-flash",
+            "provider/custom-model:latest"
         ]),
     )
     .await;

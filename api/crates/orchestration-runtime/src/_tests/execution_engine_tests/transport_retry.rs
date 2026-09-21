@@ -138,7 +138,8 @@ impl ProviderInvoker for SequencedTransportInvoker {
             }
             ScriptedAttempt::ErrorWithRawDetails { kind, mut details } => {
                 if details["1flowbase_provider_recovery"]["transport_epoch"] == "$current" {
-                    details["1flowbase_provider_recovery"]["transport_epoch"] = input.run_context["provider_recovery"]["transport_epoch"].clone();
+                    details["1flowbase_provider_recovery"]["transport_epoch"] =
+                        input.run_context["provider_recovery"]["transport_epoch"].clone();
                 }
                 return Err(anyhow::Error::new(
                     ExtensionContractError::RuntimeContract {
@@ -149,7 +150,7 @@ impl ProviderInvoker for SequencedTransportInvoker {
                             provider_details: Some(details),
                         }),
                     },
-                ))
+                ));
             }
         };
         let retryable_transport_failure = output.events.iter().any(|event| {
@@ -474,17 +475,25 @@ async fn err_path_typed_logical_retry_receipt_authorizes_one_bounded_retry() {
         .expect("flow should execute");
     let attempts = llm_attempts(&outcome);
     assert_eq!(attempts.len(), 2);
-    assert_eq!(attempts[0]["ai_native_recovery"]["decision"], json!("retry"));
+    assert_eq!(
+        attempts[0]["ai_native_recovery"]["decision"],
+        json!("retry")
+    );
     assert_eq!(attempts[0]["ai_native_recovery"]["outer_attempt"], json!(0));
     assert_eq!(
         attempts[0]["ai_native_recovery"]["provider_inner_receipt"]["socket_incarnation"],
         json!(6)
     );
-    assert_eq!(attempts[0]["error_code"], json!("provider_transport_unavailable"));
+    assert_eq!(
+        attempts[0]["error_code"],
+        json!("provider_transport_unavailable")
+    );
     assert_eq!(attempts[1]["is_retry"], json!(true));
     assert_eq!(attempts[1]["status"], json!("succeeded"));
 
-    let ids = invocation_ids.lock().expect("invocation ids mutex poisoned");
+    let ids = invocation_ids
+        .lock()
+        .expect("invocation ids mutex poisoned");
     assert_eq!(ids.len(), 2);
     assert_ne!(ids[0], ids[1]);
 }
@@ -554,7 +563,10 @@ async fn err_path_terminal_socketless_receipt_stops_without_replay() {
         attempts[0]["error_code"],
         json!("provider_transport_unavailable")
     );
-    assert!(matches!(outcome.stop_reason, ExecutionStopReason::Failed(_)));
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Failed(_)
+    ));
     assert_eq!(
         invocation_ids
             .lock()
@@ -604,15 +616,43 @@ async fn exhausted_error_preserves_first_last_and_final_decision_in_engine_outco
             }
         }),
     }]);
-    let outcome = start_flow_debug_run(&base_plan(), &json!({"node-start":{"query":"hello"}}), &invoker).await.unwrap();
-    assert_eq!(ids.lock().unwrap().len(), 1, "terminal receipt must not cause an outer provider call");
+    let outcome = start_flow_debug_run(
+        &base_plan(),
+        &json!({"node-start":{"query":"hello"}}),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        ids.lock().unwrap().len(),
+        1,
+        "terminal receipt must not cause an outer provider call"
+    );
     let attempts = llm_attempts(&outcome);
     let metric = &attempts[0];
-    assert_eq!(metric["ai_native_recovery"]["decision"], "semantic_terminal");
-    assert_eq!(metric["ai_native_recovery"]["provider_attempts_consumed"], 2);
-    assert_eq!(metric["1flowbase_provider_recovery_diagnostics"]["first_failure"]["close_code"], 1011);
-    let ExecutionStopReason::Failed(failure) = outcome.stop_reason else { panic!("expected provider failure") };
-    assert_eq!(failure.error_payload["1flowbase_provider_recovery_diagnostics"]["last_failure"]["close_code"], 1008);
-    assert_eq!(failure.error_payload["ai_native_recovery"]["decision"], "semantic_terminal");
+    assert_eq!(
+        metric["ai_native_recovery"]["decision"],
+        "semantic_terminal"
+    );
+    assert_eq!(
+        metric["ai_native_recovery"]["provider_attempts_consumed"],
+        2
+    );
+    assert_eq!(
+        metric["1flowbase_provider_recovery_diagnostics"]["first_failure"]["close_code"],
+        1011
+    );
+    let ExecutionStopReason::Failed(failure) = outcome.stop_reason else {
+        panic!("expected provider failure")
+    };
+    assert_eq!(
+        failure.error_payload["1flowbase_provider_recovery_diagnostics"]["last_failure"]
+            ["close_code"],
+        1008
+    );
+    assert_eq!(
+        failure.error_payload["ai_native_recovery"]["decision"],
+        "semantic_terminal"
+    );
     assert!(!failure.error_payload.to_string().contains("SECRET_CANARY"));
 }

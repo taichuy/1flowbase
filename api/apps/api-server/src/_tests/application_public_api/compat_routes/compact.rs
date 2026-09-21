@@ -579,7 +579,7 @@ async fn publish_compact_application(
         .iter_mut()
         .find(|node| node["type"] == "start")
         .expect("Compact fixture draft should contain a start node");
-    start_node["config"]["model_list"] = json!(["fixture_compact"]);
+    start_node["config"]["model_list"] = json!(["provider/custom-model:latest"]);
     let llm_node = nodes
         .iter_mut()
         .find(|node| node["type"] == "llm")
@@ -669,7 +669,7 @@ fn write_compact_provider_fixture(root: &std::path::Path, mode: CompactFixtureMo
         .expect("Compact fixture manifest should be readable");
     manifest = manifest.replace(
         "  capabilities:\n    - config.validate\n",
-        "  capabilities:\n    - config.validate\n    - models.list\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n",
+        "  capabilities:\n    - config.validate\n    - models.list\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n    - responses.native_output.v1\n",
     );
     fs::write(root.join("manifest.yaml"), manifest)
         .expect("Compact fixture manifest should declare both Compact capabilities");

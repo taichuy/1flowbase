@@ -1534,10 +1534,7 @@ async fn admission_rejections_are_locatable_by_their_exact_branch() {
         .unwrap();
     let details = admission_diagnostics(&error);
     assert!(reason(error).contains("transport_session_scope_unknown"));
-    assert_eq!(
-        details["connection_scope_bound"],
-        serde_json::json!(true)
-    );
+    assert_eq!(details["connection_scope_bound"], serde_json::json!(true));
     assert_eq!(details["state"], serde_json::Value::Null);
 
     // Host shutdown is its own branch as well.
