@@ -7,7 +7,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 const MAX_IDENTITIES: usize = 4096;
 const MAX_SCHEMAS: usize = 128;
-const MAX_SCHEMA_BYTES: usize = 256 * 1024;
 const MAX_STEPS_PER_VALUE: usize = 512;
 
 pub(super) struct Classifier {
@@ -22,9 +21,8 @@ pub(super) struct Classifier {
     root_at: Option<String>,
     fact_bytes: usize,
     output_seen: BTreeSet<String>,
-    calls: BTreeMap<String, (Uuid, String)>,
-    schemas: BTreeMap<String, Value>,
-    schema_bytes: usize,
+    calls: BTreeMap<String, (Uuid, String, Option<String>)>,
+    schemas: super::schemas::SchemaIndex,
     usage_seen: bool,
     pub incomplete: bool,
     pub completed: bool,
@@ -49,8 +47,7 @@ impl Classifier {
             fact_bytes: 0,
             output_seen: BTreeSet::new(),
             calls: BTreeMap::new(),
-            schemas: BTreeMap::new(),
-            schema_bytes: 0,
+            schemas: Default::default(),
             usage_seen: false,
             incomplete: false,
             completed: false,
@@ -204,21 +201,10 @@ impl Classifier {
                 self.incomplete = true;
             }
             for tool in tools.into_iter().take(MAX_SCHEMAS) {
-                if self.schemas.len() >= MAX_SCHEMAS {
-                    self.incomplete = true;
-                    break;
-                }
                 let name = tool_name(&tool)
                     .unwrap_or_else(|| tool["type"].as_str().unwrap_or("tool").to_owned());
-                let size = serde_json::to_vec(&tool)
-                    .map(|v| v.len())
-                    .unwrap_or(MAX_SCHEMA_BYTES + 1);
-                if self.schema_bytes + size > MAX_SCHEMA_BYTES {
-                    self.incomplete = true;
-                    break;
-                }
-                self.schema_bytes += size;
-                self.schemas.insert(name.clone(), tool.clone());
+                self.schemas.insert_root(&tool);
+                self.incomplete |= self.schemas.incomplete;
                 let step = self.step(
                     Uuid::now_v7(),
                     "tool_definition",
@@ -311,7 +297,7 @@ impl Classifier {
         self.item(item, "emitted", at, facts);
     }
     fn item(&mut self, item: Value, origin: &str, at: &str, facts: &mut Vec<Fact>) {
-        if ["id", "call_id", "tool_call_id", "name"]
+        if ["id", "call_id", "tool_call_id", "name", "namespace"]
             .iter()
             .any(|key| item[*key].as_str().is_some_and(|value| value.len() > 1024))
         {
@@ -342,12 +328,27 @@ impl Classifier {
             .as_str()
             .or_else(|| item["tool_call_id"].as_str())
             .and_then(bounded_id);
+        let declared_namespace = item["namespace"].as_str().and_then(bounded_id);
+        let valid_namespace = item["namespace"].is_null() || declared_namespace.is_some();
+        if !valid_namespace {
+            self.incomplete = true;
+        }
+        let related = if is_result && valid_namespace {
+            call_id
+                .as_ref()
+                .and_then(|id| self.calls.get(id))
+                .filter(|(_, _, namespace)| {
+                    declared_namespace
+                        .as_ref()
+                        .is_none_or(|declared| namespace.as_ref() == Some(declared))
+                })
+        } else {
+            None
+        };
+        let namespace =
+            declared_namespace.or_else(|| related.and_then(|(_, _, namespace)| namespace.clone()));
         let name = tool_name(&item)
-            .or_else(|| {
-                call_id
-                    .as_ref()
-                    .and_then(|id| self.calls.get(id).map(|(_, name)| name.clone()))
-            })
+            .or_else(|| related.map(|(_, name, _)| name.clone()))
             .unwrap_or_else(|| {
                 if is_result || is_call {
                     call_id.clone().unwrap_or_else(|| kind.into())
@@ -355,7 +356,9 @@ impl Classifier {
                     category.into()
                 }
             });
+        let related_step_id = related.map(|(id, _, _)| *id);
         let mut step = self.step(Uuid::now_v7(), category, &name, origin, at, &item);
+        step.namespace = namespace.clone();
         step.call_id = call_id.clone();
         step.item_id = item["id"].as_str().and_then(bounded_id);
         let mut sections = vec![("overview", item.clone())];
@@ -364,12 +367,15 @@ impl Classifier {
                 step.parameters_preview = Some(preview(args));
                 sections.push(("parameters", args.clone()));
             }
-            if let Some(schema) = self.schemas.get(&name) {
+            if let Some(schema) = valid_namespace
+                .then(|| self.schemas.get(namespace.as_deref(), &name))
+                .flatten()
+            {
                 sections.push(("schema", schema.clone()));
             }
             if let Some(id) = call_id {
                 if self.calls.len() < MAX_IDENTITIES {
-                    self.calls.insert(id, (step.id, name));
+                    self.calls.insert(id, (step.id, name, namespace));
                 } else {
                     self.incomplete = true;
                 }
@@ -380,9 +386,7 @@ impl Classifier {
                 step.preview = preview(value);
                 sections.push(("result", value.clone()));
             }
-            step.related_step_id = call_id
-                .as_ref()
-                .and_then(|id| self.calls.get(id).map(|(id, _)| *id));
+            step.related_step_id = related_step_id;
         } else if let Some(value) = item.get("content").or_else(|| item.get("summary")) {
             step.result_preview = Some(preview(value));
             sections.push(("result", value.clone()));
@@ -408,6 +412,7 @@ impl Classifier {
             created_at: at.into(),
             category: category.into(),
             name: preview_text(name),
+            namespace: item["namespace"].as_str().and_then(bounded_id),
             preview: preview(item),
             parameters_preview: None,
             result_preview: None,
@@ -480,14 +485,14 @@ impl Classifier {
         });
     }
 }
-fn bounded_id(value: &str) -> Option<String> {
+pub(super) fn bounded_id(value: &str) -> Option<String> {
     if value.len() <= 1024 {
         Some(value.into())
     } else {
         None
     }
 }
-fn tool_name(item: &Value) -> Option<String> {
+pub(super) fn tool_name(item: &Value) -> Option<String> {
     item["name"]
         .as_str()
         .or_else(|| item["function"]["name"].as_str())

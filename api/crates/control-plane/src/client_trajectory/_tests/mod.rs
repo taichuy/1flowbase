@@ -286,3 +286,5 @@ fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() 
         assert!(facts.iter().any(|fact|matches!(fact,ClientTrajectoryFact::Section {step_id,section:actual,value} if *step_id==id && actual==section && *value==expected)));
     }
 }
+
+mod namespaces;

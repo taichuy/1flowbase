@@ -26,6 +26,9 @@ pub struct ClientTrajectoryStep {
     pub created_at: String,
     pub category: String,
     pub name: String,
+    /// Actual Responses namespace; older metadata has no namespace.
+    #[serde(default)]
+    pub namespace: Option<String>,
     pub preview: String,
     pub parameters_preview: Option<String>,
     pub result_preview: Option<String>,

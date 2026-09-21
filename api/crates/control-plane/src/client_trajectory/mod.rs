@@ -3,6 +3,7 @@
 mod _tests;
 mod classify;
 mod decode;
+mod schemas;
 
 use crate::ports::{
     AppendClientTrajectoryInput, ClientTrajectoryFact, OrchestrationRuntimeRepository,

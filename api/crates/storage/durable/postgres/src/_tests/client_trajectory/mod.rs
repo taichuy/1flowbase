@@ -50,6 +50,7 @@ fn step(
         created_at: AT.into(),
         category: category.into(),
         name: "weather".into(),
+        namespace: None,
         preview: "北京".into(),
         parameters_preview: Some("city: 北京".into()),
         result_preview: None,
@@ -346,4 +347,75 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         .await
         .unwrap();
     assert_eq!(status, "succeeded");
+}
+
+#[tokio::test]
+async fn client_trajectory_cross_capture_namespace_is_exact_or_inherited_from_real_call() {
+    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let request = Uuid::now_v7();
+    begin(&store, flow, None, request).await;
+    let mut ids = Vec::new();
+    for namespace in [Some("github"), Some("docs"), None] {
+        let id = Uuid::now_v7();
+        ids.push(id);
+        let mut call = step(flow, None, request, id, "emitted", "tool_call");
+        call.namespace = namespace.map(str::to_owned);
+        if namespace.is_none() {
+            call.call_id = Some("legacy".into());
+        }
+        append(
+            &store,
+            flow,
+            None,
+            request,
+            ClientTrajectoryFact::Step { step: call },
+        )
+        .await;
+    }
+    // Old metadata remains nullable without a migration or raw-body backfill.
+    sqlx::query("update client_trajectory_steps set metadata=metadata-'namespace' where id=$1")
+        .bind(ids[2])
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let next = Uuid::now_v7();
+    begin(&store, flow, None, next).await;
+    let mut results = Vec::new();
+    for (namespace, call_id) in [
+        (Some("github"), "actual-call-id"),
+        (Some("unknown"), "actual-call-id"),
+        (None, "actual-call-id"),
+        (None, "legacy"),
+    ] {
+        let id = Uuid::now_v7();
+        results.push(id);
+        let mut result = step(flow, None, next, id, "submitted", "tool_result");
+        result.namespace = namespace.map(str::to_owned);
+        result.call_id = Some(call_id.into());
+        append(
+            &store,
+            flow,
+            None,
+            next,
+            ClientTrajectoryFact::Step { step: result },
+        )
+        .await;
+    }
+    let page = store
+        .client_trajectory_page(flow, None, None, 50)
+        .await
+        .unwrap();
+    let find = |id| page.items.iter().find(|step| step.id == id).unwrap();
+    assert_eq!(find(results[0]).related_step_id, Some(ids[0]));
+    assert_eq!(find(results[0]).namespace.as_deref(), Some("github"));
+    assert!(find(results[1]).related_step_id.is_none());
+    assert_eq!(find(results[1]).namespace.as_deref(), Some("unknown"));
+    assert_eq!(find(results[2]).related_step_id, Some(ids[1]));
+    assert_eq!(find(results[2]).namespace.as_deref(), Some("docs"));
+    assert_eq!(find(results[3]).related_step_id, Some(ids[2]));
+    assert!(find(results[3]).namespace.is_none());
+    for id in results {
+        assert_eq!(find(id).origin, "submitted");
+    }
 }

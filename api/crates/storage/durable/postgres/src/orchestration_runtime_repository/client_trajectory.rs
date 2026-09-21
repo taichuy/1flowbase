@@ -115,11 +115,12 @@ impl PgControlPlaneStore {
         let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_and(status='complete' and dropped_count=0 and persist_failed_count=0) then 'complete' else 'incomplete' end from client_trajectory_captures where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)")
             .bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
         let rows = sqlx::query(r#"
-            select s.metadata,s.event_sequence,related.id as related_step_id
+            select s.metadata,s.event_sequence,related.id as related_step_id,related.namespace as related_namespace
             from client_trajectory_steps s
             left join lateral (
-                select p.id from client_trajectory_steps p
+                select p.id,p.metadata->>'namespace' as namespace from client_trajectory_steps p
                 where p.flow_run_id=s.flow_run_id and p.node_run_id is not distinct from s.node_run_id and p.metadata->>'call_id'=s.metadata->>'call_id'
+                    and (s.metadata->>'namespace' is null or p.metadata->>'namespace'=s.metadata->>'namespace')
                     and p.id<>s.id and p.event_sequence<s.event_sequence
                     and p.metadata->>'category'='tool_call' and p.metadata->>'origin'='emitted'
                     and p.metadata->'available_sections' ? 'parameters'
@@ -136,6 +137,9 @@ impl PgControlPlaneStore {
             step.related_step_id = row
                 .get::<Option<Uuid>, _>("related_step_id")
                 .or(step.related_step_id);
+            if step.namespace.is_none() {
+                step.namespace = row.get::<Option<String>, _>("related_namespace");
+            }
             items.push(step);
         }
         let next_cursor = if more {
