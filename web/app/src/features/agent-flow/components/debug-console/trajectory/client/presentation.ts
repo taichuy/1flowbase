@@ -3,25 +3,25 @@ import { i18nText } from '../../../../../../shared/i18n/text';
 export function categoryLabel(category: string): string {
   switch (category) {
     case 'request':
-      return i18nText('agentFlow', 'clientTrajectory.request');
+      return i18nText('agentFlow', 'client_trajectory.request');
     case 'system':
-      return i18nText('agentFlow', 'clientTrajectory.system');
+      return i18nText('agentFlow', 'client_trajectory.system');
     case 'user':
-      return i18nText('agentFlow', 'clientTrajectory.user');
+      return i18nText('agentFlow', 'auto.user_input');
     case 'assistant':
-      return i18nText('agentFlow', 'clientTrajectory.assistant');
+      return i18nText('agentFlow', 'client_trajectory.assistant');
     case 'reasoning':
-      return i18nText('agentFlow', 'clientTrajectory.reasoning');
+      return i18nText('agentFlow', 'auto.reasoning');
     case 'tool_definition':
-      return i18nText('agentFlow', 'clientTrajectory.tool_definition');
+      return i18nText('agentFlow', 'client_trajectory.tool_definition');
     case 'tool_call':
-      return i18nText('agentFlow', 'clientTrajectory.tool_call');
+      return i18nText('agentFlow', 'auto.tool_call');
     case 'tool_result':
-      return i18nText('agentFlow', 'clientTrajectory.tool_result');
+      return i18nText('agentFlow', 'client_trajectory.tool_result');
     case 'usage':
-      return i18nText('agentFlow', 'clientTrajectory.usage');
+      return i18nText('agentFlow', 'client_trajectory.usage');
     case 'error':
-      return i18nText('agentFlow', 'clientTrajectory.error');
+      return i18nText('agentFlow', 'auto.error');
     default:
       return category;
   }
@@ -29,19 +29,19 @@ export function categoryLabel(category: string): string {
 export function sectionLabel(section: string): string {
   switch (section) {
     case 'overview':
-      return i18nText('agentFlow', 'clientTrajectory.overview');
+      return i18nText('agentFlow', 'trajectory.overview');
     case 'parameters':
-      return i18nText('agentFlow', 'clientTrajectory.parameters');
+      return i18nText('agentFlow', 'auto.parameters');
     case 'result':
-      return i18nText('agentFlow', 'clientTrajectory.result');
+      return i18nText('agentFlow', 'client_trajectory.result');
     case 'schema':
-      return i18nText('agentFlow', 'clientTrajectory.schema');
+      return i18nText('agentFlow', 'client_trajectory.tool_definition');
     case 'timing':
-      return i18nText('agentFlow', 'clientTrajectory.timing');
+      return i18nText('agentFlow', 'trajectory.time_axis');
     case 'usage':
-      return i18nText('agentFlow', 'clientTrajectory.usage');
+      return i18nText('agentFlow', 'client_trajectory.usage');
     case 'raw':
-      return i18nText('agentFlow', 'clientTrajectory.raw');
+      return i18nText('agentFlow', 'trajectory.protocol_integrity');
     default:
       return section;
   }

@@ -157,7 +157,9 @@ test('defaults to original client classification and lazily loads only selected 
     call.closest('.provider-trajectory__split')
   );
   fireEvent.click(within(inspector).getByRole('tab', { name: '参数' }));
-  await screen.findByText('  {"cmd":"pwd"}  ', { exact: false });
+  expect((await screen.findByText('{"cmd":"pwd"}')).textContent).toBe(
+    '  {"cmd":"pwd"}  '
+  );
   expect(
     loadClientTrajectorySection.mock.calls.some((args) => args[2] === 'raw')
   ).toBe(false);
@@ -174,6 +176,8 @@ test('defaults to original client classification and lazily loads only selected 
   expect((await screen.findByText(/客户端原文/)).textContent).toBe(
     '  { "input": "客户端原文" }\n'
   );
+  expect(within(inspector).getByText('utf8')).toBeInTheDocument();
+  expect(within(inspector).getByText('request')).toBeInTheDocument();
   fireEvent.click(call);
   expect(screen.getByRole('complementary')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '关闭详情' }));

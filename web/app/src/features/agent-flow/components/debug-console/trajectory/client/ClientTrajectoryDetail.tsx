@@ -62,15 +62,15 @@ export function ClientTrajectoryDetail({
         items={[
           {
             key: 'origin',
-            label: i18nText('agentFlow', 'clientTrajectory.direction'),
+            label: i18nText('agentFlow', 'client_trajectory.direction'),
             children:
               step.origin === 'submitted'
-                ? i18nText('agentFlow', 'clientTrajectory.submitted')
-                : i18nText('agentFlow', 'clientTrajectory.emitted')
+                ? i18nText('agentFlow', 'client_trajectory.submitted')
+                : i18nText('agentFlow', 'client_trajectory.emitted')
           },
           {
             key: 'protocol',
-            label: i18nText('agentFlow', 'clientTrajectory.protocol'),
+            label: i18nText('agentFlow', 'client_trajectory.protocol'),
             children: `${step.protocol} · ${step.transport}`
           },
           ...(step.call_id
@@ -93,7 +93,7 @@ export function ClientTrajectoryDetail({
           type="link"
           onClick={() => onRelated(step.related_step_id!)}
         >
-          {i18nText('agentFlow', 'clientTrajectory.related')}
+          {i18nText('agentFlow', 'client_trajectory.related')}
         </Button>
       ) : null}
       <Tabs
@@ -107,12 +107,12 @@ export function ClientTrajectoryDetail({
       />
       {section === 'raw' ? (
         <p className="client-trajectory__note">
-          {i18nText('agentFlow', 'clientTrajectory.raw_scope')}
+          {i18nText('agentFlow', 'client_trajectory.raw_scope')}
         </p>
       ) : null}
       {section === 'timing' ? (
         <p className="client-trajectory__note">
-          {i18nText('agentFlow', 'clientTrajectory.timing_scope')}
+          {i18nText('agentFlow', 'client_trajectory.timing_scope')}
         </p>
       ) : null}
       {pages.isLoading ? <Spin /> : null}
@@ -160,13 +160,39 @@ function SectionValue({ value, section }: { value: unknown; section: string }) {
     typeof value.body === 'string'
   ) {
     return (
-      <JsonPreviewBlock
-        title={title}
-        value={value}
-        rawText={value.body}
-        collapsible={false}
-        height="420px"
-      />
+      <section className="client-trajectory__raw-part">
+        <Descriptions
+          size="small"
+          column={1}
+          items={[
+            {
+              key: 'direction',
+              label: i18nText('agentFlow', 'client_trajectory.direction'),
+              children:
+                'direction' in value && value.direction === 'submitted'
+                  ? i18nText('agentFlow', 'client_trajectory.submitted')
+                  : i18nText('agentFlow', 'client_trajectory.emitted')
+            },
+            {
+              key: 'encoding',
+              label: i18nText('agentFlow', 'client_trajectory.encoding'),
+              children: 'encoding' in value ? String(value.encoding) : '—'
+            },
+            {
+              key: 'frame_kind',
+              label: 'frame_kind',
+              children: 'frame_kind' in value ? String(value.frame_kind) : '—'
+            }
+          ]}
+        />
+        <JsonPreviewBlock
+          title={title}
+          value={value}
+          rawText={value.body}
+          collapsible={false}
+          height="420px"
+        />
+      </section>
     );
   }
   if (typeof value === 'string') {

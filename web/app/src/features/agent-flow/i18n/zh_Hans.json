@@ -765,29 +765,20 @@
     "variable_group_outputs_must_match_groups": "物化输出必须按相同顺序匹配变量组的 key 和类型。",
     "retry": "重试"
   },
-  "clientTrajectory": {
+  "client_trajectory": {
     "client": "客户端原始协议",
     "native": "AI Native 内部诊断",
     "request": "请求",
     "system": "系统提示词",
-    "user": "用户输入",
     "assistant": "助手消息",
-    "reasoning": "推理",
     "tool_definition": "工具定义",
-    "tool_call": "工具调用",
     "tool_result": "工具结果",
     "usage": "用量",
-    "error": "错误",
-    "overview": "概览",
-    "parameters": "参数",
     "result": "结果",
-    "schema": "工具定义",
-    "timing": "时间",
-    "raw": "原始协议",
     "direction": "方向",
     "submitted": "客户端提交",
     "emitted": "网关输出",
-    "protocol": "协议",
+    "protocol": "通信协议",
     "related": "定位关联调用",
     "raw_scope": "此处为所属请求的完整协议记录，包含输入及输出；未转换为 AI Native。",
     "timing_scope": "显示网关观察时间。客户端工具的执行耗时不在该协议记录中。",
@@ -800,6 +791,7 @@
     "open_run": "查看本次运行的请求",
     "no_records": "未找到客户端原始协议记录。历史日志不会由 AI Native 反推原文。",
     "close": "关闭详情",
-    "group_categories": "按分类归纳"
+    "group_categories": "按分类归纳",
+    "encoding": "原文编码"
   }
 }

@@ -153,7 +153,7 @@ export function ClientTrajectoryWorkspace({
             aria-pressed={groupCategories}
             onClick={() => setGroupCategories(!groupCategories)}
           >
-            {i18nText('agentFlow', 'clientTrajectory.group_categories')}
+            {i18nText('agentFlow', 'client_trajectory.group_categories')}
           </Button>
           <span
             className="provider-trajectory__integrity"
@@ -170,14 +170,14 @@ export function ClientTrajectoryWorkspace({
             type="text"
             onClick={() => setCollapsed(new Set())}
           >
-            {i18nText('agentFlow', 'clientTrajectory.expand')}
+            {i18nText('agentFlow', 'client_trajectory.expand')}
           </Button>
           <Button
             size="small"
             type="text"
             onClick={() => setCollapsed(new Set(requests.map(([id]) => id)))}
           >
-            {i18nText('agentFlow', 'clientTrajectory.collapse')}
+            {i18nText('agentFlow', 'client_trajectory.collapse')}
           </Button>
           <Button
             size="small"
@@ -185,7 +185,7 @@ export function ClientTrajectoryWorkspace({
             loading={pages.isRefetching}
             onClick={() => void pages.refetch()}
           >
-            {i18nText('agentFlow', 'clientTrajectory.refresh')}
+            {i18nText('agentFlow', 'client_trajectory.refresh')}
           </Button>
         </div>
         <Input
@@ -237,14 +237,14 @@ export function ClientTrajectoryWorkspace({
         <div className="provider-trajectory__ledger">
           <nav
             className="client-trajectory__categories"
-            aria-label={i18nText('agentFlow', 'clientTrajectory.categories')}
+            aria-label={i18nText('agentFlow', 'client_trajectory.categories')}
           >
             <button
               type="button"
               aria-pressed={!category}
               onClick={() => setCategory(null)}
             >
-              {i18nText('agentFlow', 'clientTrajectory.all')}
+              {i18nText('agentFlow', 'client_trajectory.all')}
             </button>
             {categories.map((key) => (
               <button
@@ -262,7 +262,7 @@ export function ClientTrajectoryWorkspace({
           </nav>
           {scope ? (
             <div className="client-trajectory__note">
-              {i18nText('agentFlow', 'clientTrajectory.node_scope')}{' '}
+              {i18nText('agentFlow', 'client_trajectory.node_scope')}{' '}
               <Button
                 type="link"
                 size="small"
@@ -271,7 +271,7 @@ export function ClientTrajectoryWorkspace({
                   setSelected(null);
                 }}
               >
-                {i18nText('agentFlow', 'clientTrajectory.open_run')}
+                {i18nText('agentFlow', 'client_trajectory.open_run')}
               </Button>
             </div>
           ) : null}
@@ -294,7 +294,10 @@ export function ClientTrajectoryWorkspace({
           {!pages.isLoading && !pages.isError && !items.some(matches) ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={i18nText('agentFlow', 'clientTrajectory.no_records')}
+              description={i18nText(
+                'agentFlow',
+                'client_trajectory.no_records'
+              )}
             />
           ) : null}
           {requests.map(([id, steps]) => {
@@ -312,7 +315,7 @@ export function ClientTrajectoryWorkspace({
                     className="client-trajectory__fold"
                     aria-label={i18nText(
                       'agentFlow',
-                      'clientTrajectory.request'
+                      'client_trajectory.request'
                     )}
                     aria-expanded={!collapsed.has(id)}
                     onClick={() => toggle(id)}
@@ -431,7 +434,7 @@ export function ClientTrajectoryWorkspace({
                 size="small"
                 type="text"
                 icon={<CloseOutlined />}
-                aria-label={i18nText('agentFlow', 'clientTrajectory.close')}
+                aria-label={i18nText('agentFlow', 'client_trajectory.close')}
                 onClick={() => {
                   setSelected(null);
                   rows.current.get(selectedStep.id)?.focus();
@@ -454,7 +457,7 @@ export function ClientTrajectoryWorkspace({
             count: items.length
           })}
         </span>
-        <span>{i18nText('agentFlow', 'clientTrajectory.client')}</span>
+        <span>{i18nText('agentFlow', 'client_trajectory.client')}</span>
       </footer>
     </div>
   );

@@ -765,25 +765,16 @@
     "variable_group_outputs_must_match_groups": "Materialized outputs must match variable groups in key, type, and order.",
     "retry": "Retry"
   },
-  "clientTrajectory": {
+  "client_trajectory": {
     "client": "Original client protocol",
     "native": "AI Native diagnostics",
     "request": "Request",
     "system": "System prompt",
-    "user": "User input",
     "assistant": "Assistant",
-    "reasoning": "Reasoning",
     "tool_definition": "Tool definition",
-    "tool_call": "Tool call",
     "tool_result": "Tool result",
     "usage": "Usage",
-    "error": "Error",
-    "overview": "Overview",
-    "parameters": "Parameters",
     "result": "Result",
-    "schema": "Tool definition",
-    "timing": "Timing",
-    "raw": "Original protocol",
     "direction": "Direction",
     "submitted": "Client submitted",
     "emitted": "Gateway emitted",
@@ -800,6 +791,7 @@
     "open_run": "View requests for this run",
     "no_records": "No original client protocol records found. Historical input is never reconstructed from AI Native.",
     "close": "Close details",
-    "group_categories": "Group categories"
+    "group_categories": "Group categories",
+    "encoding": "Capture encoding"
   }
 }

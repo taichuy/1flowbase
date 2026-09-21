@@ -59,11 +59,11 @@ export function ProviderTrajectory({
               options={[
                 {
                   value: 'client',
-                  label: i18nText('agentFlow', 'clientTrajectory.client')
+                  label: i18nText('agentFlow', 'client_trajectory.client')
                 },
                 {
                   value: 'native',
-                  label: i18nText('agentFlow', 'clientTrajectory.native')
+                  label: i18nText('agentFlow', 'client_trajectory.native')
                 }
               ]}
             />
