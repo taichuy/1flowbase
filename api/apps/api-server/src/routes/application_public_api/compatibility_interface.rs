@@ -985,6 +985,7 @@ fn project_stream_invocation(
 
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
+#[cfg(test)]
 pub(super) async fn project_compatibility_stream(
     events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<

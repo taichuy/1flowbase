@@ -213,6 +213,7 @@ where
     run_connection_loop_with_terminations(socket, execute, None).await;
 }
 
+#[cfg(test)]
 pub(super) async fn run_connection_loop_with_terminations<F, Fut>(
     socket: WebSocket,
     execute: F,

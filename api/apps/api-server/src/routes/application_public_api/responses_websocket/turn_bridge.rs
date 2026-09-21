@@ -103,6 +103,7 @@ impl ResponsesTurnBridge {
     }
 }
 
+#[cfg(test)]
 pub(super) async fn project_turn(
     events: mpsc::Receiver<CompatibilityStreamEvent>,
     completion: InterfaceStreamCompletion<
