@@ -310,11 +310,34 @@ test('timeline navigation, loaded-step search and invocation folds do not eager-
   );
   await screen.findByText(/native-model/);
   expect(screen.getByRole('button', { name: '模型调用准备' })).toHaveAttribute(
-    'aria-expanded',
+    'aria-pressed',
     'true'
   );
   fireEvent.click(screen.getByRole('button', { name: '调用分组' }));
   fireEvent.click(screen.getByRole('button', { name: /llm-one invocation-1/ }));
   expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
+  expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
+});
+
+test('keeps selection in a separate inspector and closes without changing the ledger', async () => {
+  const { loadTrajectoryBody } = fixture();
+  fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
+  const row = await screen.findByRole('button', { name: '模型调用准备' });
+  fireEvent.click(row);
+  await screen.findByText(/native-model/);
+  const inspector = screen.getByRole('complementary', { name: '步骤检查器' });
+  const ledger = screen.getByRole('region', { name: '顺序步骤' });
+  expect(ledger).not.toContainElement(inspector);
+  expect(inspector.parentElement).toBe(ledger.parentElement);
+  expect(row).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(row);
+  expect(inspector).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '关闭步骤检查器' }));
+  expect(
+    screen.queryByRole('complementary', { name: '步骤检查器' })
+  ).toBeNull();
+  expect(row).toHaveFocus();
+  fireEvent.click(row);
+  await screen.findByText(/native-model/);
   expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
 });

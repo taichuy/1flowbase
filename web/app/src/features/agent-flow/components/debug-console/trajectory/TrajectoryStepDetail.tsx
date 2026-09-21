@@ -56,10 +56,7 @@ export function TrajectoryStepDetail({
     refetchOnWindowFocus: false
   });
   return (
-    <section
-      className="provider-trajectory__detail"
-      aria-label={i18nText('agentFlow', 'trajectory.inspector')}
-    >
+    <section className="provider-trajectory__detail">
       <div className="provider-trajectory__detail-meta">
         <span>
           {step.metadata.source === 'ai_native'

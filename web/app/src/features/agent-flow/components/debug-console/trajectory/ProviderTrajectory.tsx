@@ -1,7 +1,8 @@
-import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Modal, Spin, Tooltip } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
@@ -86,6 +87,9 @@ function TrajectoryWorkspace({
   loader: ConversationLogTraceLoader;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [detailWidth, setDetailWidth] = useState<number | null>(null);
+  const split = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; width: number } | null>(null);
   const [search, setSearch] = useState('');
   const [timeScale, setTimeScale] = useState(false);
   const [groupCalls, setGroupCalls] = useState(false);
@@ -109,6 +113,11 @@ function TrajectoryWorkspace({
     [pages.data]
   );
   const overview = pages.data?.pages[0];
+  const selectedStep = items.find((step) => step.event_id === selected);
+  function resizeDetail(width: number) {
+    const available = split.current?.clientWidth ?? 1000;
+    setDetailWidth(Math.max(320, Math.min(720, available - 280, width)));
+  }
   const query = search.trim().toLocaleLowerCase();
   const matches = items.filter(
     (step) =>
@@ -155,44 +164,35 @@ function TrajectoryWorkspace({
   function renderStep(step: ProviderTrajectoryStep) {
     const isSelected = selected === step.event_id;
     return (
-      <Fragment key={step.event_id}>
-        <button
-          ref={(element) => {
-            if (element) rows.current.set(step.event_id, element);
-            else rows.current.delete(step.event_id);
-          }}
-          type="button"
-          className="provider-trajectory__row"
-          data-lane={stepLane(step)}
-          data-selected={isSelected || undefined}
-          aria-label={stepLabel(step)}
-          aria-expanded={isSelected}
-          onClick={() => setSelected(isSelected ? null : step.event_id)}
+      <button
+        key={step.event_id}
+        ref={(element) => {
+          if (element) rows.current.set(step.event_id, element);
+          else rows.current.delete(step.event_id);
+        }}
+        type="button"
+        className="provider-trajectory__row"
+        data-lane={stepLane(step)}
+        data-selected={isSelected || undefined}
+        aria-label={stepLabel(step)}
+        aria-pressed={isSelected}
+        onClick={() => setSelected(step.event_id)}
+      >
+        <span className="provider-trajectory__marker" aria-hidden="true" />
+        <span className="provider-trajectory__kind">{stepLabel(step)}</span>
+        <span className="provider-trajectory__preview">
+          {step.metadata.preview ||
+            step.metadata.tool_call_id ||
+            step.metadata.node_id ||
+            '—'}
+        </span>
+        <span
+          className="provider-trajectory__row-time"
+          title={formatDateTime(step.created_at)}
         >
-          <span className="provider-trajectory__marker" aria-hidden="true" />
-          <span className="provider-trajectory__kind">{stepLabel(step)}</span>
-          <span className="provider-trajectory__preview">
-            {step.metadata.preview ||
-              step.metadata.tool_call_id ||
-              step.metadata.node_id ||
-              '—'}
-          </span>
-          <span
-            className="provider-trajectory__row-time"
-            title={formatDateTime(step.created_at)}
-          >
-            #{step.event_sequence}
-          </span>
-          {isSelected ? <DownOutlined /> : <RightOutlined />}
-        </button>
-        {isSelected ? (
-          <TrajectoryStepDetail
-            key={step.event_id}
-            step={step}
-            loader={loader}
-          />
-        ) : null}
-      </Fragment>
+          #{step.event_sequence}
+        </span>
+      </button>
     );
   }
   return (
@@ -299,81 +299,159 @@ function TrajectoryWorkspace({
           })}
         </div>
       </div>
-      <div
-        className="provider-trajectory__ledger"
-        role="region"
-        aria-label={i18nText('agentFlow', 'trajectory.steps')}
-      >
-        {pages.isLoading ? (
-          <div className="provider-trajectory__loading">
-            <Spin />
-          </div>
-        ) : null}
-        {pages.isError ? (
-          <Alert
-            type="error"
-            showIcon
-            title={i18nText('agentFlow', 'auto.loading_failed')}
-            action={
-              <Button onClick={() => void pages.refetch()}>
-                {i18nText('agentFlow', 'auto.retry')}
+      <div className="provider-trajectory__split" ref={split}>
+        <div
+          className="provider-trajectory__ledger"
+          role="region"
+          aria-label={i18nText('agentFlow', 'trajectory.steps')}
+        >
+          {pages.isLoading ? (
+            <div className="provider-trajectory__loading">
+              <Spin />
+            </div>
+          ) : null}
+          {pages.isError ? (
+            <Alert
+              type="error"
+              showIcon
+              title={i18nText('agentFlow', 'auto.loading_failed')}
+              action={
+                <Button onClick={() => void pages.refetch()}>
+                  {i18nText('agentFlow', 'auto.retry')}
+                </Button>
+              }
+            />
+          ) : null}
+          {!pages.isLoading && !pages.isError && !matches.length ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                items.length
+                  ? i18nText('agentFlow', 'trajectory.no_matches')
+                  : i18nText('agentFlow', 'trajectory.not_recorded_detail')
+              }
+            />
+          ) : null}
+          {groupCalls
+            ? groups.map(([key, steps]) => (
+                <section key={key}>
+                  <button
+                    type="button"
+                    className="provider-trajectory__group"
+                    aria-expanded={!collapsed.has(key)}
+                    onClick={() =>
+                      setCollapsed((current) => {
+                        const next = new Set(current);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                  >
+                    {collapsed.has(key) ? <RightOutlined /> : <DownOutlined />}
+                    <span>
+                      {steps[0].metadata.node_id ||
+                        steps[0].metadata.node_run_id}
+                    </span>
+                    <span className="provider-trajectory__group-id">
+                      {steps[0].metadata.invocation_id}
+                    </span>
+                    <span>
+                      {i18nText('agentFlow', 'trajectory.loaded_steps', {
+                        count: steps.length
+                      })}
+                    </span>
+                  </button>
+                  {!collapsed.has(key) ? steps.map(renderStep) : null}
+                </section>
+              ))
+            : matches.map(renderStep)}
+          {pages.hasNextPage ? (
+            <div className="provider-trajectory__more">
+              <Button
+                type="text"
+                loading={pages.isFetchingNextPage}
+                onClick={() => void pages.fetchNextPage()}
+              >
+                {i18nText('agentFlow', 'trajectory.more')}
               </Button>
-            }
-          />
-        ) : null}
-        {!pages.isLoading && !pages.isError && !matches.length ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              items.length
-                ? i18nText('agentFlow', 'trajectory.no_matches')
-                : i18nText('agentFlow', 'trajectory.not_recorded_detail')
-            }
-          />
-        ) : null}
-        {groupCalls
-          ? groups.map(([key, steps]) => (
-              <section key={key}>
-                <button
-                  type="button"
-                  className="provider-trajectory__group"
-                  aria-expanded={!collapsed.has(key)}
-                  onClick={() =>
-                    setCollapsed((current) => {
-                      const next = new Set(current);
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                    })
-                  }
-                >
-                  {collapsed.has(key) ? <RightOutlined /> : <DownOutlined />}
-                  <span>
-                    {steps[0].metadata.node_id || steps[0].metadata.node_run_id}
-                  </span>
-                  <span className="provider-trajectory__group-id">
-                    {steps[0].metadata.invocation_id}
-                  </span>
-                  <span>
-                    {i18nText('agentFlow', 'trajectory.loaded_steps', {
-                      count: steps.length
-                    })}
-                  </span>
-                </button>
-                {!collapsed.has(key) ? steps.map(renderStep) : null}
-              </section>
-            ))
-          : matches.map(renderStep)}
-        {pages.hasNextPage ? (
-          <div className="provider-trajectory__more">
-            <Button
-              type="text"
-              loading={pages.isFetchingNextPage}
-              onClick={() => void pages.fetchNextPage()}
-            >
-              {i18nText('agentFlow', 'trajectory.more')}
-            </Button>
-          </div>
+            </div>
+          ) : null}
+        </div>
+        {selectedStep ? (
+          <aside
+            className="provider-trajectory__inspector"
+            style={detailWidth === null ? undefined : { width: detailWidth }}
+            aria-label={i18nText('agentFlow', 'trajectory.inspector')}
+            data-lane={stepLane(selectedStep)}
+          >
+            <div
+              className="provider-trajectory__resize"
+              role="separator"
+              tabIndex={0}
+              aria-orientation="vertical"
+              aria-label={i18nText('agentFlow', 'trajectory.inspector')}
+              aria-valuemin={320}
+              aria-valuemax={720}
+              aria-valuenow={detailWidth ?? 440}
+              onPointerDown={(event) => {
+                drag.current = {
+                  x: event.clientX,
+                  width:
+                    event.currentTarget.parentElement!.getBoundingClientRect()
+                      .width
+                };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (drag.current)
+                  resizeDetail(
+                    drag.current.width + drag.current.x - event.clientX
+                  );
+              }}
+              onPointerUp={() => {
+                drag.current = null;
+              }}
+              onPointerCancel={() => {
+                drag.current = null;
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                  const width =
+                    event.currentTarget.parentElement!.getBoundingClientRect()
+                      .width;
+                  resizeDetail(width + (event.key === 'ArrowLeft' ? 16 : -16));
+                  event.preventDefault();
+                }
+              }}
+            />
+            <div className="provider-trajectory__inspector-header">
+              <span className="provider-trajectory__kind">
+                {stepLabel(selectedStep)}
+              </span>
+              <span className="provider-trajectory__row-time">
+                #{selectedStep.event_sequence}
+              </span>
+              <Button
+                size="small"
+                type="text"
+                icon={<CloseOutlined />}
+                aria-label={i18nText('agentFlow', 'auto.close', {
+                  value1: i18nText('agentFlow', 'trajectory.inspector')
+                })}
+                onClick={() => {
+                  const row = rows.current.get(selectedStep.event_id);
+                  setSelected(null);
+                  row?.focus();
+                }}
+              />
+            </div>
+            <TrajectoryStepDetail
+              key={selectedStep.event_id}
+              step={selectedStep}
+              loader={loader}
+            />
+          </aside>
         ) : null}
       </div>
       <footer className="provider-trajectory__footer">
