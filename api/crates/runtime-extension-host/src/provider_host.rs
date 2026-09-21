@@ -76,6 +76,7 @@ struct TransportWorkerBinding {
     identity: ProviderTransportSessionIdentity,
     worker: ProviderWorkerHandle,
     expires_at: std::time::Instant,
+    released_receipt: Option<ProviderTransportSessionReceipt>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1287,12 +1288,20 @@ impl ProviderHost {
             == PluginExecutionMode::StatefulProviderWorker
         {
             let worker = provider_worker_handle(&provider_workers, plugin_id.clone(), &loaded)?;
-            bind_transport_worker(&provider_workers, &plugin_id, &worker, &mut input)?;
             Some(worker)
         } else {
             None
         };
 
+        let queue_started = std::time::Instant::now();
+        let _lease =
+            Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
+        let queue_ms = bounded_stage_millis(queue_started.elapsed());
+        // Check the generation after the provider-pool queue: a preceding invocation
+        // may have proved it closed while this invocation was waiting.
+        if let Some(worker) = &selected_worker {
+            bind_transport_worker(&provider_workers, &plugin_id, worker, &mut input)?;
+        }
         let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
         let mapping_ms = bounded_stage_millis(mapping_started.elapsed());
@@ -1300,10 +1309,6 @@ impl ProviderHost {
             wire_audit = ?input.wire_audit(),
             "provider generate wire prepared"
         );
-        let queue_started = std::time::Instant::now();
-        let _lease =
-            Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
-        let queue_ms = bounded_stage_millis(queue_started.elapsed());
         Self::register_active_stream(&active_streams, invocation_id.clone(), &plugin_id, &input)
             .await;
         let event_observer = Some(Self::active_stream_event_observer(
@@ -1352,6 +1357,15 @@ impl ProviderHost {
             )),
         };
         Self::remove_active_stream(&active_streams, &invocation_id).await;
+        if let Err(error) = &output {
+            // Physical release is independent of the primary provider failure. Invalid
+            // optional evidence must neither replace that failure nor authorize closure.
+            if let Err(evidence_error) =
+                cache_failed_transport_closure(&provider_workers, &plugin_id, &input, error)
+            {
+                tracing::warn!(%evidence_error, "provider failure closure evidence rejected");
+            }
+        }
         let output = output?;
         let mut result = output.result;
         prepared_wire
@@ -1544,9 +1558,9 @@ mod operations;
 mod supervisor;
 
 use operations::{
-    bind_transport_worker, call_bound_transport_session, merge_models, normalize_balance,
-    normalize_models, normalize_reset_credit_result, normalize_usage_windows,
-    provider_invocation_limits, provider_pool_key, provider_worker_handle,
+    bind_transport_worker, cache_failed_transport_closure, call_bound_transport_session,
+    merge_models, normalize_balance, normalize_models, normalize_reset_credit_result,
+    normalize_usage_windows, provider_invocation_limits, provider_pool_key, provider_worker_handle,
     record_provider_worker_cleanup, reset_credit_result_matches_operation,
     take_provider_worker_for_quiesce,
 };

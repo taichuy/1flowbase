@@ -290,6 +290,11 @@ pub(super) fn bind_transport_worker(
                 .map_or(true, |snapshot| snapshot.in_flight > 0)
     });
     if let Some(binding) = registry.transport_bindings.get(&key) {
+        if binding.released_receipt.is_some() {
+            return Err(transport_binding_error(
+                "transport generation is already closed",
+            ));
+        }
         if binding.identity != identity || !Arc::ptr_eq(&binding.worker, worker) {
             return Err(transport_binding_error(
                 "transport generation belongs to a previous worker",
@@ -321,6 +326,7 @@ pub(super) fn bind_transport_worker(
                 identity,
                 worker: Arc::clone(worker),
                 expires_at: now + retention,
+                released_receipt: None,
             },
         );
     }
@@ -404,6 +410,9 @@ pub(super) async fn call_bound_transport_session(
         ));
     }
     command.worker_incarnation = Some(binding.identity.worker_incarnation);
+    if let Some(receipt) = &binding.released_receipt {
+        return Ok(receipt.clone());
+    }
     if let Some(receipt) = confirmed_exit_receipt(&binding, command.action)? {
         return Ok(receipt);
     }
@@ -436,19 +445,87 @@ pub(super) async fn call_bound_transport_session(
                 "provider transport receipt is malformed: {error}"
             ))
         })?;
+    validate_provider_closure_receipt(&receipt, &binding.identity)?;
+    Ok(receipt)
+}
+
+fn validate_provider_closure_receipt(
+    receipt: &ProviderTransportSessionReceipt,
+    expected: &ProviderTransportSessionIdentity,
+) -> FrameworkResult<()> {
     receipt
         .validate()
         .map_err(PluginFrameworkError::invalid_provider_contract)?;
     if let Some(evidence) = &receipt.closure_evidence {
         if evidence.source != ProviderTransportClosureSource::ProviderLocalRelease
-            || evidence.identity != binding.identity
+            || evidence.identity != *expected
         {
             return Err(transport_binding_error(
                 "provider transport closure evidence identity or source rejected",
             ));
         }
     }
-    Ok(receipt)
+    Ok(())
+}
+
+/// Final invocation failure may already prove local release. Retain that proof on
+/// the actual dispatch binding so Close does not need the busy stdio carrier again.
+pub(super) fn cache_failed_transport_closure(
+    workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+    input: &ProviderInvocationInput,
+    error: &PluginFrameworkError,
+) -> FrameworkResult<()> {
+    use extension_package_runtime::provider_contract::PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY;
+    let PluginFrameworkError::RuntimeContract { error } = error else {
+        return Ok(());
+    };
+    let Some(value) = error
+        .provider_details
+        .as_ref()
+        .and_then(|details| details.get(PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY))
+    else {
+        return Ok(());
+    };
+    let Some(directive) = input
+        .transport_session_directive()
+        .map_err(PluginFrameworkError::invalid_provider_contract)?
+    else {
+        return Err(transport_binding_error(
+            "failure closure has no dispatch directive",
+        ));
+    };
+    let receipt: ProviderTransportSessionReceipt = serde_json::from_value(value.clone())
+        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?;
+    let mut registry = lock_provider_worker_registry(workers)?;
+    let binding = registry
+        .transport_bindings
+        .get_mut(&(
+            plugin_id.to_owned(),
+            directive.logical_session_id,
+            directive.generation,
+        ))
+        .ok_or_else(|| transport_binding_error("failure closure has no dispatch binding"))?;
+    if directive.worker_incarnation != Some(binding.identity.worker_incarnation) {
+        return Err(transport_binding_error(
+            "failure closure dispatch incarnation mismatch",
+        ));
+    }
+    validate_provider_closure_receipt(&receipt, &binding.identity)?;
+    if !receipt
+        .closure_evidence
+        .as_ref()
+        .is_some_and(|evidence| evidence.local_released)
+    {
+        return Err(transport_binding_error(
+            "failure closure does not prove local release",
+        ));
+    }
+    // A repeated fact cannot overwrite the first proven release or its missing ACK.
+    if binding.released_receipt.is_none() {
+        binding.released_receipt = Some(receipt);
+    }
+    Ok(())
 }
 
 fn safe_control_failure_code(error: &PluginFrameworkError) -> &'static str {
