@@ -19,7 +19,9 @@ impl PgControlPlaneStore {
         }
         let payload = serde_json::to_value(input)?;
         anyhow::ensure!(
-            serde_json::to_vec(&payload)?.len() <= 2 * 1024 * 1024,
+            // The source HTTP value can use the full 2 MiB request allowance.
+            // Account separately for the fixed observation envelope and bounded identifiers.
+            serde_json::to_vec(&payload)?.len() <= 2 * 1024 * 1024 + 8192,
             "client trajectory record capacity"
         );
         let mut tx = self.pool().begin().await?;

@@ -640,3 +640,58 @@ async fn client_trajectory_append_allows_fk_readers_and_serializes_event_sequenc
     assert_eq!(count, 33);
     assert_eq!(count, unique);
 }
+
+#[tokio::test]
+async fn client_trajectory_full_request_value_budget_excludes_fixed_observation_envelope() {
+    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let request = Uuid::now_v7();
+    begin(&store, flow, None, request).await;
+    append(
+        &store,
+        flow,
+        None,
+        request,
+        ClientTrajectoryFact::Step {
+            step: step(flow, None, request, request, "submitted", "request"),
+        },
+    )
+    .await;
+    let mut value = json!({"role":"user","content":""});
+    let overhead = serde_json::to_vec(&value).unwrap().len();
+    value["content"] = json!("x".repeat(2 * 1024 * 1024 - overhead - 32));
+    assert!(
+        serde_json::to_vec(&json!({"input":[&value]}))
+            .unwrap()
+            .len()
+            <= 2 * 1024 * 1024
+    );
+    let input = AppendClientTrajectoryInput {
+        flow_run_id: flow,
+        node_run_id: None,
+        request_id: request,
+        observed_at: AT.into(),
+        fact: ClientTrajectoryFact::Section {
+            step_id: request,
+            section: "overview".into(),
+            value: value.clone(),
+        },
+    };
+    assert!(serde_json::to_vec(&input).unwrap().len() > 2 * 1024 * 1024);
+    store.append_client_trajectory(&input).await.unwrap();
+    let actual = store
+        .client_trajectory_section(flow, None, request, "overview", None, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(actual.items[0].value, value);
+    let oversized = AppendClientTrajectoryInput {
+        fact: ClientTrajectoryFact::Section {
+            step_id: request,
+            section: "overview".into(),
+            value: json!("x".repeat(2 * 1024 * 1024 + 8192)),
+        },
+        ..input
+    };
+    assert!(store.append_client_trajectory(&oversized).await.is_err());
+}
