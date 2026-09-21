@@ -51,6 +51,8 @@ export function TrajectoryStepDetail({
         view
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
+    // Layout switches must reuse the selected evidence, like other log details.
+    staleTime: 60_000,
     refetchOnWindowFocus: false
   });
   return (
