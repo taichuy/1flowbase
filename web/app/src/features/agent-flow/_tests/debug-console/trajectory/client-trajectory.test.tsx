@@ -161,6 +161,7 @@ test('defaults to original client classification and lazily loads only selected 
   const parameters = await within(inspector).findByText('{"cmd":"pwd"}', {
     selector: 'pre'
   });
+  // eslint-disable-next-line jest-dom/prefer-to-have-text-content -- Exact raw whitespace is the protocol contract; substring matching is insufficient.
   expect(parameters.textContent).toBe('  {"cmd":"pwd"}  ');
   expect(
     loadClientTrajectorySection.mock.calls.some((args) => args[2] === 'raw')
@@ -175,6 +176,7 @@ test('defaults to original client classification and lazily loads only selected 
       undefined
     )
   );
+  // eslint-disable-next-line jest-dom/prefer-to-have-text-content -- Preserve exact raw protocol bytes, including the trailing newline.
   expect((await screen.findByText(/客户端原文/)).textContent).toBe(
     '  { "input": "客户端原文" }\n'
   );
