@@ -57,13 +57,8 @@ export interface ConsoleApplicationRunLog {
   updated_at: string;
 }
 
-export interface ConsoleApplicationRunCost {
-  total_cost: string;
-  currency_code: string;
-}
-
 export interface ConsoleApplicationRunSummary {
-  cost_breakdown: ConsoleApplicationRunCost[] | null;
+  total_cost: number | null;
   parent_run_id: string | null;
   caused_by_run_id: string | null;
   log_conversation_id: string | null;
