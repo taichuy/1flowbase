@@ -37,6 +37,8 @@ fn to_flow_run_summary_response(
     };
 
     FlowRunSummaryResponse {
+        total_cost: None,
+        currency_code: None,
         parent_run_id: None,
         caused_by_run_id: None,
         log_conversation_id: None,

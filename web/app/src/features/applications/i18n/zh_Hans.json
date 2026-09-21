@@ -1,5 +1,6 @@
 {
   "auto": {
+    "total_cost": "费用",
     "api_keys": "API Keys",
     "application_type_agent_flow": "AgentFlow",
     "application_type_workflow": "Workflow",

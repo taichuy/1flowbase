@@ -277,6 +277,8 @@ impl ApplicationRuntimeReadsAdapter {
                 response.log_conversation_id =
                     log_summary.log_conversation_id.map(|id| id.to_string());
                 response.log_task_run_id = log_summary.log_task_run_id.map(|id| id.to_string());
+                response.total_cost = log_summary.total_cost;
+                response.currency_code = log_summary.currency_code;
                 response.call_kind = log_summary.call_kind;
                 response.member_run_ids = log_summary
                     .member_run_ids

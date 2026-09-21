@@ -91,6 +91,8 @@ export type ApplicationRunSummary = {
   external_trace_id?: string | null;
   compatibility_mode?: string | null;
   idempotency_key?: string | null;
+  total_cost: string | null;
+  currency_code: string | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -1147,6 +1149,8 @@ function toApplicationRunSummary(
     external_trace_id: optionalStringField(record, 'external_trace_id'),
     compatibility_mode: optionalStringField(record, 'compatibility_mode'),
     idempotency_key: optionalStringField(record, 'idempotency_key'),
+    total_cost: optionalStringField(record, 'total_cost'),
+    currency_code: optionalStringField(record, 'currency_code'),
     total_tokens: optionalNumberField(record, 'total_tokens'),
     input_tokens: optionalNumberField(record, 'input_tokens'),
     output_tokens: optionalNumberField(record, 'output_tokens'),

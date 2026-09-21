@@ -476,6 +476,8 @@ pub struct ApplicationRunSummary {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationRunLogSummary {
+    pub total_cost: Option<String>,
+    pub currency_code: Option<String>,
     pub parent_run_id: Option<Uuid>,
     pub caused_by_run_id: Option<Uuid>,
     pub call_kind: String,
