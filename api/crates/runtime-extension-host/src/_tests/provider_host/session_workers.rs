@@ -2,8 +2,12 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 
 fn package() -> TempProviderPackage {
+    named_package("fixture_provider")
+}
+
+fn named_package(plugin_id: &str) -> TempProviderPackage {
     let package = TempProviderPackage::new();
-    package.write_stateful_provider_package("fixture_provider", "fixture_provider", "Fixture");
+    package.write_stateful_provider_package(plugin_id, "fixture_provider", "Fixture");
     package.write("bin/fixture_provider", r#"#!/usr/bin/env python3
 import json, os, sys, time
 root = os.path.dirname(__file__)
@@ -12,7 +16,7 @@ def emit(value):
 for line in sys.stdin:
     request = json.loads(line)
     if request['method'] == 'invoke':
-        d = request['input']['run_context']['physical_transport_session']
+        d = (request['input'].get('run_context') or {}).get('physical_transport_session', {'task_id':'idle'})
         with open(root + '/dispatches', 'a') as log:
             log.write(json.dumps({'pid': os.getpid(), 'identity': d}) + '\n')
         if d['task_id'] == 'blocked':
@@ -376,6 +380,126 @@ async fn expired_closed_binding_is_pruned_without_evicting_active_worker() {
         assert!(registry
             .transport_bindings
             .contains_key(&(id.clone(), "active".into(), 7)));
+    }
+    host.stop_all().await.unwrap();
+}
+
+#[tokio::test]
+async fn reload_and_unload_reject_old_prepared_unbound_stream_without_creating_worker() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    host.invoke_stream(&id, invocation_input("fixture-model"))
+        .await
+        .unwrap();
+    let old = host
+        .invoke_stream_operation(&id, invocation_input("fixture-model"))
+        .unwrap();
+    let old_pid = dispatches(&package)[0]["pid"].as_u64().unwrap();
+    host.reload(&id).await.unwrap();
+    assert!(!pid_alive(old_pid));
+    assert!(old
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("package changed"));
+    assert!(
+        provider_worker_supervisor_snapshot(&host.provider_workers, &id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(dispatches(&package).len(), 1);
+    host.invoke_stream(&id, invocation_input("fixture-model"))
+        .await
+        .unwrap();
+    let replacement_pid = dispatches(&package)[1]["pid"].as_u64().unwrap();
+    assert_ne!(old_pid, replacement_pid);
+    let old = host
+        .invoke_stream_operation(&id, invocation_input("fixture-model"))
+        .unwrap();
+    host.unload(&id).await.unwrap();
+    assert!(!pid_alive(replacement_pid));
+    assert!(old
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("package changed"));
+    assert!(
+        provider_worker_supervisor_snapshot(&host.provider_workers, &id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(dispatches(&package).len(), 2);
+}
+
+#[tokio::test]
+async fn stop_all_retires_busy_workers_across_plugins_with_one_host_budget() {
+    let packages = [named_package("fixture_a"), named_package("fixture_b")];
+    let mut host = ProviderHost::default();
+    lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .session_capacity = SessionWorkerCapacity::for_test(2);
+    let mut calls = Vec::new();
+    let mut receivers = Vec::new();
+    let mut plugin_ids = Vec::new();
+    for package in &packages {
+        let id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+        let (sender, mut events) = tokio::sync::mpsc::channel(8);
+        calls.push(tokio::spawn(
+            host.invoke_stream_with_live_events_operation(
+                &id,
+                input("busy", true),
+                Some(sender),
+                None,
+            )
+            .unwrap(),
+        ));
+        entered(&mut events).await;
+        receivers.push(events);
+        plugin_ids.push(id);
+    }
+    let stopped = tokio::time::timeout(Duration::from_secs(8), host.stop_all()).await;
+    for package in &packages {
+        fs::write(package.path().join("bin/release"), b"release").unwrap();
+    }
+    stopped
+        .expect("different plugins must share one Host-wide 5s quiesce budget")
+        .unwrap();
+    for call in calls {
+        assert!(call.await.unwrap().is_err());
+    }
+    assert_eq!(host.loaded_count(), 0);
+    empty_workers(&host).await;
+    for (package, id) in packages.iter().zip(&plugin_ids) {
+        let pid = dispatches(package)[0]["pid"].as_u64().unwrap();
+        assert!(!pid_alive(pid));
+        let receipt = provider_worker_cleanup_receipt(&host.provider_workers, id)
+            .unwrap()
+            .unwrap();
+        assert!(
+            receipt.exited,
+            "each plugin retains actual child cleanup evidence"
+        );
+    }
+    // Both Host-wide slots must be reusable after the all-plugin shutdown.
+    for package in &packages {
+        let id = host
+            .load(package.path().to_str().unwrap())
+            .unwrap()
+            .plugin_id;
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            host.invoke_stream(&id, input("new", false)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     }
     host.stop_all().await.unwrap();
 }

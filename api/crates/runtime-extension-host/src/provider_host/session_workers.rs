@@ -41,10 +41,13 @@ pub(super) async fn select_worker(
         .transport_session_directive()
         .map_err(PluginFrameworkError::invalid_provider_contract)?;
     let Some(directive) = directive else {
-        let registry = lock_provider_worker_registry(workers)?;
+        let mut registry = lock_provider_worker_registry(workers)?;
         check_epoch(&registry, plugin, expected_epoch)?;
-        drop(registry);
-        return provider_worker_handle(workers, plugin.to_owned(), loaded);
+        return super::operations::provider_worker_handle_locked(
+            &mut registry,
+            plugin.to_owned(),
+            loaded,
+        );
     };
     let unix_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -250,6 +253,43 @@ fn take_all(
 }
 
 impl ProviderHost {
+    pub(super) async fn quiesce_all_provider_workers(&self) -> FrameworkResult<()> {
+        // Fence every plugin and close admission before awaiting any child.
+        let mut batches = Vec::new();
+        for plugin in self.loaded_packages.keys() {
+            batches.push((plugin.clone(), take_all(&self.provider_workers, plugin)?));
+        }
+        let workers = self.provider_workers.clone();
+        // The detached owner joins all plugin batches even if stop_all is cancelled
+        // or one batch fails. Their existing quiesce budgets run concurrently.
+        tokio::spawn(async move {
+            let mut tasks = tokio::task::JoinSet::new();
+            for (plugin, all) in batches {
+                tasks.spawn(cleanup_batch(workers.clone(), plugin, all));
+            }
+            let mut failure = None;
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => {
+                        failure.get_or_insert(error);
+                    }
+                    Err(_) => {
+                        failure.get_or_insert_with(|| {
+                            transport_binding_error("provider cleanup batch failed")
+                        });
+                    }
+                }
+            }
+            match failure {
+                Some(error) => Err(error),
+                None => Ok(()),
+            }
+        })
+        .await
+        .map_err(|_| transport_binding_error("provider cleanup owner failed"))?
+    }
+
     pub(super) async fn quiesce_provider_worker(
         &self,
         plugin: &str,

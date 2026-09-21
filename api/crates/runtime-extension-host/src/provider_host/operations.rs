@@ -14,6 +14,14 @@ pub(super) fn provider_worker_handle(
     loaded: &LoadedProviderPackage,
 ) -> FrameworkResult<ProviderWorkerHandle> {
     let mut registry = lock_provider_worker_registry(provider_workers)?;
+    provider_worker_handle_locked(&mut registry, plugin_id, loaded)
+}
+
+pub(super) fn provider_worker_handle_locked(
+    registry: &mut ProviderWorkerRegistryState,
+    plugin_id: String,
+    loaded: &LoadedProviderPackage,
+) -> FrameworkResult<ProviderWorkerHandle> {
     if let Some(worker) = registry.workers.get(&plugin_id).cloned() {
         if worker.snapshot()?.state != ProviderWorkerLifecycleState::Failed {
             return Ok(worker);

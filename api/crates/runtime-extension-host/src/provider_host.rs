@@ -323,10 +323,10 @@ impl ProviderHost {
     }
 
     pub async fn stop_all(&mut self) -> FrameworkResult<()> {
-        let plugin_ids = self.loaded_packages.keys().cloned().collect::<Vec<_>>();
-        for plugin_id in plugin_ids {
-            self.unload(&plugin_id).await?;
-        }
+        self.quiesce_all_provider_workers().await?;
+        self.loaded_packages.clear();
+        self.loaded_sources.clear();
+        self.legacy_manifest_eligibilities.clear();
         Ok(())
     }
 

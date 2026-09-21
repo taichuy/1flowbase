@@ -1346,12 +1346,6 @@ async fn transport_session_control_uses_stateful_stdio_and_returns_safe_receipt(
         .unwrap()
         .plugin_id;
 
-    let worker = provider_worker_handle(
-        &host.provider_workers,
-        plugin_id.clone(),
-        host.loaded_package(&plugin_id).unwrap(),
-    )
-    .unwrap();
     let mut input = invocation_input("fixture-model");
     input
         .set_transport_session_directive(ProviderTransportSessionDirective {
@@ -1363,7 +1357,7 @@ async fn transport_session_control_uses_stateful_stdio_and_returns_safe_receipt(
             physical_deadline_unix_ms: 4_102_444_800_000,
         })
         .unwrap();
-    bind_transport_worker(&host.provider_workers, &plugin_id, &worker, &mut input).unwrap();
+    host.invoke_stream(&plugin_id, input).await.unwrap();
 
     let receipt = host
         .transport_session_operation(
