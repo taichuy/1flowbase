@@ -28,6 +28,8 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
         visibility: domain::RuntimeEventVisibility::Internal,
         durability: domain::RuntimeEventDurability::Durable,
     };
+    // A pending marker must survive crashes, but a later final marker supersedes it.
+    store.append_runtime_event(&input("provider_protocol_integrity", json!({"invocation_id":"invocation-1", "provider_attempt_index":0,"observed_count":0,"persist_failed_count":0,"status":"incomplete"}))).await.unwrap();
     let original = "  {\"text\":\"a\0b\"}\n";
     let first = store
         .append_runtime_event(&input(
@@ -43,6 +45,36 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
         ))
         .await
         .unwrap();
+    // Existing raw history remains addressable but is not a fabricated semantic step.
+    let historical = store
+        .provider_trajectory_page(flow_run_id, node_run_id, None, 1)
+        .await
+        .unwrap();
+    assert!(historical.items.is_empty());
+    assert_eq!(historical.observation_count, 2);
+    let semantic = |key: &str, kind: &str, end| json!({"flow_run_id":flow_run_id,"node_run_id":node_run_id,"node_id":"llm","invocation_id":"invocation-1","provider_attempt_index":0,"step_key":key,"kind":kind,"status":"recorded","raw_sequence_start":1,"raw_sequence_end":end});
+    let call = store
+        .append_runtime_event(&input(
+            "provider_semantic_step",
+            semantic("call", "model_call", 1),
+        ))
+        .await
+        .unwrap();
+    let reply = store
+        .append_runtime_event(&input(
+            "provider_semantic_step",
+            semantic("reply", "model_reply", 1),
+        ))
+        .await
+        .unwrap();
+    // A later projection snapshot updates the same step, preserving identity and cursor.
+    store
+        .append_runtime_event(&input(
+            "provider_semantic_step",
+            semantic("reply", "model_reply", 2),
+        ))
+        .await
+        .unwrap();
     let page = store
         .provider_trajectory_page(flow_run_id, node_run_id, None, 1)
         .await
@@ -51,27 +83,54 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
     assert_eq!(page.observation_count, 2);
     assert_eq!(page.integrity, "incomplete");
     assert!(page.items[0].metadata.get("body").is_none());
-    assert_eq!(page.items[0].event_id, first.id);
+    assert_eq!(page.items[0].event_id, call.id);
     let next = store
         .provider_trajectory_page(flow_run_id, node_run_id, page.next_cursor, 1)
         .await
         .unwrap();
     assert_eq!(next.items.len(), 1);
-    assert_ne!(next.items[0].event_id, first.id);
+    assert_eq!(next.items[0].event_id, reply.id);
+    assert_eq!(next.items[0].metadata["raw_sequence_end"], 2);
     assert!(next.next_cursor.is_none());
     let body = store
-        .provider_trajectory_body(flow_run_id, node_run_id, first.id)
+        .provider_trajectory_body(flow_run_id, node_run_id, first.id, None, 1)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(body.body, original);
+    assert_eq!(body.items[0].body, original);
+    assert!(body.next_cursor.is_none());
+    let evidence = store
+        .provider_trajectory_body(flow_run_id, node_run_id, reply.id, None, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(evidence.items.len(), 1);
+    assert_eq!(evidence.items[0].body, original);
+    assert_eq!(evidence.next_cursor, Some(1));
+    let evidence_next = store
+        .provider_trajectory_body(flow_run_id, node_run_id, reply.id, evidence.next_cursor, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(evidence_next.items[0].body, "x".repeat(1_000_000));
+    assert!(evidence_next.next_cursor.is_none());
     assert!(store
-        .provider_trajectory_body(flow_run_id, Uuid::now_v7(), first.id)
+        .provider_trajectory_body(flow_run_id, Uuid::now_v7(), reply.id, None, 1)
         .await
         .unwrap()
         .is_none());
     assert!(store
-        .provider_trajectory_body(Uuid::now_v7(), node_run_id, first.id)
+        .provider_trajectory_body(Uuid::now_v7(), node_run_id, reply.id, None, 1)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .provider_trajectory_body(flow_run_id, Uuid::now_v7(), first.id, None, 1)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .provider_trajectory_body(Uuid::now_v7(), node_run_id, first.id, None, 1)
         .await
         .unwrap()
         .is_none());
@@ -90,6 +149,15 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
             .await
             .unwrap()
             .integrity,
-        "unavailable"
+        "not_recorded"
+    );
+    store.append_runtime_event(&input("provider_protocol_integrity", json!({"invocation_id":"invocation-1", "provider_attempt_index":0,"observed_count":2,"persist_failed_count":0,"dropped_count":1,"status":"complete"}))).await.unwrap();
+    assert_eq!(
+        store
+            .provider_trajectory_page(flow_run_id, node_run_id, None, 50)
+            .await
+            .unwrap()
+            .integrity,
+        "incomplete"
     );
 }

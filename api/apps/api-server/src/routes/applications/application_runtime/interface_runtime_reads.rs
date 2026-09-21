@@ -41,6 +41,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
         run_id: Uuid,
         node_run_id: Uuid,
         event_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
     },
     ListRuns {
         application_id: Uuid,
@@ -777,8 +778,9 @@ impl ApplicationRuntimeReadsAdapter {
                 run_id,
                 node_run_id,
                 event_id,
+                query,
             } => Ok(ApplicationRuntimeReadsOutput::TrajectoryBody(
-                self.trajectory_body(actor, application_id, run_id, node_run_id, event_id)
+                self.trajectory_body(actor, application_id, run_id, node_run_id, event_id, query)
                     .await?,
             )),
             ApplicationRuntimeReadsInput::ListRuns {

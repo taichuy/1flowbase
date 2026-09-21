@@ -194,7 +194,7 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::TrajectoryPage { application_id, run_id, node_run_id, .. } => serde_json::json!({"variant":"TrajectoryPage", "application_id":application_id, "run_id":run_id, "node_run_id":node_run_id}),
-            Self::TrajectoryBody { application_id, run_id, node_run_id, event_id } => serde_json::json!({"variant":"TrajectoryBody", "application_id":application_id, "run_id":run_id, "node_run_id":node_run_id, "event_id":event_id}),
+            Self::TrajectoryBody { application_id, run_id, node_run_id, event_id, .. } => serde_json::json!({"variant":"TrajectoryBody", "application_id":application_id, "run_id":run_id, "node_run_id":node_run_id, "event_id":event_id}),
             Self::ListRuns {
                 application_id: _field_application_id,
                 query: _field_query,

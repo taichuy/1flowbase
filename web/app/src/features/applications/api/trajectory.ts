@@ -22,13 +22,15 @@ export function fetchProviderTrajectoryBody(
   applicationId: string,
   runId: string,
   nodeRunId: string,
-  eventId: string
+  eventId: string,
+  cursor?: number
 ) {
   return getConsoleProviderTrajectoryBody(
     applicationId,
     runId,
     nodeRunId,
     eventId,
+    cursor,
     getApplicationsApiBaseUrl()
   );
 }

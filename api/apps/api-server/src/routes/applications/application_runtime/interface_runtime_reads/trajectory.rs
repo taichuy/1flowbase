@@ -40,11 +40,18 @@ impl ApplicationRuntimeReadsAdapter {
         run_id: Uuid,
         node_run_id: Uuid,
         event_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
     ) -> Result<ProviderTrajectoryBody, ApiError> {
         self.visible_trajectory_run(actor, application_id, run_id)
             .await?;
         self.store
-            .provider_trajectory_body(run_id, node_run_id, event_id)
+            .provider_trajectory_body(
+                run_id,
+                node_run_id,
+                event_id,
+                query.cursor,
+                query.limit.unwrap_or(8),
+            )
             .await?
             .ok_or_else(|| ControlPlaneError::NotFound("provider_protocol_observation").into())
     }

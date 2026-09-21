@@ -120,7 +120,8 @@ export interface ConversationLogTraceLoader {
   loadTrajectoryBody?: (
     runId: string,
     nodeRunId: string,
-    eventId: string
+    eventId: string,
+    cursor?: number
   ) => Promise<ProviderTrajectoryBody>;
   loadTree: (runId: string) => Promise<ConversationLogTraceTree>;
   loadChildren: (

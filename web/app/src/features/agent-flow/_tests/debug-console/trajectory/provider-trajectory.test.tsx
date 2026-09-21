@@ -16,19 +16,21 @@ function fixture() {
       {
         event_id: 'event-1',
         event_sequence: 7,
-        event_type: 'provider_protocol_observation',
+        event_type: 'provider_semantic_step',
         created_at: '2026-09-21T01:00:00Z',
         metadata: {
           protocol: 'openai',
           transport: 'http',
-          direction: 'sent',
-          kind: 'request',
-          encoding: 'utf8',
+          direction: 'prepared',
+          kind: 'model_call',
+          status: 'recorded',
+          step_key: '1:model_call:call',
           flow_run_id: 'run-1',
           node_run_id: 'node-run-2',
           invocation_id: 'invocation-1',
           provider_attempt_index: 0,
-          sequence: 1
+          raw_sequence_start: 1,
+          raw_sequence_end: 2
         }
       }
     ],
@@ -39,8 +41,15 @@ function fixture() {
   });
   const loadTrajectoryBody = vi.fn().mockResolvedValue({
     event_id: 'event-1',
-    body: '  { "provider": "original" }\n',
-    encoding: 'utf8'
+    items: [
+      {
+        event_id: 'raw-1',
+        sequence: 1,
+        body: '  { "provider": "original" }\n',
+        encoding: 'utf8'
+      }
+    ],
+    next_cursor: 1
   });
   const loader: ConversationLogTraceLoader = {
     loadTree: vi.fn(),
@@ -69,16 +78,37 @@ test('loads a bounded summary page only on opening and the exact original body o
   const { loadTrajectory, loadTrajectoryBody } = fixture();
   expect(loadTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '供应商轨迹' }));
-  fireEvent.click(await screen.findByRole('button', { name: '请求' }));
+  fireEvent.click(await screen.findByRole('button', { name: '模型调用准备' }));
   await waitFor(() =>
     expect(loadTrajectoryBody).toHaveBeenCalledWith(
       'run-1',
       'node-run-2',
-      'event-1'
+      'event-1',
+      undefined
     )
   );
   const body = await screen.findByText(/"provider": "original"/);
   expect(body.textContent).toBe('  { "provider": "original" }\n');
+  loadTrajectoryBody.mockResolvedValueOnce({
+    event_id: 'event-1',
+    items: [
+      {
+        event_id: 'raw-2',
+        sequence: 2,
+        body: 'next evidence',
+        encoding: 'utf8'
+      }
+    ],
+    next_cursor: null
+  });
+  fireEvent.click(screen.getByRole('button', { name: '加载更多原始证据' }));
+  await screen.findByText('next evidence');
+  expect(loadTrajectoryBody).toHaveBeenLastCalledWith(
+    'run-1',
+    'node-run-2',
+    'event-1',
+    1
+  );
   expect(loadTrajectory).toHaveBeenCalledWith('run-1', 'node-run-2', undefined);
   fireEvent.click(screen.getByRole('tab', { name: '执行关联' }));
   expect(screen.getByText('route / fusion execution')).toBeTruthy();
@@ -86,7 +116,7 @@ test('loads a bounded summary page only on opening and the exact original body o
 test('does not fetch protocol bodies while browsing summary pages', async () => {
   const { loadTrajectory, loadTrajectoryBody } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '供应商轨迹' }));
-  await screen.findByRole('button', { name: '请求' });
+  await screen.findByRole('button', { name: '模型调用准备' });
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
   loadTrajectory.mockResolvedValueOnce({
     items: [],
@@ -135,12 +165,12 @@ test('shows not recorded for historical executions without supplier observations
     next_cursor: null,
     observation_count: 0,
     persist_failed_count: 0,
-    integrity: 'unavailable'
+    integrity: 'not_recorded'
   });
   fireEvent.click(screen.getByRole('button', { name: '供应商轨迹' }));
   await waitFor(() =>
     expect(screen.getAllByText('未记录').length).toBeGreaterThan(0)
   );
-  expect(screen.queryByRole('button', { name: '请求' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
 });

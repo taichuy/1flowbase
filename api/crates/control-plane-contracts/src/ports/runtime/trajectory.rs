@@ -22,10 +22,18 @@ pub struct ProviderTrajectoryPage {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ProviderTrajectoryBody {
+pub struct ProviderTrajectoryEvidence {
     pub event_id: Uuid,
+    pub sequence: i64,
     pub body: String,
     pub encoding: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderTrajectoryBody {
+    pub event_id: Uuid,
+    pub items: Vec<ProviderTrajectoryEvidence>,
+    pub next_cursor: Option<i64>,
 }
 
 #[async_trait]
@@ -42,5 +50,7 @@ pub trait ProviderTrajectoryRepository: Send + Sync {
         flow_run_id: Uuid,
         node_run_id: Uuid,
         event_id: Uuid,
+        cursor: Option<i64>,
+        limit: i64,
     ) -> anyhow::Result<Option<ProviderTrajectoryBody>>;
 }

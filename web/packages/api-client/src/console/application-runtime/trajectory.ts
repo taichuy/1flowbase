@@ -3,26 +3,32 @@ import { apiFetch } from '../../transport';
 export interface ProviderTrajectoryStep {
   event_id: string;
   event_sequence: number;
-  event_type: 'provider_protocol_observation';
+  event_type: 'provider_semantic_step';
   created_at: string;
   metadata: {
-    protocol: string;
-    transport: 'http' | 'sse' | 'websocket';
-    direction: 'sent' | 'received';
+    protocol?: string;
+    transport?: 'http' | 'sse' | 'websocket';
+    direction?: 'prepared' | 'received';
     kind:
-      | 'request'
-      | 'response_head'
-      | 'response_body'
-      | 'message'
-      | 'stream_end';
-    encoding: 'utf8' | 'base64';
-    status?: number;
+      | 'model_call'
+      | 'model_reply'
+      | 'tool_call'
+      | 'tool_result'
+      | 'error'
+      | 'observation_gap';
+    status: 'recorded' | 'incomplete' | 'unavailable';
+    step_key: string;
+    preview?: string;
+    tool_call_id?: string;
+    provenance?: 'submitted_tool_result' | 'supplier_protocol';
+    reason?: string;
     flow_run_id: string;
     node_id: string;
     node_run_id: string;
     invocation_id: string;
     provider_attempt_index: number;
-    sequence: number;
+    raw_sequence_start: number;
+    raw_sequence_end: number;
   };
 }
 export interface ProviderTrajectoryPage {
@@ -30,12 +36,17 @@ export interface ProviderTrajectoryPage {
   next_cursor: number | null;
   observation_count: number;
   persist_failed_count: number;
-  integrity: 'complete' | 'incomplete' | 'unavailable';
+  integrity: 'complete' | 'incomplete' | 'unavailable' | 'not_recorded';
 }
 export interface ProviderTrajectoryBody {
   event_id: string;
-  body: string;
-  encoding: 'utf8' | 'base64';
+  items: Array<{
+    event_id: string;
+    sequence: number;
+    body: string;
+    encoding: 'utf8' | 'base64';
+  }>;
+  next_cursor: number | null;
 }
 export function getConsoleProviderTrajectory(
   applicationId: string,
@@ -56,10 +67,13 @@ export function getConsoleProviderTrajectoryBody(
   runId: string,
   nodeRunId: string,
   eventId: string,
+  cursor?: number,
   baseUrl?: string
 ) {
+  const query = new URLSearchParams({ limit: '8' });
+  if (cursor !== undefined) query.set('cursor', String(cursor));
   return apiFetch<ProviderTrajectoryBody>({
-    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/nodes/${nodeRunId}/trajectory/${eventId}`,
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/nodes/${nodeRunId}/trajectory/${eventId}?${query}`,
     baseUrl
   });
 }

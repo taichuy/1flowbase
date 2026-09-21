@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -22,16 +22,18 @@ import './provider-trajectory.css';
 
 function stepKind(step: ProviderTrajectoryStep) {
   switch (step.metadata.kind) {
-    case 'request':
-      return i18nText('agentFlow', 'trajectory.request');
-    case 'response_head':
-      return i18nText('agentFlow', 'trajectory.response_head');
-    case 'response_body':
-      return i18nText('agentFlow', 'trajectory.response_body');
-    case 'message':
-      return i18nText('agentFlow', 'trajectory.message');
-    case 'stream_end':
-      return i18nText('agentFlow', 'trajectory.stream_end');
+    case 'model_call':
+      return i18nText('agentFlow', 'trajectory.model_call');
+    case 'model_reply':
+      return i18nText('agentFlow', 'trajectory.model_reply');
+    case 'tool_call':
+      return i18nText('agentFlow', 'trajectory.tool_request');
+    case 'tool_result':
+      return i18nText('agentFlow', 'trajectory.submitted_result');
+    case 'error':
+      return i18nText('agentFlow', 'trajectory.protocol_error');
+    case 'observation_gap':
+      return i18nText('agentFlow', 'trajectory.semantic_gap');
   }
 }
 
@@ -58,7 +60,7 @@ export function ProviderTrajectory({
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchOnWindowFocus: false
   });
-  const body = useQuery({
+  const body = useInfiniteQuery({
     queryKey: [
       'provider-trajectory-body',
       runId,
@@ -69,8 +71,15 @@ export function ProviderTrajectory({
       open &&
       tab === 'protocol' &&
       Boolean(selected && loader.loadTrajectoryBody),
-    queryFn: () =>
-      loader.loadTrajectoryBody!(runId, nodeRunId, selected!.event_id),
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      loader.loadTrajectoryBody!(
+        runId,
+        nodeRunId,
+        selected!.event_id,
+        pageParam
+      ),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchOnWindowFocus: false,
     staleTime: Infinity
   });
@@ -110,7 +119,7 @@ export function ProviderTrajectory({
           items={[
             {
               key: 'protocol',
-              label: i18nText('agentFlow', 'trajectory.protocol')
+              label: i18nText('agentFlow', 'trajectory.semantic_steps')
             },
             {
               key: 'execution',
@@ -137,6 +146,13 @@ export function ProviderTrajectory({
                     {i18nText('agentFlow', 'auto.retry')}
                   </Button>
                 }
+              />
+            ) : null}
+            {overview?.integrity === 'not_recorded' ? (
+              <Alert
+                type="info"
+                showIcon
+                title={i18nText('agentFlow', 'trajectory.not_recorded_detail')}
               />
             ) : null}
             <Space wrap className="provider-trajectory__overview">
@@ -218,8 +234,8 @@ export function ProviderTrajectory({
                         {
                           title: i18nText('agentFlow', 'trajectory.direction'),
                           render: (_, step) =>
-                            step.metadata.direction === 'sent'
-                              ? i18nText('agentFlow', 'trajectory.sent')
+                            step.metadata.direction === 'prepared'
+                              ? i18nText('agentFlow', 'trajectory.prepared')
                               : i18nText('agentFlow', 'trajectory.received')
                         },
                         {
@@ -254,7 +270,12 @@ export function ProviderTrajectory({
                                 'agentFlow',
                                 'trajectory.protocol'
                               ),
-                              children: `${selected.metadata.protocol} / ${selected.metadata.transport}`
+                              children: [
+                                selected.metadata.protocol,
+                                selected.metadata.transport
+                              ]
+                                .filter(Boolean)
+                                .join(' / ')
                             },
                             {
                               key: 'invocation',
@@ -270,7 +291,7 @@ export function ProviderTrajectory({
                                 'agentFlow',
                                 'trajectory.sequence'
                               ),
-                              children: selected.metadata.sequence
+                              children: `${selected.metadata.raw_sequence_start}–${selected.metadata.raw_sequence_end}`
                             },
                             {
                               key: 'time',
@@ -286,7 +307,22 @@ export function ProviderTrajectory({
                                       'agentFlow',
                                       'trajectory.status'
                                     ),
-                                    children: selected.metadata.status
+                                    children:
+                                      selected.metadata.status === 'incomplete'
+                                        ? i18nText(
+                                            'agentFlow',
+                                            'trajectory.incomplete'
+                                          )
+                                        : selected.metadata.status ===
+                                            'unavailable'
+                                          ? i18nText(
+                                              'agentFlow',
+                                              'trajectory.unavailable'
+                                            )
+                                          : i18nText(
+                                              'agentFlow',
+                                              'trajectory.recorded'
+                                            )
                                   }
                                 ])
                           ]}
@@ -304,13 +340,35 @@ export function ProviderTrajectory({
                             }
                           />
                         ) : null}
-                        {body.data ? (
-                          <>
-                            <Tag>{body.data.encoding}</Tag>
-                            <pre className="provider-trajectory__body">
-                              {body.data.body}
-                            </pre>
-                          </>
+                        {selected.metadata.preview ? (
+                          <Typography.Paragraph>
+                            {selected.metadata.preview}
+                          </Typography.Paragraph>
+                        ) : null}
+                        {selected.metadata.tool_call_id ? (
+                          <Typography.Text code>
+                            {selected.metadata.tool_call_id}
+                          </Typography.Text>
+                        ) : null}
+                        {body.data?.pages
+                          .flatMap((page) => page.items)
+                          .map((evidence) => (
+                            <div key={evidence.event_id}>
+                              <Tag>
+                                {evidence.sequence} · {evidence.encoding}
+                              </Tag>
+                              <pre className="provider-trajectory__body">
+                                {evidence.body}
+                              </pre>
+                            </div>
+                          ))}
+                        {body.hasNextPage ? (
+                          <Button
+                            loading={body.isFetchingNextPage}
+                            onClick={() => void body.fetchNextPage()}
+                          >
+                            {i18nText('agentFlow', 'trajectory.more_evidence')}
+                          </Button>
                         ) : null}
                       </>
                     ) : (
