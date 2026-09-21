@@ -1,5 +1,5 @@
 import { configureExecutionProjection } from './trajectory/projection';
-import { openTrajectoryExecution } from '../../../agent-flow/_tests/debug-console/trajectory/navigation';
+import '../../../agent-flow/_tests/debug-console/trajectory/navigation';
 import { App as AntdApp } from 'antd';
 import {
   fireEvent,
@@ -342,13 +342,14 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
     return { tools, tool };
   }
 
-  test('inspects real fusion branches through trajectory execution links without eagerly loading branch bodies', async () => {
+  test('inspects real fusion branches in the workflow tree without eagerly loading branch bodies', async () => {
     configureExecutionProjection(runtimeApi, { mode: 'fusion' });
     const { panel, llm } = await openTrace();
     fireEvent.click(llm[0]!);
-    const execution = await openTrajectoryExecution(
-      await openLazyLlmNodeDetail(panel)
-    );
+    const execution = await openLazyLlmNodeDetail(panel);
+    expect(
+      screen.queryByRole('dialog', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
     const { tool } = await openTool(execution);
     expect(tool).toHaveTextContent('fusion');
     fireEvent.click(tool);
@@ -411,9 +412,10 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
     });
     const { panel, llm } = await openTrace();
     fireEvent.click(llm[0]!);
-    const execution = await openTrajectoryExecution(
-      await openLazyLlmNodeDetail(panel)
-    );
+    const execution = await openLazyLlmNodeDetail(panel);
+    expect(
+      screen.queryByRole('dialog', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
     const { tool, tools } = await openTool(execution);
     fireEvent.click(tool);
     fireEvent.click(

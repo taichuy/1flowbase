@@ -1,9 +1,6 @@
 import { fetchProviderTrajectory } from '../../api/trajectory';
 import { configureExecutionProjection } from './trajectory/projection';
-import {
-  openTrajectoryExecution,
-  openPayloadSection
-} from '../../../agent-flow/_tests/debug-console/trajectory/navigation';
+import { openPayloadSection } from '../../../agent-flow/_tests/debug-console/trajectory/navigation';
 import { App as AntdApp } from 'antd';
 import {
   fireEvent,
@@ -165,15 +162,13 @@ const runtimeApi = vi.hoisted(() => ({
 
 vi.mock('../../api/runtime', () => runtimeApi);
 vi.mock('../../api/trajectory', () => ({
-  fetchProviderTrajectory: vi
-    .fn()
-    .mockResolvedValue({
-      items: [],
-      next_cursor: null,
-      observation_count: 0,
-      persist_failed_count: 0,
-      integrity: 'unavailable'
-    }),
+  fetchProviderTrajectory: vi.fn().mockResolvedValue({
+    items: [],
+    next_cursor: null,
+    observation_count: 0,
+    persist_failed_count: 0,
+    integrity: 'unavailable'
+  }),
   fetchProviderTrajectoryBody: vi.fn()
 }));
 
@@ -372,7 +367,10 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
       'node_run',
       'input_payload'
     );
-    const execution = await openTrajectoryExecution(detail);
+    const execution = detail;
+    expect(
+      screen.queryByRole('dialog', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
     const { tool } = await openTool(execution);
     expect(
       runtimeApi.fetchApplicationRunTraceNodeContent
@@ -397,14 +395,17 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
     );
   });
 
-  test('keeps repeated LLM executions and their callbacks in separate trajectory trees', async () => {
+  test('keeps repeated LLM executions and their callbacks in separate workflow trees', async () => {
     configureExecutionProjection(runtimeApi, { repeated: true });
     const { panel, llm } = await openTrace();
     expect(llm).toHaveLength(2);
     for (const [index, name] of ['lookup_weather', 'read_policy'].entries()) {
       fireEvent.click(llm[index]!);
       const detail = await openLazyLlmNodeDetail(panel);
-      const execution = await openTrajectoryExecution(detail);
+      const execution = detail;
+      expect(
+        screen.queryByRole('dialog', { name: '调用轨迹' })
+      ).not.toBeInTheDocument();
       const { tool } = await openTool(execution, name);
       expect(tool).toBeInTheDocument();
       expect(
@@ -420,9 +421,6 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
         `execution-${index + 1}`,
         undefined
       );
-      fireEvent.click(
-        within(execution).getByRole('button', { name: /Close|关闭/ })
-      );
       fireEvent.click(llm[index]!);
     }
   });
@@ -433,11 +431,14 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
     });
     const { panel, llm } = await openTrace();
     fireEvent.click(llm[0]!);
-    const execution = await openTrajectoryExecution(
-      await openLazyLlmNodeDetail(panel)
-    );
+    const execution = await openLazyLlmNodeDetail(panel);
     const { tool } = await openTool(execution);
     expect(tool).toHaveTextContent('智能路由');
+    expect(fetchProviderTrajectory).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(execution).getByRole('button', { name: '调用轨迹' })
+    );
+    const trajectory = await screen.findByRole('dialog', { name: '调用轨迹' });
     await waitFor(() =>
       expect(fetchProviderTrajectory).toHaveBeenCalledWith(
         'app-1',
@@ -445,6 +446,9 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
         'execution-1',
         undefined
       )
+    );
+    fireEvent.click(
+      within(trajectory).getByRole('button', { name: /Close|关闭/ })
     );
     fireEvent.click(tool);
     const branch = await within(execution).findByRole('button', {

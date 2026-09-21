@@ -220,6 +220,7 @@ function TrajectoryWorkspace({
             size="small"
             type="text"
             icon={<ApartmentOutlined />}
+            aria-label={i18nText('agentFlow', 'trajectory.group_calls')}
             aria-pressed={groupCalls}
             onClick={() => setGroupCalls(!groupCalls)}
           >
@@ -254,9 +255,9 @@ function TrajectoryWorkspace({
         aria-label={i18nText('agentFlow', 'trajectory.timeline')}
       >
         <div className="provider-trajectory__lane-labels">
-          <span>{i18nText('agentFlow', 'trajectory.lane_input')}</span>
-          <span>{i18nText('agentFlow', 'trajectory.lane_model')}</span>
-          <span>{i18nText('agentFlow', 'trajectory.lane_tool')}</span>
+          <span>{i18nText('agentFlow', 'auto.input')}</span>
+          <span>{i18nText('agentFlow', 'auto.model')}</span>
+          <span>{i18nText('agentFlow', 'auto.tools')}</span>
         </div>
         <div className="provider-trajectory__lanes">
           {items.map((step, index) => {
