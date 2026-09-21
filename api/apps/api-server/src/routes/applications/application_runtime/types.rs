@@ -211,6 +211,8 @@ pub struct ResolveRuntimeDebugArtifactsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct FlowRunSummaryResponse {
+    pub total_cost: Option<String>,
+    pub currency_code: Option<String>,
     pub parent_run_id: Option<String>,
     pub caused_by_run_id: Option<String>,
     pub log_conversation_id: Option<String>,

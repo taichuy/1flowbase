@@ -249,6 +249,15 @@ export function getApplicationRunsTableColumns(
       )
     },
     {
+      key: 'total_cost',
+      title: t('auto.total_cost'),
+      width: 160,
+      render: (_value, run) =>
+        run.total_cost != null && run.currency_code
+          ? `${run.total_cost.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')} ${run.currency_code}`
+          : '—'
+    },
+    {
       key: 'total_tokens',
       title: t('auto.total_tokens'),
       width: 130,

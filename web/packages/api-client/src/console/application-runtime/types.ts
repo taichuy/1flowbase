@@ -58,6 +58,8 @@ export interface ConsoleApplicationRunLog {
 }
 
 export interface ConsoleApplicationRunSummary {
+  total_cost: string | null;
+  currency_code: string | null;
   parent_run_id: string | null;
   caused_by_run_id: string | null;
   log_conversation_id: string | null;

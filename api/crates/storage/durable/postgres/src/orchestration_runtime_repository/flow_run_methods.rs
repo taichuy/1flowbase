@@ -1061,6 +1061,12 @@ impl PgControlPlaneStore {
         }
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
+        // Copy the synchronous billing result once. Request-log retention and async
+        // delivery must not affect the task's recorded cost.
+        sqlx::query(include_str!("application_run_logs/cost_snapshot.sql"))
+            .bind(flow_run.id)
+            .execute(&mut *tx)
+            .await?;
         Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
             .await?;
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
