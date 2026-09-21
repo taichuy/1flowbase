@@ -419,3 +419,73 @@ async fn client_trajectory_cross_capture_namespace_is_exact_or_inherited_from_re
         assert_eq!(find(id).origin, "submitted");
     }
 }
+
+#[tokio::test]
+async fn client_trajectory_integrity_preserves_pending_and_prioritizes_real_loss() {
+    let (pool, flow) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let first = Uuid::now_v7();
+    let second = Uuid::now_v7();
+    begin(&store, flow, None, first).await;
+    assert_eq!(
+        store
+            .client_trajectory_page(flow, None, None, 50)
+            .await
+            .unwrap()
+            .integrity,
+        "pending"
+    );
+    append(
+        &store,
+        flow,
+        None,
+        first,
+        ClientTrajectoryFact::Integrity {
+            status: "complete".into(),
+            dropped_count: 0,
+            persist_failed_count: 0,
+        },
+    )
+    .await;
+    assert_eq!(
+        store
+            .client_trajectory_page(flow, None, None, 50)
+            .await
+            .unwrap()
+            .integrity,
+        "complete"
+    );
+    begin(&store, flow, None, second).await;
+    assert_eq!(
+        store
+            .client_trajectory_page(flow, None, None, 50)
+            .await
+            .unwrap()
+            .integrity,
+        "pending"
+    );
+    for (status, dropped_count, persist_failed_count) in
+        [("incomplete", 0, 0), ("complete", 1, 0), ("complete", 0, 1)]
+    {
+        append(
+            &store,
+            flow,
+            None,
+            first,
+            ClientTrajectoryFact::Integrity {
+                status: status.into(),
+                dropped_count,
+                persist_failed_count,
+            },
+        )
+        .await;
+        assert_eq!(
+            store
+                .client_trajectory_page(flow, None, None, 50)
+                .await
+                .unwrap()
+                .integrity,
+            "incomplete"
+        );
+    }
+}

@@ -112,7 +112,7 @@ impl PgControlPlaneStore {
         limit: i64,
     ) -> Result<ClientTrajectoryPage> {
         let limit = limit.clamp(1, 100);
-        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_and(status='complete' and dropped_count=0 and persist_failed_count=0) then 'complete' else 'incomplete' end from client_trajectory_captures where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)")
+        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)")
             .bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
         let rows = sqlx::query(r#"
             select s.metadata,s.event_sequence,related.id as related_step_id,related.namespace as related_namespace

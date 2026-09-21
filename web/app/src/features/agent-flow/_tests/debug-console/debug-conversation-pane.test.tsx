@@ -276,7 +276,7 @@ describe('DebugConversationPane workflow trace', () => {
     ).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('collapses repeated LLM node runs into one workflow row', () => {
+  test('keeps distinct LLM node runs and their own tool callbacks', () => {
     renderPane([
       {
         ...assistantMessage('等待工具结果'),
@@ -363,15 +363,16 @@ describe('DebugConversationPane workflow trace', () => {
       }
     ]);
 
-    expect(screen.getAllByTestId('debug-workflow-node-row')).toHaveLength(2);
-
-    const llmTraceNode = screen.getAllByTestId('debug-workflow-node-row')[1];
-    expect(llmTraceNode).toHaveTextContent('工具 2');
-
-    const toolsNode = screen.getByRole('button', {
-      name: /^工具 2 次工具回调$/
+    const rows = screen.getAllByTestId('debug-workflow-node-row');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('Start');
+    expect(rows[1]).toHaveTextContent('工具 1');
+    expect(rows[2]).toHaveTextContent('工具 1');
+    const toolsNodes = screen.getAllByRole('button', {
+      name: /^工具 1 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(toolsNodes).toHaveLength(2);
+    toolsNodes.forEach((node) => expect(node).toHaveAttribute('aria-expanded', 'true'));
 
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
