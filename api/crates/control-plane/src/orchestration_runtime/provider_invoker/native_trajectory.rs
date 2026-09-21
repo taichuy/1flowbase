@@ -271,10 +271,10 @@ impl Aggregate {
             }
             ProviderStreamEvent::ResponsesOutputDelta { event } => {
                 if let Some(index) = event["output_index"].as_u64() {
-                    if self.open_items.len() >= RECORDS {
+                    // A Responses delta belongs to an Added, not-yet-Done item.
+                    // It cannot open a new item or reopen one already committed.
+                    if !self.open_items.contains(&(index as usize)) {
                         self.gap = true;
-                    } else {
-                        self.open_items.insert(index as usize);
                     }
                 } else {
                     self.gap = true;
@@ -433,11 +433,6 @@ impl Capture {
                 }
             }
         }
-        for id in state.tools.keys().cloned().collect::<Vec<_>>() {
-            state.open_tools.remove(&id);
-        }
-        let unclosed = !state.open_items.is_empty() || !state.open_tools.is_empty();
-        state.gap |= unclosed;
         // Typed output items may contain committed tools; prefer that richer fact once.
         let items = std::mem::take(&mut state.items);
         let mut reply_items = Vec::new();
@@ -459,6 +454,13 @@ impl Capture {
                 reply_items.push(item);
             }
         }
+        // Native passthrough may commit a tool solely through OutputItem::Done.
+        // Resolve those facts before deciding whether argument streams stayed open.
+        for id in state.tools.keys().cloned().collect::<Vec<_>>() {
+            state.open_tools.remove(&id);
+        }
+        let unclosed = !state.open_items.is_empty() || !state.open_tools.is_empty();
+        state.gap |= unclosed;
         let text = result
             .as_ref()
             .and_then(|value| value["final_content"].as_str())

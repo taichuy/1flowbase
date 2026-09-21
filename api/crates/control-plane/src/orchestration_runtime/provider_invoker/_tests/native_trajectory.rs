@@ -250,3 +250,99 @@ async fn error_only_has_complete_capture_without_invented_reply() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0]["kind"], "error");
 }
+
+#[tokio::test]
+async fn native_tool_output_done_closes_argument_stream_without_tool_commit_or_result_calls() {
+    for done in [true, false] {
+        let (capture, receiver, completion) = fixture(16);
+        let observer = capture.observer();
+        let item = json!({
+            "type":"function_call", "id":"fc-1", "call_id":"call-1",
+            "name":"echo", "arguments":"{\"text\":\"trace-ok\"}"
+        });
+        observer.observe(&ProviderStreamEvent::OutputItem {
+            phase: ProviderOutputItemPhase::Added,
+            output_index: 0,
+            item: item.clone(),
+        });
+        observer.observe(&ProviderStreamEvent::ToolCallDelta {
+            call_id: "call-1".into(),
+            delta: json!({"arguments":"{\"text\":\"trace-ok\"}"}),
+        });
+        observer.observe(&ProviderStreamEvent::ResponsesOutputDelta {
+            event: json!({"type":"response.function_call_arguments.delta", "output_index":0,
+                "item_id":"fc-1", "delta":"{\"text\":\"trace-ok\"}"}),
+        });
+        if done {
+            observer.observe(&ProviderStreamEvent::OutputItem {
+                phase: ProviderOutputItemPhase::Done,
+                output_index: 0,
+                item,
+            });
+        }
+        let result = ProviderInvocationResult {
+            finish_reason: Some(
+                plugin_framework::provider_contract::ProviderFinishReason::ToolCall,
+            ),
+            ..Default::default()
+        };
+        assert!(result.tool_calls.is_empty());
+        capture.finish(Some(&result), None, true);
+        assert_eq!(completion.await.unwrap(), done);
+        let records = records(receiver);
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| record["kind"] == "tool_call")
+                .count(),
+            usize::from(done)
+        );
+        assert_eq!(
+            records
+                .iter()
+                .any(|record| record["kind"] == "observation_gap"),
+            !done
+        );
+        let reply = records
+            .iter()
+            .find(|record| record["kind"] == "model_reply")
+            .unwrap();
+        assert_eq!(
+            reply["status"],
+            if done { "recorded" } else { "incomplete" }
+        );
+        if done {
+            let tool = records
+                .iter()
+                .find(|record| record["kind"] == "tool_call")
+                .unwrap();
+            assert_eq!(tool["tool_call_id"], "call-1");
+            assert_eq!(body(tool)["arguments"], "{\"text\":\"trace-ok\"}");
+        }
+    }
+}
+
+#[test]
+fn responses_delta_cannot_open_or_reopen_output_items() {
+    for previously_done in [false, true] {
+        let mut aggregate = Aggregate::default();
+        if previously_done {
+            for phase in [
+                ProviderOutputItemPhase::Added,
+                ProviderOutputItemPhase::Done,
+            ] {
+                aggregate.observe(&ProviderStreamEvent::OutputItem {
+                    phase,
+                    output_index: 0,
+                    item: json!({"type":"message","id":"m-1","content":[]}),
+                });
+            }
+        }
+        aggregate.observe(&ProviderStreamEvent::ResponsesOutputDelta {
+            event: json!({"type":"response.output_text.delta", "output_index":0,
+                "item_id":"m-1", "content_index":0, "delta":"late"}),
+        });
+        assert!(aggregate.open_items.is_empty());
+        assert!(aggregate.gap, "invalid delta ordering must stay incomplete");
+    }
+}
