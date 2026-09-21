@@ -69,7 +69,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
                 .unwrap();
         assert_eq!(created.flow_run.input_payload, input.input_payload);
         let item = if i < 3 {
-            json!({"type":"custom_tool_call","id":format!("tool-{i}"),"call_id":format!("call-{i}"),"name":"exec","input":format!("console.log({i})")})
+            json!({"type":"custom_tool_call","id":format!("tool-{i}"),"call_id":format!("call-{i}"),"name":"exec","input":if i == 0 {format!("console.log({i})\0")} else {format!("console.log({i})")}})
         } else {
             json!({"type":"message","id":format!("message-{i}"),"role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"done"}]})
         };
@@ -295,7 +295,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .find(|node| node.content_kind == "tool_callback")
         .unwrap();
     assert_eq!(tool.payload["request_payload"]["type"], "custom_tool_call");
-    assert_eq!(tool.payload["request_payload"]["input"], "console.log(0)");
+    assert_eq!(tool.payload["request_payload"]["input"], "console.log(0)\0");
     assert_eq!(
         tool.payload["callback_payload"]["type"],
         "custom_tool_call_output"
@@ -605,7 +605,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     );
     assert_eq!(
         conflict_before_read["_source_item"]["input"],
-        json!("console.log(0)"),
+        json!("console.log(0)\0"),
         "marking conflict must retain the original protocol evidence"
     );
     store

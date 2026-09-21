@@ -488,15 +488,30 @@ impl PgControlPlaneStore {
                 // This derivation is called only by the projection writer. A later
                 // member can contradict a fact owned by an earlier run; update that
                 // derived marker in the same transaction without changing its evidence.
-                sqlx::query(r#"
-                    update application_run_conversation_message_items
-                    set native_message=jsonb_set(native_message,'{_log_conflicting}','true'),
-                        raw_json_payloads=case when raw_json_payloads ? 'native_message'
-                            then jsonb_set(raw_json_payloads,'{native_message,_log_conflicting}','true')
-                            else raw_json_payloads end
+                let original: Option<Value> = sqlx::query_scalar(
+                    r#"
+                    select runtime_original_json(native_message,raw_json_payloads,'native_message')
+                    from application_run_conversation_message_items
                     where flow_run_id=$1 and source_item_key=$2
                       and native_message->>'_log_conflicting' is distinct from 'true'
-                "#).bind(owner).bind(&key).execute(&mut **tx).await?;
+                    for update
+                "#,
+                )
+                .bind(owner)
+                .bind(&key)
+                .fetch_optional(&mut **tx)
+                .await?;
+                if let Some(mut original) = original {
+                    original["_log_conflicting"] = Value::Bool(true);
+                    sqlx::query(r#"
+                        update application_run_conversation_message_items
+                        set native_message=($3::jsonb -> 0),
+                            raw_json_payloads=(raw_json_payloads - 'native_message') ||
+                                jsonb_strip_nulls(jsonb_build_object('native_message', $3::jsonb -> 1))
+                        where flow_run_id=$1 and source_item_key=$2
+                    "#).bind(owner).bind(&key).bind(lossless_json_parameter(&original))
+                        .execute(&mut **tx).await?;
+                }
             }
         }
         facts.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
