@@ -612,6 +612,15 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Option<domain::ApplicationRunDetail>>;
+    async fn get_flow_run_metadata(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<FlowRunMetadataReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_flow_run_metadata not implemented")
+    }
+
     async fn get_application_run_overview(
         &self,
         application_id: Uuid,

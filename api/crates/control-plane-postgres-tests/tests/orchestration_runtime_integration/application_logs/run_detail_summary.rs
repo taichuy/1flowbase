@@ -1125,6 +1125,16 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
     assert_eq!(overview.waiting_node_id.as_deref(), Some("node-tool"));
     assert_eq!(overview.waiting_node_run_id, Some(node.id));
     assert_eq!(overview.tool_callback_count, 1);
+    assert_eq!(overview.flow_run.id, run.id);
+    assert_eq!(overview.flow_run.application_id, seeded.application_id);
+    assert!(
+        store
+            .get_flow_run_metadata(Uuid::now_v7(), run.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "metadata lookup must retain application authorization scope"
+    );
 
     let timeline = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
         &store,

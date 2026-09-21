@@ -121,35 +121,6 @@ function formatNullableNumber(value: number | null | undefined) {
     : '-';
 }
 
-function overviewDetailInput(
-  message: AgentFlowDebugMessage,
-  overview: ConversationLogRunOverview | undefined
-) {
-  return overview?.flow_run.input_payload ?? buildDetailInput(message);
-}
-
-function overviewDetailOutput(
-  message: AgentFlowDebugMessage,
-  overview: ConversationLogRunOverview | undefined
-) {
-  if (!overview) {
-    return buildDetailOutput(message);
-  }
-
-  if (Object.keys(overview.flow_run.output_payload).length > 0) {
-    return overview.flow_run.output_payload;
-  }
-
-  const answerPayload = overview.answer_snapshot?.output_payload;
-  if (answerPayload && Object.keys(answerPayload).length > 0) {
-    return answerPayload;
-  }
-
-  return {
-    answer: overview.answer_snapshot?.text ?? message.content
-  };
-}
-
 function ConversationLogDetailContent({
   message,
   onLoadArtifact,
@@ -174,16 +145,18 @@ function ConversationLogDetailContent({
 
   return (
     <div className="agent-flow-editor__conversation-log-tab">
-      <div className="agent-flow-editor__conversation-log-json-list">
-        <NodeRunPayloadSections
-          debugPayload={{}}
-          includeDebugPayload={false}
-          inputPayload={overviewDetailInput(message, overview)}
-          outputPayload={overviewDetailOutput(message, overview)}
-          onLoadArtifact={onLoadArtifact}
-          onLoadArtifacts={onLoadArtifacts}
-        />
-      </div>
+      {!overview && (
+        <div className="agent-flow-editor__conversation-log-json-list">
+          <NodeRunPayloadSections
+            debugPayload={{}}
+            includeDebugPayload={false}
+            inputPayload={buildDetailInput(message)}
+            outputPayload={buildDetailOutput(message)}
+            onLoadArtifact={onLoadArtifact}
+            onLoadArtifacts={onLoadArtifacts}
+          />
+        </div>
+      )}
       <section
         aria-label={i18nText('agentFlow', 'auto.metadata')}
         className="agent-flow-editor__conversation-log-metadata"

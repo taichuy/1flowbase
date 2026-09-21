@@ -76,10 +76,71 @@ pub struct ApplicationRunConversationMessageItemsPage {
     pub newest_sequence: Option<i64>,
 }
 
+/// Run identity and lifecycle metadata. Payloads are deliberately not part of this read contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowRunMetadataReadModel {
+    pub id: Uuid,
+    pub application_id: Uuid,
+    pub flow_id: Uuid,
+    pub draft_id: Uuid,
+    pub compiled_plan_id: Option<Uuid>,
+    pub debug_session_id: String,
+    pub flow_schema_version: String,
+    pub document_hash: String,
+    pub run_mode: domain::FlowRunMode,
+    pub target_node_id: Option<String>,
+    pub title: String,
+    pub status: domain::FlowRunStatus,
+    pub created_by: Uuid,
+    pub authorized_account: Option<String>,
+    pub api_key_id: Option<Uuid>,
+    pub publication_version_id: Option<Uuid>,
+    pub external_user: Option<String>,
+    pub external_conversation_id: Option<String>,
+    pub external_trace_id: Option<String>,
+    pub compatibility_mode: Option<String>,
+    pub idempotency_key: Option<String>,
+    pub started_at: OffsetDateTime,
+    pub finished_at: Option<OffsetDateTime>,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+impl From<&domain::FlowRunRecord> for FlowRunMetadataReadModel {
+    fn from(run: &domain::FlowRunRecord) -> Self {
+        Self {
+            id: run.id.clone(),
+            application_id: run.application_id.clone(),
+            flow_id: run.flow_id.clone(),
+            draft_id: run.draft_id.clone(),
+            compiled_plan_id: run.compiled_plan_id.clone(),
+            debug_session_id: run.debug_session_id.clone(),
+            flow_schema_version: run.flow_schema_version.clone(),
+            document_hash: run.document_hash.clone(),
+            run_mode: run.run_mode.clone(),
+            target_node_id: run.target_node_id.clone(),
+            title: run.title.clone(),
+            status: run.status.clone(),
+            created_by: run.created_by.clone(),
+            authorized_account: run.authorized_account.clone(),
+            api_key_id: run.api_key_id.clone(),
+            publication_version_id: run.publication_version_id.clone(),
+            external_user: run.external_user.clone(),
+            external_conversation_id: run.external_conversation_id.clone(),
+            external_trace_id: run.external_trace_id.clone(),
+            compatibility_mode: run.compatibility_mode.clone(),
+            idempotency_key: run.idempotency_key.clone(),
+            started_at: run.started_at.clone(),
+            finished_at: run.finished_at.clone(),
+            created_at: run.created_at.clone(),
+            updated_at: run.updated_at.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunOverviewReadModel {
-    pub flow_run: domain::FlowRunRecord,
-    pub node_runs: Vec<domain::NodeRunRecord>,
+    pub flow_run: FlowRunMetadataReadModel,
     pub tool_callback_count: i64,
     pub waiting_node_id: Option<String>,
     pub waiting_node_run_id: Option<Uuid>,

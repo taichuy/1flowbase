@@ -1,4 +1,7 @@
-import type { ProviderTrajectoryPage, ProviderTrajectoryBody } from '@1flowbase/api-client';
+import type {
+  ProviderTrajectoryPage,
+  ProviderTrajectoryBody
+} from '@1flowbase/api-client';
 import type { AgentFlowTraceItem } from '../../api/runtime';
 
 export interface ConversationLogTraceNodeSummary {
@@ -103,21 +106,22 @@ export interface ConversationLogRunOverview {
   flow_run: {
     id: string;
     status: string;
-    input_payload: Record<string, unknown>;
-    output_payload: Record<string, unknown>;
-    error_payload?: Record<string, unknown> | null;
     started_at: string;
     finished_at?: string | null;
   };
-  answer_snapshot?: {
-    text: string;
-    output_payload: Record<string, unknown>;
-  } | null;
 }
 
 export interface ConversationLogTraceLoader {
-  loadTrajectory?: (runId: string, nodeRunId: string, cursor?: number) => Promise<ProviderTrajectoryPage>;
-  loadTrajectoryBody?: (runId: string, nodeRunId: string, eventId: string) => Promise<ProviderTrajectoryBody>;
+  loadTrajectory?: (
+    runId: string,
+    nodeRunId: string,
+    cursor?: number
+  ) => Promise<ProviderTrajectoryPage>;
+  loadTrajectoryBody?: (
+    runId: string,
+    nodeRunId: string,
+    eventId: string
+  ) => Promise<ProviderTrajectoryBody>;
   loadTree: (runId: string) => Promise<ConversationLogTraceTree>;
   loadChildren: (
     runId: string,

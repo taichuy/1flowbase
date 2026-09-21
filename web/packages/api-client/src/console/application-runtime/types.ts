@@ -398,6 +398,27 @@ export interface ConsoleFlowRunDetail {
   updated_at?: string;
 }
 
+export interface ConsoleFlowRunMetadata {
+  id: string;
+  application_id: string;
+  flow_id: string;
+  draft_id: string;
+  compiled_plan_id: string | null;
+  debug_session_id?: string;
+  run_mode: ConsoleFlowRunMode;
+  status: string;
+  target_node_id: string | null;
+  title?: string;
+  expand_id?: string | null;
+  authorized_account?: string | null;
+  external_conversation_id?: string | null;
+  created_by: string;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface ConsoleNodeRunDetail {
   id: string;
   flow_run_id: string;
@@ -486,8 +507,7 @@ export interface ConsoleApplicationRunDetail {
 export interface ConsoleApplicationRunOverview {
   run: ConsoleApplicationRunLog;
   statistics: ConsoleApplicationRunStatistics;
-  flow_run: ConsoleFlowRunDetail;
-  answer_snapshot?: ConsoleAnswerSnapshot | null;
+  flow_run: ConsoleFlowRunMetadata;
 }
 
 export type ConsoleApplicationRunTraceNodeKind =
@@ -832,8 +852,7 @@ export interface ConsoleRunArchiveImportJob {
 export interface ConsoleApplicationRunTraceTree {
   run: ConsoleApplicationRunLog;
   statistics: ConsoleApplicationRunStatistics;
-  flow_run: ConsoleFlowRunDetail;
-  answer_snapshot?: ConsoleAnswerSnapshot | null;
+  flow_run: ConsoleFlowRunMetadata;
   projection_status: ConsoleApplicationRunTraceProjectionStatus;
   nodes: ConsoleApplicationRunTraceNodeSummary[];
   page_info: ConsoleApplicationRunTraceNodeChildrenPageInfo;

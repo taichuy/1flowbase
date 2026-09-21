@@ -293,6 +293,28 @@ pub struct FlowRunResponse {
     pub updated_at: String,
 }
 
+/// Metadata-only flow reference used by progressive log reads.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FlowRunMetadataResponse {
+    pub id: String,
+    pub application_id: String,
+    pub flow_id: String,
+    pub draft_id: String,
+    pub compiled_plan_id: Option<String>,
+    pub run_mode: String,
+    pub status: String,
+    pub target_node_id: Option<String>,
+    pub title: String,
+    pub expand_id: Option<String>,
+    pub authorized_account: Option<String>,
+    pub external_conversation_id: Option<String>,
+    pub created_by: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ApplicationConversationMessagesQuery {
     pub around_run_id: Option<Uuid>,
@@ -482,8 +504,7 @@ pub struct ApplicationRunDetailResponse {
 pub struct ApplicationRunOverviewResponse {
     pub run: application_logs::ApplicationRunLogResponse,
     pub statistics: application_logs::ApplicationRunStatisticsResponse,
-    pub flow_run: FlowRunResponse,
-    pub answer_snapshot: Option<AnswerSnapshotResponse>,
+    pub flow_run: FlowRunMetadataResponse,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -534,8 +555,7 @@ pub struct ApplicationRunTraceProjectionStatusResponse {
 pub struct ApplicationRunTraceTreeResponse {
     pub run: application_logs::ApplicationRunLogResponse,
     pub statistics: application_logs::ApplicationRunStatisticsResponse,
-    pub flow_run: FlowRunResponse,
-    pub answer_snapshot: Option<AnswerSnapshotResponse>,
+    pub flow_run: FlowRunMetadataResponse,
     pub projection_status: ApplicationRunTraceProjectionStatusResponse,
     pub nodes: Vec<ApplicationRunTraceNodeSummaryResponse>,
     pub page_info: ApplicationRunTraceNodeChildrenPageInfoResponse,

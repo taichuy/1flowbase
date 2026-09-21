@@ -271,3 +271,27 @@ fn to_flow_run_response(run: domain::FlowRunRecord) -> FlowRunResponse {
         updated_at: format_time(run.updated_at),
     }
 }
+
+fn to_flow_run_metadata_response(
+    run: control_plane::ports::FlowRunMetadataReadModel,
+) -> FlowRunMetadataResponse {
+    FlowRunMetadataResponse {
+        id: run.id.to_string(),
+        application_id: run.application_id.to_string(),
+        flow_id: run.flow_id.to_string(),
+        draft_id: run.draft_id.to_string(),
+        compiled_plan_id: run.compiled_plan_id.map(|value| value.to_string()),
+        run_mode: run.run_mode.as_str().to_string(),
+        status: run.status.as_str().to_string(),
+        target_node_id: run.target_node_id,
+        title: run.title,
+        expand_id: run.external_user,
+        authorized_account: run.authorized_account,
+        external_conversation_id: run.external_conversation_id,
+        created_by: run.created_by.to_string(),
+        started_at: format_time(run.started_at),
+        finished_at: format_optional_time(run.finished_at),
+        created_at: format_time(run.created_at),
+        updated_at: format_time(run.updated_at),
+    }
+}

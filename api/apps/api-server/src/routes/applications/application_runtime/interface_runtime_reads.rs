@@ -381,13 +381,16 @@ impl ApplicationRuntimeReadsAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let mut response = to_application_run_overview_response(&application, overview);
-        response.statistics = to_trace_projection_statistics_response(
+        let statistics = to_trace_projection_statistics_response(
             self.store
                 .get_application_run_trace_statistics(run_id)
                 .await?,
         );
-        Ok(response)
+        Ok(to_application_run_overview_response(
+            &application,
+            overview,
+            statistics,
+        ))
     }
 
     async fn trace_tree(
@@ -398,7 +401,7 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRunTraceTreeResponse, ApiError> {
         let application = self.visible_application(actor, application_id).await?;
         let status = self.trace_projection_status(application_id, run_id).await?;
-        let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run(
+        let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run_metadata(
             &self.store,
             application_id,
             run_id,
@@ -441,10 +444,9 @@ impl ApplicationRuntimeReadsAdapter {
             .await?,
         );
         Ok(ApplicationRunTraceTreeResponse {
-            run: application_run_log_response_for_trace_tree(&application, &flow_run),
+            run: application_run_log_response_for_metadata(&application, &flow_run),
             statistics,
-            flow_run: to_flow_run_response(flow_run),
-            answer_snapshot: None,
+            flow_run: to_flow_run_metadata_response(flow_run),
             projection_status: to_trace_projection_status_response(&status),
             page_info,
             nodes: nodes

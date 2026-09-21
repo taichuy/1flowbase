@@ -166,6 +166,13 @@ fn application_run_log_response_for_trace_tree(
     application: &domain::ApplicationRecord,
     flow_run: &domain::FlowRunRecord,
 ) -> application_logs::ApplicationRunLogResponse {
+    application_run_log_response_for_metadata(application, &flow_run.into())
+}
+
+fn application_run_log_response_for_metadata(
+    application: &domain::ApplicationRecord,
+    flow_run: &control_plane::ports::FlowRunMetadataReadModel,
+) -> application_logs::ApplicationRunLogResponse {
     let application_type = application.application_type.as_str().to_string();
 
     let invocation_context = flow_run.run_mode.invocation_context(
@@ -214,46 +221,15 @@ fn projection_is_succeeded(status: &domain::ApplicationRunTraceProjectionStatusR
     status.status == domain::ApplicationRunTraceProjectionStatus::Succeeded
 }
 
-fn answer_snapshot_for_log_overview(
-    overview: &ApplicationRunOverviewReadModel,
-) -> Option<AnswerSnapshotResponse> {
-    let (answer_snapshot_node_run, _) = split_answer_snapshot_node_run_records(&overview.node_runs);
-
-    if !flow_run_can_expose_answer_snapshot(&overview.flow_run.status) {
-        return None;
-    }
-
-    let waiting_node = (
-        overview.waiting_node_id.clone(),
-        overview.waiting_node_run_id.map(|value| value.to_string()),
-    );
-
-    answer_snapshot_node_run
-        .as_ref()
-        .and_then(|node_run| {
-            to_answer_snapshot_response_with_waiting_node(node_run, waiting_node.clone())
-        })
-        .or_else(|| {
-            to_flow_run_answer_snapshot_response_with_waiting_node(&overview.flow_run, waiting_node)
-        })
-}
-
 fn to_application_run_overview_response(
     application: &domain::ApplicationRecord,
     overview: ApplicationRunOverviewReadModel,
+    statistics: application_logs::ApplicationRunStatisticsResponse,
 ) -> ApplicationRunOverviewResponse {
-    let (_, current_visible_node_runs) =
-        split_answer_snapshot_node_run_records(&overview.node_runs);
-    let statistics = application_run_statistics_for_records(
-        &current_visible_node_runs,
-        overview.tool_callback_count,
-    );
-
     ApplicationRunOverviewResponse {
-        run: application_run_log_response_for_trace_tree(application, &overview.flow_run),
+        run: application_run_log_response_for_metadata(application, &overview.flow_run),
         statistics,
-        flow_run: to_flow_run_response(overview.flow_run.clone()),
-        answer_snapshot: answer_snapshot_for_log_overview(&overview),
+        flow_run: to_flow_run_metadata_response(overview.flow_run),
     }
 }
 

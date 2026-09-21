@@ -914,6 +914,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::get_application_run_detail(self, application_id, flow_run_id).await
     }
 
+    async fn get_flow_run_metadata(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<control_plane_contracts::ports::FlowRunMetadataReadModel>> {
+        PgControlPlaneStore::get_flow_run_metadata(self, application_id, flow_run_id).await
+    }
+
     async fn get_application_run_overview(
         &self,
         application_id: Uuid,

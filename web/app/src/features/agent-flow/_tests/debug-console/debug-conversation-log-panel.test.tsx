@@ -86,10 +86,7 @@ describe('debug conversation log panel', () => {
 
   test('owns the Ant Design 6 tab body and scroll region through semantic slots', () => {
     const { container } = renderWithQueryClient(
-      <ConversationLogPanel
-        message={assistantMessage}
-        onClose={vi.fn()}
-      />
+      <ConversationLogPanel message={assistantMessage} onClose={vi.fn()} />
     );
 
     expect(
@@ -97,15 +94,15 @@ describe('debug conversation log panel', () => {
         '.agent-flow-editor__conversation-log-tabs-body.ant-tabs-body'
       )
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('tabpanel', { name: '详情' })
-    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+    expect(screen.getByRole('tabpanel', { name: '详情' })).toHaveClass(
+      'agent-flow-editor__conversation-log-scroll-region'
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
 
-    expect(
-      screen.getByRole('tabpanel', { name: '追踪' })
-    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+    expect(screen.getByRole('tabpanel', { name: '追踪' })).toHaveClass(
+      'agent-flow-editor__conversation-log-scroll-region'
+    );
   });
 
   test('opens from an assistant message and keeps detail limited to input, output and metadata', () => {
@@ -215,20 +212,9 @@ describe('debug conversation log panel', () => {
       flow_run: {
         id: 'run-application-log',
         status: 'succeeded',
-        input_payload: {
-          'node-start': {
-            query: '总结退款政策',
-            model: 'deepseek-chat'
-          }
-        },
-        output_payload: {
-          answer: '退款政策摘要'
-        },
-        error_payload: null,
         started_at: '2026-04-25T10:00:00Z',
         finished_at: '2026-04-25T10:00:05Z'
-      },
-      answer_snapshot: null
+      }
     });
     const traceLoader = {
       loadTree: vi.fn().mockResolvedValue({ nodes: [] }),
@@ -254,16 +240,9 @@ describe('debug conversation log panel', () => {
       />
     );
 
-    await waitFor(() =>
-      expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('query')
-    );
-    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent(
-      '总结退款政策'
-    );
-    expect(screen.getByLabelText('输出 JSON')).toHaveTextContent(
-      '退款政策摘要'
-    );
-    expect(screen.getByText('run-application-log')).toBeInTheDocument();
+    expect(await screen.findByText('run-application-log')).toBeInTheDocument();
+    expect(screen.queryByLabelText('输入 JSON')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('输出 JSON')).not.toBeInTheDocument();
     expect(screen.getByText('154')).toBeInTheDocument();
     expect(loadOverview).toHaveBeenCalledWith('run-application-log');
     expect(traceLoader.loadTree).not.toHaveBeenCalled();
