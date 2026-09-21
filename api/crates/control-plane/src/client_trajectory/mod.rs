@@ -213,12 +213,27 @@ async fn persist(
         observed_at: at,
         fact,
     };
-    if !matches!(
-        tokio::time::timeout(WRITE_TIMEOUT, repository.append(&input)).await,
-        Ok(Ok(()))
-    ) {
-        *failed = failed.saturating_add(1);
-    }
+    let kind = match &input.fact {
+        ClientTrajectoryFact::Integrity { .. } => "integrity",
+        ClientTrajectoryFact::Step { .. } => "step",
+        ClientTrajectoryFact::Section { section, .. } => section.as_str(),
+    };
+    let result = tokio::time::timeout(WRITE_TIMEOUT, repository.append(&input)).await;
+    let reason = match &result {
+        Ok(Ok(())) => return,
+        Err(_) => "timeout",
+        Ok(Err(error)) => match error.to_string().as_str() {
+            "client trajectory record capacity" => "record_capacity",
+            "client trajectory capture scope mismatch" => "capture_scope",
+            "client trajectory capture missing" => "capture_missing",
+            "client trajectory step scope mismatch" => "step_scope",
+            "client trajectory section scope mismatch" => "section_scope",
+            "client trajectory node scope mismatch" => "node_scope",
+            _ => "repository",
+        },
+    };
+    *failed = failed.saturating_add(1);
+    tracing::warn!(request_id = %id, flow_run_id = %scope.flow, fact_kind = kind, reason, "client trajectory fact persistence failed");
 }
 struct PersistenceSink<'a> {
     repository: &'a dyn FactWriter,
