@@ -1,495 +1,401 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Descriptions,
-  Empty,
-  Modal,
-  Space,
-  Spin,
-  Table,
-  Tabs,
-  Tag,
-  Typography
-} from 'antd';
+import { Alert, Button, Empty, Input, Modal, Spin, Tooltip } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
-import type {
-  ProviderTrajectoryStep,
-  ProviderTrajectoryView
-} from '@1flowbase/api-client';
+import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import UnorderedListOutlined from '@ant-design/icons/es/icons/UnorderedListOutlined';
+import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import { TrajectoryStepDetail } from './TrajectoryStepDetail';
+import {
+  integrityLabel,
+  invocationKey,
+  stepLabel,
+  stepLane
+} from './trajectory-presentation';
 import './provider-trajectory.css';
 
-function stepKind(step: ProviderTrajectoryStep) {
-  switch (step.metadata.kind) {
-    case 'model_call':
-      return i18nText('agentFlow', 'trajectory.model_call');
-    case 'model_reply':
-      return i18nText('agentFlow', 'trajectory.model_reply');
-    case 'tool_call':
-      return i18nText('agentFlow', 'trajectory.tool_request');
-    case 'tool_result':
-      return i18nText('agentFlow', 'trajectory.submitted_result');
-    case 'error':
-      return i18nText('agentFlow', 'trajectory.protocol_error');
-    case 'observation_gap':
-      return i18nText('agentFlow', 'trajectory.semantic_gap');
-  }
-}
-
+/** A trajectory augments the existing workflow tree; it never owns that tree. */
 export function ProviderTrajectory({
   runId,
   nodeRunId,
-  loader,
-  executionContent
+  loader
 }: {
   runId: string;
-  nodeRunId: string;
+  nodeRunId?: string;
   loader: ConversationLogTraceLoader;
-  executionContent?: ReactNode;
 }) {
-  const overlayZIndex = useWindowWorkspaceOverlayZIndex();
+  const zIndex = useWindowWorkspaceOverlayZIndex();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState('protocol');
-  const [view, setView] = useState<ProviderTrajectoryView>('semantic');
-  const [selected, setSelected] = useState<ProviderTrajectoryStep | null>(null);
-  const pages = useInfiniteQuery({
-    queryKey: ['provider-trajectory', runId, nodeRunId],
-    enabled: open && Boolean(loader.loadTrajectory),
-    initialPageParam: undefined as number | undefined,
-    queryFn: ({ pageParam }) =>
-      loader.loadTrajectory!(runId, nodeRunId, pageParam),
-    getNextPageParam: (page) => page.next_cursor ?? undefined,
-    refetchOnWindowFocus: false
-  });
-  const body = useInfiniteQuery({
-    queryKey: [
-      'provider-trajectory-body',
-      runId,
-      nodeRunId,
-      selected?.event_id,
-      view
-    ],
-    enabled:
-      open &&
-      tab === 'protocol' &&
-      Boolean(selected && loader.loadTrajectoryBody),
-    initialPageParam: undefined as number | undefined,
-    queryFn: ({ pageParam }) =>
-      loader.loadTrajectoryBody!(
-        runId,
-        nodeRunId,
-        selected!.event_id,
-        pageParam,
-        view
-      ),
-    getNextPageParam: (page) => page.next_cursor ?? undefined,
-    refetchOnWindowFocus: false,
-    staleTime: 0
-  });
-  const overview = pages.data?.pages[0];
-  const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
-  const integrityLabel =
-    overview?.integrity === 'complete'
-      ? i18nText('agentFlow', 'trajectory.complete')
-      : overview?.integrity === 'pending'
-        ? i18nText('agentFlow', 'trajectory.pending')
-        : overview?.integrity === 'incomplete'
-          ? i18nText('agentFlow', 'trajectory.incomplete')
-          : i18nText('agentFlow', 'trajectory.unavailable');
-
+  const title = nodeRunId
+    ? i18nText('agentFlow', 'trajectory.title')
+    : i18nText('agentFlow', 'trajectory.run_title');
   return (
     <>
-      <Button
-        size="small"
-        type="text"
-        icon={<ApartmentOutlined />}
-        aria-label={i18nText('agentFlow', 'trajectory.title')}
-        title={i18nText('agentFlow', 'trajectory.title')}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen(true);
-        }}
-      />
+      <Tooltip title={title}>
+        <Button
+          size="small"
+          type="text"
+          icon={<ApartmentOutlined />}
+          aria-label={title}
+          title={title}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen(true);
+          }}
+        />
+      </Tooltip>
       <Modal
-        zIndex={overlayZIndex}
+        zIndex={zIndex}
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
-        width={1080}
-        title={i18nText('agentFlow', 'trajectory.title')}
+        width="min(1440px, calc(100vw - 32px))"
+        title={title}
         destroyOnHidden
+        styles={{ body: { padding: 0, minHeight: 0 } }}
       >
-        <Tabs
-          activeKey={tab}
-          onChange={setTab}
-          items={[
-            {
-              key: 'protocol',
-              label: i18nText('agentFlow', 'trajectory.semantic_steps')
-            },
-            {
-              key: 'execution',
-              label: i18nText('agentFlow', 'trajectory.execution')
-            }
-          ]}
-        />
-        {tab === 'execution' ? (
-          (executionContent ?? (
-            <Empty
-              description={i18nText('agentFlow', 'trajectory.no_execution')}
-            />
-          ))
-        ) : (
-          <>
-            {pages.isLoading ? <Spin /> : null}
-            {pages.isError ? (
-              <Alert
-                type="error"
-                showIcon
-                title={i18nText('agentFlow', 'auto.loading_failed')}
-                action={
-                  <Button onClick={() => void pages.refetch()}>
-                    {i18nText('agentFlow', 'auto.retry')}
-                  </Button>
-                }
-              />
-            ) : null}
-            {overview?.integrity === 'not_recorded' ? (
-              <Alert
-                type="info"
-                showIcon
-                title={i18nText('agentFlow', 'trajectory.not_recorded_detail')}
-              />
-            ) : null}
-            <Space wrap className="provider-trajectory__overview">
-              <Typography.Text strong>
-                {i18nText('agentFlow', 'trajectory.overview')}
-              </Typography.Text>
-              <Tag
-                color={
-                  overview?.integrity === 'incomplete' ? 'warning' : undefined
-                }
-              >
-                {i18nText('agentFlow', 'trajectory.semantic_integrity')}:{' '}
-                {integrityLabel}
-              </Tag>
-              <Tag
-                color={
-                  overview?.protocol_integrity === 'incomplete'
-                    ? 'warning'
-                    : undefined
-                }
-              >
-                {i18nText('agentFlow', 'trajectory.protocol_integrity')}:{' '}
-                {overview?.protocol_integrity === 'complete'
-                  ? i18nText('agentFlow', 'trajectory.complete')
-                  : overview?.protocol_integrity === 'incomplete'
-                    ? i18nText('agentFlow', 'trajectory.incomplete')
-                    : overview?.protocol_integrity === 'pending'
-                      ? i18nText('agentFlow', 'trajectory.pending')
-                      : i18nText('agentFlow', 'trajectory.unavailable')}
-              </Tag>
-              <Typography.Text>
-                {i18nText('agentFlow', 'trajectory.observations', {
-                  count: overview?.observation_count ?? 0
-                })}
-              </Typography.Text>
-              {overview?.persist_failed_count ? (
-                <Typography.Text type="warning">
-                  {i18nText('agentFlow', 'trajectory.failed_records', {
-                    count: overview.persist_failed_count
-                  })}
-                </Typography.Text>
-              ) : null}
-            </Space>
-            {items.length ? (
-              <>
-                <nav
-                  className="provider-trajectory__sequence"
-                  aria-label={i18nText('agentFlow', 'trajectory.overview')}
-                >
-                  {items.map((step) => (
-                    <Button
-                      key={step.event_id}
-                      size="small"
-                      type={
-                        selected?.event_id === step.event_id
-                          ? 'primary'
-                          : 'default'
-                      }
-                      title={`${formatDateTime(step.created_at)} · ${stepKind(step)}`}
-                      onClick={() => {
-                        setSelected(step);
-                        setView('semantic');
-                      }}
-                    >
-                      {step.event_sequence}
-                    </Button>
-                  ))}
-                </nav>
-                <div className="provider-trajectory__workspace">
-                  <section
-                    aria-label={i18nText('agentFlow', 'trajectory.steps')}
-                  >
-                    <Table<ProviderTrajectoryStep>
-                      size="small"
-                      rowKey="event_id"
-                      pagination={false}
-                      dataSource={items}
-                      scroll={{ y: 400 }}
-                      onRow={(step) => ({
-                        onClick: () => {
-                          setSelected(step);
-                          setView('semantic');
-                        }
-                      })}
-                      rowClassName={(step) =>
-                        selected?.event_id === step.event_id
-                          ? 'provider-trajectory__selected'
-                          : ''
-                      }
-                      columns={[
-                        { title: '#', dataIndex: 'event_sequence', width: 58 },
-                        {
-                          title: i18nText('agentFlow', 'trajectory.step'),
-                          render: (_, step) => (
-                            <Button
-                              type="link"
-                              size="small"
-                              onClick={() => {
-                                setSelected(step);
-                                setView('semantic');
-                              }}
-                            >
-                              {stepKind(step)}
-                            </Button>
-                          )
-                        },
-                        {
-                          title: i18nText('agentFlow', 'trajectory.direction'),
-                          render: (_, step) =>
-                            step.metadata.direction === 'prepared'
-                              ? i18nText('agentFlow', 'trajectory.prepared')
-                              : i18nText('agentFlow', 'trajectory.received')
-                        },
-                        {
-                          title: i18nText('agentFlow', 'trajectory.attempt'),
-                          render: (_, step) =>
-                            step.metadata.provider_attempt_index
-                        }
-                      ]}
-                    />
-                    {pages.hasNextPage ? (
-                      <Button
-                        loading={pages.isFetchingNextPage}
-                        onClick={() => void pages.fetchNextPage()}
-                      >
-                        {i18nText('agentFlow', 'trajectory.more')}
-                      </Button>
-                    ) : null}
-                  </section>
-                  <section
-                    className="provider-trajectory__inspector"
-                    aria-label={i18nText('agentFlow', 'trajectory.inspector')}
-                  >
-                    {selected ? (
-                      <>
-                        <Descriptions
-                          size="small"
-                          column={1}
-                          items={[
-                            {
-                              key: 'source',
-                              label: i18nText('agentFlow', 'trajectory.source'),
-                              children:
-                                selected.metadata.source === 'ai_native'
-                                  ? i18nText(
-                                      'agentFlow',
-                                      'trajectory.native_source'
-                                    )
-                                  : i18nText(
-                                      'agentFlow',
-                                      'trajectory.supplier_source'
-                                    )
-                            },
-                            {
-                              key: 'protocol',
-                              label: i18nText(
-                                'agentFlow',
-                                'trajectory.protocol'
-                              ),
-                              children: [
-                                selected.metadata.protocol,
-                                selected.metadata.transport
-                              ]
-                                .filter(Boolean)
-                                .join(' / ')
-                            },
-                            {
-                              key: 'invocation',
-                              label: i18nText(
-                                'agentFlow',
-                                'trajectory.invocation'
-                              ),
-                              children: selected.metadata.invocation_id
-                            },
-                            ...(selected.metadata.raw_sequence_start ===
-                            undefined
-                              ? []
-                              : [
-                                  {
-                                    key: 'sequence',
-                                    label: i18nText(
-                                      'agentFlow',
-                                      'trajectory.sequence'
-                                    ),
-                                    children: `${selected.metadata.raw_sequence_start}–${selected.metadata.raw_sequence_end}`
-                                  }
-                                ]),
-                            {
-                              key: 'time',
-                              label: i18nText('agentFlow', 'trajectory.time'),
-                              children: formatDateTime(selected.created_at)
-                            },
-                            ...(selected.metadata.status === undefined
-                              ? []
-                              : [
-                                  {
-                                    key: 'status',
-                                    label: i18nText(
-                                      'agentFlow',
-                                      'trajectory.status'
-                                    ),
-                                    children:
-                                      selected.metadata.status === 'incomplete'
-                                        ? i18nText(
-                                            'agentFlow',
-                                            'trajectory.incomplete'
-                                          )
-                                        : selected.metadata.status ===
-                                            'unavailable'
-                                          ? i18nText(
-                                              'agentFlow',
-                                              'trajectory.unavailable'
-                                            )
-                                          : i18nText(
-                                              'agentFlow',
-                                              'trajectory.recorded'
-                                            )
-                                  }
-                                ])
-                          ]}
-                        />
-                        <Tabs
-                          activeKey={view}
-                          onChange={(key) =>
-                            setView(key as ProviderTrajectoryView)
-                          }
-                          items={[
-                            {
-                              key: 'semantic',
-                              label: i18nText(
-                                'agentFlow',
-                                'trajectory.step_detail'
-                              )
-                            },
-                            {
-                              key: 'protocol',
-                              label: i18nText(
-                                'agentFlow',
-                                'trajectory.raw_evidence'
-                              )
-                            }
-                          ]}
-                        />
-                        {view === 'protocol' &&
-                        body.data?.pages[0]?.evidence_scope === 'invocation' ? (
-                          <Alert
-                            type="info"
-                            showIcon
-                            title={i18nText(
-                              'agentFlow',
-                              'trajectory.invocation_evidence'
-                            )}
-                          />
-                        ) : null}
-                        {body.isLoading ? <Spin /> : null}
-                        {body.isError ? (
-                          <Alert
-                            type="error"
-                            showIcon
-                            title={i18nText('agentFlow', 'auto.loading_failed')}
-                            action={
-                              <Button onClick={() => void body.refetch()}>
-                                {i18nText('agentFlow', 'auto.retry')}
-                              </Button>
-                            }
-                          />
-                        ) : null}
-                        {selected.metadata.preview ? (
-                          <Typography.Paragraph>
-                            {selected.metadata.preview}
-                          </Typography.Paragraph>
-                        ) : null}
-                        {selected.metadata.tool_call_id ? (
-                          <Typography.Text code>
-                            {selected.metadata.tool_call_id}
-                          </Typography.Text>
-                        ) : null}
-                        {body.isSuccess &&
-                        !body.data.pages.some((page) => page.items.length) ? (
-                          <Empty
-                            description={i18nText(
-                              'agentFlow',
-                              'trajectory.no_evidence'
-                            )}
-                          />
-                        ) : null}
-                        {body.data?.pages
-                          .flatMap((page) => page.items)
-                          .map((evidence) => (
-                            <div key={evidence.event_id}>
-                              <Tag>
-                                {evidence.sequence} · {evidence.encoding}
-                              </Tag>
-                              <pre className="provider-trajectory__body">
-                                {evidence.body}
-                              </pre>
-                            </div>
-                          ))}
-                        {body.hasNextPage ? (
-                          <Button
-                            loading={body.isFetchingNextPage}
-                            onClick={() => void body.fetchNextPage()}
-                          >
-                            {i18nText('agentFlow', 'trajectory.more_evidence')}
-                          </Button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <Empty
-                        description={i18nText(
-                          'agentFlow',
-                          'trajectory.select_step'
-                        )}
-                      />
-                    )}
-                  </section>
-                </div>
-              </>
-            ) : !pages.isLoading && !pages.isError ? (
-              <Empty
-                description={i18nText('agentFlow', 'trajectory.unavailable')}
-              />
-            ) : null}
-          </>
-        )}
+        {open ? (
+          <TrajectoryWorkspace
+            key={`${runId}:${nodeRunId ?? 'run'}`}
+            runId={runId}
+            nodeRunId={nodeRunId}
+            loader={loader}
+          />
+        ) : null}
       </Modal>
     </>
+  );
+}
+
+function TrajectoryWorkspace({
+  runId,
+  nodeRunId,
+  loader
+}: {
+  runId: string;
+  nodeRunId?: string;
+  loader: ConversationLogTraceLoader;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [timeScale, setTimeScale] = useState(false);
+  const [groupCalls, setGroupCalls] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const rows = useRef(new Map<string, HTMLButtonElement>());
+  const pages = useInfiniteQuery({
+    queryKey: ['provider-trajectory', runId, nodeRunId ?? 'run'],
+    enabled: Boolean(
+      nodeRunId ? loader.loadTrajectory : loader.loadRunTrajectory
+    ),
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      nodeRunId
+        ? loader.loadTrajectory!(runId, nodeRunId, pageParam)
+        : loader.loadRunTrajectory!(runId, pageParam),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
+    refetchOnWindowFocus: false
+  });
+  const items = useMemo(
+    () => pages.data?.pages.flatMap((page) => page.items) ?? [],
+    [pages.data]
+  );
+  const overview = pages.data?.pages[0];
+  const query = search.trim().toLocaleLowerCase();
+  const matches = items.filter(
+    (step) =>
+      !query ||
+      [
+        stepLabel(step),
+        step.metadata.preview,
+        step.metadata.node_id,
+        step.metadata.tool_call_id,
+        step.metadata.invocation_id
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(query)
+  );
+  const groups = useMemo(() => {
+    const result = new Map<string, ProviderTrajectoryStep[]>();
+    for (const step of matches) {
+      const key = invocationKey(step);
+      const group = result.get(key) ?? [];
+      group.push(step);
+      result.set(key, group);
+    }
+    return [...result.entries()];
+  }, [matches]);
+  const timestamps = items.map((step) => Date.parse(step.created_at));
+  const validTimes = timestamps.filter(Number.isFinite);
+  const start = validTimes.length ? Math.min(...validTimes) : 0;
+  const range = validTimes.length ? Math.max(...validTimes) - start : 0;
+  function focusStep(step: ProviderTrajectoryStep) {
+    setSelected(step.event_id);
+    setCollapsed((current) => {
+      const next = new Set(current);
+      next.delete(invocationKey(step));
+      return next;
+    });
+    requestAnimationFrame(() =>
+      rows.current
+        .get(step.event_id)
+        ?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    );
+  }
+  function renderStep(step: ProviderTrajectoryStep) {
+    const isSelected = selected === step.event_id;
+    return (
+      <Fragment key={step.event_id}>
+        <button
+          ref={(element) => {
+            if (element) rows.current.set(step.event_id, element);
+            else rows.current.delete(step.event_id);
+          }}
+          type="button"
+          className="provider-trajectory__row"
+          data-lane={stepLane(step)}
+          data-selected={isSelected || undefined}
+          aria-label={stepLabel(step)}
+          aria-expanded={isSelected}
+          onClick={() => setSelected(isSelected ? null : step.event_id)}
+        >
+          <span className="provider-trajectory__marker" aria-hidden="true" />
+          <span className="provider-trajectory__kind">{stepLabel(step)}</span>
+          <span className="provider-trajectory__preview">
+            {step.metadata.preview ||
+              step.metadata.tool_call_id ||
+              step.metadata.node_id ||
+              '—'}
+          </span>
+          <span
+            className="provider-trajectory__row-time"
+            title={formatDateTime(step.created_at)}
+          >
+            #{step.event_sequence}
+          </span>
+          {isSelected ? <DownOutlined /> : <RightOutlined />}
+        </button>
+        {isSelected ? (
+          <TrajectoryStepDetail
+            key={step.event_id}
+            step={step}
+            loader={loader}
+          />
+        ) : null}
+      </Fragment>
+    );
+  }
+  return (
+    <div className="provider-trajectory">
+      <div
+        className="provider-trajectory__toolbar"
+        role="toolbar"
+        aria-label={i18nText('agentFlow', 'trajectory.overview')}
+      >
+        <div className="provider-trajectory__controls">
+          <Button
+            size="small"
+            type="text"
+            icon={
+              timeScale ? <ClockCircleOutlined /> : <UnorderedListOutlined />
+            }
+            aria-pressed={timeScale}
+            onClick={() => setTimeScale(!timeScale)}
+          >
+            {timeScale
+              ? i18nText('agentFlow', 'trajectory.time_axis')
+              : i18nText('agentFlow', 'trajectory.sequence_axis')}
+          </Button>
+          <Button
+            size="small"
+            type="text"
+            icon={<ApartmentOutlined />}
+            aria-pressed={groupCalls}
+            onClick={() => setGroupCalls(!groupCalls)}
+          >
+            {i18nText('agentFlow', 'trajectory.group_calls')}
+          </Button>
+          <Tooltip
+            title={i18nText('agentFlow', 'trajectory.semantic_integrity')}
+          >
+            <span
+              className="provider-trajectory__integrity"
+              data-status={overview?.integrity}
+            >
+              {i18nText('agentFlow', 'trajectory.semantic_integrity')}:{' '}
+              {integrityLabel(overview?.integrity)}
+            </span>
+          </Tooltip>
+        </div>
+        <Input
+          size="small"
+          className="provider-trajectory__search"
+          prefix={<SearchOutlined />}
+          allowClear
+          value={search}
+          aria-label={i18nText('agentFlow', 'trajectory.search')}
+          placeholder={i18nText('agentFlow', 'trajectory.search')}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+      <div
+        className="provider-trajectory__timeline"
+        role="navigation"
+        aria-label={i18nText('agentFlow', 'trajectory.timeline')}
+      >
+        <div className="provider-trajectory__lane-labels">
+          <span>{i18nText('agentFlow', 'trajectory.lane_input')}</span>
+          <span>{i18nText('agentFlow', 'trajectory.lane_model')}</span>
+          <span>{i18nText('agentFlow', 'trajectory.lane_tool')}</span>
+        </div>
+        <div className="provider-trajectory__lanes">
+          {items.map((step, index) => {
+            const time = Date.parse(step.created_at);
+            const position =
+              timeScale && range > 0 && Number.isFinite(time)
+                ? ((time - start) / range) * 97
+                : (index / Math.max(items.length, 1)) * 100;
+            return (
+              <Tooltip
+                key={step.event_id}
+                title={`${stepLabel(step)} · ${formatDateTime(step.created_at)}`}
+              >
+                <button
+                  type="button"
+                  className="provider-trajectory__block"
+                  data-lane={stepLane(step)}
+                  data-selected={selected === step.event_id || undefined}
+                  data-dimmed={
+                    Boolean(query && !matches.includes(step)) || undefined
+                  }
+                  aria-label={i18nText('agentFlow', 'trajectory.locate_step', {
+                    sequence: step.event_sequence,
+                    kind: stepLabel(step)
+                  })}
+                  style={
+                    {
+                      '--trajectory-x': `${position}%`,
+                      '--trajectory-width': `${Math.min(3, 72 / Math.max(items.length, 1))}%`
+                    } as CSSProperties
+                  }
+                  onClick={() => {
+                    setSearch('');
+                    focusStep(step);
+                  }}
+                />
+              </Tooltip>
+            );
+          })}
+        </div>
+      </div>
+      <div
+        className="provider-trajectory__ledger"
+        role="region"
+        aria-label={i18nText('agentFlow', 'trajectory.steps')}
+      >
+        {pages.isLoading ? (
+          <div className="provider-trajectory__loading">
+            <Spin />
+          </div>
+        ) : null}
+        {pages.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            title={i18nText('agentFlow', 'auto.loading_failed')}
+            action={
+              <Button onClick={() => void pages.refetch()}>
+                {i18nText('agentFlow', 'auto.retry')}
+              </Button>
+            }
+          />
+        ) : null}
+        {!pages.isLoading && !pages.isError && !matches.length ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              items.length
+                ? i18nText('agentFlow', 'trajectory.no_matches')
+                : i18nText('agentFlow', 'trajectory.not_recorded_detail')
+            }
+          />
+        ) : null}
+        {groupCalls
+          ? groups.map(([key, steps]) => (
+              <section key={key}>
+                <button
+                  type="button"
+                  className="provider-trajectory__group"
+                  aria-expanded={!collapsed.has(key)}
+                  onClick={() =>
+                    setCollapsed((current) => {
+                      const next = new Set(current);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    })
+                  }
+                >
+                  {collapsed.has(key) ? <RightOutlined /> : <DownOutlined />}
+                  <span>
+                    {steps[0].metadata.node_id || steps[0].metadata.node_run_id}
+                  </span>
+                  <span className="provider-trajectory__group-id">
+                    {steps[0].metadata.invocation_id}
+                  </span>
+                  <span>
+                    {i18nText('agentFlow', 'trajectory.loaded_steps', {
+                      count: steps.length
+                    })}
+                  </span>
+                </button>
+                {!collapsed.has(key) ? steps.map(renderStep) : null}
+              </section>
+            ))
+          : matches.map(renderStep)}
+        {pages.hasNextPage ? (
+          <div className="provider-trajectory__more">
+            <Button
+              type="text"
+              loading={pages.isFetchingNextPage}
+              onClick={() => void pages.fetchNextPage()}
+            >
+              {i18nText('agentFlow', 'trajectory.more')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <footer className="provider-trajectory__footer">
+        <span>
+          {i18nText('agentFlow', 'trajectory.loaded_steps', {
+            count: items.length
+          })}
+        </span>
+        <span>
+          {nodeRunId
+            ? i18nText('agentFlow', 'trajectory.node_scope')
+            : i18nText('agentFlow', 'trajectory.run_scope')}
+        </span>
+        <span>
+          {i18nText('agentFlow', 'trajectory.protocol_integrity')}:{' '}
+          {integrityLabel(overview?.protocol_integrity)}
+        </span>
+        {overview?.persist_failed_count ? (
+          <span>
+            {i18nText('agentFlow', 'trajectory.failed_records', {
+              count: overview.persist_failed_count
+            })}
+          </span>
+        ) : null}
+      </footer>
+    </div>
   );
 }

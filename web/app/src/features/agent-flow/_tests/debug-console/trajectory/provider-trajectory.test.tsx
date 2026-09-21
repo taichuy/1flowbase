@@ -13,7 +13,7 @@ import { appI18n } from '../../../../../shared/i18n/app-i18n';
 beforeEach(async () => {
   await appI18n.changeLanguage('zh_Hans');
 });
-function fixture(inFloatingWindow = false) {
+function fixture(inFloatingWindow = false, runScope = false) {
   const loadTrajectory = vi.fn().mockResolvedValue({
     items: [
       {
@@ -23,6 +23,8 @@ function fixture(inFloatingWindow = false) {
         created_at: '2026-09-21T01:00:00Z',
         metadata: {
           source: 'ai_native',
+          preview: 'Native input preview',
+          node_id: 'llm-one',
           protocol: 'openai',
           transport: 'http',
           direction: 'prepared',
@@ -66,19 +68,22 @@ function fixture(inFloatingWindow = false) {
         next_cursor: view === 'protocol' ? 1 : null
       })
     );
+  const loadRunTrajectory = vi
+    .fn()
+    .mockImplementation((cursor) => loadTrajectory(cursor));
   const loader: ConversationLogTraceLoader = {
     loadTree: vi.fn(),
     loadChildren: vi.fn(),
     loadContent: vi.fn(),
     loadTrajectory,
+    loadRunTrajectory,
     loadTrajectoryBody
   };
   const trajectory = (
     <ProviderTrajectory
       runId="run-1"
-      nodeRunId="node-run-2"
+      nodeRunId={runScope ? undefined : 'node-run-2'}
       loader={loader}
-      executionContent={<span>route / fusion execution</span>}
     />
   );
   render(
@@ -112,7 +117,7 @@ function fixture(inFloatingWindow = false) {
       )}
     </QueryClientProvider>
   );
-  return { loadTrajectory, loadTrajectoryBody };
+  return { loadTrajectory, loadRunTrajectory, loadTrajectoryBody };
 }
 test('loads Native details on selection and raw protocol only after explicit opening', async () => {
   const { loadTrajectory, loadTrajectoryBody } = fixture();
@@ -160,8 +165,7 @@ test('loads Native details on selection and raw protocol only after explicit ope
     'protocol'
   );
   expect(loadTrajectory).toHaveBeenCalledWith('run-1', 'node-run-2', undefined);
-  fireEvent.click(screen.getByRole('tab', { name: '执行关联' }));
-  expect(screen.getByText('route / fusion execution')).toBeTruthy();
+  expect(screen.queryByRole('tab', { name: '执行关联' })).toBeNull();
 });
 test('does not fetch protocol bodies while browsing summary pages', async () => {
   const { loadTrajectory, loadTrajectoryBody } = fixture();
@@ -223,7 +227,7 @@ test('shows not recorded for historical executions without supplier observations
   });
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
   await waitFor(() =>
-    expect(screen.getAllByText('未记录').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/未记录/).length).toBeGreaterThan(0)
   );
   expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
@@ -270,4 +274,47 @@ test('labels historical supplier projections and keeps raw failure separate', as
   expect(
     loadTrajectoryBody.mock.calls.every((call) => call[4] === 'semantic')
   ).toBe(true);
+});
+
+test('run trajectory is lazy and resolves selected bodies using their own node identity', async () => {
+  const { loadRunTrajectory, loadTrajectoryBody } = fixture(false, true);
+  expect(loadRunTrajectory).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  await screen.findByRole('button', { name: '模型调用准备' });
+  expect(loadRunTrajectory).toHaveBeenCalledWith('run-1', undefined);
+  expect(loadTrajectoryBody).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
+  await waitFor(() =>
+    expect(loadTrajectoryBody).toHaveBeenCalledWith(
+      'run-1',
+      'node-run-2',
+      'event-1',
+      undefined,
+      'semantic'
+    )
+  );
+  expect(screen.getByText('当前运行 · 全部 LLM 节点')).toBeTruthy();
+});
+
+test('timeline navigation, loaded-step search and invocation folds do not eager-fetch bodies', async () => {
+  const { loadTrajectoryBody } = fixture();
+  fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
+  await screen.findByText('Native input preview');
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索已加载步骤' }), {
+    target: { value: 'not-present' }
+  });
+  expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
+  expect(loadTrajectoryBody).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: '定位第 7 步：模型调用准备' })
+  );
+  await screen.findByText(/native-model/);
+  expect(screen.getByRole('button', { name: '模型调用准备' })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+  fireEvent.click(screen.getByRole('button', { name: '调用分组' }));
+  fireEvent.click(screen.getByRole('button', { name: /llm-one invocation-1/ }));
+  expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
+  expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
 });
