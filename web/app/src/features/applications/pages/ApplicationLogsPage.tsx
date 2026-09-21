@@ -1287,6 +1287,12 @@ export function ApplicationLogsPage({
         >
           <ApplicationRunDetailPanel
             applicationId={applicationId}
+            requested_model_id={
+              runs.find((run) => run.id === selectedRunId)?.requested_model_id
+            }
+            reasoning_effort={
+              runs.find((run) => run.id === selectedRunId)?.reasoning_effort
+            }
             logConversationId={
               runs.find((run) => run.id === selectedRunId)?.log_conversation_id
             }

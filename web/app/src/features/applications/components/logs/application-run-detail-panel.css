@@ -443,3 +443,27 @@
     min-height: 320px;
   }
 }
+
+.application-run-detail__model-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 12px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.application-run-detail__model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.application-run-detail__reasoning-effort {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}

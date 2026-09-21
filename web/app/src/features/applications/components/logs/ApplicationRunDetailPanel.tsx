@@ -602,7 +602,7 @@ function RunConversation({
         messages={messages}
         runContext={runConversationContext}
         showClearAction={false}
-        showComposer
+        showComposer={false}
         status={conversationSessionStatus(conversationItems, outputState)}
         stopping={false}
         subtitle={<RunIdSubtitle runId={runId} />}
@@ -626,6 +626,8 @@ function RunConversation({
 
 export function ApplicationRunDetailPanel({
   applicationId,
+  requested_model_id,
+  reasoning_effort,
   logConversationId,
   onClose,
   onOpenMessageLog,
@@ -633,6 +635,8 @@ export function ApplicationRunDetailPanel({
   runId
 }: {
   applicationId: string;
+  requested_model_id?: string | null;
+  reasoning_effort?: string | null;
   logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
@@ -659,6 +663,18 @@ export function ApplicationRunDetailPanel({
             onOpenResumeTimeline={onOpenResumeTimeline}
             runId={runId}
           />
+        </div>
+        <div className="application-run-detail__model-summary">
+          <Tooltip title={i18nText('applications', 'auto.requested_model')}>
+            <span className="application-run-detail__model-name">
+              {requested_model_id || '—'}
+            </span>
+          </Tooltip>
+          <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
+            <span className="application-run-detail__reasoning-effort">
+              {reasoning_effort || '—'}
+            </span>
+          </Tooltip>
         </div>
       </div>
     </aside>
