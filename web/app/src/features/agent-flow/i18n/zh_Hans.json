@@ -722,6 +722,7 @@
     "variable_group_candidate_incompatible": "候选变量类型不兼容",
     "variable_group_candidate_type_mismatch": "请选择声明为 {{value1}} 的输出；现有候选变量会保留，直到你替换它。",
     "variable_group_outputs_out_of_sync": "变量组输出未同步",
-    "variable_group_outputs_must_match_groups": "物化输出必须按相同顺序匹配变量组的 key 和类型。"
+    "variable_group_outputs_must_match_groups": "物化输出必须按相同顺序匹配变量组的 key 和类型。",
+    "retry": "重试"
   }
 }

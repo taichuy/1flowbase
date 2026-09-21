@@ -51,6 +51,7 @@ export interface ConversationLogTraceProjectionStatus {
 export interface ConversationLogTraceTree {
   projection_status?: ConversationLogTraceProjectionStatus;
   nodes: ConversationLogTraceNodeSummary[];
+  page_info?: ConversationLogTraceNodeChildrenPageInfo;
 }
 
 export interface ConversationLogTraceNodeChildrenPageInfo {
@@ -127,7 +128,8 @@ export interface ConversationLogTraceLoader {
   loadDetail?: (
     runId: string,
     traceNodeId: string,
-    detailRefId: string
+    detailRefId: string,
+    section?: 'input_payload' | 'debug_payload' | 'output_payload'
   ) => Promise<ConversationLogTraceNodeDetail>;
   loadToolCallbackDetail?: (
     runId: string,

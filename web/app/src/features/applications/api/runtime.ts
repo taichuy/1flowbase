@@ -641,7 +641,8 @@ export function fetchApplicationRunTraceNodeDetail(
   applicationId: string,
   runId: string,
   traceNodeId: string,
-  detailRefId: string
+  detailRefId: string,
+  section?: 'input_payload' | 'debug_payload' | 'output_payload'
 ): Promise<ConsoleApplicationRunTraceNodeDetail> {
   return getConsoleApplicationRunTraceNodeDetail(
     applicationId,
@@ -649,7 +650,7 @@ export function fetchApplicationRunTraceNodeDetail(
     traceNodeId,
     detailRefId,
     getApplicationsApiBaseUrl(),
-    TRACE_NODE_ARTIFACT_PREVIEW_AUTO_QUERY
+    { ...TRACE_NODE_ARTIFACT_PREVIEW_AUTO_QUERY, section }
   );
 }
 

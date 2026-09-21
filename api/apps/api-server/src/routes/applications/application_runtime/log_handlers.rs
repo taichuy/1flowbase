@@ -128,68 +128,19 @@ pub async fn list_application_run_conversation_messages(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-async fn ensure_application_run_trace_projection_status(
+async fn read_application_run_trace_projection_status(
     store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     flow_run_id: Uuid,
 ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
-    let status =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            store,
-            flow_run_id,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        )
-        .await?;
-
-    if let Some(status) = status.as_ref() {
-        match status.status {
-            domain::ApplicationRunTraceProjectionStatus::Pending
-            | domain::ApplicationRunTraceProjectionStatus::Running
-            | domain::ApplicationRunTraceProjectionStatus::Failed => return Ok(status.clone()),
-            domain::ApplicationRunTraceProjectionStatus::Succeeded
-            | domain::ApplicationRunTraceProjectionStatus::Stale
-            | domain::ApplicationRunTraceProjectionStatus::Partial => {}
-        }
-    }
-
-    let source_watermark =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
-            store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    if !projection_status_needs_lazy_rebuild(status.as_ref(), &source_watermark) {
-        return status.ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into());
-    }
-
-    let source =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-            store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events =
-        <_ as OrchestrationRuntimeRepository>::list_runtime_events(store, flow_run_id, 0).await?;
-    let source =
-        enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
-    let projection = build_application_run_trace_projection(&source)?;
-    <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
+    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_read_status(
         store,
-        &projection,
-    )
-    .await?;
-
-    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-        store,
+        application_id,
         flow_run_id,
         APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     )
     .await?
-    .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into())
+    .ok_or_else(|| ControlPlaneError::NotFound("flow_run").into())
 }
 
 fn to_trace_projection_status_response(

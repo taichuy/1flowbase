@@ -1,4 +1,43 @@
 impl PgControlPlaneStore {
+    async fn list_application_run_trace_node_run_sections(
+        &self,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+        section: &str,
+    ) -> Result<Vec<domain::NodeRunRecord>> {
+        if !matches!(
+            section,
+            "input_payload" | "debug_payload" | "output_payload"
+        ) {
+            anyhow::bail!("invalid trace payload section");
+        }
+        let expression = |field: &str| {
+            if field == section || (section == "output_payload" && field == "error_payload") {
+                format!("runtime_original_json({field}, node_runs.raw_json_payloads, '{field}') as {field}")
+            } else {
+                format!("'{{}}'::jsonb as {field}")
+            }
+        };
+        let fields = [
+            "input_payload",
+            "output_payload",
+            "error_payload",
+            "metrics_payload",
+            "debug_payload",
+        ]
+        .map(expression)
+        .join(", ");
+        let sql=format!("select id,flow_run_id,node_id,node_type,node_alias,status,{fields},started_at,finished_at from node_runs where flow_run_id=$1 and id=any($2) order by started_at,id");
+        sqlx::query(&sql)
+            .bind(flow_run_id)
+            .bind(node_run_ids)
+            .fetch_all(self.pool())
+            .await?
+            .into_iter()
+            .map(map_node_run_record)
+            .collect()
+    }
+
     async fn get_application_run_trace_projection_source_watermark(
         &self,
         application_id: Uuid,
@@ -514,7 +553,7 @@ impl PgControlPlaneStore {
         let sql = trace_node_select_sql(
             r#"
             where flow_run_id = $1
-              and parent_trace_node_id = $2
+              and (parent_trace_node_id = $2 or ($2 = '00000000-0000-0000-0000-000000000000'::uuid and parent_trace_node_id is null))
               and (
                 $3::text is null
                 or order_key > $3
@@ -524,6 +563,7 @@ impl PgControlPlaneStore {
             limit $5
             "#,
         );
+        let page_size = input.page_size.clamp(1, 100);
         let cursor_order_key = input
             .cursor
             .as_ref()
@@ -534,7 +574,7 @@ impl PgControlPlaneStore {
             .bind(input.parent_trace_node_id)
             .bind(cursor_order_key)
             .bind(cursor_trace_node_id)
-            .bind(input.page_size + 1)
+            .bind(page_size + 1)
             .fetch_all(self.pool())
             .await?;
 
@@ -542,9 +582,9 @@ impl PgControlPlaneStore {
             .into_iter()
             .map(map_application_run_trace_node_record)
             .collect::<Result<Vec<_>>>()?;
-        let has_more = items.len() > input.page_size as usize;
+        let has_more = items.len() > page_size as usize;
         if has_more {
-            items.truncate(input.page_size as usize);
+            items.truncate(page_size as usize);
         }
         let next_cursor = if has_more {
             items.last().map(|node| ApplicationRunTraceChildrenCursor {
@@ -559,7 +599,7 @@ impl PgControlPlaneStore {
             items,
             has_more,
             next_cursor,
-            page_size: input.page_size,
+            page_size,
         })
     }
 

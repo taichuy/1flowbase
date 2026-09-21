@@ -135,3 +135,10 @@ pub struct UpsertApplicationRunTraceProjectionStatusInput {
     pub last_success_at: Option<OffsetDateTime>,
     pub diagnostic: Option<domain::ApplicationRunTraceProjectionDiagnostic>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ApplicationRunTraceRefreshJob {
+    pub flow_run_id: Uuid,
+    pub application_id: Uuid,
+    pub revision: i64,
+}

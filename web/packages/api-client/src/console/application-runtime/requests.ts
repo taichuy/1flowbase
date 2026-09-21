@@ -33,6 +33,7 @@ import type {
 } from './types';
 
 export interface ConsoleApplicationRunTraceNodeArtifactPreviewQuery {
+  section?: 'input_payload' | 'debug_payload' | 'output_payload';
   artifact_preview?: 'auto';
   artifact_preview_field?: string[];
 }
@@ -41,6 +42,7 @@ function traceNodeArtifactPreviewQueryString(
   query?: ConsoleApplicationRunTraceNodeArtifactPreviewQuery
 ) {
   const searchParams = new URLSearchParams();
+  if (query?.section) searchParams.set('section', query.section);
   if (query?.artifact_preview) {
     searchParams.set('artifact_preview', query.artifact_preview);
   }
@@ -52,7 +54,9 @@ function traceNodeArtifactPreviewQueryString(
   return queryString ? `?${queryString}` : '';
 }
 
-function archiveVersionQueryString(input?: ConsoleApplicationRunArchiveVersionInput) {
+function archiveVersionQueryString(
+  input?: ConsoleApplicationRunArchiveVersionInput
+) {
   const searchParams = new URLSearchParams();
   if (input?.archive_version !== undefined) {
     searchParams.set('archive_version', String(input.archive_version));

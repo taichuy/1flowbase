@@ -836,6 +836,7 @@ export interface ConsoleApplicationRunTraceTree {
   answer_snapshot?: ConsoleAnswerSnapshot | null;
   projection_status: ConsoleApplicationRunTraceProjectionStatus;
   nodes: ConsoleApplicationRunTraceNodeSummary[];
+  page_info: ConsoleApplicationRunTraceNodeChildrenPageInfo;
 }
 
 export interface ConsoleApplicationRunTraceNodeChildrenPageInfo {

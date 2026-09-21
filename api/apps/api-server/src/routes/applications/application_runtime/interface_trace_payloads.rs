@@ -11,10 +11,7 @@ use control_plane::{
             inline_budget_for_kind, RUNTIME_DEBUG_ARTIFACT_CONTENT_TYPE_JSON,
             RUNTIME_DEBUG_ARTIFACT_RETENTION_ACTIVE,
         },
-        trace_projection::{
-            build_application_run_trace_projection, merge_trace_node_run_detail,
-            projection_status_needs_lazy_rebuild, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        },
+        trace_projection::merge_trace_node_run_detail,
     },
     ports::{
         CreateRuntimeDebugArtifactInput, FileManagementRepository, OrchestrationRuntimeRepository,
@@ -258,54 +255,7 @@ impl ApplicationRuntimeTracePayloadsAdapter {
         application_id: Uuid,
         run_id: Uuid,
     ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
-        let status =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-                &self.store,
-                run_id,
-                APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-            )
-            .await?;
-        if let Some(status) = status.as_ref() {
-            if matches!(
-                status.status,
-                domain::ApplicationRunTraceProjectionStatus::Pending
-                    | domain::ApplicationRunTraceProjectionStatus::Running
-                    | domain::ApplicationRunTraceProjectionStatus::Failed
-            ) {
-                return Ok(status.clone());
-            }
-        }
-        let watermark = <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(&self.store, application_id, run_id).await?.ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !projection_status_needs_lazy_rebuild(status.as_ref(), &watermark) {
-            return status
-                .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into());
-        }
-        let source =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-                &self.store,
-                application_id,
-                run_id,
-            )
-            .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let events =
-            <_ as OrchestrationRuntimeRepository>::list_runtime_events(&self.store, run_id, 0)
-                .await?;
-        let projection = build_application_run_trace_projection(
-            &enrich_application_run_detail_visible_internal_llm_route_traces(source, &events),
-        )?;
-        <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
-            &self.store,
-            &projection,
-        )
-        .await?;
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            &self.store,
-            run_id,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        )
-        .await?
-        .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into())
+        read_application_run_trace_projection_status(&self.store, application_id, run_id).await
     }
 
     async fn preview_content(
@@ -535,7 +485,26 @@ impl ApplicationRuntimeTracePayloadsAdapter {
             trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
         let payload = match detail_kind.as_str() {
             "node_run" => {
-                let node_runs = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_details(&self.store, detail_run_id, trace_node_content_node_run_ids(&content.payload)?).await?;
+                let section = raw_query.as_deref().and_then(|query| {
+                    form_urlencoded::parse(query.as_bytes())
+                        .find(|(key, _)| key == "section")
+                        .map(|(_, value)| value.into_owned())
+                });
+                let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
+                let node_runs = if let Some(section) = section {
+                    if !matches!(
+                        section.as_str(),
+                        "input_payload" | "debug_payload" | "output_payload"
+                    ) {
+                        return Err(ControlPlaneError::InvalidInput(
+                            "invalid_trace_payload_section",
+                        )
+                        .into());
+                    }
+                    <_ as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_sections(&self.store, detail_run_id, node_run_ids, &section).await?
+                } else {
+                    <_ as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_details(&self.store, detail_run_id, node_run_ids).await?
+                };
                 let node_run = merge_trace_node_run_detail(&node_runs)
                     .ok_or(ControlPlaneError::NotFound("node_run"))?;
                 let node_run = match parse_preview(raw_query.as_deref()) {

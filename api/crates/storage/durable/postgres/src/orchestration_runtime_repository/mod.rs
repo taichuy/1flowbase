@@ -20,12 +20,13 @@ use control_plane_contracts::{
         ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
-        AttachCompiledPlanToFlowRunInput, BillingRepository, BindInvocationContextInput,
-        CallbackResumeContext, CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
-        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
-        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        ApplicationRunTraceRefreshJob, AttachCompiledPlanToFlowRunInput, BillingRepository,
+        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
+        ClaimRuntimeEventDeliveriesInput, ClearModelProviderRequestLogsBatchInput,
+        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
+        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, CompleteFlowRunInput,
+        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
@@ -86,6 +87,7 @@ include!("application_run_logs/run_conversation_projection_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 include!("application_run_logs/task_projection_methods.rs");
 include!("application_run_trace_projection_methods.rs");
+include!("application_run_logs/trace_refresh_methods.rs");
 include!("application_run_monitoring_methods.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
@@ -1024,6 +1026,32 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn claim_application_run_trace_refresh(
+        &self,
+    ) -> Result<Option<ApplicationRunTraceRefreshJob>> {
+        PgControlPlaneStore::claim_application_run_trace_refresh(self).await
+    }
+    async fn finish_application_run_trace_refresh(
+        &self,
+        job: &ApplicationRunTraceRefreshJob,
+        succeeded: bool,
+    ) -> Result<()> {
+        PgControlPlaneStore::finish_application_run_trace_refresh(self, job, succeeded).await
+    }
+    async fn get_application_run_trace_read_status(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        projection_version: i32,
+    ) -> Result<Option<domain::ApplicationRunTraceProjectionStatusRecord>> {
+        PgControlPlaneStore::get_application_run_trace_read_status(
+            self,
+            application_id,
+            flow_run_id,
+            projection_version,
+        )
+        .await
+    }
     async fn list_application_run_trace_roots(
         &self,
         flow_run_id: Uuid,
@@ -1079,6 +1107,26 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn list_application_run_trace_node_run_sections(
+        &self,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+        section: &str,
+    ) -> Result<Vec<domain::NodeRunRecord>> {
+        PgControlPlaneStore::list_application_run_trace_node_run_sections(
+            self,
+            flow_run_id,
+            node_run_ids,
+            section,
+        )
+        .await
+    }
+    async fn list_trace_enrichment_events(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        PgControlPlaneStore::list_trace_enrichment_events(self, flow_run_id).await
+    }
     async fn list_application_run_trace_node_run_details(
         &self,
         flow_run_id: Uuid,

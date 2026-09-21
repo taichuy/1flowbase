@@ -909,6 +909,7 @@ async fn app_and_runtime_host_from_config(
         .await?;
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
+    crate::workers::trace_projection::spawn_trace_projection_worker(state.clone());
     crate::workers::billing::spawn_billing_worker(state.clone());
     provider_runtime.start_transport_session_scheduler();
     #[cfg(not(test))]

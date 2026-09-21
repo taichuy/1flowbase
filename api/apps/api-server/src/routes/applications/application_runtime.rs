@@ -14,10 +14,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
     errors::ControlPlaneError,
-    orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-    },
+    orchestration_runtime::trace_projection::APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     ports::{
         ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, OrchestrationRuntimeRepository,
@@ -63,9 +60,9 @@ pub use debug_variable_cache::{
     delete_debug_variable_cache_entries, upsert_debug_variable_cache_entry,
 };
 pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnapshotResponse};
+pub(crate) use runtime_debug_artifacts::enrich_application_run_detail_visible_internal_llm_route_traces;
 use runtime_debug_artifacts::{
     application_run_model, application_run_query, count_llm_tool_callback_trace_items,
-    enrich_application_run_detail_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value_with_dependencies,
     offload_application_run_detail_artifacts_with_dependencies, RuntimeDebugArtifactContent,

@@ -1195,12 +1195,13 @@ export function ApplicationLogsPage({
                     runId,
                     traceNodeId
                   ),
-                loadDetail: (runId, traceNodeId, detailRefId) =>
+                loadDetail: (runId, traceNodeId, detailRefId, section) =>
                   fetchApplicationRunTraceNodeDetail(
                     applicationId,
                     runId,
                     traceNodeId,
-                    detailRefId
+                    detailRefId,
+                    section
                   ),
                 loadToolCallbackDetail: (runId, traceNodeId, toolCallId) =>
                   fetchApplicationRunTraceToolCallbackContent(

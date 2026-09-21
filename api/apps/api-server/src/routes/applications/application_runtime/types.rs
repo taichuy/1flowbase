@@ -538,6 +538,7 @@ pub struct ApplicationRunTraceTreeResponse {
     pub answer_snapshot: Option<AnswerSnapshotResponse>,
     pub projection_status: ApplicationRunTraceProjectionStatusResponse,
     pub nodes: Vec<ApplicationRunTraceNodeSummaryResponse>,
+    pub page_info: ApplicationRunTraceNodeChildrenPageInfoResponse,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]

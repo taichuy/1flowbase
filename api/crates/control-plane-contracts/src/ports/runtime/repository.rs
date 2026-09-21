@@ -692,6 +692,28 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (flow_run_id, projection_version);
         anyhow::bail!("get_application_run_trace_projection_status not implemented")
     }
+    async fn claim_application_run_trace_refresh(
+        &self,
+    ) -> anyhow::Result<Option<ApplicationRunTraceRefreshJob>> {
+        anyhow::bail!("claim_application_run_trace_refresh not implemented")
+    }
+    async fn finish_application_run_trace_refresh(
+        &self,
+        job: &ApplicationRunTraceRefreshJob,
+        succeeded: bool,
+    ) -> anyhow::Result<()> {
+        let _ = (job, succeeded);
+        anyhow::bail!("finish_application_run_trace_refresh not implemented")
+    }
+    async fn get_application_run_trace_read_status(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        projection_version: i32,
+    ) -> anyhow::Result<Option<domain::ApplicationRunTraceProjectionStatusRecord>> {
+        let _ = (application_id, flow_run_id, projection_version);
+        anyhow::bail!("get_application_run_trace_read_status not implemented")
+    }
     async fn list_application_run_trace_roots(
         &self,
         flow_run_id: Uuid,
@@ -736,6 +758,22 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Option<domain::ApplicationRunTraceNodeContentRecord>> {
         let _ = (flow_run_id, trace_node_id);
         anyhow::bail!("get_application_run_trace_node_content not implemented")
+    }
+    async fn list_application_run_trace_node_run_sections(
+        &self,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+        section: &str,
+    ) -> anyhow::Result<Vec<domain::NodeRunRecord>> {
+        let _ = (flow_run_id, node_run_ids, section);
+        anyhow::bail!("list_application_run_trace_node_run_sections not implemented")
+    }
+    async fn list_trace_enrichment_events(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+        let _ = flow_run_id;
+        anyhow::bail!("list_trace_enrichment_events not implemented")
     }
     async fn list_application_run_trace_node_run_details(
         &self,

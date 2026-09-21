@@ -5,10 +5,6 @@ use std::sync::Arc;
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
-    orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-    },
     ports::{
         CacheStore, GetApplicationRunMonitoringReportInput,
         ListApplicationConversationRunsPageInput,
@@ -147,62 +143,7 @@ impl ApplicationRuntimeReadsAdapter {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
-        let status =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-                &self.store,
-                flow_run_id,
-                APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-            )
-            .await?;
-        if let Some(status) = status.as_ref() {
-            match status.status {
-                domain::ApplicationRunTraceProjectionStatus::Pending
-                | domain::ApplicationRunTraceProjectionStatus::Running
-                | domain::ApplicationRunTraceProjectionStatus::Failed => return Ok(status.clone()),
-                domain::ApplicationRunTraceProjectionStatus::Succeeded
-                | domain::ApplicationRunTraceProjectionStatus::Stale
-                | domain::ApplicationRunTraceProjectionStatus::Partial => {}
-            }
-        }
-        let source_watermark = <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
-            &self.store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !projection_status_needs_lazy_rebuild(status.as_ref(), &source_watermark) {
-            return status
-                .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into());
-        }
-        let source =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-                &self.store,
-                application_id,
-                flow_run_id,
-            )
-            .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let runtime_events =
-            <_ as OrchestrationRuntimeRepository>::list_runtime_events(&self.store, flow_run_id, 0)
-                .await?;
-        let source = enrich_application_run_detail_visible_internal_llm_route_traces(
-            source,
-            &runtime_events,
-        );
-        let projection = build_application_run_trace_projection(&source)?;
-        <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
-            &self.store,
-            &projection,
-        )
-        .await?;
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            &self.store,
-            flow_run_id,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        )
-        .await?
-        .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into())
+        read_application_run_trace_projection_status(&self.store, application_id, flow_run_id).await
     }
 
     async fn list_runs(
@@ -460,15 +401,34 @@ impl ApplicationRuntimeReadsAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let nodes = if projection_is_succeeded(&status) {
-            <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
-                &self.store,
-                run_id,
+        let page_size = application_run_trace_children_page_size(None);
+        let page = if projection_is_succeeded(&status) {
+            Some(
+                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
+                    &self.store,
+                    ListApplicationRunTraceChildrenPageInput {
+                        flow_run_id: run_id,
+                        parent_trace_node_id: Uuid::nil(),
+                        page_size,
+                        cursor: None,
+                    },
+                )
+                .await?,
             )
-            .await?
         } else {
-            Vec::new()
+            None
         };
+        let next_cursor = page
+            .as_ref()
+            .and_then(|page| page.next_cursor.as_ref())
+            .map(|cursor| encode_application_run_trace_children_cursor(cursor, Uuid::nil()))
+            .transpose()?;
+        let page_info = ApplicationRunTraceNodeChildrenPageInfoResponse {
+            has_more: page.as_ref().is_some_and(|page| page.has_more),
+            next_cursor,
+            page_size,
+        };
+        let nodes = page.map(|page| page.items).unwrap_or_default();
         let statistics = to_trace_projection_statistics_response(
             <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
                 &self.store,
@@ -482,6 +442,7 @@ impl ApplicationRuntimeReadsAdapter {
             flow_run: to_flow_run_response(flow_run),
             answer_snapshot: None,
             projection_status: to_trace_projection_status_response(&status),
+            page_info,
             nodes: nodes
                 .into_iter()
                 .map(to_trace_node_summary_from_projection)
@@ -500,7 +461,11 @@ impl ApplicationRuntimeReadsAdapter {
         let status = self.trace_projection_status(application_id, run_id).await?;
         let projection_status = to_trace_projection_status_response(&status);
         let page_size = application_run_trace_children_page_size(query.page_size);
-        let parent_trace_node_id = parse_trace_projection_node_id(&query.parent_trace_node_id)?;
+        let parent_trace_node_id = if query.parent_trace_node_id == "root" {
+            Uuid::nil()
+        } else {
+            parse_trace_projection_node_id(&query.parent_trace_node_id)?
+        };
         let cursor = parse_application_run_trace_children_cursor(
             query.cursor.as_deref(),
             parent_trace_node_id,
@@ -516,13 +481,15 @@ impl ApplicationRuntimeReadsAdapter {
                 },
             });
         }
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-            &self.store,
-            run_id,
-            parent_trace_node_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+        if !parent_trace_node_id.is_nil() {
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+                &self.store,
+                run_id,
+                parent_trace_node_id,
+            )
+            .await?
+            .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+        }
         let page = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &self.store,
             ListApplicationRunTraceChildrenPageInput {

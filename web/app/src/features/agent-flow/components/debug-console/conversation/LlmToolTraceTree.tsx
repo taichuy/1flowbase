@@ -225,9 +225,15 @@ export function DebugWorkflowNodeDetailContent({
   payloadDisclosure = 'immediate',
   onLoadArtifact,
   onLoadArtifacts,
-  onLoadToolCallbackDetail
+  onLoadToolCallbackDetail,
+  onLoadSection,
+  processAction
 }: {
   item: AgentFlowTraceItem;
+  onLoadSection?: (
+    section: 'input_payload' | 'debug_payload' | 'output_payload'
+  ) => Promise<unknown>;
+  processAction?: ReactNode;
   beforePayloadContent?: ReactNode;
   defaultToolsExpanded?: boolean;
   toolPresentation?: 'complete' | 'hidden';
@@ -261,6 +267,8 @@ export function DebugWorkflowNodeDetailContent({
       {payloadDisclosure === 'immediate' || item.finishedAt !== null ? (
         <NodeRunPayloadSections
           defaultCollapsed
+          onLoadSection={onLoadSection}
+          processAction={processAction}
           debugPayload={debugPayload}
           inputPayload={item.inputPayload}
           outputPayload={item.outputPayload}
