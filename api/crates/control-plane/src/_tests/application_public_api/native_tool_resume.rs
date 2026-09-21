@@ -184,7 +184,7 @@ async fn native_admission_accepts_proven_full_configuration_refresh_and_complete
 }
 
 #[tokio::test]
-async fn native_admission_rejects_configuration_refresh_without_frozen_route_and_exact_history() {
+async fn native_admission_configuration_refresh_requires_frozen_route_and_proven_history() {
     for scenario in [
         "model",
         "delta",
@@ -214,25 +214,32 @@ async fn native_admission_rejects_configuration_refresh_without_frozen_route_and
             "extra_history" => body["input"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!({"role":"assistant","content":"Unproven extra context"})),
+                .push(json!({"role":"assistant","content":"Appended sampling context"})),
             "partial_outputs" => {
                 body["input"].as_array_mut().unwrap().pop();
             }
             _ => {}
         }
-        let error = correlate_native_responses_callback(&repository, &actor, &body)
-            .await
-            .expect_err(scenario);
-        let expected = if scenario == "partial_outputs" {
-            "native_tool_output_incomplete_round"
+        let result = correlate_native_responses_callback(&repository, &actor, &body).await;
+        if scenario == "extra_history" {
+            let (admitted, outputs) = result
+                .expect("a proven full history permits appended context and refreshed instructions")
+                .expect("pending callback must retain its consumption owner");
+            assert_eq!(admitted.id, callback.id);
+            assert_eq!(outputs["tool_results"].as_array().unwrap().len(), 2);
         } else {
-            "native_tool_output_configuration_mismatch"
-        };
-        assert_eq!(
-            error.downcast_ref::<ControlPlaneError>(),
-            Some(&ControlPlaneError::Conflict(expected)),
-            "{scenario}"
-        );
+            let error = result.expect_err(scenario);
+            let expected = if scenario == "partial_outputs" {
+                "native_tool_output_incomplete_round"
+            } else {
+                "native_tool_output_configuration_mismatch"
+            };
+            assert_eq!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(&ControlPlaneError::Conflict(expected)),
+                "{scenario}"
+            );
+        }
         assert_eq!(
             repository
                 .get_published_callback_task(callback.id)
