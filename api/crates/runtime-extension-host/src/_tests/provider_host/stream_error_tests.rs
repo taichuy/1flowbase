@@ -177,7 +177,7 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
         let package = TempProviderPackage::new();
         let path = error_script(&package, tail);
         assert_primary(
-            call_executable_streaming(&path, &request(), &limits(), None, None, None)
+            call_executable_streaming(&path, &request(), &limits(), None, None, None, None)
                 .await
                 .unwrap_err(),
         );
@@ -187,7 +187,7 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
     drop(receiver);
     assert_primary(
-        call_executable_streaming(&path, &request(), &limits(), Some(sender), None, None)
+        call_executable_streaming(&path, &request(), &limits(), Some(sender), None, None, None)
             .await
             .unwrap_err(),
     );
@@ -209,9 +209,10 @@ async fn secondary_failure_without_provider_error_remains_a_failure() {
         managed,
         PluginFrameworkError::RuntimeContract { .. }
     ));
-    let standalone = call_executable_streaming(&path, &request(), &limits(), None, None, None)
-        .await
-        .unwrap_err();
+    let standalone =
+        call_executable_streaming(&path, &request(), &limits(), None, None, None, None)
+            .await
+            .unwrap_err();
     assert!(!matches!(
         standalone,
         PluginFrameworkError::RuntimeContract { .. }

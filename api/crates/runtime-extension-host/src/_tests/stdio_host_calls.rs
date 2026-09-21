@@ -91,6 +91,7 @@ async fn pdp_003_009_host_calls_use_trusted_binding_and_correlated_results() {
             None,
             None,
             None,
+            None,
             Some(host_call_context(Arc::clone(&port))),
         )
         .await
@@ -120,6 +121,7 @@ async fn pdp_009_duplicate_and_unknown_call_ids_fail_closed() {
                 None,
                 None,
                 None,
+                None,
                 Some(host_call_context(port)),
             )
             .await
@@ -143,6 +145,7 @@ async fn pdp_008_cancel_deadline_and_worker_crash_clear_active_host_calls() {
                 None,
                 None,
                 None,
+                None,
                 Some(host_call_context(Arc::clone(&port))),
             )
             .await;
@@ -162,6 +165,7 @@ async fn pdp_008_cancel_deadline_and_worker_crash_clear_active_host_calls() {
                 timeout_ms: Some(2_000),
                 ..Default::default()
             },
+            None,
             None,
             None,
             None,

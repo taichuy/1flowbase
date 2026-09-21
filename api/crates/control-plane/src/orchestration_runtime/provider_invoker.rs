@@ -19,6 +19,7 @@ mod fee_lifecycle;
 mod main_instance_routing;
 mod protocol_context;
 mod protocol_observation;
+mod semantic_trajectory;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
@@ -613,12 +614,16 @@ where
             }
         }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
-        let protocol_capture = Arc::new(Mutex::new(protocol_observation::Capture::new(
-            active_node
-                .as_ref()
-                .map(|node| (node.node_id.clone(), node.node_run_id)),
-            &input,
-        )));
+        let (protocol_observation, protocol_completion) = protocol_observation::start(
+            self.repository.clone(),
+            self.flow_run_id,
+            protocol_observation::Capture::new(
+                active_node
+                    .as_ref()
+                    .map(|node| (node.node_id.clone(), node.node_run_id)),
+                &input,
+            ),
+        );
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,
             node_run_id,
@@ -643,35 +648,11 @@ where
             let diagnostic_node_id = node_id.clone();
             let flow_execution_context_for_task = self.flow_execution_context.clone();
             let native_output_items_for_task = native_output_items.clone();
-            let protocol_capture_for_task = protocol_capture.clone();
-            let protocol_repository = self.repository.clone();
             let capture_native_history = self.provider_transport_payload.is_some();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut ingress_sequence = 0_u64;
                 while let Some(mut event) = required_receiver.recv().await {
-                    if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
-                        let payload = protocol_capture_for_task
-                            .lock()
-                            .ok()
-                            .and_then(|mut capture| capture.observe(flow_run_id, &event));
-                        if let (Some(flow_run_id), Some(payload)) = (flow_run_id, payload) {
-                            if let Err(error) =
-                                runtime_event_persister::persist_runtime_event_payload(
-                                    &protocol_repository,
-                                    flow_run_id,
-                                    &payload,
-                                )
-                                .await
-                            {
-                                if let Ok(mut capture) = protocol_capture_for_task.lock() {
-                                    capture.persist_failed_count += 1;
-                                }
-                                tracing::warn!(%flow_run_id, %error, "provider protocol observation persistence failed");
-                            }
-                        }
-                        continue;
-                    }
                     ingress_sequence += 1;
                     let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
                     let event_kind = provider_stream_event_kind(&event);
@@ -885,6 +866,7 @@ where
                 }
             }));
             Some(crate::ports::ProviderLiveEventSenders {
+                protocol_observation,
                 required: required_sender,
                 diagnostic: diagnostic_sender,
             })
@@ -953,26 +935,7 @@ where
             } else {
                 (None, None)
             };
-        if let Some(flow_run_id) = self.flow_run_id {
-            let integrity = protocol_capture.lock().ok().and_then(|capture| {
-                capture.integrity(
-                    flow_run_id,
-                    invocation_result.is_ok() && forwarding_error.is_none(),
-                )
-            });
-            if let Some(integrity) = integrity {
-                if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
-                    &self.repository,
-                    flow_run_id,
-                    &integrity,
-                )
-                .await
-                {
-                    // Missing integrity is itself incomplete evidence; never fabricate business failure.
-                    tracing::error!(%flow_run_id, %error, "provider protocol integrity persistence failed");
-                }
-            }
-        }
+        protocol_completion.finish(invocation_result.is_ok() && forwarding_error.is_none());
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {
                 tracing::warn!(error = %error, "provider diagnostic event forwarding task panicked");

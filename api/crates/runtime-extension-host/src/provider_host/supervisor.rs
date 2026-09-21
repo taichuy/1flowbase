@@ -252,6 +252,9 @@ impl ProviderWorkerSupervisor {
         timeout_limits: &PluginRuntimeLimits,
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        protocol_observation: Option<
+            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+        >,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
         host_calls: Option<crate::stdio_runtime::ProviderHostCallContext>,
     ) -> FrameworkResult<StreamingProviderOutput> {
@@ -264,6 +267,7 @@ impl ProviderWorkerSupervisor {
                 timeout_limits,
                 required_live_events,
                 diagnostic_live_events,
+                protocol_observation,
                 event_observer,
                 host_calls,
             )
@@ -625,6 +629,7 @@ exit 7
                     input: json!({}),
                 },
                 &limits(),
+                None,
                 None,
                 None,
                 None,

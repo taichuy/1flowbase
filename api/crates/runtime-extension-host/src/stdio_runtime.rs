@@ -307,6 +307,7 @@ impl ProviderWorker {
             timeout_limits,
             required_live_events,
             diagnostic_live_events,
+            None,
             event_observer,
             None,
         )
@@ -319,6 +320,9 @@ impl ProviderWorker {
         timeout_limits: &PluginRuntimeLimits,
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        protocol_observation: Option<
+            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+        >,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
         host_calls: Option<ProviderHostCallContext>,
     ) -> FrameworkResult<StreamingProviderOutput> {
@@ -333,6 +337,7 @@ impl ProviderWorker {
                 timeout_limits,
                 required_live_events,
                 diagnostic_live_events,
+                protocol_observation,
                 event_observer,
                 host_calls,
                 &mut outcome,
@@ -455,6 +460,9 @@ impl ProviderWorker {
         timeout_limits: &PluginRuntimeLimits,
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        protocol_observation: Option<
+            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+        >,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
         host_calls: Option<ProviderHostCallContext>,
         outcome: &mut ProviderStreamOutcome,
@@ -522,6 +530,17 @@ impl ProviderWorker {
                 }
                 other => {
                     if let Some(event) = other.into_stream_event() {
+                        // Capture traffic is independent of provider progress and idle timers.
+                        if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            forward_provider_live_event(
+                                None,
+                                None,
+                                protocol_observation.as_deref(),
+                                event,
+                            )
+                            .await?;
+                            continue;
+                        }
                         outcome.observe(&event);
                         timeout_state.record_stream_event(&event);
                         if let Some(event_observer) = &event_observer {
@@ -530,10 +549,11 @@ impl ProviderWorker {
                         forward_provider_live_event(
                             required_live_events.as_ref(),
                             diagnostic_live_events.as_ref(),
+                            protocol_observation.as_deref(),
                             event.clone(),
                         )
                         .await?;
-                        // Formal observations are persisted by their required-lane owner; keeping
+                        // Formal observations are persisted by their independent sidecar owner; keeping
                         // raw bodies in invocation output would duplicate them in node debug data.
                         if !matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
                             events.push(event);
@@ -835,8 +855,17 @@ fn serialize_provider_stdio_request(request: &ProviderStdioRequest) -> serde_jso
 async fn forward_provider_live_event(
     required: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
     diagnostic: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    protocol_observation: Option<
+        &dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink,
+    >,
     event: ProviderStreamEvent,
 ) -> FrameworkResult<()> {
+    if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+        if let Some(sink) = protocol_observation {
+            sink.observe(event);
+        }
+        return Ok(());
+    }
     if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
         if let Some(diagnostic) = diagnostic {
             let _ = diagnostic.try_send(event);
@@ -1203,7 +1232,7 @@ mod tests {
         let produced = expected.clone();
         let producer = tokio::spawn(async move {
             for event in produced {
-                forward_provider_live_event(Some(&required), Some(&diagnostic), event)
+                forward_provider_live_event(Some(&required), Some(&diagnostic), None, event)
                     .await
                     .unwrap();
             }
@@ -1227,19 +1256,24 @@ mod tests {
             protocol: "fixture".to_string(),
             event: serde_json::json!({"progress":1}),
         };
-        forward_provider_live_event(Some(&required), Some(&diagnostic), native.clone())
+        forward_provider_live_event(Some(&required), Some(&diagnostic), None, native.clone())
             .await
             .unwrap();
-        forward_provider_live_event(Some(&required), Some(&diagnostic), native)
+        forward_provider_live_event(Some(&required), Some(&diagnostic), None, native)
             .await
             .unwrap();
 
         let required_event = ProviderStreamEvent::ReasoningDelta {
             delta: "truth".to_string(),
         };
-        forward_provider_live_event(Some(&required), Some(&diagnostic), required_event.clone())
-            .await
-            .unwrap();
+        forward_provider_live_event(
+            Some(&required),
+            Some(&diagnostic),
+            None,
+            required_event.clone(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(required_receiver.recv().await, Some(required_event));
     }
@@ -1270,7 +1304,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn protocol_observation_uses_required_lane_even_when_diagnostics_are_full() {
+    async fn protocol_observation_uses_only_independent_sink() {
+        #[derive(Debug, Default)]
+        struct Capture(std::sync::Mutex<Vec<ProviderStreamEvent>>);
+        impl runtime_core::runtime_backend::RuntimeProtocolObservationSink for Capture {
+            fn observe(&self, event: ProviderStreamEvent) {
+                self.0.lock().unwrap().push(event);
+            }
+        }
+        let capture = Capture::default();
         let (required, mut receiver) = tokio::sync::mpsc::channel(1);
         let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);
         diagnostic
@@ -1289,10 +1331,16 @@ mod tests {
             .into_stream_event()
             .unwrap();
         assert_eq!(serde_json::to_value(&event).unwrap(), line);
-        forward_provider_live_event(Some(&required), Some(&diagnostic), event.clone())
-            .await
-            .unwrap();
-        assert_eq!(receiver.recv().await, Some(event));
+        forward_provider_live_event(
+            Some(&required),
+            Some(&diagnostic),
+            Some(&capture),
+            event.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(*capture.0.lock().unwrap(), vec![event]);
     }
 
     fn assert_expired_timeout_contract(

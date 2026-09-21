@@ -279,6 +279,8 @@ struct PreparedProviderStreamInvocation {
     input: ProviderInvocationInput,
     required_live_events: ProviderLiveEvents,
     diagnostic_live_events: ProviderLiveEvents,
+    protocol_observation:
+        Option<Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
     host_calls: Option<ProviderHostCallContext>,
 }
 
@@ -1045,6 +1047,7 @@ impl ProviderHost {
             diagnostic_live_events,
             None,
             None,
+            None,
         )
     }
 
@@ -1054,6 +1057,9 @@ impl ProviderHost {
         input: ProviderInvocationInput,
         required_live_events: ProviderLiveEvents,
         diagnostic_live_events: ProviderLiveEvents,
+        protocol_observation: Option<
+            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+        >,
         principal: Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
         plugin_data: Option<Arc<dyn PluginDataPort>>,
     ) -> FrameworkResult<
@@ -1087,6 +1093,7 @@ impl ProviderHost {
                 input,
                 required_live_events,
                 diagnostic_live_events,
+                protocol_observation,
                 host_calls,
             })
             .await
@@ -1182,6 +1189,7 @@ impl ProviderHost {
             mut input,
             required_live_events,
             diagnostic_live_events,
+            protocol_observation,
             host_calls,
         } = invocation;
 
@@ -1250,6 +1258,7 @@ impl ProviderHost {
                         &invocation_limits,
                         required_live_events,
                         diagnostic_live_events,
+                        protocol_observation,
                         event_observer,
                     )
                     .await
@@ -1263,6 +1272,7 @@ impl ProviderHost {
                         &invocation_limits,
                         required_live_events,
                         diagnostic_live_events,
+                        protocol_observation,
                         event_observer,
                         host_calls,
                     )
