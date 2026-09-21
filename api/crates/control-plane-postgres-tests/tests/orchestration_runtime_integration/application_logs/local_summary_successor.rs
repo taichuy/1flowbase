@@ -143,6 +143,9 @@ async fn issue_2050_local_summary_atomically_supersedes_exact_callback_lineage()
             .flow_run;
     let (_, foreign_callback) = make_waiting_callback(&store, &foreign).await;
 
+    // A compaction replacement must persist already incurred cost just like normal completion.
+    sqlx::query("insert into runtime_cost_ledger(id,flow_run_id,workspace_id,normalized_cost,cost_source,cost_status) select gen_random_uuid(),id,scope_id,0.125,'local_token_pricing','rated' from flow_runs where id=$1")
+        .bind(predecessor.id).execute(store.pool()).await.unwrap();
     let mut successor_input = predecessor_input.clone();
     successor_input.idempotency_key = Some("issue-2050-successor".into());
     successor_input.title = "Local summary".into();
@@ -168,6 +171,18 @@ async fn issue_2050_local_summary_atomically_supersedes_exact_callback_lineage()
     )
     .await
     .unwrap();
+    let cost: Option<bool> = sqlx::query_scalar(
+        "select total_cost=0.125 from application_run_log_summaries where flow_run_id=$1",
+    )
+    .bind(predecessor.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        cost,
+        Some(true),
+        "supersession and idempotent replay retain cost"
+    );
     let superseded =
         ApplicationPublishedFlowRunRepository::list_local_summary_superseded_flow_run_ids(
             &store,
