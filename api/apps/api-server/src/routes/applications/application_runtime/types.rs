@@ -211,7 +211,7 @@ pub struct ResolveRuntimeDebugArtifactsResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct FlowRunSummaryResponse {
-    pub cost_breakdown: Option<Vec<domain::ApplicationRunCost>>,
+    pub total_cost: Option<f64>,
     pub parent_run_id: Option<String>,
     pub caused_by_run_id: Option<String>,
     pub log_conversation_id: Option<String>,

@@ -594,10 +594,7 @@ describe('applications runtime api', () => {
           target_node_id: null,
           title: '退款总结',
           external_conversation_id: 'conversation-1',
-          cost_breakdown: [
-            { total_cost: '0.15', currency_code: 'CNY' },
-            { total_cost: '0.000001250000000001', currency_code: 'USD' }
-          ],
+          total_cost: 0.15000125,
           total_tokens: 120,
           input_tokens: 90,
           output_tokens: 30,
@@ -632,10 +629,7 @@ describe('applications runtime api', () => {
           application_id: 'app-1',
           scope_id: 'workspace-1',
           title: '退款总结',
-          cost_breakdown: [
-            { total_cost: '0.15', currency_code: 'CNY' },
-            { total_cost: '0.000001250000000001', currency_code: 'USD' }
-          ],
+          total_cost: 0.15000125,
           total_tokens: 120,
           input_tokens: 90,
           output_tokens: 30,

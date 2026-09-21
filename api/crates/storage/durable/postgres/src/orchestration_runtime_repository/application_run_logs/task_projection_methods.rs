@@ -211,7 +211,7 @@ impl PgControlPlaneStore {
     }
 }
 
-const APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS: &str = "id,member_run_ids,parent_task_run_id,log_conversation_id,outcome,user_input,final_output,final_output_run_id,call_kind,invocation_count,compaction_count,run_mode,status,target_node_id,title,'{}'::jsonb as input_payload,external_user,created_by,authorized_account,api_key_id,api_key_name_snapshot,requested_model_id,reasoning_effort,publication_version_id,external_conversation_id,external_trace_id,compatibility_mode,idempotency_key,cost_breakdown,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,input_cache_hit_rate,unique_node_count,tool_callback_count,started_at,finished_at,created_at,updated_at";
+const APPLICATION_RUN_LOG_TASK_SUMMARY_COLUMNS: &str = "id,member_run_ids,parent_task_run_id,log_conversation_id,outcome,user_input,final_output,final_output_run_id,call_kind,invocation_count,compaction_count,run_mode,status,target_node_id,title,'{}'::jsonb as input_payload,external_user,created_by,authorized_account,api_key_id,api_key_name_snapshot,requested_model_id,reasoning_effort,publication_version_id,external_conversation_id,external_trace_id,compatibility_mode,idempotency_key,total_cost::double precision as total_cost,total_tokens,input_tokens,output_tokens,input_cache_hit_tokens,input_cache_hit_rate,unique_node_count,tool_callback_count,started_at,finished_at,created_at,updated_at";
 
 fn map_application_run_log_task(row: sqlx::postgres::PgRow) -> Result<domain::ApplicationRunLogTask> {
     let status: String = row.get("status");

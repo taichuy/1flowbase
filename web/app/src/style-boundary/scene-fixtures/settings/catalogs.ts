@@ -240,7 +240,7 @@ export const styleBoundaryApplicationRunRecord = {
   final_output: 'Boundary answer',
   requested_model_id: null,
   reasoning_effort: null,
-  cost_breakdown: [],
+  total_cost: null,
   id: 'run-1',
   application_id: 'app-1',
   scope_id: 'workspace-1',
