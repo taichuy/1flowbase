@@ -38,3 +38,5 @@ mod plugin_settings_template_tests;
 mod runtime_json_storage_tests;
 
 mod trajectory;
+
+mod client_trajectory;

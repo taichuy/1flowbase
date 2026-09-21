@@ -64,6 +64,7 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
+mod client_trajectory;
 mod detail_queries;
 mod json_storage;
 mod trajectory;
@@ -404,6 +405,41 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::append_runtime_span(self, input).await
     }
 
+    async fn append_client_trajectory(
+        &self,
+        input: &control_plane_contracts::ports::AppendClientTrajectoryInput,
+    ) -> Result<()> {
+        self.append_client_trajectory_fact(input).await
+    }
+    async fn client_trajectory_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<control_plane_contracts::ports::ClientTrajectoryPage> {
+        self.read_client_trajectory_page(flow_run_id, node_run_id, cursor, limit)
+            .await
+    }
+    async fn client_trajectory_section(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        step_id: Uuid,
+        section: &str,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {
+        self.read_client_trajectory_section(
+            flow_run_id,
+            node_run_id,
+            step_id,
+            section,
+            cursor,
+            limit,
+        )
+        .await
+    }
     async fn append_runtime_event(
         &self,
         input: &AppendRuntimeEventInput,

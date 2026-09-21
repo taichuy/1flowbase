@@ -8,6 +8,7 @@ pub mod billing;
 pub mod bootstrap;
 pub mod capability_plugin_runtime;
 pub mod capability_runtime;
+pub mod client_trajectory;
 pub mod data_source;
 pub mod errors;
 pub mod external_agent_bridge;

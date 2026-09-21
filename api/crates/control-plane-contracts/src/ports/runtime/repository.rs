@@ -2,6 +2,34 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    /// Observational append only: may record client delivery after business terminal.
+    async fn append_client_trajectory(
+        &self,
+        _input: &AppendClientTrajectoryInput,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("append_client_trajectory not implemented")
+    }
+    async fn client_trajectory_page(
+        &self,
+        _flow_run_id: Uuid,
+        _node_run_id: Option<Uuid>,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<ClientTrajectoryPage> {
+        anyhow::bail!("client_trajectory_page not implemented")
+    }
+    async fn client_trajectory_section(
+        &self,
+        _flow_run_id: Uuid,
+        _node_run_id: Option<Uuid>,
+        _step_id: Uuid,
+        _section: &str,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<Option<ClientTrajectorySection>> {
+        anyhow::bail!("client_trajectory_section not implemented")
+    }
+
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,
