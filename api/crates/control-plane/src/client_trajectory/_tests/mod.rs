@@ -66,8 +66,9 @@ async fn exact_raw_unicode_whitespace_and_user_credential_named_fields_survive()
     assert!(records.iter().any(|r|matches!(&r.fact,ClientTrajectoryFact::Section {section,value,..} if section=="overview"&&value["token"]=="user token"&&value["password"]=="user password")));
 }
 
-#[test]
-fn sse_chunks_and_completed_output_deduplicate_real_calls_and_keep_schema_and_submitted_results() {
+#[tokio::test]
+async fn sse_chunks_and_completed_output_deduplicate_real_calls_and_keep_schema_and_submitted_results(
+) {
     let mut decoder = decode::Decoder::default();
     let mut classifier = classify::Classifier::new(
         Uuid::now_v7(),
@@ -76,15 +77,19 @@ fn sse_chunks_and_completed_output_deduplicate_real_calls_and_keep_schema_and_su
         ClientTrajectoryTransport::Http,
     );
     let at = "2026-09-22T00:00:00Z";
-    let mut facts = classifier.begin_request(at);
-    facts.extend(classifier.observe(ClientTrajectoryFrameKind::Request,json!({"instructions":"Be helpful","tools":[{"type":"function","name":"weather","parameters":{"properties":{"token":{"type":"string"}}}}],"input":[{"type":"function_call","id":"old-call","call_id":"call-old","name":"weather","arguments":"{\"city\":\"Paris\"}"},{"type":"function_call_output","call_id":"call-old","output":"sunny"},{"role":"user","content":"Now 北京"}]}),at));
+    let mut facts = classifier.begin_request(at).await;
+    facts.extend(classifier.observe(ClientTrajectoryFrameKind::Request,json!({"instructions":"Be helpful","tools":[{"type":"function","name":"weather","parameters":{"properties":{"token":{"type":"string"}}}}],"input":[{"type":"function_call","id":"old-call","call_id":"call-old","name":"weather","arguments":"{\"city\":\"Paris\"}"},{"type":"function_call_output","call_id":"call-old","output":"sunny"},{"role":"user","content":"Now 北京"}]}),at).await);
     let item = json!({"type":"function_call","id":"item-1","call_id":"call-1","name":"weather","arguments":"{\"city\":\"北京\"}"});
     let done = json!({"type":"response.output_item.done","output_index":0,"item":item});
     let completed = json!({"type":"response.completed","response":{"id":"resp-1","output":[item],"usage":{"output_tokens":4}}});
     let wire=format!(": heartbeat\r\nevent: response.output_item.done\r\ndata: {done}\r\n\r\nevent: response.completed\ndata: {completed}\n\ndata: [DONE]\n\n");
     for byte in wire.as_bytes() {
         for value in decoder.feed(ClientTrajectoryFrameKind::ResponseSse, &[*byte]) {
-            facts.extend(classifier.observe(ClientTrajectoryFrameKind::ResponseSse, value, at));
+            facts.extend(
+                classifier
+                    .observe(ClientTrajectoryFrameKind::ResponseSse, value, at)
+                    .await,
+            );
         }
     }
     decoder.finish();
@@ -209,16 +214,16 @@ async fn long_stream_releases_queue_budget_and_json_chunks_are_incremental() {
     assert_eq!(values[0]["text"], "🌍");
 }
 
-#[test]
-fn classifications_preserve_unknown_and_actual_request_labels() {
+#[tokio::test]
+async fn classifications_preserve_unknown_and_actual_request_labels() {
     let mut classifier = classify::Classifier::new(
         Uuid::now_v7(),
         Uuid::now_v7(),
         None,
         ClientTrajectoryTransport::Websocket,
     );
-    classifier.begin_request("2026-09-22T00:00:00Z");
-    let facts=classifier.observe(ClientTrajectoryFrameKind::Request,json!({"model":"actual-model","reasoning":{"effort":"high"},"stream":true,"input":[{"type":"future_item","data":"opaque"}]}),"2026-09-22T00:00:01Z");
+    classifier.begin_request("2026-09-22T00:00:00Z").await;
+    let facts=classifier.observe(ClientTrajectoryFrameKind::Request,json!({"model":"actual-model","reasoning":{"effort":"high"},"stream":true,"input":[{"type":"future_item","data":"opaque"}]}),"2026-09-22T00:00:01Z").await;
     let steps: Vec<_> = facts
         .iter()
         .filter_map(|fact| {
@@ -239,8 +244,8 @@ fn classifications_preserve_unknown_and_actual_request_labels() {
     assert!(steps[1].node_run_id.is_none());
 }
 
-#[test]
-fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() {
+#[tokio::test]
+async fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() {
     let mut classifier = classify::Classifier::new(
         Uuid::now_v7(),
         Uuid::now_v7(),
@@ -248,7 +253,7 @@ fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() 
         ClientTrajectoryTransport::Http,
     );
     let at = "2026-09-22T00:00:00Z";
-    classifier.begin_request(at);
+    classifier.begin_request(at).await;
     let patch = "*** Begin Patch\n*** Add File: 北京.txt\n+hello\n*** End Patch";
     let schema = json!({"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/"}});
     let output = json!([{"type":"input_text","text":"Success. Updated 北京.txt"}]);
@@ -257,7 +262,7 @@ fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() 
             {"type":"custom_tool_call","id":"ctc-original","call_id":"call-patch","name":"apply_patch","input":patch},
             {"type":"custom_tool_call_output","call_id":"call-patch","output":output}
         ]
-    }), at);
+    }), at).await;
     let steps: Vec<_> = facts
         .iter()
         .filter_map(|fact| match fact {
@@ -290,3 +295,28 @@ fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() 
 mod namespaces;
 
 mod admission;
+
+#[async_trait::async_trait]
+impl classify::FactSink for Vec<ClientTrajectoryFact> {
+    async fn push(&mut self, fact: ClientTrajectoryFact) {
+        Vec::push(self, fact);
+    }
+}
+impl classify::Classifier {
+    async fn begin_request(&mut self, at: &str) -> Vec<ClientTrajectoryFact> {
+        let mut facts = Vec::new();
+        self.begin_request_into(at, &mut facts).await;
+        facts
+    }
+    async fn observe(
+        &mut self,
+        kind: ClientTrajectoryFrameKind,
+        value: serde_json::Value,
+        at: &str,
+    ) -> Vec<ClientTrajectoryFact> {
+        let mut facts = Vec::new();
+        self.observe_into(kind, value, at, &mut facts).await;
+        facts
+    }
+}
+mod incremental;

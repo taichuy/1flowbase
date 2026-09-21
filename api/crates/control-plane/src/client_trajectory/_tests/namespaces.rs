@@ -2,14 +2,14 @@ use super::*;
 use serde_json::Value;
 
 const AT: &str = "2026-09-22T00:00:00Z";
-fn classifier() -> classify::Classifier {
+async fn classifier() -> classify::Classifier {
     let mut classifier = classify::Classifier::new(
         Uuid::now_v7(),
         Uuid::now_v7(),
         None,
         ClientTrajectoryTransport::Http,
     );
-    classifier.begin_request(AT);
+    classifier.begin_request(AT).await;
     classifier
 }
 fn schema(facts: &[ClientTrajectoryFact], id: Uuid) -> Option<&Value> {
@@ -31,9 +31,9 @@ fn steps(facts: &[ClientTrajectoryFact]) -> Vec<&crate::ports::ClientTrajectoryS
         })
         .collect()
 }
-#[test]
-fn exact_namespace_schemas_keep_only_top_level_rows_and_original_call_content() {
-    let mut classifier = classifier();
+#[tokio::test]
+async fn exact_namespace_schemas_keep_only_top_level_rows_and_original_call_content() {
+    let mut classifier = classifier().await;
     let a = json!({"type":"function","name":"_fetch","parameters":{"const":"github"}});
     let b = json!({"type":"custom","name":"_fetch","format":{"type":"text"}});
     let plain = json!({"type":"function","name":"_fetch","parameters":{"const":"unqualified"}});
@@ -42,11 +42,13 @@ fn exact_namespace_schemas_keep_only_top_level_rows_and_original_call_content() 
         json!({"type":"namespace","name":"docs","tools":[b]}),
         plain.clone(),
     ];
-    let definitions = classifier.observe(
-        ClientTrajectoryFrameKind::Request,
-        json!({"tools":roots,"input":[]}),
-        AT,
-    );
+    let definitions = classifier
+        .observe(
+            ClientTrajectoryFrameKind::Request,
+            json!({"tools":roots,"input":[]}),
+            AT,
+        )
+        .await;
     assert_eq!(
         steps(&definitions)
             .iter()
@@ -60,7 +62,7 @@ fn exact_namespace_schemas_keep_only_top_level_rows_and_original_call_content() 
         {"type":"custom_tool_call","id":"item-b","call_id":"b","namespace":"docs","name":"_fetch","input":" raw custom input "},
         {"type":"function_call","id":"item-c","call_id":"c","name":"_fetch","arguments":"{}"},
         {"type":"function_call","id":"item-d","call_id":"d","namespace":"unknown","name":"_fetch","arguments":"{}"}
-    ]}), AT);
+    ]}), AT).await;
     let calls: Vec<_> = steps(&output)
         .into_iter()
         .filter(|step| step.category == "tool_call")
@@ -93,9 +95,9 @@ fn exact_namespace_schemas_keep_only_top_level_rows_and_original_call_content() 
             .is_none()
     );
 }
-#[test]
-fn results_inherit_only_actual_related_call_namespace_and_respect_explicit_namespace() {
-    let mut classifier = classifier();
+#[tokio::test]
+async fn results_inherit_only_actual_related_call_namespace_and_respect_explicit_namespace() {
+    let mut classifier = classifier().await;
     let facts=classifier.observe(ClientTrajectoryFrameKind::Request,json!({"input":[
         {"type":"function_call","call_id":"a","namespace":"github","name":"_fetch","arguments":"{}"},
         {"type":"function_call_output","call_id":"a","output":"ok"},
@@ -103,7 +105,7 @@ fn results_inherit_only_actual_related_call_namespace_and_respect_explicit_names
         {"type":"function_call_output","call_id":"missing","output":"unknown"},
         {"type":"function_call","call_id":"old","name":"legacy","arguments":"{}"},
         {"type":"function_call_output","call_id":"old","output":"legacy"}
-    ]}),AT);
+    ]}),AT).await;
     let items = steps(&facts);
     let call = items
         .iter()
@@ -125,15 +127,17 @@ fn results_inherit_only_actual_related_call_namespace_and_respect_explicit_names
         assert_eq!(result.origin, "submitted");
     }
 }
-#[test]
-fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
-    let mut classifier = classifier();
+#[tokio::test]
+async fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
+    let mut classifier = classifier().await;
     let leaves:Vec<_>=(0..1025).map(|n|json!({"type":"function","name":format!("tool-{n}"),"parameters":{"type":"object"}})).collect();
-    let facts = classifier.observe(
-        ClientTrajectoryFrameKind::Request,
-        json!({"tools":[{"type":"namespace","name":"bulk","tools":leaves}]}),
-        AT,
-    );
+    let facts = classifier
+        .observe(
+            ClientTrajectoryFrameKind::Request,
+            json!({"tools":[{"type":"namespace","name":"bulk","tools":leaves}]}),
+            AT,
+        )
+        .await;
     assert!(classifier.incomplete);
     assert_eq!(
         steps(&facts)
@@ -145,7 +149,7 @@ fn nested_schema_index_is_bounded_without_emitting_leaf_rows() {
     let calls=classifier.observe(ClientTrajectoryFrameKind::ResponseJson,json!({"object":"response","output":[
         {"type":"function_call","id":"within","namespace":"bulk","name":"tool-1023","arguments":"{}"},
         {"type":"function_call","id":"beyond","namespace":"bulk","name":"tool-1024","arguments":"{}"}
-    ]}),AT);
+    ]}),AT).await;
     let calls_steps = steps(&calls);
     assert!(schema(&calls, calls_steps[0].id).is_some());
     assert!(schema(&calls, calls_steps[1].id).is_none());

@@ -185,7 +185,7 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         .await
         .unwrap();
     assert_eq!(first.items[0].id, request);
-    assert_eq!(first.integrity, "incomplete");
+    assert_eq!(first.integrity, "pending");
     let stable = first.items[0].sequence;
     let mut updated = root;
     updated.preview = "model-x · reasoning.effort=high".into();

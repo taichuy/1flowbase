@@ -7,7 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 const MAX_IDENTITIES: usize = 4096;
 const MAX_SCHEMAS: usize = 128;
-const MAX_STEPS_PER_VALUE: usize = 512;
+// A step can reference its original item, extracted content and one tool schema.
+// The input JSON and schema indexes are independently bounded.
+const MAX_STEP_FACT_BYTES: usize = 3 * super::decode::AGGREGATE_BYTES;
+
+#[async_trait::async_trait]
+pub(super) trait FactSink: Send {
+    async fn push(&mut self, fact: Fact);
+}
 
 pub(super) struct Classifier {
     request: Uuid,
@@ -19,7 +26,6 @@ pub(super) struct Classifier {
     pub request_seen: bool,
     root_seen: bool,
     root_at: Option<String>,
-    fact_bytes: usize,
     output_seen: BTreeSet<String>,
     calls: BTreeMap<String, (Uuid, String, Option<String>)>,
     schemas: super::schemas::SchemaIndex,
@@ -44,7 +50,6 @@ impl Classifier {
             request_seen: false,
             root_seen: false,
             root_at: None,
-            fact_bytes: 0,
             output_seen: BTreeSet::new(),
             calls: BTreeMap::new(),
             schemas: Default::default(),
@@ -53,13 +58,12 @@ impl Classifier {
             completed: false,
         }
     }
-    pub fn begin_request(&mut self, at: &str) -> Vec<Fact> {
+    pub async fn begin_request_into(&mut self, at: &str, facts: &mut impl FactSink) {
         if self.root_seen {
-            return vec![];
+            return;
         }
         self.root_seen = true;
         self.root_at = Some(at.into());
-        self.fact_bytes = 0;
         let mut step = self.step(
             self.request,
             "request",
@@ -69,25 +73,22 @@ impl Classifier {
             &Value::Null,
         );
         step.parent_id = None;
-        let mut facts = Vec::new();
-        self.emit(step, vec![], at, &mut facts);
-        facts
+        self.emit(step, vec![], at, facts).await;
     }
-    pub fn observe(
+    pub async fn observe_into(
         &mut self,
         kind: ClientTrajectoryFrameKind,
         value: Value,
         at: &str,
-    ) -> Vec<Fact> {
-        self.fact_bytes = 0;
+        facts: &mut impl FactSink,
+    ) {
         if !value.is_object() {
             self.incomplete = true;
-            return vec![];
+            return;
         }
-        let mut facts = Vec::new();
         if kind == ClientTrajectoryFrameKind::Request {
-            self.request(value, at, &mut facts);
-            return facts;
+            self.request(value, at, facts).await;
+            return;
         }
         let event_type = value["type"].as_str().unwrap_or("");
         if let Some(id) = value["response"]["id"].as_str() {
@@ -100,26 +101,27 @@ impl Classifier {
                         item.clone(),
                         value["output_index"].as_u64().map(|n| n as usize),
                         at,
-                        &mut facts,
-                    );
+                        facts,
+                    )
+                    .await;
                 } else {
                     self.incomplete = true;
                 }
             }
             "response.completed" | "response.failed" | "response.incomplete" => {
                 if let Some(response) = value.get("response") {
-                    self.response(response, at, &mut facts);
+                    self.response(response, at, facts).await;
                 } else {
                     self.incomplete = true;
                 }
                 self.completed = true;
             }
             "error" => {
-                self.item(value, "emitted", at, &mut facts);
+                self.item(value, "emitted", at, facts).await;
                 self.completed = true;
             }
             _ if value.get("output").is_some() || value["object"] == "response" => {
-                self.response(&value, at, &mut facts);
+                self.response(&value, at, facts).await;
                 self.completed = true;
             }
             _ if value.get("error").is_some() => {
@@ -132,20 +134,15 @@ impl Classifier {
                     &value["error"],
                 );
                 step.status = "failed".into();
-                self.emit(
-                    step,
-                    vec![("overview", value["error"].clone())],
-                    at,
-                    &mut facts,
-                );
+                self.emit(step, vec![("overview", value["error"].clone())], at, facts)
+                    .await;
                 self.completed = true;
             }
             // Deltas are not semantic items. Their exact frames are retained as raw evidence.
             _ => {}
         }
-        facts
     }
-    fn request(&mut self, mut value: Value, at: &str, facts: &mut Vec<Fact>) {
+    async fn request(&mut self, mut value: Value, at: &str, facts: &mut impl FactSink) {
         if self.request_seen {
             self.incomplete = true;
             return;
@@ -183,7 +180,8 @@ impl Classifier {
             labels.push(format!("stream={stream}"));
         }
         root.preview = preview_text(&labels.join(" · "));
-        self.emit(root, vec![("overview", value)], &root_at, facts);
+        self.emit(root, vec![("overview", value)], &root_at, facts)
+            .await;
         if let Some(instructions) = instructions.filter(|value| !value.is_null()) {
             let mut step = self.step(
                 Uuid::now_v7(),
@@ -194,7 +192,8 @@ impl Classifier {
                 &instructions,
             );
             step.parameters_preview = Some(preview(&instructions));
-            self.emit(step, vec![("parameters", instructions)], at, facts);
+            self.emit(step, vec![("parameters", instructions)], at, facts)
+                .await;
         }
         if let Some(Value::Array(tools)) = tools {
             if tools.len() > MAX_SCHEMAS {
@@ -213,38 +212,35 @@ impl Classifier {
                     at,
                     &tool,
                 );
-                self.emit(step, vec![("schema", tool)], at, facts);
+                self.emit(step, vec![("schema", tool)], at, facts).await;
             }
         }
         match input {
-            Some(Value::String(text)) => self.item(
-                json!({"role":"user","content":text}),
-                "submitted",
-                at,
-                facts,
-            ),
+            Some(Value::String(text)) => {
+                self.item(
+                    json!({"role":"user","content":text}),
+                    "submitted",
+                    at,
+                    facts,
+                )
+                .await
+            }
             Some(Value::Array(items)) => {
-                if items.len() > MAX_STEPS_PER_VALUE {
-                    self.incomplete = true;
-                }
-                for item in items.into_iter().take(MAX_STEPS_PER_VALUE) {
-                    self.item(item, "submitted", at, facts);
+                for item in items {
+                    self.item(item, "submitted", at, facts).await;
                 }
             }
             Some(Value::Null) | None => {}
             Some(_) => self.incomplete = true,
         }
     }
-    fn response(&mut self, value: &Value, at: &str, facts: &mut Vec<Fact>) {
+    async fn response(&mut self, value: &Value, at: &str, facts: &mut impl FactSink) {
         if let Some(id) = value["id"].as_str() {
             self.response_id = bounded_id(id);
         }
         if let Some(items) = value["output"].as_array() {
-            if items.len() > MAX_STEPS_PER_VALUE {
-                self.incomplete = true;
-            }
-            for (index, item) in items.iter().take(MAX_STEPS_PER_VALUE).enumerate() {
-                self.output(item.clone(), Some(index), at, facts);
+            for (index, item) in items.iter().enumerate() {
+                self.output(item.clone(), Some(index), at, facts).await;
             }
         }
         if !value["usage"].is_null() && !self.usage_seen {
@@ -257,7 +253,8 @@ impl Classifier {
                 at,
                 &value["usage"],
             );
-            self.emit(step, vec![("usage", value["usage"].clone())], at, facts);
+            self.emit(step, vec![("usage", value["usage"].clone())], at, facts)
+                .await;
         }
         if !value["error"].is_null() {
             let mut step = self.step(
@@ -269,10 +266,17 @@ impl Classifier {
                 &value["error"],
             );
             step.status = "failed".into();
-            self.emit(step, vec![("overview", value["error"].clone())], at, facts);
+            self.emit(step, vec![("overview", value["error"].clone())], at, facts)
+                .await;
         }
     }
-    fn output(&mut self, item: Value, index: Option<usize>, at: &str, facts: &mut Vec<Fact>) {
+    async fn output(
+        &mut self,
+        item: Value,
+        index: Option<usize>,
+        at: &str,
+        facts: &mut impl FactSink,
+    ) {
         let id_key = item["id"]
             .as_str()
             .and_then(bounded_id)
@@ -294,9 +298,9 @@ impl Classifier {
             return;
         }
         self.output_seen.extend(id_key.into_iter().chain(index_key));
-        self.item(item, "emitted", at, facts);
+        self.item(item, "emitted", at, facts).await;
     }
-    fn item(&mut self, item: Value, origin: &str, at: &str, facts: &mut Vec<Fact>) {
+    async fn item(&mut self, item: Value, origin: &str, at: &str, facts: &mut impl FactSink) {
         if ["id", "call_id", "tool_call_id", "name", "namespace"]
             .iter()
             .any(|key| item[*key].as_str().is_some_and(|value| value.len() > 1024))
@@ -394,7 +398,7 @@ impl Classifier {
         if category == "error" {
             step.status = "failed".into();
         }
-        self.emit(step, sections, at, facts);
+        self.emit(step, sections, at, facts).await;
     }
     fn step(
         &self,
@@ -443,12 +447,12 @@ impl Classifier {
             available_sections: Vec::new(),
         }
     }
-    fn emit(
+    async fn emit(
         &mut self,
         mut step: ClientTrajectoryStep,
         sections: Vec<(&str, Value)>,
         at: &str,
-        facts: &mut Vec<Fact>,
+        facts: &mut impl FactSink,
     ) {
         let bytes = sections
             .iter()
@@ -459,30 +463,33 @@ impl Classifier {
             })
             .sum::<usize>()
             + 4096;
-        if self.fact_bytes.saturating_add(bytes) > 2 * 1024 * 1024 {
+        if bytes > MAX_STEP_FACT_BYTES {
             self.incomplete = true;
             return;
         }
-        self.fact_bytes += bytes;
         step.available_sections = sections
             .iter()
             .map(|(name, _)| (*name).into())
             .chain(["timing".into(), "raw".into()])
             .collect();
         let id = step.id;
-        facts.push(Fact::Step { step });
+        facts.push(Fact::Step { step }).await;
         for (name, value) in sections {
-            facts.push(Fact::Section {
-                step_id: id,
-                section: name.into(),
-                value,
-            });
+            facts
+                .push(Fact::Section {
+                    step_id: id,
+                    section: name.into(),
+                    value,
+                })
+                .await;
         }
-        facts.push(Fact::Section {
-            step_id: id,
-            section: "timing".into(),
-            value: json!({"observed_at":at}),
-        });
+        facts
+            .push(Fact::Section {
+                step_id: id,
+                section: "timing".into(),
+                value: json!({"observed_at":at}),
+            })
+            .await;
     }
 }
 pub(super) fn bounded_id(value: &str) -> Option<String> {

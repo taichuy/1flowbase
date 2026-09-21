@@ -24,7 +24,11 @@ use tokio::sync::{mpsc, Notify, OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 const FRAME_BYTES: usize = 64 * 1024;
-const QUEUE_BYTES: usize = 2 * 1024 * 1024;
+// Admit one maximum-sized HTTP request including per-frame overhead while
+// retaining a bounded 2 MiB response backlog during incremental classification.
+const QUEUE_BYTES: usize = decode::AGGREGATE_BYTES
+    + decode::AGGREGATE_BYTES.div_ceil(FRAME_BYTES) * FRAME_OVERHEAD_BYTES
+    + 2 * 1024 * 1024;
 // Charge timestamp/Vec/permit storage, queue bookkeeping and allocation slack per
 // resident frame, including frames retained before binding and during persistence.
 const FRAME_OVERHEAD_BYTES: usize = 512;
@@ -216,6 +220,28 @@ async fn persist(
         *failed = failed.saturating_add(1);
     }
 }
+struct PersistenceSink<'a> {
+    repository: &'a dyn FactWriter,
+    scope: Scope,
+    id: Uuid,
+    at: &'a str,
+    failed: &'a mut u64,
+}
+#[async_trait::async_trait]
+impl classify::FactSink for PersistenceSink<'_> {
+    async fn push(&mut self, fact: ClientTrajectoryFact) {
+        persist(
+            self.repository,
+            self.scope,
+            self.id,
+            self.at.to_owned(),
+            fact,
+            self.failed,
+        )
+        .await;
+    }
+}
+
 async fn worker(
     repository: Arc<dyn FactWriter>,
     transport: ClientTrajectoryTransport,
@@ -285,33 +311,20 @@ async fn worker(
                 ),
             };
             persist(repository.as_ref(),scope,id,frame.at.clone(),ClientTrajectoryFact::Section {step_id:id,section:"raw".into(),value:json!({"direction":direction,"encoding":encoding,"body":body,"frame_kind":frame.kind})},&mut failed).await;
+            let mut sink = PersistenceSink {
+                repository: repository.as_ref(),
+                scope,
+                id,
+                at: &frame.at,
+                failed: &mut failed,
+            };
             if frame.kind == ClientTrajectoryFrameKind::Request {
-                for fact in classifier.begin_request(&frame.at) {
-                    persist(
-                        repository.as_ref(),
-                        scope,
-                        id,
-                        frame.at.clone(),
-                        fact,
-                        &mut failed,
-                    )
-                    .await;
-                }
+                classifier.begin_request_into(&frame.at, &mut sink).await;
             }
-            let values = decoder.feed(frame.kind, &frame.bytes);
-            for value in values {
-                let facts = classifier.observe(frame.kind, value, &frame.at);
-                for fact in facts {
-                    persist(
-                        repository.as_ref(),
-                        scope,
-                        id,
-                        frame.at.clone(),
-                        fact,
-                        &mut failed,
-                    )
+            for value in decoder.feed(frame.kind, &frame.bytes) {
+                classifier
+                    .observe_into(frame.kind, value, &frame.at, &mut sink)
                     .await;
-                }
             }
             // Frame permit released each iteration, so arbitrarily long streams drain.
         }

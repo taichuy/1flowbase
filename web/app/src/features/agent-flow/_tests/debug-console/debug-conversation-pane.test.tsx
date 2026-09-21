@@ -365,7 +365,7 @@ describe('DebugConversationPane workflow trace', () => {
 
     const rows = screen.getAllByTestId('debug-workflow-node-row');
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toHaveTextContent('Start');
+    expect(rows[0]).toHaveTextContent('用户输入');
     expect(rows[1]).toHaveTextContent('工具 1');
     expect(rows[2]).toHaveTextContent('工具 1');
     const toolsNodes = screen.getAllByRole('button', {
