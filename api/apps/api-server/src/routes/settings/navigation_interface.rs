@@ -198,17 +198,18 @@ impl InterfaceContract for ConsoleNavigationOutput {
 }
 
 pub(crate) struct ConsoleNavigationDependencies {
+    pub(crate) navigation_cache: control_plane::navigation_cache::NavigationCache,
     pub(crate) store: MainDurableStore,
     pub(crate) surfaces: Arc<ConsoleSurfaceRegistry>,
     pub(crate) settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
 }
 
-struct ConsoleNavigationAdapter(ConsoleNavigationDependencies);
+struct ConsoleNavigationAdapter(ConsoleNavigationDependencies, uuid::Uuid);
 
 pub(crate) fn port(
     dependencies: ConsoleNavigationDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>> {
-    Arc::new(ConsoleNavigationAdapter(dependencies))
+    Arc::new(ConsoleNavigationAdapter(dependencies, uuid::Uuid::now_v7()))
 }
 
 impl ConsoleNavigationAdapter {
@@ -220,8 +221,7 @@ impl ConsoleNavigationAdapter {
         let actor = principal.actor();
         match input {
             ConsoleNavigationInput::Get => {
-                let mut navigation = self.0.surfaces.accessible_navigation(actor);
-                let mut unavailable = std::collections::HashSet::new();
+                let mut unavailable = std::collections::BTreeSet::new();
                 for page in self.0.surfaces.pages() {
                     use control_plane::ports::PluginRepository;
                     let available = match self.0.surfaces.target_for_feature(&page.feature_id) {
@@ -234,68 +234,79 @@ impl ConsoleNavigationAdapter {
                         unavailable.insert(page.route_id.as_str());
                     }
                 }
-                navigation
-                    .route_definitions
-                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
-                navigation
-                    .navigation_items
-                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
-                navigation
-                    .permission_bindings
-                    .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                let navigation = self
+                    .0
+                    .navigation_cache
+                    .console_navigation(actor, serde_json::json!([self.1, unavailable]), async {
+                        let mut navigation = self.0.surfaces.accessible_navigation(actor);
+                        navigation
+                            .route_definitions
+                            .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                        navigation
+                            .navigation_items
+                            .retain(|r| !unavailable.contains(r.route_id.as_str()));
+                        navigation
+                            .permission_bindings
+                            .retain(|r| !unavailable.contains(r.route_id.as_str()));
 
-                let stored_order = self
-                    .0
-                    .store
-                    .get_workspace_console_settings_order(actor.current_workspace_id)
-                    .await?;
-                let mut active_features = self
-                    .0
-                    .settings_features
-                    .iter()
-                    .filter(|feature| {
-                        feature.lifecycle == access_control::SettingsFeatureLifecycle::Active
-                    })
-                    .collect::<Vec<_>>();
-                active_features.sort_by(|left, right| {
-                    left.console_surface
-                        .order
-                        .cmp(&right.console_surface.order)
-                        .then(left.feature_id.cmp(&right.feature_id))
-                });
-                let active_ids = active_features
-                    .iter()
-                    .map(|feature| feature.feature_id.as_str())
-                    .collect::<std::collections::BTreeSet<_>>();
-                let mut ordered_ids = stored_order
-                    .group_ids
-                    .iter()
-                    .filter(|group_id| active_ids.contains(group_id.as_str()))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let missing_ids = active_features
-                    .iter()
-                    .map(|feature| feature.feature_id.clone())
-                    .filter(|feature_id| !ordered_ids.contains(feature_id))
-                    .collect::<Vec<_>>();
-                ordered_ids.extend(missing_ids);
-                let route_positions = active_features
-                    .iter()
-                    .filter_map(|feature| {
-                        ordered_ids
+                        let stored_order = self
+                            .0
+                            .store
+                            .get_workspace_console_settings_order(actor.current_workspace_id)
+                            .await?;
+                        let mut active_features = self
+                            .0
+                            .settings_features
                             .iter()
-                            .position(|feature_id| feature_id == &feature.feature_id)
-                            .map(|position| {
-                                (feature.console_surface.route_id.as_str(), position as i32)
+                            .filter(|feature| {
+                                feature.lifecycle
+                                    == access_control::SettingsFeatureLifecycle::Active
                             })
+                            .collect::<Vec<_>>();
+                        active_features.sort_by(|left, right| {
+                            left.console_surface
+                                .order
+                                .cmp(&right.console_surface.order)
+                                .then(left.feature_id.cmp(&right.feature_id))
+                        });
+                        let active_ids = active_features
+                            .iter()
+                            .map(|feature| feature.feature_id.as_str())
+                            .collect::<std::collections::BTreeSet<_>>();
+                        let mut ordered_ids = stored_order
+                            .group_ids
+                            .iter()
+                            .filter(|group_id| active_ids.contains(group_id.as_str()))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let missing_ids = active_features
+                            .iter()
+                            .map(|feature| feature.feature_id.clone())
+                            .filter(|feature_id| !ordered_ids.contains(feature_id))
+                            .collect::<Vec<_>>();
+                        ordered_ids.extend(missing_ids);
+                        let route_positions = active_features
+                            .iter()
+                            .filter_map(|feature| {
+                                ordered_ids
+                                    .iter()
+                                    .position(|feature_id| feature_id == &feature.feature_id)
+                                    .map(|position| {
+                                        (feature.console_surface.route_id.as_str(), position as i32)
+                                    })
+                            })
+                            .collect::<BTreeMap<_, _>>();
+                        for item in &mut navigation.navigation_items {
+                            if let Some(position) = route_positions.get(item.route_id.as_str()) {
+                                item.order = *position;
+                            }
+                        }
+                        Ok(super::navigation::ConsoleNavigationResponse::from(
+                            navigation,
+                        ))
                     })
-                    .collect::<BTreeMap<_, _>>();
-                for item in &mut navigation.navigation_items {
-                    if let Some(position) = route_positions.get(item.route_id.as_str()) {
-                        item.order = *position;
-                    }
-                }
-                Ok(ConsoleNavigationOutput::Navigation(navigation.into()))
+                    .await?;
+                Ok(ConsoleNavigationOutput::Navigation(navigation))
             }
         }
     }

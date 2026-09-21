@@ -1,8 +1,15 @@
 import fs from 'node:fs';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import path from 'node:path';
 import type { ReactElement } from 'react';
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const consoleNavigationApi = vi.hoisted(() => ({
@@ -191,6 +198,83 @@ describe('createSettingsChromeMenuItems', () => {
     )?.[1];
 
     expect(settingsBlockRule).not.toContain('min-width:');
+  });
+
+  test('reuses navigation after remount and reloads after explicit invalidation', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    const tree = (key: string) => (
+      <QueryClientProvider client={client}>
+        <SettingsChromeMenu key={key} pathname="/" useRouterLinks={false} />
+      </QueryClientProvider>
+    );
+    const view = render(tree('first'));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(
+      consoleNavigationApi.fetchSettingsConsoleNavigation
+    ).toHaveBeenCalledTimes(1);
+    view.rerender(tree('second'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      consoleNavigationApi.fetchSettingsConsoleNavigation
+    ).toHaveBeenCalledTimes(1);
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      consoleNavigationForSettingsSections(['auth-center'])
+    );
+    await act(async () => {
+      await client.invalidateQueries({
+        queryKey: consoleNavigationApi.settingsConsoleNavigationQueryKey
+      });
+    });
+    expect(
+      consoleNavigationApi.fetchSettingsConsoleNavigation
+    ).toHaveBeenCalledTimes(2);
+    fireEvent.mouseEnter(await screen.findByLabelText('设置'));
+    expect(await screen.findByText('认证中心')).toBeInTheDocument();
+    expect(screen.queryByText('数据源')).not.toBeInTheDocument();
+  });
+
+  test('does not reuse fresh navigation after switching role in the same workspace', async () => {
+    const client = new QueryClient();
+    useAuthStore.setState({
+      actor: {
+        id: 'actor',
+        account: 'actor',
+        effective_display_role: 'root',
+        current_workspace_id: 'workspace'
+      }
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <SettingsChromeMenu pathname="/" useRouterLinks={false} />
+      </QueryClientProvider>
+    );
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      consoleNavigationForSettingsSections(['auth-center'])
+    );
+    act(() =>
+      useAuthStore.setState({
+        actor: {
+          id: 'actor',
+          account: 'actor',
+          effective_display_role: 'member',
+          current_workspace_id: 'workspace'
+        }
+      })
+    );
+    await waitFor(() =>
+      expect(
+        consoleNavigationApi.fetchSettingsConsoleNavigation
+      ).toHaveBeenCalledTimes(2)
+    );
+    fireEvent.mouseEnter(await screen.findByLabelText('设置'));
+    expect(await screen.findByText('认证中心')).toBeInTheDocument();
+    expect(screen.queryByText('数据源')).not.toBeInTheDocument();
+    view.unmount();
   });
 
   test('SettingsChromeMenu shows only backend returned settings children', async () => {

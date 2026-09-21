@@ -1,3 +1,8 @@
+import { useAuthStore } from '../state/auth-store';
+import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../state/navigation-query-scope';
 import { Menu } from 'antd';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -16,8 +21,10 @@ export function SettingsChromeMenu({
   pathname: string;
   useRouterLinks: boolean;
 }) {
+  const navigationScope = useAuthStore(selectNavigationQueryScope);
   const consoleNavigationQuery = useQuery({
-    queryKey: settingsConsoleNavigationQueryKey,
+    queryKey: [...settingsConsoleNavigationQueryKey, navigationScope],
+    staleTime: navigationQueryStaleTime,
     queryFn: fetchSettingsConsoleNavigation
   });
   const sections = useMemo(() => {

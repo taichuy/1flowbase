@@ -50,6 +50,18 @@ describe('frontstage runtime cache lifecycle', () => {
     resetFrontstageRuntimeObservations();
   });
 
+  test('preserves navigation fetched before the lazy lifecycle mounts', () => {
+    const queryClient = new QueryClient();
+    authenticate('actor-a');
+    const key = ['frontstage', 'workspace-1', 'page-tree', 'actor-a'];
+    queryClient.setQueryData(key, [{ id: 'page-1' }]);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useFrontstageRuntimeCacheLifecycle(), { wrapper });
+    expect(queryClient.getQueryData(key)).toEqual([{ id: 'page-1' }]);
+  });
+
   test('clears frontstage queries and observations on actor transitions', async () => {
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

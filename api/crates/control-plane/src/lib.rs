@@ -30,6 +30,7 @@ pub mod mcp_management;
 pub mod member;
 pub mod model_definition;
 pub mod model_provider;
+pub mod navigation_cache;
 pub mod network_egress;
 pub mod network_egress_pool;
 pub mod network_egress_route;

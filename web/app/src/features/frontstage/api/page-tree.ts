@@ -1,3 +1,5 @@
+import { useAuthStore } from '../../../state/auth-store';
+import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
 import {
   createFrontstageGroup,
   createFrontstagePage,
@@ -48,8 +50,10 @@ export interface MoveFrontstageNodeInput {
   rank: string;
 }
 
-export const frontstagePageTreeQueryKey = (workspaceId: string) =>
-  ['frontstage', workspaceId, 'page-tree'] as const;
+export const frontstagePageTreeQueryKey = (
+  workspaceId: string,
+  scope = selectNavigationQueryScope(useAuthStore.getState())
+) => ['frontstage', workspaceId, 'page-tree', scope] as const;
 
 export function getFrontstageApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'

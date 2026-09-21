@@ -38,13 +38,18 @@ export function useFrontstageRuntimeCacheLifecycle(
     if (previousIdentityRef.current === lifecycleIdentity) {
       return;
     }
+    const hadPreviousIdentity = previousIdentityRef.current !== null;
     previousIdentityRef.current = lifecycleIdentity;
     const previousActorId = previousActorIdRef.current;
     const currentActorId = actor?.id ?? null;
     previousActorIdRef.current = currentActorId;
-    queryClient.removeQueries({
-      predicate: (query) => query.queryKey[0] === 'frontstage'
-    });
+    // The lifecycle is lazy-loaded after authentication. Its first mount must
+    // not discard the page tree already fetched by the shell/route observers.
+    if (hadPreviousIdentity) {
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] === 'frontstage'
+      });
+    }
     resetFrontstageRuntimeObservations();
     if (previousActorId && previousActorId !== currentActorId) {
       void nativeReactArtifactCache
