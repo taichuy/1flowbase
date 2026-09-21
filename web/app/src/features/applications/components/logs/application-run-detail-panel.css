@@ -150,6 +150,8 @@
 }
 
 .application-run-detail__conversation-pane .agent-flow-editor__dock-panel {
+  border-radius: 0;
+  box-shadow: none;
   display: flex;
   container-type: inline-size;
   height: 100%;
@@ -446,11 +448,15 @@
 
 .application-run-detail__model-summary {
   display: flex;
-  align-items: center;
+  flex: 0 0 auto;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: 8px;
-  padding: 0 16px 12px;
+  margin: 0 16px 14px;
+  padding: 12px;
+  min-height: 140px;
   min-width: 0;
+  border: 1px solid;
   font-size: 14px;
 }
 

@@ -2,7 +2,7 @@ import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Tooltip } from 'antd';
+import { App, Button, Tooltip, theme } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentFlowDebugConsole } from '../../../agent-flow/components/debug-console/AgentFlowDebugConsole';
@@ -340,6 +340,8 @@ function mergeConversationItems({
 
 function RunConversation({
   applicationId,
+  requested_model_id,
+  reasoning_effort,
   logConversationId,
   onClose,
   onOpenMessageLog,
@@ -347,12 +349,15 @@ function RunConversation({
   runId
 }: {
   applicationId: string;
+  requested_model_id?: string | null;
+  reasoning_effort?: string | null;
   logConversationId?: string | null;
   onClose: () => void;
   onOpenMessageLog?: (message: AgentFlowDebugMessage) => void;
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
 }) {
+  const { token } = theme.useToken();
   const [conversationScope, setConversationScope] = useState(
     Boolean(logConversationId)
   );
@@ -620,6 +625,25 @@ function RunConversation({
         onStopRun={() => {}}
         onSubmitPrompt={() => {}}
       />
+        <div
+          className="application-run-detail__model-summary"
+          style={{
+            borderRadius: token.borderRadius * 2,
+            borderColor: token.colorBorder,
+            boxShadow: token.boxShadowTertiary
+          }}
+        >
+          <Tooltip title={i18nText('applications', 'auto.requested_model')}>
+            <span className="application-run-detail__model-name">
+              {requested_model_id || '—'}
+            </span>
+          </Tooltip>
+          <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
+            <span className="application-run-detail__reasoning-effort">
+              {reasoning_effort || '—'}
+            </span>
+          </Tooltip>
+        </div>
     </div>
   );
 }
@@ -657,6 +681,8 @@ export function ApplicationRunDetailPanel({
           <RunConversation
             key={`${runId}:${logConversationId ?? ''}`}
             applicationId={applicationId}
+            requested_model_id={requested_model_id}
+            reasoning_effort={reasoning_effort}
             logConversationId={logConversationId}
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
@@ -664,18 +690,7 @@ export function ApplicationRunDetailPanel({
             runId={runId}
           />
         </div>
-        <div className="application-run-detail__model-summary">
-          <Tooltip title={i18nText('applications', 'auto.requested_model')}>
-            <span className="application-run-detail__model-name">
-              {requested_model_id || '—'}
-            </span>
-          </Tooltip>
-          <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
-            <span className="application-run-detail__reasoning-effort">
-              {reasoning_effort || '—'}
-            </span>
-          </Tooltip>
-        </div>
+
       </div>
     </aside>
   );
