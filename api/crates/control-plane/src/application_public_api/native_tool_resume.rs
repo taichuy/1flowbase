@@ -190,8 +190,9 @@ where
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
         // A full next sampling request may refresh tools or generation options. It must
         // still prove this round's complete history and retain the frozen model route.
-        // Apply this to completed receipts too: their replay identity belongs to the
-        // durable callback owner, while failed inference replay has its own exact check.
+        // A pending tool result may arrive with newly available tools and appended
+        // context in the same sampling request. Its consumption still belongs to the
+        // callback owner; completed receipts and exact inference replay are classified there.
         let frozen_model = flow_run
             .input_payload
             .pointer("/sys/requested_model_id")
@@ -205,9 +206,7 @@ where
                 &metadata["history"],
                 &call_id_list,
             )
-            .is_ok_and(|remainder| {
-                remainder.is_empty() || callback.status == CallbackTaskStatus::Completed
-            });
+            .is_ok();
         if !full_request_proven {
             return Err(
                 ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),

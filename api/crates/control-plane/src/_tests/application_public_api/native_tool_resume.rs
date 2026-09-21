@@ -540,37 +540,146 @@ async fn native_admission_rejects_cancelled_waits() {
     assert!(repository.callback_resume_attempts().is_empty());
 }
 
+#[derive(Clone)]
+struct RecordingNativeCallbackConsumer {
+    repository: ApplicationPublicApiTestRepository,
+    calls: std::sync::Arc<
+        std::sync::Mutex<
+            Vec<crate::application_public_api::callback_resume::CompletePublishedCallbackInput>,
+        >,
+    >,
+}
+
+#[async_trait::async_trait]
+impl crate::application_public_api::callback_resume::ApplicationPublishedCallbackConsumer
+    for RecordingNativeCallbackConsumer
+{
+    async fn complete_published_callback(
+        &self,
+        input: crate::application_public_api::callback_resume::CompletePublishedCallbackInput,
+    ) -> Result<domain::FlowRunRecord> {
+        let callback = self
+            .repository
+            .get_published_callback_task(input.callback_task_id)
+            .await?
+            .expect("owned pending callback fixture");
+        self.repository.complete_callback_task_for_test(callback.id);
+        self.calls.lock().unwrap().push(input);
+        Ok(self
+            .repository
+            .get_published_flow_run(callback.flow_run_id)
+            .await?
+            .expect("original callback flow"))
+    }
+}
+
 #[tokio::test]
-async fn completed_full_context_extension_allows_configuration_refresh_before_resume_owner() {
+async fn full_context_extension_configuration_refresh_keeps_pending_callback_owner() {
+    use crate::application_public_api::callback_resume::{
+        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
+    };
     let (repository, actor, run) =
         fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
     let (callback, mut body) = seed_proven_full_round(&repository, run, true);
     body["input"].as_array_mut().unwrap().extend([
         json!({"type":"reasoning","summary":[]}),
         json!({"role":"assistant","content":"New context"}),
+        json!({"role":"developer","content":[{"type":"input_text","text":"Apps became available"}]}),
         json!({"type":"future_context_boundary","opaque":true}),
     ]);
     body["tools"] = json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
-    assert!(
-        correlate_native_responses_callback(&repository, &actor, &body)
-            .await
-            .is_err(),
-        "pending configuration refresh still requires exact full-round proof"
-    );
-    repository.complete_callback_task_for_test(callback.id);
     let original = body.clone();
+    for mutation in 0..3 {
+        let mut invalid = body.clone();
+        match mutation {
+            0 => invalid["model"] = json!("foreign"),
+            1 => invalid["input"][1]["arguments"] = json!("tampered"),
+            2 => invalid["input"].as_array_mut().unwrap().push(
+                json!({"type":"function_call_output","call_id":"foreign","output":"not this round"}),
+            ),
+            _ => unreachable!(),
+        }
+        assert!(
+            correlate_native_responses_callback(&repository, &actor, &invalid)
+                .await
+                .is_err(),
+            "pending refresh mutation {mutation}"
+        );
+    }
     let (admitted, results) = correlate_native_responses_callback(&repository, &actor, &body)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(admitted.id, callback.id);
+    assert_eq!(admitted.status, CallbackTaskStatus::Pending);
     assert_eq!(results["tool_results"].as_array().unwrap().len(), 2);
+    assert!(repository.callback_resume_attempts().is_empty());
+
+    let consumer = RecordingNativeCallbackConsumer {
+        repository: repository.clone(),
+        calls: Default::default(),
+    };
+    let service =
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+    let mut command = ResumePublishedCallbackCommand {
+        transport_connection_scope: None,
+        reserved_attempt_id: None,
+        native_transport: Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap()),
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask {
+            callback_task_id: admitted.id,
+        },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: results.clone(),
+        response_mode: Some("streaming".into()),
+    };
+    let PreparedPublishedCallbackResume::Resume { initial_run } = service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .unwrap()
+    else {
+        panic!("pending refresh must resume its original callback, never start or recover an invocation");
+    };
+    assert_eq!(initial_run.id, run);
+    command.reserved_attempt_id = Some(
+        service
+            .reserve_native_callback_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+    );
+    for _ in 0..2 {
+        let resumed = service
+            .resume_callback_for_actor(actor.clone(), command.clone())
+            .await
+            .unwrap();
+        assert_eq!(resumed.run.id, run);
+    }
+    {
+        let calls = consumer.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].callback_task_id, callback.id);
+        assert_eq!(calls[0].response_payload, results);
+        assert_eq!(
+            calls[0].native_transport.as_ref().unwrap().wire_body(),
+            &original
+        );
+    }
+    let (completed, _) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed.id, callback.id);
+    assert_eq!(completed.status, CallbackTaskStatus::Completed);
     assert_eq!(body, original);
+    assert_eq!(repository.callback_resume_attempts().len(), 1);
+    assert_eq!(repository.flow_run_count(), 1);
+
     body["model"] = json!("foreign");
     assert!(
         correlate_native_responses_callback(&repository, &actor, &body)
             .await
             .is_err()
     );
-    assert!(repository.callback_resume_attempts().is_empty());
 }
