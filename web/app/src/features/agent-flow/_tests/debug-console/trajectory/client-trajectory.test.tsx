@@ -157,9 +157,10 @@ test('defaults to original client classification and lazily loads only selected 
     call.closest('.provider-trajectory__split')
   );
   fireEvent.click(within(inspector).getByRole('tab', { name: '参数' }));
-  expect((await screen.findByText('{"cmd":"pwd"}')).textContent).toBe(
-    '  {"cmd":"pwd"}  '
-  );
+  const parameters = await within(inspector).findByText('{"cmd":"pwd"}', {
+    selector: 'pre'
+  });
+  expect(parameters.textContent).toBe('  {"cmd":"pwd"}  ');
   expect(
     loadClientTrajectorySection.mock.calls.some((args) => args[2] === 'raw')
   ).toBe(false);
