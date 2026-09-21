@@ -29,7 +29,20 @@ const runtimeApi = vi.hoisted(() => ({
       'conversation-messages',
       input?.limit ?? 'default'
     ] as const,
-  fetchApplicationRunConversationMessages: vi.fn()
+  fetchApplicationRunConversationMessages: vi.fn(),
+  applicationLogConversationMessagesQueryKey: (
+    applicationId: string,
+    conversationId: string,
+    input?: { limit?: number }
+  ) =>
+    [
+      'applications',
+      applicationId,
+      'log-conversation',
+      conversationId,
+      input?.limit ?? 'default'
+    ] as const,
+  fetchApplicationLogConversationMessages: vi.fn()
 }));
 
 const debugConsoleState = vi.hoisted(() => ({
@@ -177,7 +190,56 @@ describe('ApplicationRunDetailPanel', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
+    runtimeApi.fetchApplicationLogConversationMessages.mockReset();
     debugConsoleState.latestMessages = [];
+  });
+
+  test('#2105 opens the complete series at its latest five turns and refetches on reopen', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+    });
+    const page = (prefix: string) =>
+      conversationPage(
+        Array.from({ length: 5 }, (_, index) => ({
+          message_id: `turn-${index}`,
+          run_id: `run-${index}`,
+          detail_run_id: `run-${index}`,
+          status: 'succeeded',
+          query: `${prefix} question ${index}`,
+          answer: `${prefix} answer ${index}`
+        }))
+      );
+    runtimeApi.fetchApplicationLogConversationMessages
+      .mockResolvedValueOnce(page('first'))
+      .mockResolvedValueOnce(page('latest'));
+    const surface = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <App>
+          <ApplicationRunDetailPanel
+            applicationId="app-1"
+            runId={open ? 'old-selected-run' : null}
+            logConversationId="series-1"
+            onClose={() => {}}
+          />
+        </App>
+      </QueryClientProvider>
+    );
+    const view = render(surface(true));
+    expect(await screen.findByText('first answer 4')).toBeInTheDocument();
+    expect(screen.getAllByTestId('message-user')).toHaveLength(5);
+    expect(screen.getAllByTestId('message-assistant')).toHaveLength(5);
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'series-1', { limit: 5 });
+    expect(
+      runtimeApi.fetchApplicationRunConversationMessages
+    ).not.toHaveBeenCalled();
+    view.rerender(surface(false));
+    view.rerender(surface(true));
+    expect(await screen.findByText('latest answer 4')).toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledTimes(2);
   });
 
   test.each([

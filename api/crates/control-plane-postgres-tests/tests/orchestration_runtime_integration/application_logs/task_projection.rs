@@ -423,7 +423,7 @@ async fn issue_2105_business_turn_pages_keep_facts_and_reads_do_not_lock_writers
             seeded.application_id,
             ListApplicationConversationRunsPageInput {
                 external_conversation_id: conversation.clone(),
-                around_run_id: Some(ids[0]),
+                around_run_id: None,
                 before_run_id: None,
                 after_run_id: None,
                 limit: 5,

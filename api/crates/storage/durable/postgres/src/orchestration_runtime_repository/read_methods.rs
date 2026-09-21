@@ -706,7 +706,7 @@ impl PgControlPlaneStore {
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    Some(anchor_run_id),
                 )
                 .await?
             else {
@@ -718,7 +718,7 @@ impl PgControlPlaneStore {
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    Some(anchor_run_id),
                 )
                 .await?
             else {
@@ -726,20 +726,18 @@ impl PgControlPlaneStore {
             };
             (anchor_rn + 1, (anchor_rn + limit).min(total), total)
         } else {
-            let Some(anchor_run_id) = input.around_run_id else {
-                return Ok(empty_application_conversation_runs_page());
-            };
-            let Some((anchor_rn, total)) = self
+            // Opening a series always starts at its newest business turns;
+            // the selected run is detail context, not a paging anchor.
+            let Some((_, total)) = self
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    None,
                 )
                 .await?
             else {
                 return Ok(empty_application_conversation_runs_page());
             };
-            let _ = anchor_rn;
             let start_rn = (total - limit + 1).max(1);
             (start_rn, (start_rn + limit - 1).min(total), total)
         };
@@ -846,7 +844,7 @@ impl PgControlPlaneStore {
         &self,
         application_id: Uuid,
         external_conversation_id: &str,
-        flow_run_id: Uuid,
+        flow_run_id: Option<Uuid>,
     ) -> Result<Option<(i64, i64)>> {
         let row = sqlx::query(
             r#"
@@ -886,7 +884,9 @@ impl PgControlPlaneStore {
             )
             select rn, total
             from ordered
-            where id = $3
+            where $3::uuid is null or id = $3
+            order by rn desc
+            limit 1
             "#,
         )
         .bind(application_id)

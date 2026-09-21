@@ -353,7 +353,9 @@ function RunConversation({
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
   runId: string;
 }) {
-  const [conversationScope, setConversationScope] = useState(false);
+  const [conversationScope, setConversationScope] = useState(
+    Boolean(logConversationId)
+  );
   const [previousConversationPages, setPreviousConversationPages] = useState<
     ApplicationRunConversationMessagesPage[]
   >([]);
@@ -369,7 +371,7 @@ function RunConversation({
         ? applicationLogConversationMessagesQueryKey(
             applicationId,
             logConversationId,
-            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
+            { limit: RUN_CONVERSATION_PAGE_LIMIT }
           )
         : applicationRunConversationMessagesQueryKey(applicationId, runId, {
             limit: RUN_CONVERSATION_PAGE_LIMIT
@@ -379,11 +381,12 @@ function RunConversation({
         ? fetchApplicationLogConversationMessages(
             applicationId,
             logConversationId,
-            { aroundRunId: runId, limit: RUN_CONVERSATION_PAGE_LIMIT }
+            { limit: RUN_CONVERSATION_PAGE_LIMIT }
           )
         : fetchApplicationRunConversationMessages(applicationId, runId, {
             limit: RUN_CONVERSATION_PAGE_LIMIT
           }),
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false
   });
   const refetchInitialConversation = initialConversationQuery.refetch;
@@ -648,7 +651,7 @@ export function ApplicationRunDetailPanel({
       <div className="application-run-detail__body">
         <div className="application-run-detail__content">
           <RunConversation
-            key={runId}
+            key={`${runId}:${logConversationId ?? ''}`}
             applicationId={applicationId}
             logConversationId={logConversationId}
             onClose={onClose}
