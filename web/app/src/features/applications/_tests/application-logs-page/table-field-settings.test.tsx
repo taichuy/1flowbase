@@ -282,9 +282,9 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test.each([
-    { total_cost: 0, expected: '0$' },
-    { total_cost: 0.000000000000000001, expected: '0.000000000000000001$' },
-    { total_cost: 0.17, expected: '0.17$' },
+    { total_cost: 0, expected: '0 $' },
+    { total_cost: 0.000000000000000001, expected: '0.000000000000000001 $' },
+    { total_cost: 0.17, expected: '0.17 $' },
     { total_cost: null, expected: '—' }
   ])('renders the saved numeric cost with a display-only dollar suffix: $expected', ({ total_cost, expected }) => {
     const column = getApplicationRunsTableColumns(appI18n.getFixedT(null, 'applications'))
@@ -317,7 +317,7 @@ describe('ApplicationLogsPage - table field settings', () => {
       screen.getByRole('columnheader', { name: '缓存命中率' })
     ).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '费用' })).toBeInTheDocument();
-    expect(screen.getByText('0.15000125$')).toBeInTheDocument();
+    expect(screen.getByText('0.15000125 $')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('28')).toBeInTheDocument();
     expect(screen.getByText('6,956')).toBeInTheDocument();
