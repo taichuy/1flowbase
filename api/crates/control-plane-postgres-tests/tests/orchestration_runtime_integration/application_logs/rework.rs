@@ -239,7 +239,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     assert_eq!(
         detail_ids,
         std::iter::once(ids[0]).collect(),
-        "run message projection stays single-run; task convergence is served from the task row"
+        "business turn detail opens the owning task anchor"
     );
     let task = store
         .get_application_run_log_task(seeded.application_id, ids[0])
@@ -491,13 +491,21 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    assert!(
-        live_page
-            .items
-            .iter()
-            .all(|item| item.flow_run_id == ids[0]),
-        "run message projection stays single-run"
+    assert_eq!(live_page.items.len(), 1, "one business turn per task");
+    let live_turn = &live_page.items[0];
+    assert_eq!(
+        live_turn.detail_run_id,
+        Some(ids[0]),
+        "detail keeps the task anchor"
     );
+    assert_eq!(
+        live_turn.flow_run_id, ids[3],
+        "retain the actual answer source run"
+    );
+    assert_eq!(live_turn.query.as_deref(), Some("same question"));
+    assert_eq!(live_turn.status, FlowRunStatus::Running);
+    assert_eq!(live_turn.answer, None, "an active task has no final answer");
+    assert_eq!(live_turn.output_source.as_deref(), Some("none"));
     let live_task = store
         .get_application_run_log_task(seeded.application_id, ids[0])
         .await
