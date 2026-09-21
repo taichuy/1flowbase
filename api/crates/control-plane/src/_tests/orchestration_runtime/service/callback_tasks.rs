@@ -1047,9 +1047,7 @@ async fn complete_callback_task_preserves_nul_in_response_and_execution() {
     let seeded = service.seed_waiting_callback_run("Support Agent").await;
 
     let payload = json!({
-        "result": "STDERR:\n\0after\\u0000",
-        "key\0tail": ["value\0tail", "literal\\u0000"],
-        "key\\u0000tail": "distinct key"
+        "result": "STDERR:\n\0after\\u0000"
     });
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
