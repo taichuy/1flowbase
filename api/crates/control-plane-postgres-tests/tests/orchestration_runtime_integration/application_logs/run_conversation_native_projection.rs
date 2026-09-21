@@ -305,7 +305,7 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
     .await
     .unwrap();
 
-    // An in-flight saved answer retains its source without claiming completion.
+    // An in-flight payload stays in the original record, not the visible answer projection.
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(page.total_count, 1);
     assert_eq!(page.items[0].query.as_deref(), Some("title question"));
@@ -322,7 +322,8 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
     assert_eq!(retained["answer"], "{\"title\":\"Review quality gates\"}");
     assert_eq!(
         page.output_state.as_ref().unwrap().output_source,
-        "persisted_answer"
+        "none",
+        "a retained in-flight payload is not the source of a visible final answer"
     );
     let running_task = store
         .get_application_run_log_task(seeded.application_id, run.id)

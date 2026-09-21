@@ -418,10 +418,13 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             )
             .await
             .unwrap();
-        assert!(detail
-            .items
-            .iter()
-            .any(|item| item.content.as_deref() == Some("same question")));
+        assert!(
+            detail
+                .items
+                .iter()
+                .any(|item| item.query.as_deref() == Some("same question")),
+            "an ungrouped call still exposes its input as a business turn"
+        );
     }
     let final_page = store
         .list_application_run_logs_page(
