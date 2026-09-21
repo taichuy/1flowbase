@@ -238,3 +238,51 @@ fn classifications_preserve_unknown_and_actual_request_labels() {
     assert!(steps[1].turn_id.is_none());
     assert!(steps[1].node_run_id.is_none());
 }
+
+#[test]
+fn codex_custom_tools_preserve_freeform_input_content_parts_and_actual_schema() {
+    let mut classifier = classify::Classifier::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        ClientTrajectoryTransport::Http,
+    );
+    let at = "2026-09-22T00:00:00Z";
+    classifier.begin_request(at);
+    let patch = "*** Begin Patch\n*** Add File: 北京.txt\n+hello\n*** End Patch";
+    let schema = json!({"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/"}});
+    let output = json!([{"type":"input_text","text":"Success. Updated 北京.txt"}]);
+    let facts = classifier.observe(ClientTrajectoryFrameKind::Request, json!({
+        "tools":[schema], "input":[
+            {"type":"custom_tool_call","id":"ctc-original","call_id":"call-patch","name":"apply_patch","input":patch},
+            {"type":"custom_tool_call_output","call_id":"call-patch","output":output}
+        ]
+    }), at);
+    let steps: Vec<_> = facts
+        .iter()
+        .filter_map(|fact| match fact {
+            ClientTrajectoryFact::Step { step } => Some(step),
+            _ => None,
+        })
+        .collect();
+    let call = steps
+        .iter()
+        .find(|step| step.category == "tool_call")
+        .unwrap();
+    let result = steps
+        .iter()
+        .find(|step| step.category == "tool_result")
+        .unwrap();
+    assert_eq!(call.call_id.as_deref(), Some("call-patch"));
+    assert_eq!(call.item_id.as_deref(), Some("ctc-original"));
+    assert_eq!(call.origin, "submitted");
+    assert_eq!(result.origin, "submitted");
+    assert_eq!(result.related_step_id, Some(call.id));
+    for (id, section, expected) in [
+        (call.id, "parameters", json!(patch)),
+        (call.id, "schema", schema),
+        (result.id, "result", output),
+    ] {
+        assert!(facts.iter().any(|fact|matches!(fact,ClientTrajectoryFact::Section {step_id,section:actual,value} if *step_id==id && actual==section && *value==expected)));
+    }
+}
