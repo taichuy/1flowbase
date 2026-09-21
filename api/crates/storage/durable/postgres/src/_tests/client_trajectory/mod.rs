@@ -132,7 +132,9 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         flow,
         Some(node),
         request,
-        ClientTrajectoryFact::Step { step: root.clone() },
+        ClientTrajectoryFact::Step {
+            step: Box::new(root.clone()),
+        },
     )
     .await;
     let call = Uuid::now_v7();
@@ -142,7 +144,14 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         Some(node),
         request,
         ClientTrajectoryFact::Step {
-            step: step(flow, Some(node), request, call, "emitted", "tool_call"),
+            step: Box::new(step(
+                flow,
+                Some(node),
+                request,
+                call,
+                "emitted",
+                "tool_call",
+            )),
         },
     )
     .await;
@@ -194,7 +203,9 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         flow,
         Some(node),
         request,
-        ClientTrajectoryFact::Step { step: updated },
+        ClientTrajectoryFact::Step {
+            step: Box::new(updated),
+        },
     )
     .await;
     let page = store
@@ -282,14 +293,14 @@ async fn client_trajectory_scoped_pages_sections_originals_terminal_append_and_c
         Some(node),
         followup,
         ClientTrajectoryFact::Step {
-            step: step(
+            step: Box::new(step(
                 flow,
                 Some(node),
                 followup,
                 result,
                 "submitted",
                 "tool_result",
-            ),
+            )),
         },
     )
     .await;
@@ -369,7 +380,9 @@ async fn client_trajectory_cross_capture_namespace_is_exact_or_inherited_from_re
             flow,
             None,
             request,
-            ClientTrajectoryFact::Step { step: call },
+            ClientTrajectoryFact::Step {
+                step: Box::new(call),
+            },
         )
         .await;
     }
@@ -398,7 +411,9 @@ async fn client_trajectory_cross_capture_namespace_is_exact_or_inherited_from_re
             flow,
             None,
             next,
-            ClientTrajectoryFact::Step { step: result },
+            ClientTrajectoryFact::Step {
+                step: Box::new(result),
+            },
         )
         .await;
     }

@@ -26,7 +26,7 @@ fn steps(facts: &[ClientTrajectoryFact]) -> Vec<&crate::ports::ClientTrajectoryS
     facts
         .iter()
         .filter_map(|fact| match fact {
-            ClientTrajectoryFact::Step { step } => Some(step),
+            ClientTrajectoryFact::Step { step } => Some(step.as_ref()),
             _ => None,
         })
         .collect()

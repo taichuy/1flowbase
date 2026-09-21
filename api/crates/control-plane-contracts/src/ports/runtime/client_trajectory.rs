@@ -83,7 +83,7 @@ pub enum ClientTrajectoryFact {
         persist_failed_count: u64,
     },
     Step {
-        step: ClientTrajectoryStep,
+        step: Box<ClientTrajectoryStep>,
     },
     Section {
         step_id: Uuid,

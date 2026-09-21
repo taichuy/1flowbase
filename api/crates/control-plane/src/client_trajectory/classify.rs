@@ -473,7 +473,11 @@ impl Classifier {
             .chain(["timing".into(), "raw".into()])
             .collect();
         let id = step.id;
-        facts.push(Fact::Step { step }).await;
+        facts
+            .push(Fact::Step {
+                step: Box::new(step),
+            })
+            .await;
         for (name, value) in sections {
             facts
                 .push(Fact::Section {
