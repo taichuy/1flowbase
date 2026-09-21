@@ -1,3 +1,6 @@
+import './navigation';
+import { Select } from 'antd';
+import { WindowWorkspaceWindow } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -10,7 +13,7 @@ import { appI18n } from '../../../../../shared/i18n/app-i18n';
 beforeEach(async () => {
   await appI18n.changeLanguage('zh_Hans');
 });
-function fixture() {
+function fixture(inFloatingWindow = false) {
   const loadTrajectory = vi.fn().mockResolvedValue({
     items: [
       {
@@ -58,18 +61,43 @@ function fixture() {
     loadTrajectory,
     loadTrajectoryBody
   };
+  const trajectory = (
+    <ProviderTrajectory
+      runId="run-1"
+      nodeRunId="node-run-2"
+      loader={loader}
+      executionContent={<span>route / fusion execution</span>}
+    />
+  );
   render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <ProviderTrajectory
-        runId="run-1"
-        nodeRunId="node-run-2"
-        loader={loader}
-        executionContent={<span>route / fusion execution</span>}
-      />
+      {inFloatingWindow ? (
+        <>
+          <Select
+            aria-label="时间筛选"
+            options={[{ value: 'week', label: '本周' }]}
+            defaultValue="week"
+          />
+          <WindowWorkspaceWindow
+            active
+            zIndex={2400}
+            testId="trajectory-parent-window"
+            title="日志浮窗"
+            initialRect={() => ({ left: 0, top: 0, width: 800, height: 600 })}
+            dragHandleSelector=".window-heading"
+            resizeLabel={() => '调整浮窗'}
+            onActivate={vi.fn()}
+          >
+            {trajectory}
+          </WindowWorkspaceWindow>
+        </>
+      ) : (
+        trajectory
+      )}
     </QueryClientProvider>
   );
   return { loadTrajectory, loadTrajectoryBody };
@@ -173,4 +201,18 @@ test('shows not recorded for historical executions without supplier observations
   );
   expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
+});
+
+test('keeps its accessible title beside page controls and opens above the containing floating window', async () => {
+  fixture(true);
+  fireEvent.click(screen.getByRole('button', { name: '供应商轨迹' }));
+  const dialog = await screen.findByRole('dialog', { name: '供应商轨迹' });
+  const title = document.getElementById(
+    dialog.getAttribute('aria-labelledby')!
+  );
+  expect(title).toHaveTextContent('供应商轨迹');
+  expect(screen.getByTestId('trajectory-parent-window')).toHaveStyle({
+    zIndex: '2400'
+  });
+  expect(dialog.closest('.ant-modal-wrap')).toHaveStyle({ zIndex: '2401' });
 });

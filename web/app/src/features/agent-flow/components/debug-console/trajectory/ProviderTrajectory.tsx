@@ -18,6 +18,7 @@ import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import './provider-trajectory.css';
 
 function stepKind(step: ProviderTrajectoryStep) {
@@ -48,6 +49,7 @@ export function ProviderTrajectory({
   loader: ConversationLogTraceLoader;
   executionContent?: ReactNode;
 }) {
+  const overlayZIndex = useWindowWorkspaceOverlayZIndex();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('protocol');
   const [selected, setSelected] = useState<ProviderTrajectoryStep | null>(null);
@@ -106,6 +108,7 @@ export function ProviderTrajectory({
         }}
       />
       <Modal
+        zIndex={overlayZIndex}
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
