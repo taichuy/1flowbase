@@ -522,7 +522,7 @@ async fn client_trajectory_node_links_filter_real_shared_captures_without_relabe
         None,
         request,
         ClientTrajectoryFact::Step {
-            step: step(flow, None, request, request, "submitted", "request"),
+            step: Box::new(step(flow, None, request, request, "submitted", "request")),
         },
     )
     .await;
@@ -668,7 +668,7 @@ async fn client_trajectory_full_request_value_budget_excludes_fixed_observation_
         None,
         request,
         ClientTrajectoryFact::Step {
-            step: step(flow, None, request, request, "submitted", "request"),
+            step: Box::new(step(flow, None, request, request, "submitted", "request")),
         },
     )
     .await;
