@@ -39,19 +39,6 @@ pub(super) fn provider_worker_handle(
     Ok(supervisor)
 }
 
-pub(super) fn take_provider_worker_for_quiesce(
-    provider_workers: &ProviderWorkerRegistry,
-    plugin_id: &str,
-) -> FrameworkResult<Option<ProviderWorkerHandle>> {
-    let mut registry = lock_provider_worker_registry(provider_workers)?;
-    let Some(supervisor) = registry.workers.get(plugin_id).cloned() else {
-        return Ok(None);
-    };
-    supervisor.begin_quiesce()?;
-    registry.workers.remove(plugin_id);
-    Ok(Some(supervisor))
-}
-
 pub(super) fn record_provider_worker_cleanup(
     provider_workers: &ProviderWorkerRegistry,
     plugin_id: &str,
@@ -246,19 +233,26 @@ pub(super) fn merge_models(
     merged.into_values().collect()
 }
 
-const TRANSPORT_BINDING_CAPACITY: usize = 4096;
+pub(super) const TRANSPORT_BINDING_CAPACITY: usize = 4096;
 const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
     std::time::Duration::from_secs(24 * 60 * 60 + 60);
 
-fn transport_binding_error(message: &str) -> PluginFrameworkError {
+pub(super) fn prune_transport_bindings(registry: &mut ProviderWorkerRegistryState) {
+    let active = &registry.session_workers;
+    let now = std::time::Instant::now();
+    registry
+        .transport_bindings
+        .retain(|key, binding| binding.expires_at > now || active.contains_key(key));
+}
+pub(super) fn transport_binding_error(message: &str) -> PluginFrameworkError {
     PluginFrameworkError::runtime(ProviderRuntimeError::new(
         ProviderRuntimeErrorKind::ProviderTransportUnavailable,
         message,
     ))
 }
 
-pub(super) fn bind_transport_worker(
-    workers: &ProviderWorkerRegistry,
+pub(super) fn bind_transport_worker_locked(
+    registry: &mut ProviderWorkerRegistryState,
     plugin_id: &str,
     worker: &ProviderWorkerHandle,
     input: &mut ProviderInvocationInput,
@@ -280,15 +274,7 @@ pub(super) fn bind_transport_worker(
         identity.logical_session_id.clone(),
         identity.generation,
     );
-    let now = std::time::Instant::now();
-    let mut registry = lock_provider_worker_registry(workers)?;
-    registry.transport_bindings.retain(|_, binding| {
-        binding.expires_at > now
-            || binding
-                .worker
-                .snapshot()
-                .map_or(true, |snapshot| snapshot.in_flight > 0)
-    });
+
     if let Some(binding) = registry.transport_bindings.get(&key) {
         if binding.released_receipt.is_some() {
             return Err(transport_binding_error(
@@ -316,21 +302,21 @@ pub(super) fn bind_transport_worker(
                 "transport binding physical deadline has expired",
             ));
         }
-        let remaining_ms = directive.physical_deadline_unix_ms.saturating_sub(unix_ms) as u64;
-        let retention = std::time::Duration::from_millis(remaining_ms)
-            .saturating_add(std::time::Duration::from_secs(60))
-            .min(TRANSPORT_BINDING_MAX_RETENTION);
+        let retention = std::time::Duration::from_millis(
+            directive.physical_deadline_unix_ms.saturating_sub(unix_ms) as u64,
+        )
+        .saturating_add(std::time::Duration::from_secs(60))
+        .min(TRANSPORT_BINDING_MAX_RETENTION);
         registry.transport_bindings.insert(
             key,
             TransportWorkerBinding {
                 identity,
                 worker: Arc::clone(worker),
-                expires_at: now + retention,
+                expires_at: std::time::Instant::now() + retention,
                 released_receipt: None,
             },
         );
     }
-    drop(registry);
     // Overwrite input claims using the actual supervisor, before the first wire request.
     directive.worker_incarnation = Some(incarnation);
     input
@@ -381,14 +367,7 @@ pub(super) async fn call_bound_transport_session(
 ) -> FrameworkResult<ProviderTransportSessionReceipt> {
     let binding = {
         let mut registry = lock_provider_worker_registry(workers)?;
-        let now = std::time::Instant::now();
-        registry.transport_bindings.retain(|_, binding| {
-            binding.expires_at > now
-                || binding
-                    .worker
-                    .snapshot()
-                    .map_or(true, |snapshot| snapshot.in_flight > 0)
-        });
+        prune_transport_bindings(&mut registry);
         registry
             .transport_bindings
             .get(&(
@@ -414,6 +393,7 @@ pub(super) async fn call_bound_transport_session(
         return Ok(receipt.clone());
     }
     if let Some(receipt) = confirmed_exit_receipt(&binding, command.action)? {
+        session_workers::release_worker(workers, plugin_id, &binding, receipt.clone())?;
         return Ok(receipt);
     }
     let request = ProviderStdioRequest {
@@ -434,7 +414,10 @@ pub(super) async fn call_bound_transport_session(
                 control_error_kind = ?error.kind(), control_failure_code = safe_control_failure_code(&error), attempt_deadline_ms = command.deadline_unix_ms,
                 "provider control failed; checking independently confirmed worker exit");
             return match confirmed_exit_receipt(&binding, command.action) {
-                Ok(Some(receipt)) => Ok(receipt),
+                Ok(Some(receipt)) => {
+                    session_workers::release_worker(workers, plugin_id, &binding, receipt.clone())?;
+                    Ok(receipt)
+                }
                 Ok(None) | Err(_) => Err(error),
             };
         }
@@ -446,6 +429,13 @@ pub(super) async fn call_bound_transport_session(
             ))
         })?;
     validate_provider_closure_receipt(&receipt, &binding.identity)?;
+    if receipt
+        .closure_evidence
+        .as_ref()
+        .is_some_and(|proof| proof.local_released)
+    {
+        session_workers::release_worker(workers, plugin_id, &binding, receipt.clone())?;
+    }
     Ok(receipt)
 }
 
@@ -487,6 +477,15 @@ pub(super) fn cache_failed_transport_closure(
     else {
         return Ok(());
     };
+    cache_transport_receipt(workers, plugin_id, input, value)
+}
+
+pub(super) fn cache_transport_receipt(
+    workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+    input: &ProviderInvocationInput,
+    value: &Value,
+) -> FrameworkResult<()> {
     let Some(directive) = input
         .transport_session_directive()
         .map_err(PluginFrameworkError::invalid_provider_contract)?
@@ -523,9 +522,11 @@ pub(super) fn cache_failed_transport_closure(
     }
     // A repeated fact cannot overwrite the first proven release or its missing ACK.
     if binding.released_receipt.is_none() {
-        binding.released_receipt = Some(receipt);
+        binding.released_receipt = Some(receipt.clone());
     }
-    Ok(())
+    let binding = binding.clone();
+    drop(registry);
+    session_workers::release_worker(workers, plugin_id, &binding, receipt)
 }
 
 fn safe_control_failure_code(error: &PluginFrameworkError) -> &'static str {
@@ -543,5 +544,69 @@ fn safe_control_failure_code(error: &PluginFrameworkError) -> &'static str {
         PluginFrameworkError::Serialization { .. } => "control_invalid_envelope",
         PluginFrameworkError::Io { .. } => "control_stdio_io_error",
         _ => "control_contract_error",
+    }
+}
+
+pub(super) fn reclaim_confirmed_exit(
+    workers: &ProviderWorkerRegistry,
+    plugin: &str,
+    input: &ProviderInvocationInput,
+) -> FrameworkResult<()> {
+    let Some(directive) = input
+        .transport_session_directive()
+        .map_err(PluginFrameworkError::invalid_provider_contract)?
+    else {
+        return Ok(());
+    };
+    let binding = lock_provider_worker_registry(workers)?
+        .transport_bindings
+        .get(&(
+            plugin.to_owned(),
+            directive.logical_session_id,
+            directive.generation,
+        ))
+        .cloned();
+    if let Some(binding) = binding {
+        if let Some(receipt) =
+            confirmed_exit_receipt(&binding, ProviderTransportSessionAction::Close)?
+        {
+            session_workers::release_worker(workers, plugin, &binding, receipt)?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn cache_result_transport_closure(
+    workers: &ProviderWorkerRegistry,
+    plugin: &str,
+    input: &ProviderInvocationInput,
+    metadata: &Value,
+) {
+    use extension_package_runtime::provider_contract::PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY;
+    if let Some(value) = metadata.get(PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY) {
+        // Ready/draining receipts are not release proof and retain their ordinary semantics.
+        if value
+            .get("closure_evidence")
+            .and_then(|proof| proof.get("local_released"))
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            if let Err(error) = cache_transport_receipt(workers, plugin, input, value) {
+                tracing::warn!(%error, "provider result closure evidence rejected");
+            }
+        }
+    }
+}
+
+pub(super) fn generic_count_tokens_fallback(
+    input: &ProviderCountTokensInput,
+    reason: ProviderCountTokensFallbackReason,
+) -> ProviderCountTokensResult {
+    match estimate_provider_count_tokens(input.as_invocation()) {
+        Ok(mut result) => {
+            result.fallback_reason = Some(reason);
+            result
+        }
+        Err(_) => ProviderCountTokensResult::fallback_zero(),
     }
 }

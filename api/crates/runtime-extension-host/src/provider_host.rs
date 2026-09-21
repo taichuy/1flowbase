@@ -66,6 +66,9 @@ const PROVIDER_WORKER_QUIESCE_DEADLINE: std::time::Duration = std::time::Duratio
 #[derive(Debug, Default)]
 struct ProviderWorkerRegistryState {
     workers: HashMap<String, ProviderWorkerHandle>,
+    session_workers: HashMap<(String, String, u64), ProviderWorkerHandle>,
+    session_capacity: SessionWorkerCapacity,
+    epochs: HashMap<String, u64>,
     next_generation: HashMap<String, u64>,
     cleanup_receipts: HashMap<String, ProviderWorkerCleanupReceipt>,
     transport_bindings: HashMap<(String, String, u64), TransportWorkerBinding>,
@@ -266,10 +269,11 @@ struct ActiveProviderInvocationLease {
 }
 
 struct PreparedProviderStreamInvocation {
+    package_epoch: u64,
     loaded: LoadedProviderPackage,
     provider_workers: ProviderWorkerRegistry,
     active_streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
-    active_invocation_leases: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
+    active_invocation_leases: Arc<Mutex<HashMap<String, std::sync::Weak<Semaphore>>>>,
     invocation_id: String,
     plugin_id: String,
     input: ProviderInvocationInput,
@@ -295,7 +299,7 @@ pub struct ProviderHost {
         HashMap<String, extension_package_runtime::LegacyInstalledManifestEligibility>,
     provider_workers: ProviderWorkerRegistry,
     active_streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
-    active_invocation_leases: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
+    active_invocation_leases: Arc<Mutex<HashMap<String, std::sync::Weak<Semaphore>>>>,
     next_invocation_sequence: AtomicU64,
 }
 
@@ -1063,6 +1067,7 @@ impl ProviderHost {
             _ => None,
         };
         let provider_workers = Arc::clone(&self.provider_workers);
+        let package_epoch = session_workers::epoch(&provider_workers, plugin_id)?;
         let active_streams = Arc::clone(&self.active_streams);
         let active_invocation_leases = Arc::clone(&self.active_invocation_leases);
         let sequence = self
@@ -1072,6 +1077,7 @@ impl ProviderHost {
         let plugin_id = plugin_id.to_string();
         Ok(async move {
             Self::invoke_stream_prepared(PreparedProviderStreamInvocation {
+                package_epoch,
                 loaded,
                 provider_workers,
                 active_streams,
@@ -1127,108 +1133,6 @@ impl ProviderHost {
         active_streams.lock().await.insert(invocation_id, record);
     }
 
-    fn active_stream_event_observer(
-        active_streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
-        invocation_id: String,
-    ) -> tokio::sync::mpsc::UnboundedSender<()> {
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            while receiver.recv().await.is_some() {
-                if let Some(record) = active_streams.lock().await.get_mut(&invocation_id) {
-                    record.last_event_at = OffsetDateTime::now_utc();
-                }
-            }
-        });
-        sender
-    }
-
-    async fn remove_active_stream(
-        active_streams: &Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
-        invocation_id: &str,
-    ) {
-        active_streams.lock().await.remove(invocation_id);
-    }
-
-    async fn acquire_active_invocation_lease(
-        active_invocation_leases: &Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
-        input: &ProviderInvocationInput,
-    ) -> FrameworkResult<ActiveProviderInvocationLease> {
-        let provider_pool_key = provider_pool_key(input);
-        let semaphore = {
-            let mut leases = active_invocation_leases.lock().await;
-            leases
-                .entry(provider_pool_key.clone())
-                .or_insert_with(|| Arc::new(Semaphore::new(1)))
-                .clone()
-        };
-        tracing::debug!(
-            provider_pool_key = %provider_pool_key,
-            "active provider invocation lease acquiring"
-        );
-        let permit = semaphore.acquire_owned().await.map_err(|_| {
-            PluginFrameworkError::runtime(
-                extension_package_runtime::provider_contract::ProviderRuntimeError::normalize(
-                    "provider_invocation_lease",
-                    "active provider invocation lease is closed",
-                    None,
-                ),
-            )
-        })?;
-        tracing::debug!(
-            provider_pool_key = %provider_pool_key,
-            "active provider invocation lease acquired"
-        );
-        Ok(ActiveProviderInvocationLease {
-            provider_pool_key,
-            _permit: permit,
-        })
-    }
-
-    async fn quiesce_provider_worker(
-        &self,
-        plugin_id: &str,
-    ) -> FrameworkResult<Option<ProviderWorkerCleanupReceipt>> {
-        let supervisor = take_provider_worker_for_quiesce(&self.provider_workers, plugin_id)?;
-        let Some(supervisor) = supervisor else {
-            return Ok(None);
-        };
-        let receipt = supervisor
-            .finish_quiesce(
-                PROVIDER_WORKER_QUIESCE_DEADLINE,
-                ProviderWorkerCleanupReason::Restarted,
-            )
-            .await?;
-        record_provider_worker_cleanup(&self.provider_workers, plugin_id, receipt.clone())?;
-        Ok(Some(receipt))
-    }
-
-    fn retire_provider_worker_in_background(&self, plugin_id: &str) -> FrameworkResult<()> {
-        let supervisor = take_provider_worker_for_quiesce(&self.provider_workers, plugin_id)?;
-        let Some(supervisor) = supervisor else {
-            return Ok(());
-        };
-        let provider_workers = Arc::clone(&self.provider_workers);
-        let plugin_id = plugin_id.to_string();
-        tokio::runtime::Handle::try_current()
-            .map_err(|_| {
-                PluginFrameworkError::invalid_provider_package(
-                    "provider worker cleanup requires an async runtime",
-                )
-            })?
-            .spawn(async move {
-                if let Ok(receipt) = supervisor
-                    .finish_quiesce(
-                        PROVIDER_WORKER_QUIESCE_DEADLINE,
-                        ProviderWorkerCleanupReason::Restarted,
-                    )
-                    .await
-                {
-                    let _ = record_provider_worker_cleanup(&provider_workers, &plugin_id, receipt);
-                }
-            });
-        Ok(())
-    }
-
     fn loaded_package(&self, plugin_id: &str) -> FrameworkResult<&LoadedProviderPackage> {
         self.loaded_packages.get(plugin_id).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package(format!(
@@ -1268,6 +1172,7 @@ impl ProviderHost {
         invocation: PreparedProviderStreamInvocation,
     ) -> FrameworkResult<ProviderInvokeStreamOutput> {
         let PreparedProviderStreamInvocation {
+            package_epoch,
             loaded,
             provider_workers,
             active_streams,
@@ -1280,24 +1185,39 @@ impl ProviderHost {
             host_calls,
         } = invocation;
 
+        let queue_started = std::time::Instant::now();
+        let invocation_limits =
+            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input);
+        let deadline = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(
+                invocation_limits
+                    .timeout_ms
+                    .unwrap_or(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS),
+            );
+        let _lease = tokio::time::timeout_at(
+            deadline,
+            Self::acquire_active_invocation_lease(&active_invocation_leases, &plugin_id, &input),
+        )
+        .await
+        .map_err(|_| session_workers::admission_timeout())??;
         let selected_worker = if loaded.package.manifest.execution_mode
             == PluginExecutionMode::StatefulProviderWorker
         {
-            let worker = provider_worker_handle(&provider_workers, plugin_id.clone(), &loaded)?;
-            Some(worker)
+            Some(
+                session_workers::select_worker(
+                    &provider_workers,
+                    &plugin_id,
+                    &loaded,
+                    &mut input,
+                    deadline,
+                    package_epoch,
+                )
+                .await?,
+            )
         } else {
             None
         };
-
-        let queue_started = std::time::Instant::now();
-        let _lease =
-            Self::acquire_active_invocation_lease(&active_invocation_leases, &input).await?;
         let queue_ms = bounded_stage_millis(queue_started.elapsed());
-        // Check the generation after the provider-pool queue: a preceding invocation
-        // may have proved it closed while this invocation was waiting.
-        if let Some(worker) = &selected_worker {
-            bind_transport_worker(&provider_workers, &plugin_id, worker, &mut input)?;
-        }
         let mapping_started = std::time::Instant::now();
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
         let mapping_ms = bounded_stage_millis(mapping_started.elapsed());
@@ -1362,8 +1282,19 @@ impl ProviderHost {
                 tracing::warn!(%evidence_error, "provider failure closure evidence rejected");
             }
         }
+        if let Err(error) =
+            operations::reclaim_confirmed_exit(&provider_workers, &plugin_id, &input)
+        {
+            tracing::warn!(%error, "confirmed worker cleanup could not be retired");
+        }
         let output = output?;
         let mut result = output.result;
+        operations::cache_result_transport_closure(
+            &provider_workers,
+            &plugin_id,
+            &input,
+            &result.provider_metadata,
+        );
         prepared_wire
             .translation_receipt
             .attach_to_provider_metadata(&mut result.provider_metadata)?;
@@ -1514,19 +1445,6 @@ fn current_provider_count_tokens_wire_input(
     input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
-fn generic_count_tokens_fallback(
-    input: &ProviderCountTokensInput,
-    reason: ProviderCountTokensFallbackReason,
-) -> ProviderCountTokensResult {
-    match estimate_provider_count_tokens(input.as_invocation()) {
-        Ok(mut result) => {
-            result.fallback_reason = Some(reason);
-            result
-        }
-        Err(_) => ProviderCountTokensResult::fallback_zero(),
-    }
-}
-
 fn compact_framework_error(error: PluginFrameworkError) -> ProviderCompactError {
     match error {
         PluginFrameworkError::RuntimeContract { error } => {
@@ -1551,14 +1469,15 @@ fn compact_framework_error(error: PluginFrameworkError) -> ProviderCompactError 
 }
 
 mod operations;
+mod session_workers;
+use session_workers::SessionWorkerCapacity;
 mod supervisor;
 
 use operations::{
-    bind_transport_worker, cache_failed_transport_closure, call_bound_transport_session,
+    cache_failed_transport_closure, call_bound_transport_session, generic_count_tokens_fallback,
     merge_models, normalize_balance, normalize_models, normalize_reset_credit_result,
     normalize_usage_windows, provider_invocation_limits, provider_pool_key, provider_worker_handle,
     record_provider_worker_cleanup, reset_credit_result_matches_operation,
-    take_provider_worker_for_quiesce,
 };
 
 #[cfg(test)]

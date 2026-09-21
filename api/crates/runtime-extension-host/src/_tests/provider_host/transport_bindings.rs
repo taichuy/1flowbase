@@ -78,9 +78,7 @@ async fn dispatch_binds_real_worker_and_rejects_provider_forged_exit() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("identity or source rejected"));
-    let snapshot = provider_worker_supervisor_snapshot(&host.provider_workers, &id)
-        .unwrap()
-        .unwrap();
+    let snapshot = bound_worker(&host, &id).snapshot().unwrap();
     assert_eq!(snapshot.generation, 1);
     assert_eq!(snapshot.state, ProviderWorkerLifecycleState::Active);
 }
@@ -94,12 +92,7 @@ async fn confirmed_old_worker_exit_is_not_dispatched_to_replacement() {
         .unwrap()
         .plugin_id;
     host.invoke_stream(&id, input()).await.unwrap();
-    let old = provider_worker_handle(
-        &host.provider_workers,
-        id.clone(),
-        host.loaded_package(&id).unwrap(),
-    )
-    .unwrap();
+    let old = bound_worker(&host, &id);
     assert!(old
         .call(&ProviderStdioRequest {
             method: ProviderStdioMethod::Validate,
@@ -134,7 +127,7 @@ async fn confirmed_old_worker_exit_is_not_dispatched_to_replacement() {
         .await
         .unwrap_err()
         .to_string()
-        .contains("previous worker"));
+        .contains("already closed"));
 }
 
 #[tokio::test]
@@ -192,7 +185,7 @@ while IFS= read -r payload; do
     *'"method":"invoke"'*)
       count=$((count + 1))
       printf '%s\n' "$payload" >> "$dir/invokes"
-      if [ "$count" -eq 1 ]; then
+      if [ "$count" -eq 1 ] && [[ "$payload" != *'"logical_session_id":"other-session"'* ]]; then
         printf '%s\n' '{frame}' '{{"type":"result","result":{{"finish_reason":"error"}}}}'
       else
         printf '%s\n' '{{"type":"text_delta","delta":"busy"}}'
@@ -360,4 +353,14 @@ async fn invalid_or_absent_failure_proof_preserves_error_and_normal_close() {
         );
         host.stop_all().await.unwrap();
     }
+}
+
+fn bound_worker(host: &ProviderHost, id: &str) -> ProviderWorkerHandle {
+    lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .transport_bindings
+        .get(&(id.to_owned(), "bound".to_owned(), 7))
+        .unwrap()
+        .worker
+        .clone()
 }

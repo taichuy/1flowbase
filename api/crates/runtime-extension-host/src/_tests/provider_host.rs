@@ -1413,3 +1413,7 @@ mod stream_error_tests;
 #[cfg(unix)]
 #[path = "provider_host/transport_bindings.rs"]
 mod transport_bindings;
+
+#[cfg(unix)]
+#[path = "provider_host/session_workers.rs"]
+mod session_workers;
