@@ -30,6 +30,17 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    ClientTrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    },
+    ClientTrajectorySection {
+        application_id: Uuid,
+        run_id: Uuid,
+        step_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    },
     RunTrajectoryPage {
         application_id: Uuid,
         run_id: Uuid,
@@ -116,6 +127,8 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    ClientTrajectoryPage(control_plane::ports::ClientTrajectoryPage),
+    ClientTrajectorySection(control_plane::ports::ClientTrajectorySection),
     RunPayload(serde_json::Value),
     TrajectoryPage(control_plane::ports::ProviderTrajectoryPage),
     TrajectoryBody(control_plane::ports::ProviderTrajectoryBody),
@@ -778,6 +791,23 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::ClientTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ClientTrajectoryPage(
+                self.client_trajectory_page(actor, application_id, run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::ClientTrajectorySection {
+                application_id,
+                run_id,
+                step_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(
+                self.client_trajectory_section(actor, application_id, run_id, step_id, query)
+                    .await?,
+            )),
             ApplicationRuntimeReadsInput::RunTrajectoryPage {
                 application_id,
                 run_id,
@@ -924,6 +954,8 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.client-trajectory.list", binding_id: "http.console.applications.runtime.client-trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/client-trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.client-trajectory.section.get", binding_id: "http.console.applications.runtime.client-trajectory.section.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/client-trajectory/:step_id", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.trajectory.list", binding_id: "http.console.applications.runtime.run.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trajectory", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.payload.get", binding_id: "http.console.applications.runtime.run.payload.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/payloads/:section", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.list", binding_id: "http.console.applications.runtime.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", mutating: false },

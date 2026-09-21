@@ -1,4 +1,6 @@
 import {
+  fetchClientTrajectory,
+  fetchClientTrajectorySection,
   fetchProviderTrajectory,
   fetchProviderTrajectoryBody,
   fetchRunTrajectory,
@@ -1186,6 +1188,28 @@ export function ApplicationLogsPage({
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
               traceLoader={{
+                loadClientTrajectory: (runId, nodeRunId, cursor) =>
+                  fetchClientTrajectory(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    cursor
+                  ),
+                loadClientTrajectorySection: (
+                  runId,
+                  stepId,
+                  section,
+                  nodeRunId,
+                  cursor
+                ) =>
+                  fetchClientTrajectorySection(
+                    applicationId,
+                    runId,
+                    stepId,
+                    section,
+                    nodeRunId,
+                    cursor
+                  ),
                 loadRunTrajectory: (runId, cursor) =>
                   fetchRunTrajectory(applicationId, runId, cursor),
                 loadTrajectory: (runId, nodeRunId, cursor) =>

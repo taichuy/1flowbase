@@ -1,4 +1,6 @@
 import type {
+  ClientTrajectoryPage,
+  ClientTrajectorySection,
   ProviderTrajectoryPage,
   ProviderTrajectoryBody
 } from '@1flowbase/api-client';
@@ -112,6 +114,18 @@ export interface ConversationLogRunOverview {
 }
 
 export interface ConversationLogTraceLoader {
+  loadClientTrajectory?: (
+    runId: string,
+    nodeRunId?: string,
+    cursor?: number
+  ) => Promise<ClientTrajectoryPage>;
+  loadClientTrajectorySection?: (
+    runId: string,
+    stepId: string,
+    section: string,
+    nodeRunId?: string,
+    cursor?: number
+  ) => Promise<ClientTrajectorySection>;
   loadRunTrajectory?: (
     runId: string,
     cursor?: number

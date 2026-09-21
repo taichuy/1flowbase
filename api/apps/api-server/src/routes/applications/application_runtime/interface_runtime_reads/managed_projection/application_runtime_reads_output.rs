@@ -5,6 +5,14 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema(&[
+                ("variant", mp::tag_schema("ClientTrajectoryPage")),
+                ("item_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[
+                ("variant", mp::tag_schema("ClientTrajectorySection")),
+                ("item_count", mp::count_schema()),
+            ]),
+            mp::object_schema(&[
                 ("variant", mp::tag_schema("RunPayload")),
                 ("payload", mp::json_summary_schema()),
             ]),
@@ -987,6 +995,9 @@ impl InterfaceContract for ApplicationRuntimeReadsOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::ClientTrajectoryPage(value) => mp::object_value(&[("variant", serde_json::json!("ClientTrajectoryPage")), ("item_count", serde_json::json!(value.items.len()))]),
+            Self::ClientTrajectorySection(value) => mp::object_value(&[("variant", serde_json::json!("ClientTrajectorySection")), ("item_count", serde_json::json!(value.items.len()))]),
+
             Self::RunPayload(payload) => serde_json::json!({"variant":"RunPayload","payload":mp::json_summary(payload)}),
             Self::TrajectoryPage(page) => serde_json::json!({"variant":"TrajectoryPage", "observation_count": page.observation_count}),
             Self::TrajectoryBody(body) => serde_json::json!({"variant":"TrajectoryBody", "event_id":body.event_id, "body_byte_count":body.items.iter().map(|item| item.body.len()).sum::<usize>()}),

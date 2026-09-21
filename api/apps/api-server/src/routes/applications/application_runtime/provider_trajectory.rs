@@ -132,3 +132,71 @@ pub async fn get_run_payload(
     };
     Ok(Json(ApiSuccess::new(payload)))
 }
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClientTrajectoryQuery {
+    pub node_run_id: Option<Uuid>,
+    pub cursor: Option<i64>,
+    pub limit: Option<i64>,
+    pub section: Option<String>,
+}
+
+/// List original client Responses trajectory summaries.
+/// Reads bounded metadata within the authorized application and run without loading protocol bodies.
+#[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/client-trajectory",
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    responses((status = 200, body = serde_json::Value)))]
+pub async fn list_client_trajectory(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, run_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<ClientTrajectoryQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ClientTrajectoryPage>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.client-trajectory.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ClientTrajectoryPage {
+            application_id,
+            run_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ClientTrajectoryPage(page) = output
+    else {
+        unreachable!("client trajectory page binding output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
+}
+
+/// Read one selected client protocol trajectory section.
+/// Loads only the requested section of a step scoped to the authorized application, run and optional node.
+#[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/client-trajectory/{step_id}",
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("step_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("section" = Option<String>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    responses((status = 200, body = serde_json::Value)))]
+pub async fn get_client_trajectory_section(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, run_id, step_id)): Path<(Uuid, Uuid, Uuid)>,
+    Query(query): Query<ClientTrajectoryQuery>,
+) -> Result<Json<ApiSuccess<control_plane::ports::ClientTrajectorySection>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.client-trajectory.section.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::ClientTrajectorySection {
+            application_id,
+            run_id,
+            step_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ClientTrajectorySection(section) =
+        output
+    else {
+        unreachable!("client trajectory section binding output")
+    };
+    Ok(Json(ApiSuccess::new(section)))
+}

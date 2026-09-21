@@ -4,6 +4,47 @@ use control_plane::ports::{
 };
 
 impl ApplicationRuntimeReadsAdapter {
+    pub(super) async fn client_trajectory_page(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        run_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    ) -> Result<control_plane::ports::ClientTrajectoryPage, ApiError> {
+        self.visible_trajectory_run(actor, application_id, run_id)
+            .await?;
+        Ok(self
+            .store
+            .client_trajectory_page(
+                run_id,
+                query.node_run_id,
+                query.cursor,
+                query.limit.unwrap_or(50),
+            )
+            .await?)
+    }
+    pub(super) async fn client_trajectory_section(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        run_id: Uuid,
+        step_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    ) -> Result<control_plane::ports::ClientTrajectorySection, ApiError> {
+        self.visible_trajectory_run(actor, application_id, run_id)
+            .await?;
+        self.store
+            .client_trajectory_section(
+                run_id,
+                query.node_run_id,
+                step_id,
+                query.section.as_deref().unwrap_or("overview"),
+                query.cursor,
+                query.limit.unwrap_or(8),
+            )
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("client_trajectory_section").into())
+    }
     pub(super) async fn run_trajectory_page(
         &self,
         actor: &domain::ActorContext,

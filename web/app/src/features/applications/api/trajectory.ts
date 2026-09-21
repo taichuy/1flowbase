@@ -1,4 +1,6 @@
 import {
+  getConsoleClientTrajectory,
+  getConsoleClientTrajectorySection,
   getConsoleProviderTrajectory,
   getConsoleRunTrajectory,
   getConsoleRunPayload,
@@ -62,6 +64,39 @@ export function fetchRunPayload(
     applicationId,
     runId,
     section,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchClientTrajectory(
+  applicationId: string,
+  runId: string,
+  nodeRunId?: string,
+  cursor?: number
+) {
+  return getConsoleClientTrajectory(
+    applicationId,
+    runId,
+    nodeRunId,
+    cursor,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchClientTrajectorySection(
+  applicationId: string,
+  runId: string,
+  stepId: string,
+  section: string,
+  nodeRunId?: string,
+  cursor?: number
+) {
+  return getConsoleClientTrajectorySection(
+    applicationId,
+    runId,
+    stepId,
+    section,
+    nodeRunId,
+    cursor,
     getApplicationsApiBaseUrl()
   );
 }
