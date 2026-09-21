@@ -533,7 +533,11 @@ impl ProviderWorker {
                             event.clone(),
                         )
                         .await?;
-                        events.push(event);
+                        // Formal observations are persisted by their required-lane owner; keeping
+                        // raw bodies in invocation output would duplicate them in node debug data.
+                        if !matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            events.push(event);
+                        }
                     }
                 }
             }
@@ -1219,6 +1223,32 @@ mod tests {
             .unwrap();
 
         assert_eq!(required_receiver.recv().await, Some(required_event));
+    }
+
+    #[tokio::test]
+    async fn protocol_observation_uses_required_lane_even_when_diagnostics_are_full() {
+        let (required, mut receiver) = tokio::sync::mpsc::channel(1);
+        let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);
+        diagnostic
+            .try_send(ProviderStreamEvent::NativeEvent {
+                protocol: "fixture".into(),
+                event: serde_json::json!({}),
+            })
+            .unwrap();
+        let line = serde_json::json!({
+            "type": "protocol_observation", "protocol": "openai.responses",
+            "transport": "sse", "direction": "received", "kind": "response_body",
+            "body": "data: [DONE]\n\n", "encoding": "utf8", "status": null,
+        });
+        let event = serde_json::from_value::<ProviderRuntimeLine>(line.clone())
+            .unwrap()
+            .into_stream_event()
+            .unwrap();
+        assert_eq!(serde_json::to_value(&event).unwrap(), line);
+        forward_provider_live_event(Some(&required), Some(&diagnostic), event.clone())
+            .await
+            .unwrap();
+        assert_eq!(receiver.recv().await, Some(event));
     }
 
     fn assert_expired_timeout_contract(

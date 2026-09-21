@@ -153,7 +153,8 @@ pub fn coalesce_provider_stream_events(
 
     for event in events {
         match event {
-            ProviderStreamEvent::NativeEvent { .. } => {
+            ProviderStreamEvent::ProtocolObservation { .. }
+            | ProviderStreamEvent::NativeEvent { .. } => {
                 flush_text_delta(bus, &mut coalesced, &mut coalescer);
                 flush_reasoning_delta(bus, &mut coalesced, &mut coalescer);
             }
@@ -197,6 +198,9 @@ pub async fn append_provider_stream_event<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+        bail!("provider protocol observations require invocation-scoped persistence");
+    }
     if matches!(
         event,
         ProviderStreamEvent::NativeEvent { .. }
@@ -273,7 +277,8 @@ where
     for event in events {
         if matches!(
             event,
-            ProviderStreamEvent::NativeEvent { .. }
+            ProviderStreamEvent::ProtocolObservation { .. }
+                | ProviderStreamEvent::NativeEvent { .. }
                 | ProviderStreamEvent::ReasoningSignatureDelta { .. }
                 | ProviderStreamEvent::ResponsesOutputDelta { .. }
                 | ProviderStreamEvent::OutputItem { .. }
@@ -336,6 +341,7 @@ where
 
 pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
     match event {
+        ProviderStreamEvent::ProtocolObservation { .. } => "provider_protocol_observation",
         ProviderStreamEvent::NativeEvent { .. } => "native_event",
         ProviderStreamEvent::TextDelta { .. } => "text_delta",
         ProviderStreamEvent::ReasoningDelta { .. } => "reasoning_delta",

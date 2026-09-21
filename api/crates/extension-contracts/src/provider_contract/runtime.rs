@@ -381,6 +381,23 @@ impl std::error::Error for ProviderCompactError {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderStreamEvent {
+    /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
+    /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
+    /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.
+    /// `kind` is request/response_head/response_body/message/stream_end; headers are never included.
+    /// `body` is exact UTF-8 or standard base64 bytes selected by `encoding` (utf8/base64).
+    /// Only an explicitly completed protocol read emits stream_end; absence means incomplete.
+    ProtocolObservation {
+        protocol: String,
+        transport: String,
+        direction: String,
+        kind: String,
+        body: String,
+        encoding: String,
+        status: Option<u16>,
+    },
+
     NativeEvent {
         protocol: String,
         event: Value,
@@ -438,6 +455,23 @@ pub enum ProviderStreamEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRuntimeLine {
+    /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
+    /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
+    /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.
+    /// `kind` is request/response_head/response_body/message/stream_end; headers are never included.
+    /// `body` is exact UTF-8 or standard base64 bytes selected by `encoding` (utf8/base64).
+    /// Only an explicitly completed protocol read emits stream_end; absence means incomplete.
+    ProtocolObservation {
+        protocol: String,
+        transport: String,
+        direction: String,
+        kind: String,
+        body: String,
+        encoding: String,
+        status: Option<u16>,
+    },
+
     NativeEvent {
         protocol: String,
         event: Value,
@@ -498,6 +532,23 @@ pub enum ProviderRuntimeLine {
 impl ProviderRuntimeLine {
     pub fn into_stream_event(self) -> Option<ProviderStreamEvent> {
         match self {
+            Self::ProtocolObservation {
+                protocol,
+                transport,
+                direction,
+                kind,
+                body,
+                encoding,
+                status,
+            } => Some(ProviderStreamEvent::ProtocolObservation {
+                protocol,
+                transport,
+                direction,
+                kind,
+                body,
+                encoding,
+                status,
+            }),
             Self::NativeEvent { protocol, event } => {
                 Some(ProviderStreamEvent::NativeEvent { protocol, event })
             }

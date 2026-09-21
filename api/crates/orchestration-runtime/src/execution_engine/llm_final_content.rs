@@ -645,7 +645,8 @@ pub(super) fn durable_provider_events(
     events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderStreamEvent::NativeEvent { .. }
+            ProviderStreamEvent::ProtocolObservation { .. }
+            | ProviderStreamEvent::NativeEvent { .. }
             | ProviderStreamEvent::ReasoningSignatureDelta { .. }
             | ProviderStreamEvent::ResponsesOutputDelta { .. }
             | ProviderStreamEvent::OutputItem { .. } => None,
