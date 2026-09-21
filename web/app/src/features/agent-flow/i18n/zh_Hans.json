@@ -4,7 +4,6 @@
     "protocol": "协议记录",
     "execution": "执行关联",
     "no_execution": "没有关联执行",
-    "retry": "重试",
     "overview": "概览",
     "complete": "记录完整",
     "incomplete": "记录不完整",

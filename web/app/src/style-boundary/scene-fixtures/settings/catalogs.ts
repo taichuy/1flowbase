@@ -226,6 +226,21 @@ export const styleBoundaryNodeContributions = {
 };
 
 export const styleBoundaryApplicationRunRecord = {
+  log_conversation_id: null,
+  log_task_run_id: null,
+  parent_run_id: null,
+  caused_by_run_id: null,
+  call_kind: 'generate',
+  invocation_count: 1,
+  compaction_count: 0,
+  member_run_ids: ['run-1'],
+  parent_task_run_id: null,
+  outcome: 'final_answer_observed',
+  user_input: 'Boundary question',
+  final_output: 'Boundary answer',
+  requested_model_id: null,
+  reasoning_effort: null,
+  cost_breakdown: [],
   id: 'run-1',
   application_id: 'app-1',
   scope_id: 'workspace-1',

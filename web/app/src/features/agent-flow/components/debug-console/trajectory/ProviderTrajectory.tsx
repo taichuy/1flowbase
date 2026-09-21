@@ -134,7 +134,7 @@ export function ProviderTrajectory({
                 title={i18nText('agentFlow', 'auto.loading_failed')}
                 action={
                   <Button onClick={() => void pages.refetch()}>
-                    {i18nText('agentFlow', 'trajectory.retry')}
+                    {i18nText('agentFlow', 'auto.retry')}
                   </Button>
                 }
               />
@@ -299,7 +299,7 @@ export function ProviderTrajectory({
                             title={i18nText('agentFlow', 'auto.loading_failed')}
                             action={
                               <Button onClick={() => void body.refetch()}>
-                                {i18nText('agentFlow', 'trajectory.retry')}
+                                {i18nText('agentFlow', 'auto.retry')}
                               </Button>
                             }
                           />

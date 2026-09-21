@@ -636,6 +636,7 @@ function LazyTraceNodeItem({
   traceLoader: ConversationLogTraceLoader;
 }) {
   const isGroupNode = isTraceGroupNode(node);
+  const hasTrajectory = node.node_type === 'llm' && Boolean(node.node_run_id);
   const [expanded, setExpanded] = useState(false);
   const [childrenState, dispatchChildrenState] = useReducer(
     lazyTraceChildrenReducer,
@@ -829,13 +830,11 @@ function LazyTraceNodeItem({
               <DebugWorkflowNodeDetailContent
                 onLoadSection={loadNodeRunSection}
                 beforePayloadContent={
-                  node.node_type === 'llm' ? undefined : childNodesBeforePayload
+                  hasTrajectory ? undefined : childNodesBeforePayload
                 }
-                toolPresentation={
-                  node.node_type === 'llm' ? 'hidden' : 'complete'
-                }
+                toolPresentation={hasTrajectory ? 'hidden' : 'complete'}
                 processAction={
-                  node.node_type === 'llm' && node.node_run_id ? (
+                  hasTrajectory && node.node_run_id ? (
                     <ProviderTrajectory
                       runId={
                         node.source_flow_run_id ?? node.flow_run_id ?? runId
@@ -869,7 +868,7 @@ function LazyTraceNodeItem({
               />
             </div>
           )}
-          {node.node_type === 'llm' ? null : (
+          {hasTrajectory ? null : (
             <>
               {childLoadStatusContent}
               {loadMoreChildrenButton}

@@ -4,7 +4,6 @@
     "protocol": "Protocol records",
     "execution": "Execution links",
     "no_execution": "No linked execution",
-    "retry": "Retry",
     "overview": "Overview",
     "complete": "Complete",
     "incomplete": "Incomplete",
@@ -26,7 +25,7 @@
     "select_step": "Select a step to inspect its original body",
     "request": "Request",
     "response_head": "Response headers",
-    "response_body": "Response body",
+    "response_body": "$t(agentFlow:auto.response_body)",
     "message": "Message",
     "stream_end": "Stream end"
   },

@@ -1,3 +1,9 @@
+import { fetchProviderTrajectory } from '../../api/trajectory';
+import { configureExecutionProjection } from './trajectory/projection';
+import {
+  openTrajectoryExecution,
+  openPayloadSection
+} from '../../../agent-flow/_tests/debug-console/trajectory/navigation';
 import { App as AntdApp } from 'antd';
 import {
   fireEvent,
@@ -144,6 +150,7 @@ const runtimeApi = vi.hoisted(() => ({
   fetchApplicationRunTraceTree: vi.fn(),
   fetchApplicationRunTraceNodeChildren: vi.fn(),
   fetchApplicationRunTraceNodeContent: vi.fn(),
+  fetchApplicationRunTraceNodeDetail: vi.fn(),
   fetchApplicationRunResumeTimeline: vi.fn(),
   fetchApplicationConversationMessages: vi.fn(),
   fetchApplicationLogConversationMessages: vi.fn(),
@@ -157,6 +164,18 @@ const runtimeApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/runtime', () => runtimeApi);
+vi.mock('../../api/trajectory', () => ({
+  fetchProviderTrajectory: vi
+    .fn()
+    .mockResolvedValue({
+      items: [],
+      next_cursor: null,
+      observation_count: 0,
+      persist_failed_count: 0,
+      integrity: 'unavailable'
+    }),
+  fetchProviderTrajectoryBody: vi.fn()
+}));
 
 import type { ConsoleApplicationRunDetail as ApplicationRunDetail } from '@1flowbase/api-client';
 import { AppProviders } from '../../../../app/AppProviders';
@@ -198,6 +217,7 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
     runtimeApi.fetchApplicationRunTraceTree.mockReset();
     runtimeApi.fetchApplicationRunTraceNodeChildren.mockReset();
     runtimeApi.fetchApplicationRunTraceNodeContent.mockReset();
+    runtimeApi.fetchApplicationRunTraceNodeDetail.mockReset();
     runtimeApi.fetchApplicationRunResumeTimeline.mockReset();
     runtimeApi.fetchApplicationConversationMessages.mockReset();
     runtimeApi.fetchApplicationLogConversationMessages.mockReset();
@@ -292,156 +312,7 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
     dateNowSpy = undefined;
   });
 
-  test('renders lazy trace tools from children when node content omits tool index', async () => {
-    const detail = sampleRunDetail();
-    const llmNodeRun = detail.node_runs[0]!;
-    currentRunDetail = {
-      ...detail,
-      node_runs: [
-        {
-          ...llmNodeRun,
-          debug_payload: {
-            llm_rounds: [
-              {
-                round_index: 0,
-                assistant: {
-                  role: 'assistant',
-                  tool_calls: [
-                    {
-                      id: 'call-refund-policy',
-                      name: 'refund_policy_lookup'
-                    }
-                  ]
-                }
-              }
-            ],
-            tool_callbacks: [
-              {
-                id: 'call-refund-policy',
-                name: 'refund_policy_lookup'
-              }
-            ],
-            debug_summary: {
-              kept: true
-            }
-          }
-        }
-      ]
-    };
-    const llmTraceNodeId = 'trace-node-llm-lazy-tools';
-    const toolsTraceNodeId = 'trace-node-tools-lazy-tools';
-    const toolCallbackTraceNodeId = 'trace-node-tool-refund-policy-lazy-tools';
-    runtimeApi.fetchApplicationRunTraceTree.mockResolvedValue({
-      nodes: [
-        {
-          trace_node_id: llmTraceNodeId,
-          stable_locator: 'run:run-1/node:node-run-1',
-          node_kind: 'node_run',
-          node_run_id: 'node-run-1',
-          node_id: 'node-llm',
-          node_type: 'llm',
-          node_alias: 'LLM',
-          status: 'succeeded',
-          started_at: '2026-04-17T09:00:00Z',
-          finished_at: '2026-04-17T09:00:01Z',
-          duration_ms: 1000,
-          metrics_payload: {},
-          has_children: true,
-          child_count: 1,
-          has_content: true
-        }
-      ]
-    });
-    runtimeApi.fetchApplicationRunTraceNodeContent.mockResolvedValue({
-      trace_node_id: llmTraceNodeId,
-      node_kind: 'node_run',
-      content_kind: 'node_run',
-      source_refs: [],
-      detail_refs: [],
-      payload: {
-        input_payload: llmNodeRun.input_payload,
-        output_payload: llmNodeRun.output_payload,
-        error_payload: llmNodeRun.error_payload,
-        metrics_payload: llmNodeRun.metrics_payload,
-        debug_payload: {
-          debug_summary: {
-            kept: true
-          }
-        }
-      }
-    });
-    runtimeApi.fetchApplicationRunTraceNodeChildren.mockImplementation(
-      async (_applicationId: string, _runId: string, traceNodeId: string) => {
-        if (traceNodeId === llmTraceNodeId) {
-          return {
-            items: [
-              {
-                trace_node_id: toolsTraceNodeId,
-                stable_locator: 'run:run-1/node:node-run-1/tools',
-                node_kind: 'tool_group',
-                node_run_id: null,
-                node_id: null,
-                node_type: 'tools',
-                node_alias: 'Tools',
-                status: 'completed',
-                started_at: '2026-04-17T09:00:00Z',
-                finished_at: '2026-04-17T09:00:01Z',
-                duration_ms: null,
-                metrics_payload: {},
-                has_children: true,
-                child_count: 1,
-                has_content: false
-              }
-            ],
-            page_info: {
-              has_more: false,
-              next_cursor: null,
-              page_size: 20
-            }
-          };
-        }
-
-        if (traceNodeId === toolsTraceNodeId) {
-          return {
-            items: [
-              {
-                trace_node_id: toolCallbackTraceNodeId,
-                stable_locator:
-                  'run:run-1/node:node-run-1/tools/tool:call-refund-policy',
-                node_kind: 'tool_callback',
-                node_run_id: null,
-                node_id: null,
-                node_type: 'tool',
-                node_alias: 'refund_policy_lookup',
-                status: 'completed',
-                started_at: '2026-04-17T09:00:00Z',
-                finished_at: '2026-04-17T09:00:01Z',
-                duration_ms: 1000,
-                metrics_payload: {},
-                has_children: false,
-                child_count: 0,
-                has_content: true
-              }
-            ],
-            page_info: {
-              has_more: false,
-              next_cursor: null,
-              page_size: 20
-            }
-          };
-        }
-
-        return {
-          items: [],
-          page_info: {
-            has_more: false,
-            next_cursor: null,
-            page_size: 20
-          }
-        };
-      }
-    );
-
+  async function openTrace() {
     render(
       <AppProviders>
         <AntdApp>
@@ -449,351 +320,153 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
         </AntdApp>
       </AppProviders>
     );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
+    await screen.findByText('run-1');
     fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const openLogButton = lastElement(
-      await screen.findAllByRole(
-        'button',
-        { name: '查看对话日志' },
-        { timeout: 8_000 }
-      ),
-      'expected conversation log button'
+    fireEvent.click(
+      lastElement(
+        await screen.findAllByRole('button', { name: '查看对话日志' }),
+        'conversation log entry'
+      )
     );
-    fireEvent.click(openLogButton);
-
-    const logPanel = await screen.findByRole('complementary', {
+    const panel = await screen.findByRole('complementary', {
       name: '对话日志'
     });
-    fireEvent.click(within(logPanel).getByRole('tab', { name: '追踪' }));
+    fireEvent.click(within(panel).getByRole('tab', { name: '追踪' }));
+    const llm = await within(panel).findAllByRole('button', { name: /LLM/ });
+    return { panel, llm };
+  }
 
-    const llmTraceNode = await within(logPanel).findByRole('button', {
-      name: /LLM/
-    });
-    fireEvent.click(llmTraceNode);
-    const nodeDetail = await openLazyLlmNodeDetail(logPanel);
-
-    await waitFor(() =>
-      expect(runtimeApi.fetchApplicationRunTraceNodeContent).toHaveBeenCalled()
-    );
-    expect(
-      within(nodeDetail).queryByRole('button', {
-        name: /工具 .*工具回调/
-      })
-    ).not.toBeInTheDocument();
-
-    const toolsGroupNode = await within(nodeDetail).findByRole('button', {
+  async function openTool(execution: HTMLElement, name = 'lookup_weather') {
+    const tools = await within(execution).findByRole('button', {
       name: /Tools/
     });
-    expect(toolsGroupNode).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(toolsGroupNode);
-
-    expect(
-      await within(nodeDetail).findByRole('button', {
-        name: /refund_policy_lookup/
-      })
-    ).toBeInTheDocument();
-    expect(
-      runtimeApi.fetchApplicationRunTraceNodeChildren
-    ).toHaveBeenCalledWith('app-1', 'run-1', llmTraceNodeId, undefined);
-    expect(
-      runtimeApi.fetchApplicationRunTraceNodeChildren
-    ).toHaveBeenCalledWith('app-1', 'run-1', toolsTraceNodeId, undefined);
-  }, 20_000);
-
-  test('groups repeated LLM tool callbacks under Tools from application logs', async () => {
-    const detail = sampleRunDetail();
-    const llmNodeRun = detail.node_runs[0]!;
-    detail.flow_run.status = 'waiting_callback';
-    detail.node_runs = [
-      {
-        ...llmNodeRun,
-        id: 'node-run-llm-1',
-        status: 'succeeded',
-        output_payload: {
-          usage: {
-            total_tokens: 8035
-          }
-        },
-        debug_payload: {
-          llm_rounds: [
-            {
-              round_index: 0,
-              assistant: {
-                role: 'assistant',
-                content: 'need weather',
-                tool_calls: [
-                  {
-                    id: 'call_weather',
-                    name: 'lookup_weather'
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        started_at: '2026-04-17T09:00:00Z',
-        finished_at: '2026-04-17T09:00:03Z'
-      },
-      {
-        ...llmNodeRun,
-        id: 'node-run-llm-2',
-        status: 'waiting_callback',
-        output_payload: {
-          tool_calls: [
-            {
-              id: 'call_policy'
-            }
-          ]
-        },
-        debug_payload: {
-          llm_rounds: [
-            {
-              round_index: 1,
-              assistant: {
-                role: 'assistant',
-                content: 'need policy',
-                tool_calls: [
-                  {
-                    id: 'call_policy',
-                    name: 'read_policy'
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        started_at: '2026-04-17T09:00:04Z',
-        finished_at: null
-      }
-    ];
-    currentRunDetail = detail;
-
-    render(
-      <AppProviders>
-        <AntdApp>
-          <ApplicationLogsPage applicationId="app-1" />
-        </AntdApp>
-      </AppProviders>
-    );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const openLogButton = lastElement(
-      await screen.findAllByRole(
-        'button',
-        { name: '查看对话日志' },
-        { timeout: 8_000 }
-      ),
-      'expected conversation log button'
-    );
-    fireEvent.click(openLogButton);
-
-    const logPanel = await screen.findByRole('complementary', {
-      name: '对话日志'
+    expect(tools).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(tools);
+    const tool = await within(execution).findByRole('button', {
+      name: new RegExp(name)
     });
-    fireEvent.click(within(logPanel).getByRole('tab', { name: '追踪' }));
+    return { tools, tool };
+  }
 
-    await waitFor(() => {
+  test('loads callback bodies only after navigating trajectory execution links and opening the callback', async () => {
+    configureExecutionProjection(runtimeApi);
+    const { panel, llm } = await openTrace();
+    fireEvent.click(llm[0]!);
+    const detail = await openLazyLlmNodeDetail(panel);
+    expect(
+      within(detail).queryByRole('button', { name: /Tools/ })
+    ).not.toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeDetail
+    ).not.toHaveBeenCalled();
+    await openPayloadSection(detail, '输入');
+    expect(await within(detail).findByLabelText('输入 JSON')).toHaveTextContent(
+      'execution 1'
+    );
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeDetail
+    ).toHaveBeenCalledExactlyOnceWith(
+      'app-1',
+      'run-1',
+      'execution-1',
+      'node_run',
+      'input_payload'
+    );
+    const execution = await openTrajectoryExecution(detail);
+    const { tool } = await openTool(execution);
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalledWith('app-1', 'run-1', 'callback-1');
+    fireEvent.click(tool);
+    const callback = await within(execution).findByRole('region', {
+      name: /lookup_weather 节点详情/
+    });
+    expect(
+      await within(callback).findByLabelText('输入 JSON')
+    ).toHaveTextContent('Shanghai');
+    expect(within(callback).getByLabelText('输出 JSON')).toHaveTextContent(
+      'warm'
+    );
+    expect(runtimeApi.fetchApplicationRunTraceNodeContent).toHaveBeenCalledWith(
+      'app-1',
+      'run-1',
+      'callback-1'
+    );
+    expect(runtimeApi.fetchApplicationRunTraceNodeDetail).toHaveBeenCalledTimes(
+      1
+    );
+  });
+
+  test('keeps repeated LLM executions and their callbacks in separate trajectory trees', async () => {
+    configureExecutionProjection(runtimeApi, { repeated: true });
+    const { panel, llm } = await openTrace();
+    expect(llm).toHaveLength(2);
+    for (const [index, name] of ['lookup_weather', 'read_policy'].entries()) {
+      fireEvent.click(llm[index]!);
+      const detail = await openLazyLlmNodeDetail(panel);
+      const execution = await openTrajectoryExecution(detail);
+      const { tool } = await openTool(execution, name);
+      expect(tool).toBeInTheDocument();
       expect(
-        within(logPanel).getAllByTestId('debug-workflow-node-row')
-      ).toHaveLength(1);
-    });
+        within(execution).queryByRole('button', {
+          name: new RegExp(index ? 'lookup_weather' : 'read_policy')
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        runtimeApi.fetchApplicationRunTraceNodeChildren
+      ).toHaveBeenCalledWith(
+        'app-1',
+        'run-1',
+        `execution-${index + 1}`,
+        undefined
+      );
+      fireEvent.click(
+        within(execution).getByRole('button', { name: /Close|关闭/ })
+      );
+      fireEvent.click(llm[index]!);
+    }
+  });
 
-    const llmTraceNode = lastElement(
-      await within(logPanel).findAllByRole('button', { name: /LLM/ }),
-      'expected routed LLM trace node'
+  test('keeps a stitched route linked to its original execution and reads branch content only on expansion', async () => {
+    configureExecutionProjection(runtimeApi, {
+      sourceRunId: 'run-prior-route'
+    });
+    const { panel, llm } = await openTrace();
+    fireEvent.click(llm[0]!);
+    const execution = await openTrajectoryExecution(
+      await openLazyLlmNodeDetail(panel)
     );
-    fireEvent.click(llmTraceNode);
-    const nodeDetail = await openLazyLlmNodeDetail(logPanel);
-
-    const toolsNode = await within(nodeDetail).findByRole('button', {
-      name: /工具 2 次工具回调/
+    const { tool } = await openTool(execution);
+    expect(tool).toHaveTextContent('智能路由');
+    await waitFor(() =>
+      expect(fetchProviderTrajectory).toHaveBeenCalledWith(
+        'app-1',
+        'run-prior-route',
+        'execution-1',
+        undefined
+      )
+    );
+    fireEvent.click(tool);
+    const branch = await within(execution).findByRole('button', {
+      name: /Image LLM/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
     expect(
-      within(logPanel).queryByLabelText('工具回调索引 JSON')
-    ).not.toBeInTheDocument();
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /lookup_weather/
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /read_policy/
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(logPanel).queryByText('call_weather')
-    ).not.toBeInTheDocument();
-    expect(within(logPanel).queryByText('call_policy')).not.toBeInTheDocument();
-  }, 20_000);
-
-  test('shows route tool callbacks from stitched conversation trace', async () => {
-    const detail = sampleRunDetail();
-    const llmNodeRun = detail.node_runs[0]!;
-    detail.callback_tasks = [];
-    detail.stitched_trace = [
-      {
-        source_flow_run: {
-          ...detail.flow_run,
-          id: 'run-prior-route',
-          status: 'cancelled',
-          started_at: '2026-04-17T08:59:50Z',
-          finished_at: '2026-04-17T08:59:59Z'
-        },
-        node_runs: [
-          {
-            ...llmNodeRun,
-            id: 'node-run-prior-llm',
-            flow_run_id: 'run-prior-route',
-            output_payload: {
-              usage: {
-                total_tokens: 33520
-              }
-            },
-            debug_payload: {
-              llm_rounds: [
-                {
-                  round_index: 0,
-                  assistant: {
-                    role: 'assistant',
-                    content: 'need image route',
-                    tool_calls: [
-                      {
-                        id: 'call_image',
-                        name: 'image_llm'
-                      }
-                    ]
-                  }
-                },
-                {
-                  round_index: 1,
-                  tool_results: [
-                    {
-                      tool_call_id: 'call_image',
-                      name: 'image_llm',
-                      content: '{"answer":"route ok"}'
-                    }
-                  ]
-                },
-                {
-                  round_index: 2,
-                  assistant: {
-                    role: 'assistant',
-                    content: 'main resumed'
-                  }
-                }
-              ],
-              visible_internal_llm_tool_trace: [
-                {
-                  kind: 'visible_internal_llm_tool_trace',
-                  preview_kind: 'visible_internal_llm_tool_trace',
-                  tool_call_id: 'call_image',
-                  tool_name: 'image_llm',
-                  status: 'returned_to_main',
-                  route_model: 'image-route-v1',
-                  target_node_id: 'node-llm-image',
-                  route_node_id: 'node-llm-image',
-                  route_node_alias: 'Image LLM',
-                  returned_to_main: true,
-                  main_resume: true,
-                  route_output_summary: {
-                    kind: 'text',
-                    preview: 'image route completed',
-                    char_count: 21,
-                    truncated: false
-                  },
-                  final_output_summary: {
-                    kind: 'text',
-                    preview: 'main resumed',
-                    char_count: 12,
-                    truncated: false
-                  }
-                }
-              ]
-            },
-            started_at: '2026-04-17T08:59:51Z',
-            finished_at: '2026-04-17T08:59:58Z'
-          }
-        ],
-        callback_tasks: [
-          {
-            id: 'callback-prior-image',
-            flow_run_id: 'run-prior-route',
-            node_run_id: 'node-run-prior-llm',
-            callback_kind: 'llm_tool_calls',
-            status: 'completed',
-            request_payload: {
-              tool_calls: [
-                {
-                  id: 'call_image',
-                  name: 'image_llm'
-                }
-              ]
-            },
-            response_payload: null,
-            external_ref_payload: null,
-            created_at: '2026-04-17T08:59:52Z',
-            completed_at: '2026-04-17T08:59:58Z'
-          }
-        ],
-        events: []
-      }
-    ];
-    currentRunDetail = detail;
-
-    render(
-      <AppProviders>
-        <AntdApp>
-          <ApplicationLogsPage applicationId="app-1" />
-        </AntdApp>
-      </AppProviders>
-    );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const openLogButton = lastElement(
-      await screen.findAllByRole(
-        'button',
-        { name: '查看对话日志' },
-        { timeout: 8_000 }
-      ),
-      'expected conversation log button'
-    );
-    fireEvent.click(openLogButton);
-
-    const logPanel = await screen.findByRole('complementary', {
-      name: '对话日志'
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalledWith('app-1', 'run-1', 'branch-1-1');
+    fireEvent.click(branch);
+    const detail = await within(execution).findByRole('region', {
+      name: 'Image LLM 节点详情'
     });
-    fireEvent.click(within(logPanel).getByRole('tab', { name: '追踪' }));
-
-    const llmTraceNode = lastElement(
-      await within(logPanel).findAllByRole('button', { name: /LLM/ }),
-      'expected fusion LLM trace node'
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeDetail
+    ).not.toHaveBeenCalled();
+    expect(await within(detail).findByLabelText('输出 JSON')).toHaveTextContent(
+      'Image LLM result'
     );
-    fireEvent.click(llmTraceNode);
-    const nodeDetail = await openLazyLlmNodeDetail(logPanel);
-
-    const toolsNode = await within(nodeDetail).findByRole('button', {
-      name: /工具 1 次工具回调/
-    });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
-
-    const toolCallbackNode = within(logPanel).getByRole('button', {
-      name: /image_llm/
-    });
-    expect(toolCallbackNode).toHaveTextContent('智能路由');
-    fireEvent.click(toolCallbackNode);
-
-    const routeNode = within(logPanel).getByTestId('debug-llm-route-node');
-    expect(routeNode).not.toHaveTextContent('进行中');
-    expect(within(routeNode).getByLabelText('智能路由 JSON')).toHaveTextContent(
-      'image-route-v1'
+    expect(runtimeApi.fetchApplicationRunTraceNodeContent).toHaveBeenCalledWith(
+      'app-1',
+      'run-1',
+      'branch-1-1'
     );
-  }, 20_000);
+  });
 });

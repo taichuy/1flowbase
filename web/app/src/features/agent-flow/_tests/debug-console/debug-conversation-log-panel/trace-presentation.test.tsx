@@ -1,3 +1,4 @@
+import { openPayloadSection } from '../trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -306,63 +307,28 @@ describe('debug conversation log panel', () => {
     );
   }, 10_000);
 
-  test('collapses repeated LLM node runs into one trace row', () => {
-    renderConsole({
-      messages: [
-        {
-          id: 'user-1',
-          role: 'user',
-          status: 'completed',
-          runId: 'run-1',
-          content: '天气?',
-          rawOutput: null,
-          traceSummary: []
-        },
-        multiLlmRunAssistantMessage
-      ]
-    });
-
+  test('preserves repeated LLM executions as separate trace rows', () => {
+    renderConsole({ messages: [multiLlmRunAssistantMessage] });
     fireEvent.click(screen.getByRole('button', { name: '查看对话日志' }));
     const panel = screen.getByRole('complementary', { name: '对话日志' });
     fireEvent.click(within(panel).getByRole('tab', { name: '追踪' }));
-
     expect(
       within(panel).getAllByTestId('debug-workflow-node-row')
-    ).toHaveLength(2);
-
-    const llmTraceNode = within(panel).getByRole('button', { name: /LLM/ });
-    expect(llmTraceNode).toHaveTextContent('工具 2');
-
-    fireEvent.click(llmTraceNode);
-
-    const nodeDetail = within(panel).getByRole('region', {
-      name: 'LLM 节点详情'
-    });
-    expandToolsNode(nodeDetail, /工具.*2 次工具回调/);
-
-    expect(
-      within(nodeDetail).queryByLabelText('工具回调索引 JSON')
-    ).not.toBeInTheDocument();
-    expect(
-      within(nodeDetail).getByRole('button', {
-        name: /lookup_weather/
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(nodeDetail).getByRole('button', {
-        name: /read_policy/
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(nodeDetail).queryByText('call_weather')
-    ).not.toBeInTheDocument();
-    expect(
-      within(nodeDetail).queryByText('call_policy')
-    ).not.toBeInTheDocument();
-    expect(within(nodeDetail).getByLabelText('输出 JSON')).toHaveTextContent(
+    ).toHaveLength(4);
+    const runs = within(panel).getAllByRole('button', { name: /LLM/ });
+    expect(runs).toHaveLength(3);
+    fireEvent.click(runs[0]!);
+    const first = within(panel).getByRole('region', { name: 'LLM 节点详情' });
+    expandToolsNode(first, /工具.*1 次工具回调/);
+    expect(first).toHaveTextContent('lookup_weather');
+    expect(first).not.toHaveTextContent('read_policy');
+    fireEvent.click(runs[0]!);
+    fireEvent.click(runs[2]!);
+    const last = within(panel).getByRole('region', { name: 'LLM 节点详情' });
+    expect(within(last).getByLabelText('输出 JSON')).toHaveTextContent(
       'weather is clear'
     );
-  }, 10_000);
+  });
 
   test('renders waiting answer snapshots inside the waiting LLM trace row', () => {
     renderConsole({
@@ -654,9 +620,18 @@ describe('debug conversation log panel', () => {
     const nodeDetail = await screen.findByRole('region', {
       name: 'Prior LLM 节点详情'
     });
+    expect(traceLoader.loadDetail).not.toHaveBeenCalled();
+    await openPayloadSection(nodeDetail, '输入');
     expect(
       await within(nodeDetail).findByLabelText('输入 JSON')
     ).toHaveTextContent('历史问题');
+    expect(traceLoader.loadDetail).toHaveBeenCalledWith(
+      'run-application-log',
+      historicalNode.trace_node_id,
+      'node_run',
+      'input_payload'
+    );
+    await openPayloadSection(nodeDetail, '输出');
     expect(
       await within(nodeDetail).findByLabelText('输出 JSON')
     ).toHaveTextContent('历史回答');

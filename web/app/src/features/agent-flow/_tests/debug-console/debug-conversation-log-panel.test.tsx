@@ -1,4 +1,8 @@
 import {
+  openTrajectoryExecution,
+  openPayloadSection
+} from './trajectory/navigation';
+import {
   fireEvent,
   render,
   screen,
@@ -437,21 +441,25 @@ describe('debug conversation log panel', () => {
         'node_run:node-run-llm'
       )
     );
-    await waitFor(() =>
-      expect(traceLoader.loadDetail).toHaveBeenCalledWith(
-        'run-application-log',
-        'node_run:node-run-llm',
-        'node_run'
-      )
-    );
+    expect(traceLoader.loadDetail).not.toHaveBeenCalled();
     const nodeDetail = await screen.findByRole('region', {
       name: 'LLM 节点详情'
     });
     expect(
       within(nodeDetail).queryByRole('button', { name: '详情' })
     ).not.toBeInTheDocument();
+    await openPayloadSection(nodeDetail, '输入');
+    await waitFor(() =>
+      expect(traceLoader.loadDetail).toHaveBeenCalledExactlyOnceWith(
+        'run-application-log',
+        'node_run:node-run-llm',
+        'node_run',
+        'input_payload'
+      )
+    );
+    const execution = await openTrajectoryExecution(nodeDetail);
     expect(
-      await within(nodeDetail).findByRole('button', { name: /lookup_weather/ })
+      await within(execution).findByRole('button', { name: /lookup_weather/ })
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(within(nodeDetail).getByLabelText('输入 JSON')).toHaveTextContent(
