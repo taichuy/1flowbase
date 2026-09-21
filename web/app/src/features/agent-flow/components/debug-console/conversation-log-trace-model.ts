@@ -112,6 +112,10 @@ export interface ConversationLogRunOverview {
 }
 
 export interface ConversationLogTraceLoader {
+  loadRunTrajectory?: (
+    runId: string,
+    cursor?: number
+  ) => Promise<ProviderTrajectoryPage>;
   loadTrajectory?: (
     runId: string,
     nodeRunId: string,
@@ -148,6 +152,10 @@ export interface ConversationLogTraceLoader {
 }
 
 export interface ConversationLogOverviewLoader {
+  loadPayload?: (
+    runId: string,
+    section: 'input_payload' | 'output_payload'
+  ) => Promise<Record<string, unknown>>;
   loadOverview: (runId: string) => Promise<ConversationLogRunOverview>;
 }
 

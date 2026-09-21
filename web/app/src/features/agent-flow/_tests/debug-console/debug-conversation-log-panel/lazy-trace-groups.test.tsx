@@ -1,7 +1,4 @@
-import {
-  openTrajectoryExecution,
-  openPayloadSection
-} from '../trajectory/navigation';
+import { openPayloadSection } from '../trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -354,7 +351,8 @@ describe('debug conversation log panel', () => {
     const parentDetail = await screen.findByRole('region', {
       name: 'Parent LLM 节点详情'
     });
-    const parentExecution = await openTrajectoryExecution(parentDetail);
+    const parentExecution = parentDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const agentsButton = await within(parentExecution).findByRole('button', {
       name: /Agents/
     });
@@ -411,7 +409,7 @@ describe('debug conversation log panel', () => {
       within(subagentDetail).getByLabelText('输出 JSON')
     ).toHaveTextContent('Use a dedicated Agents group');
 
-    const subagentExecution = await openTrajectoryExecution(subagentDetail);
+    const subagentExecution = subagentDetail;
     fireEvent.click(
       await within(subagentExecution).findByRole('button', { name: /Tools/ })
     );
@@ -626,7 +624,8 @@ describe('debug conversation log panel', () => {
     const nodeDetail = await screen.findByRole('region', {
       name: 'LLM 节点详情'
     });
-    const execution = await openTrajectoryExecution(nodeDetail);
+    const execution = nodeDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const toolsButton = await within(execution).findByRole('button', {
       name: /Tools/
     });

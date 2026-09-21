@@ -132,8 +132,11 @@ export function NodeRunPayloadSections({
   if (onLoadSection) {
     return (
       <>
-        {(['input_payload', 'debug_payload', 'output_payload'] as const).map(
-          (section) => (
+        {(['input_payload', 'debug_payload', 'output_payload'] as const)
+          .filter(
+            (section) => includeDebugPayload || section !== 'debug_payload'
+          )
+          .map((section) => (
             <LazyNodeRunPayloadSection
               key={section}
               section={section}
@@ -142,8 +145,7 @@ export function NodeRunPayloadSections({
               onLoadArtifact={onLoadArtifact}
               onLoadArtifacts={onLoadArtifacts}
             />
-          )
-        )}
+          ))}
       </>
     );
   }

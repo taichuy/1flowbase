@@ -1,4 +1,9 @@
-import { fetchProviderTrajectory, fetchProviderTrajectoryBody } from '../api/trajectory';
+import {
+  fetchProviderTrajectory,
+  fetchProviderTrajectoryBody,
+  fetchRunTrajectory,
+  fetchRunPayload
+} from '../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -1181,8 +1186,24 @@ export function ApplicationLogsPage({
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
               traceLoader={{
-                loadTrajectory: (runId, nodeRunId, cursor) => fetchProviderTrajectory(applicationId, runId, nodeRunId, cursor),
-                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) => fetchProviderTrajectoryBody(applicationId, runId, nodeRunId, eventId, cursor, view),
+                loadRunTrajectory: (runId, cursor) =>
+                  fetchRunTrajectory(applicationId, runId, cursor),
+                loadTrajectory: (runId, nodeRunId, cursor) =>
+                  fetchProviderTrajectory(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    cursor
+                  ),
+                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
+                  fetchProviderTrajectoryBody(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    eventId,
+                    cursor,
+                    view
+                  ),
                 loadTree: (runId) =>
                   fetchApplicationRunTraceTree(applicationId, runId),
                 loadChildren: (runId, traceNodeId, cursor) =>
@@ -1215,6 +1236,8 @@ export function ApplicationLogsPage({
                   )
               }}
               overviewLoader={{
+                loadPayload: (runId, section) =>
+                  fetchRunPayload(applicationId, runId, section),
                 loadOverview: (runId) =>
                   fetchApplicationRunOverview(applicationId, runId)
               }}

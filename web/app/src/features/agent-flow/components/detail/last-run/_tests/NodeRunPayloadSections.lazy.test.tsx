@@ -36,3 +36,24 @@ test('only reads the selected payload section and retains it when reopened', asy
   fireEvent.click(screen.getByText('Trajectory'));
   expect(load).toHaveBeenCalledTimes(1);
 });
+
+test('omits the process section when disabled for run payloads', () => {
+  const load = vi.fn();
+  render(
+    <App>
+      <NodeRunPayloadSections
+        inputPayload={{}}
+        debugPayload={{}}
+        outputPayload={{}}
+        onLoadSection={load}
+        includeDebugPayload={false}
+      />
+    </App>
+  );
+  expect(screen.getByText(i18nText('agentFlow', 'auto.input'))).toBeTruthy();
+  expect(screen.getByText(i18nText('agentFlow', 'auto.outputs'))).toBeTruthy();
+  expect(
+    screen.queryByText(i18nText('agentFlow', 'auto.data_processing'))
+  ).toBeNull();
+  expect(load).not.toHaveBeenCalled();
+});

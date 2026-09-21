@@ -1,7 +1,4 @@
-import {
-  openTrajectoryExecution,
-  openPayloadSection
-} from './trajectory/navigation';
+import { openPayloadSection } from './trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -200,7 +197,12 @@ describe('debug conversation log panel', () => {
     expect(toolNode).not.toHaveTextContent('执行成功');
   });
 
-  test('loads lazy overview for application log details before trace root', async () => {
+  test('keeps run input and output available and reads only the expanded section before trace root', async () => {
+    const loadPayload = vi.fn(async (_runId: string, section: string) =>
+      section === 'input_payload'
+        ? { query: 'recorded workflow input' }
+        : { answer: 'recorded workflow output' }
+    );
     const loadOverview = vi.fn().mockResolvedValue({
       run: {
         id: 'run-application-log',
@@ -221,6 +223,7 @@ describe('debug conversation log panel', () => {
       }
     });
     const traceLoader = {
+      loadRunTrajectory: vi.fn(),
       loadTree: vi.fn().mockResolvedValue({ nodes: [] }),
       loadChildren: vi.fn(),
       loadContent: vi.fn()
@@ -238,15 +241,43 @@ describe('debug conversation log panel', () => {
           rawOutput: null,
           traceSummary: []
         }}
-        overviewLoader={{ loadOverview }}
+        overviewLoader={{ loadOverview, loadPayload }}
         traceLoader={traceLoader}
         onClose={vi.fn()}
       />
     );
 
     expect(await screen.findByText('run-application-log')).toBeInTheDocument();
-    expect(screen.queryByLabelText('输入 JSON')).not.toBeInTheDocument();
+    expect(screen.getByText('输入', { exact: true })).toBeInTheDocument();
+    expect(screen.getByText('输出', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.queryByText('数据处理', { exact: true })
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: '元数据' })).getByRole('button')
+    ).toBeInTheDocument();
+    expect(traceLoader.loadRunTrajectory).not.toHaveBeenCalled();
+    expect(loadPayload).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('输入', { exact: true }));
+    await waitFor(() =>
+      expect(loadPayload).toHaveBeenCalledExactlyOnceWith(
+        'run-application-log',
+        'input_payload'
+      )
+    );
+    expect(await screen.findByLabelText('输入 JSON')).toHaveTextContent(
+      'recorded workflow input'
+    );
     expect(screen.queryByLabelText('输出 JSON')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('输出', { exact: true }));
+    expect(await screen.findByLabelText('输出 JSON')).toHaveTextContent(
+      'recorded workflow output'
+    );
+    expect(loadPayload).toHaveBeenNthCalledWith(
+      2,
+      'run-application-log',
+      'output_payload'
+    );
     expect(screen.getByText('154')).toBeInTheDocument();
     expect(loadOverview).toHaveBeenCalledWith('run-application-log');
     expect(traceLoader.loadTree).not.toHaveBeenCalled();
@@ -457,7 +488,8 @@ describe('debug conversation log panel', () => {
         'input_payload'
       )
     );
-    const execution = await openTrajectoryExecution(nodeDetail);
+    const execution = nodeDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(
       await within(execution).findByRole('button', { name: /lookup_weather/ })
     ).toBeInTheDocument();

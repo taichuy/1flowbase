@@ -125,12 +125,16 @@ function ConversationLogDetailContent({
   message,
   onLoadArtifact,
   onLoadArtifacts,
-  overview
+  overview,
+  overviewLoader,
+  traceLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overview?: ConversationLogRunOverview;
+  overviewLoader?: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
 }) {
   const firstTraceItem = message.traceSummary[0] ?? null;
   const lastTraceItem = message.traceSummary.at(-1) ?? null;
@@ -145,25 +149,46 @@ function ConversationLogDetailContent({
 
   return (
     <div className="agent-flow-editor__conversation-log-tab">
-      {!overview && (
-        <div className="agent-flow-editor__conversation-log-json-list">
-          <NodeRunPayloadSections
-            debugPayload={{}}
-            includeDebugPayload={false}
-            inputPayload={buildDetailInput(message)}
-            outputPayload={buildDetailOutput(message)}
-            onLoadArtifact={onLoadArtifact}
-            onLoadArtifacts={onLoadArtifacts}
-          />
-        </div>
-      )}
+      <div className="agent-flow-editor__conversation-log-json-list">
+        <NodeRunPayloadSections
+          key={message.detailRunId ?? message.runId ?? message.id}
+          defaultCollapsed={Boolean(overview)}
+          onLoadSection={
+            overviewLoader?.loadPayload &&
+            (message.detailRunId ?? message.runId)
+              ? (section) => {
+                  if (section === 'debug_payload') return Promise.resolve({});
+                  return overviewLoader.loadPayload!(
+                    message.detailRunId ?? message.runId!,
+                    section
+                  );
+                }
+              : undefined
+          }
+          debugPayload={{}}
+          includeDebugPayload={false}
+          inputPayload={buildDetailInput(message)}
+          outputPayload={buildDetailOutput(message)}
+          onLoadArtifact={onLoadArtifact}
+          onLoadArtifacts={onLoadArtifacts}
+        />
+      </div>
       <section
         aria-label={i18nText('agentFlow', 'auto.metadata')}
         className="agent-flow-editor__conversation-log-metadata"
       >
-        <Typography.Text strong>
-          {i18nText('agentFlow', 'auto.metadata')}
-        </Typography.Text>
+        <div className="agent-flow-editor__conversation-log-metadata-heading">
+          <Typography.Text strong>
+            {i18nText('agentFlow', 'auto.metadata')}
+          </Typography.Text>
+          {traceLoader?.loadRunTrajectory &&
+          (message.detailRunId ?? message.runId) ? (
+            <ProviderTrajectory
+              runId={(message.detailRunId ?? message.runId)!}
+              loader={traceLoader}
+            />
+          ) : null}
+        </div>
         <Descriptions
           column={1}
           items={[
@@ -229,12 +254,14 @@ function ConversationLogLazyDetail({
   onLoadArtifact,
   onLoadArtifacts,
   overviewLoader,
+  traceLoader,
   overviewRunId
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overviewLoader: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
   overviewRunId: string;
 }) {
   const overviewQuery = useQuery({
@@ -256,6 +283,8 @@ function ConversationLogLazyDetail({
     <ConversationLogDetailContent
       message={message}
       overview={overviewQuery.data}
+      overviewLoader={overviewLoader}
+      traceLoader={traceLoader}
       onLoadArtifact={onLoadArtifact}
       onLoadArtifacts={onLoadArtifacts}
     />
@@ -266,12 +295,14 @@ function ConversationLogDetail({
   message,
   onLoadArtifact,
   onLoadArtifacts,
-  overviewLoader
+  overviewLoader,
+  traceLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overviewLoader?: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
 }) {
   const overviewRunId = message.detailRunId ?? message.runId;
 
@@ -280,6 +311,7 @@ function ConversationLogDetail({
       <ConversationLogLazyDetail
         message={message}
         overviewLoader={overviewLoader}
+        traceLoader={traceLoader}
         overviewRunId={overviewRunId}
         onLoadArtifact={onLoadArtifact}
         onLoadArtifacts={onLoadArtifacts}
@@ -290,6 +322,8 @@ function ConversationLogDetail({
   return (
     <ConversationLogDetailContent
       message={message}
+      overviewLoader={overviewLoader}
+      traceLoader={traceLoader}
       onLoadArtifact={onLoadArtifact}
       onLoadArtifacts={onLoadArtifacts}
     />
@@ -829,10 +863,7 @@ function LazyTraceNodeItem({
             <div className="agent-flow-editor__conversation-log-json-list">
               <DebugWorkflowNodeDetailContent
                 onLoadSection={loadNodeRunSection}
-                beforePayloadContent={
-                  hasTrajectory ? undefined : childNodesBeforePayload
-                }
-                toolPresentation={hasTrajectory ? 'hidden' : 'complete'}
+                beforePayloadContent={childNodesBeforePayload}
                 processAction={
                   hasTrajectory && node.node_run_id ? (
                     <ProviderTrajectory
@@ -841,13 +872,6 @@ function LazyTraceNodeItem({
                       }
                       nodeRunId={node.node_run_id}
                       loader={traceLoader}
-                      executionContent={
-                        <>
-                          {childLoadStatusContent}
-                          {childNodesBeforePayload}
-                          {loadMoreChildrenButton}
-                        </>
-                      }
                     />
                   ) : undefined
                 }
@@ -868,12 +892,8 @@ function LazyTraceNodeItem({
               />
             </div>
           )}
-          {hasTrajectory ? null : (
-            <>
-              {childLoadStatusContent}
-              {loadMoreChildrenButton}
-            </>
-          )}
+          {childLoadStatusContent}
+          {loadMoreChildrenButton}
         </section>
       )}
     </DebugWorkflowNodeItem>
@@ -1071,6 +1091,7 @@ export function ConversationLogPanel({
               <ConversationLogDetail
                 message={message}
                 overviewLoader={overviewLoader}
+                traceLoader={traceLoader}
                 onLoadArtifact={loadArtifact}
                 onLoadArtifacts={onLoadArtifacts}
               />
