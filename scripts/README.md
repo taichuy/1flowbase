@@ -43,6 +43,19 @@ bash scripts/shell/apply-resource-limits.sh \
 bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
+24 GiB / 16 vCPU 配置：`dev.slice` 聚合 High/Max 为 16/18 GiB、swap 2 GiB、
+CPU 1200%；`dev-rust.slice` 为 9/11 GiB、swap 1 GiB；
+`dev-frontend.slice` 为 6/8 GiB。所有任务共享父组预算。
+`DEV_MEMORY_HIGH/MAX/SWAP_MAX`、`DEV_CPU_QUOTA` 控制父组，
+`FRONTEND_MEMORY_HIGH/MAX` 控制前端子组。
+
+通过 PATH 中的 `cargo`、`pnpm` 包装器自动进入子组；其他开发命令使用
+`dev-run <command>`（前端可用 `dev-run --frontend <command>`）。
+已有进程不会自动迁移；直接使用绝对路径工具或 NVM 把自身 bin 提到包装器前面会绕过入口，
+请用 `type -a cargo pnpm` 及 `/proc/<pid>/cgroup` 核对。
+Docker 数据库不属于用户级开发组，仍需计入组外预算。
+整机 swap 3 GiB 属于管理员配置，此用户脚本不调整交换设备。
+
 配置通过 `systemctl --user` 生效，不需要 `sudo`。当前数值以
 `scripts/shell/resource-limits.conf` 为唯一真值，字段含义如下：
 
@@ -69,7 +82,10 @@ bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 - `~/.config/systemd/user/session.slice.d/50-memory-protection.conf`
 - `~/.config/systemd/user/app.slice.d/50-memory-budget.conf`
 - `~/.config/systemd/user/dev.slice`
-- `~/.config/systemd/user/rust-build.slice`
+- `~/.config/systemd/user/dev-rust.slice`
+- `~/.config/systemd/user/dev-frontend.slice`
+- `~/.local/bin/dev-run`
+- `~/.local/bin/pnpm`
 - `~/.local/bin/cargo`
 - 仓库根目录 `.1flowbase.verify.local.json`
 

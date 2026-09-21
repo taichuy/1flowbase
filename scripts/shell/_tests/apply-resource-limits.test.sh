@@ -48,18 +48,24 @@ common_env=(
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.conf"
 
+grep -Fxq 'MemoryHigh=16G' "$systemd_dir/dev.slice"
+grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev.slice"
+grep -Fxq 'MemorySwapMax=2G' "$systemd_dir/dev.slice"
+grep -Fxq 'CPUQuota=1200%' "$systemd_dir/dev.slice"
+grep -Fxq 'MemoryHigh=6G' "$systemd_dir/dev-frontend.slice"
+grep -Fxq 'MemoryMax=8G' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
 grep -Fxq 'ManagedOOMMemoryPressureLimit=80%' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-grep -Fxq 'MemoryHigh=9G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemoryMax=11G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/rust-build.slice"
-grep -Fxq 'CPUQuota=500%' "$systemd_dir/rust-build.slice"
-grep -Fxq 'IOWeight=10' "$systemd_dir/rust-build.slice"
+grep -Fxq 'MemoryHigh=9G' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryMax=11G' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
 grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota=500% IOWeight=10' \
+grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota= IOWeight=10' \
   "$systemctl_log"
 
 env PATH="$mock_bin:$PATH" \
@@ -68,8 +74,20 @@ env PATH="$mock_bin:$PATH" \
   CARGO_BUILD_JOBS=12 \
   "$bin_dir/cargo" test -j 12
 grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
-grep -Fq -- '--slice=rust-build.slice -- ' "$systemd_run_log"
+grep -Fq -- '--slice=dev-rust.slice -- ' "$systemd_run_log"
 grep -Fq -- 'test -j 2' "$systemd_run_log"
+
+# pnpm must enter the frontend child of the common development budget.
+cat >"$mock_bin/pnpm" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$mock_bin/pnpm"
+env PATH="$bin_dir:$mock_bin:$PATH" \
+  RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
+  RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
+  "$bin_dir/pnpm" --version
+grep -Fq -- "--slice=dev-frontend.slice -- $mock_bin/pnpm --version" "$systemd_run_log"
 
 # A missing manager must not silently start an unrestricted build.
 set +e
@@ -105,10 +123,13 @@ env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
 test ! -e "$systemd_dir/session.slice.d/50-memory-protection.conf"
 test ! -e "$systemd_dir/app.slice.d/50-memory-budget.conf"
 test ! -e "$systemd_dir/dev.slice"
-test ! -e "$systemd_dir/rust-build.slice"
+test ! -e "$systemd_dir/dev-rust.slice"
 test ! -e "$bin_dir/cargo"
+test ! -e "$bin_dir/dev-run"
+test ! -e "$bin_dir/pnpm"
+test ! -e "$systemd_dir/dev-frontend.slice"
 test ! -e "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime rust-build.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=infinity IOWeight=100' \
+grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota= IOWeight=100' \
   "$systemctl_log"
 
 printf 'apply-resource-limits tests passed\n'

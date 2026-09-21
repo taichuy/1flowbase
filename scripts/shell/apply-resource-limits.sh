@@ -14,7 +14,9 @@ fi
 # shellcheck source=/dev/null
 source "$config_file"
 
-RUST_CPU_QUOTA=${RUST_CPU_QUOTA:-infinity}
+RUST_CPU_QUOTA=${RUST_CPU_QUOTA:-}
+# systemd represents an unlimited CPU quota with an empty assignment.
+[[ $RUST_CPU_QUOTA != infinity ]] || RUST_CPU_QUOTA=
 RUST_IO_WEIGHT=${RUST_IO_WEIGHT:-100}
 
 profile_mode=${PROFILE_MODE:-}
@@ -33,7 +35,10 @@ real_cargo=${RESOURCE_LIMITS_REAL_CARGO:-"$user_home/.cargo/bin/cargo"}
 session_config="$systemd_user_dir/session.slice.d/50-memory-protection.conf"
 app_config="$systemd_user_dir/app.slice.d/50-memory-budget.conf"
 dev_config="$systemd_user_dir/dev.slice"
-rust_config="$systemd_user_dir/rust-build.slice"
+rust_config="$systemd_user_dir/dev-rust.slice"
+frontend_config="$systemd_user_dir/dev-frontend.slice"
+dev_wrapper="$user_bin_dir/dev-run"
+pnpm_wrapper="$user_bin_dir/pnpm"
 cargo_wrapper="$user_bin_dir/cargo"
 project_config="$repo_root/.1flowbase.verify.local.json"
 
@@ -53,6 +58,12 @@ write_limited_profile() {
     APP_OOM_PRESSURE_DURATION \
     DEV_OOM_PRESSURE_LIMIT \
     DEV_OOM_PRESSURE_DURATION \
+    DEV_MEMORY_HIGH \
+    DEV_MEMORY_MAX \
+    DEV_MEMORY_SWAP_MAX \
+    DEV_CPU_QUOTA \
+    FRONTEND_MEMORY_HIGH \
+    FRONTEND_MEMORY_MAX \
     RUST_MEMORY_HIGH \
     RUST_MEMORY_MAX \
     RUST_MEMORY_SWAP_MAX \
@@ -95,6 +106,10 @@ Description=Resource-controlled development workloads
 
 [Slice]
 MemoryAccounting=yes
+MemoryHigh=$DEV_MEMORY_HIGH
+MemoryMax=$DEV_MEMORY_MAX
+MemorySwapMax=$DEV_MEMORY_SWAP_MAX
+CPUQuota=$DEV_CPU_QUOTA
 ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressureLimit=$DEV_OOM_PRESSURE_LIMIT
 ManagedOOMMemoryPressureDurationSec=$DEV_OOM_PRESSURE_DURATION
@@ -111,8 +126,17 @@ MemoryMax=$RUST_MEMORY_MAX
 MemorySwapMax=$RUST_MEMORY_SWAP_MAX
 CPUQuota=$RUST_CPU_QUOTA
 IOWeight=$RUST_IO_WEIGHT
-ManagedOOMPreference=avoid
 EOF
+
+  cat >"$frontend_config" <<EOF
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=$FRONTEND_MEMORY_HIGH
+MemoryMax=$FRONTEND_MEMORY_MAX
+EOF
+
+  install -m 0755 "$script_dir/resource-dev-run.sh" "$dev_wrapper"
+  install -m 0755 "$script_dir/resource-pnpm.sh" "$pnpm_wrapper"
 
   cat >"$cargo_wrapper" <<EOF
 #!/usr/bin/env bash
@@ -177,7 +201,7 @@ trap 'cleanup_cargo_scope; exit 130' INT
 trap 'cleanup_cargo_scope; exit 143' TERM HUP
 systemd-run --user --scope --quiet --collect \
   --unit="\$cargo_scope" --property=TimeoutStopSec=2s \
-  --slice=rust-build.slice \
+  --slice=dev-rust.slice \
   -- "\$real_cargo" "\$@" <&0 &
 cargo_launcher_pid=\$!
 set +e
@@ -199,7 +223,12 @@ EOF
 EOF
 
   "$systemctl_bin" --user daemon-reload
-  "$systemctl_bin" --user set-property --runtime rust-build.slice \
+  "$systemctl_bin" --user set-property --runtime dev.slice \
+    "MemoryHigh=$DEV_MEMORY_HIGH" "MemoryMax=$DEV_MEMORY_MAX" \
+    "MemorySwapMax=$DEV_MEMORY_SWAP_MAX" "CPUQuota=$DEV_CPU_QUOTA"
+  "$systemctl_bin" --user set-property --runtime dev-frontend.slice \
+    "MemoryHigh=$FRONTEND_MEMORY_HIGH" "MemoryMax=$FRONTEND_MEMORY_MAX"
+  "$systemctl_bin" --user set-property --runtime dev-rust.slice \
     "MemoryHigh=$RUST_MEMORY_HIGH" \
     "MemoryMax=$RUST_MEMORY_MAX" \
     "MemorySwapMax=$RUST_MEMORY_SWAP_MAX" \
@@ -209,15 +238,18 @@ EOF
 
 write_unlimited_profile() {
   rm -f -- "$session_config" "$app_config" "$dev_config" "$rust_config" \
-    "$cargo_wrapper" "$project_config"
+    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper"
   rmdir --ignore-fail-on-non-empty -- "$(dirname -- "$session_config")" \
     "$(dirname -- "$app_config")" 2>/dev/null || true
 
   "$systemctl_bin" --user daemon-reload
-  if "$systemctl_bin" --user is-active --quiet rust-build.slice; then
-    "$systemctl_bin" --user set-property --runtime rust-build.slice \
-      MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=infinity IOWeight=100
-  fi
+  local unit
+  for unit in dev-rust.slice dev-frontend.slice dev.slice; do
+    if "$systemctl_bin" --user is-active --quiet "$unit"; then
+      "$systemctl_bin" --user set-property --runtime "$unit" \
+        MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota= IOWeight=100
+    fi
+  done
 }
 
 if [[ $profile_mode == limited ]]; then
