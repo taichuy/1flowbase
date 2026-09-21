@@ -115,6 +115,7 @@ fn available_space(path: &Path) -> Option<u64> {
 
 fn owner_id(owner: SystemWriteOwner) -> &'static str {
     match owner {
+        SystemWriteOwner::TraceProjectionPersistence => "trace_projection_persistence",
         SystemWriteOwner::ApiMutation => "api_mutation",
         SystemWriteOwner::ProviderRequestLogPersistence => "provider_request_log_persistence",
         SystemWriteOwner::WorkflowScheduleDispatch => "workflow_schedule_dispatch",

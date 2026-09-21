@@ -7,25 +7,19 @@ pub(super) async fn rebuild_imported_run_trace_projections(
 ) -> Vec<serde_json::Value> {
     let mut warnings = Vec::new();
     for (source_run_id, target_run_id) in run_mappings {
-        match ensure_application_run_trace_projection_status(store, application_id, *target_run_id)
-            .await
+        if let Err(error) = crate::workers::trace_projection::rebuild_trace_projection(
+            store,
+            application_id,
+            *target_run_id,
+        )
+        .await
         {
-            Ok(status) => {
-                if status.status != domain::ApplicationRunTraceProjectionStatus::Succeeded {
-                    warnings.push(serde_json::json!({
-                        "code": "trace_projection_not_succeeded",
-                        "source_run_id": source_run_id,
-                        "target_run_id": target_run_id.to_string(),
-                        "projection_status": status.status.as_str()
-                    }));
-                }
-            }
-            Err(error) => warnings.push(serde_json::json!({
+            warnings.push(serde_json::json!({
                 "code": "trace_projection_rebuild_failed",
                 "source_run_id": source_run_id,
                 "target_run_id": target_run_id.to_string(),
-                "message": error.0.to_string()
-            })),
+                "message": error.to_string()
+            }));
         }
     }
     warnings

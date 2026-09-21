@@ -1,7 +1,7 @@
 //! Durable, coalesced trace projection updates. Log reads never run this work.
 use crate::{
     app_state::ApiState,
-    routes::applications::application_runtime::enrich_application_run_detail_visible_internal_llm_route_traces,
+    routes::applications_group::application_runtime::enrich_application_run_detail_visible_internal_llm_route_traces,
 };
 use control_plane::{
     orchestration_runtime::trace_projection::{
@@ -38,26 +38,7 @@ pub(crate) async fn refresh_next_trace_projection(state: &ApiState) -> anyhow::R
     let Some(job) = state.store.claim_application_run_trace_refresh().await? else {
         return Ok(false);
     };
-    let result: anyhow::Result<()> = async {
-        let source = state
-            .store
-            .get_application_run_trace_projection_source(job.application_id, job.flow_run_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("trace projection source disappeared"))?;
-        let events = state
-            .store
-            .list_trace_enrichment_events(job.flow_run_id)
-            .await?;
-        let source =
-            enrich_application_run_detail_visible_internal_llm_route_traces(source, &events);
-        let projection = build_application_run_trace_projection(&source)?;
-        state
-            .store
-            .replace_application_run_trace_projection(&projection)
-            .await?;
-        Ok(())
-    }
-    .await;
+    let result = rebuild_trace_projection(&state.store, job.application_id, job.flow_run_id).await;
     if let Err(error) = &result {
         let now = time::OffsetDateTime::now_utc();
         state
@@ -90,4 +71,24 @@ pub(crate) async fn refresh_next_trace_projection(state: &ApiState) -> anyhow::R
         .await?;
     result?;
     Ok(true)
+}
+
+/// Explicit writer-side materialization, shared by the queue and archive restore.
+/// Query handlers only inspect the persisted status and never call this function.
+pub(crate) async fn rebuild_trace_projection(
+    store: &storage_durable_postgres::MainDurableStore,
+    application_id: uuid::Uuid,
+    flow_run_id: uuid::Uuid,
+) -> anyhow::Result<()> {
+    let source = store
+        .get_application_run_trace_projection_source(application_id, flow_run_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("trace projection source disappeared"))?;
+    let events = store.list_trace_enrichment_events(flow_run_id).await?;
+    let source = enrich_application_run_detail_visible_internal_llm_route_traces(source, &events);
+    let projection = build_application_run_trace_projection(&source)?;
+    store
+        .replace_application_run_trace_projection(&projection)
+        .await?;
+    Ok(())
 }
