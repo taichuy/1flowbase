@@ -26,7 +26,7 @@ mod physical_schema_repository_tests;
 mod plugin;
 mod pricing_rule_upgrade_migration_tests;
 mod protocol_context_migration_tests;
-mod provider_protocol_capsule_store_tests;
+pub(crate) mod provider_protocol_capsule_store_tests;
 mod runtime_registry_health_tests;
 mod ui_management_repository_tests;
 mod unified_extension_installation_migration_tests;

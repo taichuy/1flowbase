@@ -684,6 +684,8 @@ impl PgControlPlaneStore {
     }
 }
 
+// Serialize projection writers without blocking cross-run foreign-key KEY SHARE locks.
+// These writers never change the flow run identity key.
 async fn trace_projection_flow_run_scope_id_for_update(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     flow_run_id: Uuid,
@@ -694,7 +696,7 @@ async fn trace_projection_flow_run_scope_id_for_update(
         from flow_runs
         join applications on applications.id = flow_runs.application_id
         where flow_runs.id = $1
-        for update of flow_runs
+        for no key update of flow_runs
         "#,
     )
     .bind(flow_run_id)
@@ -916,4 +918,9 @@ fn map_application_run_trace_node_content_record(
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })
+}
+
+#[cfg(test)]
+mod trace_projection_locking {
+    include!("../_tests/trajectory/locking.rs");
 }
