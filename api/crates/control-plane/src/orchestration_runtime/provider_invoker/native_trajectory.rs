@@ -344,6 +344,86 @@ struct Sink {
     observed: Arc<AtomicU64>,
     dropped: Arc<AtomicU64>,
 }
+// Read only declared Native content fields; arbitrary metadata is never promoted
+// into user-visible text. Bound the output while traversing, not after allocation.
+fn native_preview(kind: &str, detail: &Value) -> String {
+    fn content(value: &Value, output: &mut String, remaining: &mut usize, depth: usize) {
+        if *remaining == 0 || depth > 8 {
+            return;
+        }
+        match value {
+            Value::String(text) if !text.is_empty() => {
+                if !output.is_empty() {
+                    output.push(' ');
+                    *remaining -= 1;
+                }
+                for ch in text.chars().take(*remaining) {
+                    output.push(ch);
+                    *remaining -= 1;
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    content(value, output, remaining, depth + 1);
+                    if *remaining == 0 {
+                        break;
+                    }
+                }
+            }
+            Value::Object(_) => {
+                for field in ["text", "content", "output", "final_content"] {
+                    if let Some(value) = value.get(field) {
+                        content(value, output, remaining, depth + 1);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut output = String::new();
+    let mut remaining = 240;
+    let mut add = |value: &Value| content(value, &mut output, &mut remaining, 0);
+    match kind {
+        "model_call" => {
+            if let Some(messages) = detail["messages"].as_array() {
+                if let Some(message) = messages.last() {
+                    add(message);
+                }
+            }
+            if output.is_empty() {
+                content(
+                    &detail["native_request"]["wire_body"]["input"],
+                    &mut output,
+                    &mut remaining,
+                    0,
+                );
+            }
+            if output.is_empty() {
+                content(&detail["model"], &mut output, &mut remaining, 0);
+            }
+        }
+        "model_reply" => {
+            add(&detail["final_content"]);
+            if output.is_empty() {
+                content(&detail["output_items"], &mut output, &mut remaining, 0);
+            }
+            if output.is_empty() {
+                content(&detail["reasoning"], &mut output, &mut remaining, 0);
+            }
+        }
+        "tool_call" => {
+            add(&detail["name"]);
+            if output.is_empty() {
+                content(&detail["function"]["name"], &mut output, &mut remaining, 0);
+            }
+        }
+        "tool_result" => add(detail),
+        "error" => add(&detail["code"]),
+        _ => {}
+    }
+    output
+}
+
 impl Sink {
     fn step(
         &self,
@@ -355,7 +435,7 @@ impl Sink {
         incomplete: bool,
     ) {
         let body = detail.to_string();
-        let preview: String = body.chars().take(240).collect();
+        let preview = native_preview(kind, &detail);
         let payload = self.id.event("provider_semantic_step", json!({"step_key":key,"kind":kind,
             "status":if incomplete {"incomplete"} else {"recorded"},"direction":direction,"preview":preview,
             "tool_call_id":tool,"body":body}));

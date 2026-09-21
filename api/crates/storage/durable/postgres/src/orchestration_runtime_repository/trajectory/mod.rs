@@ -1,11 +1,37 @@
 use super::*;
 use control_plane_contracts::ports::{
-    ProviderTrajectoryBody, ProviderTrajectoryEvidence, ProviderTrajectoryPage,
-    ProviderTrajectoryRepository, ProviderTrajectoryStep, ProviderTrajectoryView,
+    ApplicationRunPayloadSection, ProviderTrajectoryBody, ProviderTrajectoryEvidence,
+    ProviderTrajectoryPage, ProviderTrajectoryRepository, ProviderTrajectoryStep,
+    ProviderTrajectoryView,
 };
 
 #[async_trait]
 impl ProviderTrajectoryRepository for PgControlPlaneStore {
+    async fn provider_run_trajectory_page(
+        &self,
+        flow_run_id: Uuid,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<ProviderTrajectoryPage> {
+        self.trajectory_page_for_scope(flow_run_id, None, cursor, limit)
+            .await
+    }
+    async fn application_run_payload(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        section: ApplicationRunPayloadSection,
+    ) -> Result<Option<Value>> {
+        let sql = match section {
+            ApplicationRunPayloadSection::InputPayload => "select runtime_original_json(input_payload,raw_json_payloads,'input_payload') from flow_runs where application_id=$1 and id=$2 and (import_job_id is null or exists (select 1 from run_archive_import_jobs j where j.id=flow_runs.import_job_id and j.status='succeeded'))",
+            ApplicationRunPayloadSection::OutputPayload => "select runtime_original_json(output_payload,raw_json_payloads,'output_payload') from flow_runs where application_id=$1 and id=$2 and (import_job_id is null or exists (select 1 from run_archive_import_jobs j where j.id=flow_runs.import_job_id and j.status='succeeded'))",
+        };
+        Ok(sqlx::query_scalar(sql)
+            .bind(application_id)
+            .bind(flow_run_id)
+            .fetch_optional(self.pool())
+            .await?)
+    }
     async fn provider_trajectory_page(
         &self,
         flow_run_id: Uuid,
@@ -13,57 +39,8 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         cursor: Option<i64>,
         limit: i64,
     ) -> Result<ProviderTrajectoryPage> {
-        let limit = limit.clamp(1, 100);
-        let counts = sqlx::query(include_str!("integrity.sql"))
-            .bind(flow_run_id)
-            .bind(node_run_id)
-            .fetch_one(self.pool())
-            .await?;
-        let rows = sqlx::query(
-            r#"
-            select event_id,event_sequence,'provider_semantic_step' as event_type,
-                metadata || jsonb_build_object('source',coalesce(metadata->>'source','supplier_protocol')) as metadata,created_at
-            from provider_semantic_trajectory_steps
-            where flow_run_id=$1 and node_run_id=$2 and event_sequence > $3
-            order by event_sequence asc limit $4
-        "#,
-        )
-        .bind(flow_run_id)
-        .bind(node_run_id)
-        .bind(cursor.unwrap_or(0))
-        .bind(limit + 1)
-        .fetch_all(self.pool())
-        .await?;
-        let has_more = rows.len() > limit as usize;
-        let items: Vec<ProviderTrajectoryStep> = rows
-            .into_iter()
-            .take(limit as usize)
-            .map(|row| {
-                Ok(ProviderTrajectoryStep {
-                    event_id: row.get("event_id"),
-                    event_sequence: row.get("event_sequence"),
-                    event_type: row.get("event_type"),
-                    metadata: row.get("metadata"),
-                    created_at: row
-                        .get::<OffsetDateTime, _>("created_at")
-                        .format(&time::format_description::well_known::Rfc3339)?,
-                })
-            })
-            .collect::<Result<_>>()?;
-        let next_cursor = if has_more {
-            items.last().map(|item| item.event_sequence)
-        } else {
-            None
-        };
-        Ok(ProviderTrajectoryPage {
-            items,
-            next_cursor,
-            observation_count: counts.get("observation_count"),
-            persist_failed_count: counts.get("persist_failed_count"),
-            integrity: counts.get("integrity"),
-            protocol_integrity: counts.get("protocol_integrity"),
-            protocol_persist_failed_count: counts.get("protocol_persist_failed_count"),
-        })
+        self.trajectory_page_for_scope(flow_run_id, Some(node_run_id), cursor, limit)
+            .await
     }
 
     async fn provider_trajectory_body(
@@ -223,5 +200,67 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
             items,
             next_cursor,
         }))
+    }
+}
+
+impl PgControlPlaneStore {
+    async fn trajectory_page_for_scope(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<ProviderTrajectoryPage> {
+        let limit = limit.clamp(1, 100);
+        let counts = sqlx::query(include_str!("integrity.sql"))
+            .bind(flow_run_id)
+            .bind(node_run_id)
+            .fetch_one(self.pool())
+            .await?;
+        let rows = sqlx::query(
+            r#"
+            select event_id,event_sequence,'provider_semantic_step' as event_type,
+                metadata || jsonb_build_object('source',coalesce(metadata->>'source','supplier_protocol'),'flow_run_id',flow_run_id,'node_run_id',node_run_id) as metadata,created_at
+            from provider_semantic_trajectory_steps
+            where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_sequence > $3
+            order by event_sequence asc limit $4
+        "#,
+        )
+        .bind(flow_run_id)
+        .bind(node_run_id)
+        .bind(cursor.unwrap_or(0))
+        .bind(limit + 1)
+        .fetch_all(self.pool())
+        .await?;
+        let has_more = rows.len() > limit as usize;
+        let items: Vec<ProviderTrajectoryStep> = rows
+            .into_iter()
+            .take(limit as usize)
+            .map(|row| {
+                Ok(ProviderTrajectoryStep {
+                    event_id: row.get("event_id"),
+                    event_sequence: row.get("event_sequence"),
+                    event_type: row.get("event_type"),
+                    metadata: row.get("metadata"),
+                    created_at: row
+                        .get::<OffsetDateTime, _>("created_at")
+                        .format(&time::format_description::well_known::Rfc3339)?,
+                })
+            })
+            .collect::<Result<_>>()?;
+        let next_cursor = if has_more {
+            items.last().map(|item| item.event_sequence)
+        } else {
+            None
+        };
+        Ok(ProviderTrajectoryPage {
+            items,
+            next_cursor,
+            observation_count: counts.get("observation_count"),
+            persist_failed_count: counts.get("persist_failed_count"),
+            integrity: counts.get("integrity"),
+            protocol_integrity: counts.get("protocol_integrity"),
+            protocol_persist_failed_count: counts.get("protocol_persist_failed_count"),
+        })
     }
 }

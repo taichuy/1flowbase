@@ -30,6 +30,16 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    RunTrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
+    },
+    RunPayload {
+        application_id: Uuid,
+        run_id: Uuid,
+        section: control_plane::ports::ApplicationRunPayloadSection,
+    },
     TrajectoryPage {
         application_id: Uuid,
         run_id: Uuid,
@@ -106,6 +116,7 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    RunPayload(serde_json::Value),
     TrajectoryPage(control_plane::ports::ProviderTrajectoryPage),
     TrajectoryBody(control_plane::ports::ProviderTrajectoryBody),
     Runs(FlowRunSummaryPageResponse),
@@ -127,6 +138,7 @@ struct ApplicationRuntimeReadsAdapter {
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 }
 
 pub(crate) fn runtime_reads_port(
@@ -134,12 +146,14 @@ pub(crate) fn runtime_reads_port(
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsOutput>> {
     Arc::new(ApplicationRuntimeReadsAdapter {
         store,
         cache,
         runtime_activity,
         process_started_at,
+        file_storage_registry,
     })
 }
 
@@ -764,6 +778,22 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::RunTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryPage(
+                self.run_trajectory_page(actor, application_id, run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::RunPayload {
+                application_id,
+                run_id,
+                section,
+            } => Ok(ApplicationRuntimeReadsOutput::RunPayload(
+                self.run_payload(actor, application_id, run_id, section)
+                    .await?,
+            )),
             ApplicationRuntimeReadsInput::TrajectoryPage {
                 application_id,
                 run_id,
@@ -894,6 +924,8 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.trajectory.list", binding_id: "http.console.applications.runtime.run.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.payload.get", binding_id: "http.console.applications.runtime.run.payload.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/payloads/:section", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.list", binding_id: "http.console.applications.runtime.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", mutating: false },
     ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.body.get", binding_id: "http.console.applications.runtime.trajectory.body.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id", mutating: false },
     ConsoleInterfaceDeclaration {
@@ -994,6 +1026,7 @@ pub(crate) fn compile_registry(
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -1002,7 +1035,13 @@ pub(crate) fn compile_registry(
         "api-server.console-application-runtime-reads",
         "graph:console-application-runtime-reads-v1",
         DECLARATIONS,
-        runtime_reads_port(store, cache, runtime_activity, process_started_at),
+        runtime_reads_port(
+            store,
+            cache,
+            runtime_activity,
+            process_started_at,
+            file_storage_registry,
+        ),
     )
 }
 

@@ -72,3 +72,63 @@ pub async fn get_provider_trajectory_body(
     };
     Ok(Json(ApiSuccess::new(body)))
 }
+
+/// List the run-wide Native and historical supplier trajectory.
+/// Reads bounded step summaries across all nodes in the authorized run without loading event bodies.
+#[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/trajectory",
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    responses((status = 200, body = serde_json::Value)))]
+pub async fn list_run_trajectory(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, run_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<ProviderTrajectoryQuery>,
+) -> Result<Json<ApiSuccess<ProviderTrajectoryPage>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.run.trajectory.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::RunTrajectoryPage {
+            application_id,
+            run_id,
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TrajectoryPage(page) = output
+    else {
+        unreachable!("run trajectory binding output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
+}
+
+/// Read one selected run input or output payload.
+/// Loads only the requested flow field, preserving original JSON and existing debug artifact references.
+#[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/payloads/{section}",
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("section" = String, Path, description = "input_payload or output_payload")),
+    responses((status = 200, body = serde_json::Value)))]
+pub async fn get_run_payload(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((application_id, run_id, section)): Path<(
+        Uuid,
+        Uuid,
+        control_plane::ports::ApplicationRunPayloadSection,
+    )>,
+) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.run.payload.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::RunPayload {
+            application_id,
+            run_id,
+            section,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunPayload(payload) = output else {
+        unreachable!("run payload binding output")
+    };
+    Ok(Json(ApiSuccess::new(payload)))
+}

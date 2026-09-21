@@ -59,6 +59,42 @@ pub(crate) enum ApplicationRuntimeTracePayloadsOutput {
     ToolCallbackContent(ApplicationRunTraceToolCallbackContentResponse),
 }
 
+/// Preview just the selected flow payload. Existing references and inline values
+/// pass through; runtime run/node/event records remain untouched.
+pub(super) async fn preview_run_payload(
+    store: MainDurableStore,
+    registry: &storage_object::FileStorageDriverRegistry,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    flow_run_id: Uuid,
+    section: control_plane::ports::ApplicationRunPayloadSection,
+    payload: Value,
+) -> Result<Value, ApiError> {
+    let kind = match section {
+        control_plane::ports::ApplicationRunPayloadSection::InputPayload => "flow_input_payload",
+        control_plane::ports::ApplicationRunPayloadSection::OutputPayload => "flow_output_payload",
+    };
+    if is_runtime_debug_artifact_payload(&payload)
+        || serde_json::to_vec(&payload)?.len() <= inline_budget_for_kind(kind)
+    {
+        return Ok(payload);
+    }
+    let writer = TracePayloadArtifactWriter::new(store, registry).await?;
+    let (preview, _) = writer
+        .offload_value(
+            &TracePayloadArtifactScope {
+                workspace_id,
+                application_id,
+                flow_run_id,
+                node_run_id: None,
+            },
+            kind,
+            payload,
+        )
+        .await?;
+    Ok(preview)
+}
+
 struct TracePayloadArtifactWriter {
     store: MainDurableStore,
     storage: domain::FileStorageRecord,

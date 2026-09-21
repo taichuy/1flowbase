@@ -235,3 +235,5 @@ mod overview_and_snapshot;
 mod repeated_llm_groups;
 mod route_provider_events;
 mod tool_detail_loading;
+
+mod run_trajectory;

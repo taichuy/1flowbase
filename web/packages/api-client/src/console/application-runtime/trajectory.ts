@@ -90,3 +90,29 @@ export function getConsoleProviderTrajectoryBody(
     baseUrl
   });
 }
+
+export function getConsoleRunTrajectory(
+  applicationId: string,
+  runId: string,
+  cursor?: number,
+  baseUrl?: string
+) {
+  const query = new URLSearchParams({ limit: '50' });
+  if (cursor !== undefined) query.set('cursor', String(cursor));
+  return apiFetch<ProviderTrajectoryPage>({
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/trajectory?${query}`,
+    baseUrl
+  });
+}
+
+export function getConsoleRunPayload(
+  applicationId: string,
+  runId: string,
+  section: 'input_payload' | 'output_payload',
+  baseUrl?: string
+) {
+  return apiFetch<Record<string, unknown>>({
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/payloads/${section}`,
+    baseUrl
+  });
+}

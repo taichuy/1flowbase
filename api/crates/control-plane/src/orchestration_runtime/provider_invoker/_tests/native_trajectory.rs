@@ -348,3 +348,45 @@ fn responses_delta_cannot_open_or_reopen_output_items() {
         assert!(aggregate.gap, "invalid delta ordering must stay incomplete");
     }
 }
+
+#[test]
+fn preview_uses_native_content_and_tool_name_with_unicode_limit() {
+    assert_eq!(
+        native_preview(
+            "model_reply",
+            &json!({"final_content":"Hello there", "reasoning":"hidden", "result":{"metadata":"not content"}})
+        ),
+        "Hello there"
+    );
+    assert_eq!(
+        native_preview(
+            "model_call",
+            &json!({"messages":[{"role":"user","content":[{"type":"text","text":"What is the weather?"}]}]})
+        ),
+        "What is the weather?"
+    );
+    assert_eq!(
+        native_preview(
+            "tool_call",
+            &json!({"id":"call-1","name":"weather_lookup","arguments":{"city":"Paris"}})
+        ),
+        "weather_lookup"
+    );
+    assert_eq!(
+        native_preview("tool_result", &json!({"content":"Sunny"})),
+        "Sunny"
+    );
+    assert_eq!(
+        native_preview("model_reply", &json!({"final_content":"界".repeat(500)}))
+            .chars()
+            .count(),
+        240
+    );
+    assert_eq!(
+        native_preview(
+            "model_reply",
+            &json!({"result":{"provider_metadata":{"text":"must not display"}}})
+        ),
+        ""
+    );
+}

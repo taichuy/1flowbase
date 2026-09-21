@@ -71,6 +71,8 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::archive::routes::get_run_archive_import_job,
         crate::routes::application_runtime::application_monitoring::get_application_run_monitoring_report,
         crate::routes::application_runtime::application_monitoring::get_application_runtime_activity,
+        crate::routes::application_runtime::provider_trajectory::list_run_trajectory,
+        crate::routes::application_runtime::provider_trajectory::get_run_payload,
         crate::routes::application_runtime::provider_trajectory::list_provider_trajectory,
         crate::routes::application_runtime::provider_trajectory::get_provider_trajectory_body,
         crate::routes::application_runtime::get_application_run_trace_tree,

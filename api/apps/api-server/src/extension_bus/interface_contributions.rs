@@ -686,6 +686,8 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-reads",
             &[
+                "applications.runtime.run.trajectory.list",
+                "applications.runtime.run.payload.get",
                 "applications.runtime.trajectory.list",
                 "applications.runtime.trajectory.body.get",
                 "applications.runtime.logs.list",
@@ -708,6 +710,7 @@ pub(crate) fn production_interface_contributions(
                 state.infrastructure.cache_store(),
                 Arc::clone(&state.runtime_activity),
                 state.process_started_at,
+                Arc::clone(&state.file_storage_registry),
             )?,
         ),
         InterfaceRegistryContribution::new(

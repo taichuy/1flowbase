@@ -48,8 +48,27 @@ pub struct ProviderTrajectoryBody {
     pub next_cursor: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationRunPayloadSection {
+    InputPayload,
+    OutputPayload,
+}
+
 #[async_trait]
 pub trait ProviderTrajectoryRepository: Send + Sync {
+    async fn provider_run_trajectory_page(
+        &self,
+        flow_run_id: Uuid,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> anyhow::Result<ProviderTrajectoryPage>;
+    async fn application_run_payload(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        section: ApplicationRunPayloadSection,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
     async fn provider_trajectory_page(
         &self,
         flow_run_id: Uuid,
