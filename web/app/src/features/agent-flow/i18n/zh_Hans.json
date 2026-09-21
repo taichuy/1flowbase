@@ -799,6 +799,7 @@
     "node_scope": "仅显示明确关联此节点的客户端协议记录。",
     "open_run": "查看本次运行的请求",
     "no_records": "未找到客户端原始协议记录。历史日志不会由 AI Native 反推原文。",
-    "close": "关闭详情"
+    "close": "关闭详情",
+    "group_categories": "按分类归纳"
   }
 }

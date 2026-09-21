@@ -26,6 +26,7 @@ export function ClientTrajectoryWorkspace({
   const [scope, setScope] = useState(nodeRunId);
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [groupCategories, setGroupCategories] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [detailWidth, setDetailWidth] = useState<number | null>(null);
@@ -146,6 +147,14 @@ export function ClientTrajectoryWorkspace({
       <div className="provider-trajectory__toolbar">
         <div className="provider-trajectory__controls">
           <span className="client-trajectory__protocol">Responses</span>
+          <Button
+            size="small"
+            type="text"
+            aria-pressed={groupCategories}
+            onClick={() => setGroupCategories(!groupCategories)}
+          >
+            {i18nText('agentFlow', 'clientTrajectory.group_categories')}
+          </Button>
           <span
             className="provider-trajectory__integrity"
             data-status={pages.data?.pages[0]?.integrity}
@@ -321,34 +330,36 @@ export function ClientTrajectoryWorkspace({
                   </button>
                 </div>
                 {!collapsed.has(id)
-                  ? lanes.map((lane) => {
-                      const key = `${id}:${lane}`;
-                      const rows = children.filter(
-                        (step) => step.category === lane
-                      );
-                      return (
-                        <section
-                          key={key}
-                          className="client-trajectory__category-group"
-                        >
-                          <button
-                            className="client-trajectory__category-header"
-                            type="button"
-                            aria-expanded={!collapsed.has(key)}
-                            onClick={() => toggle(key)}
+                  ? !groupCategories
+                    ? children.map(renderStep)
+                    : lanes.map((lane) => {
+                        const key = `${id}:${lane}`;
+                        const rows = children.filter(
+                          (step) => step.category === lane
+                        );
+                        return (
+                          <section
+                            key={key}
+                            className="client-trajectory__category-group"
                           >
-                            {collapsed.has(key) ? (
-                              <RightOutlined />
-                            ) : (
-                              <DownOutlined />
-                            )}
-                            <span>{categoryLabel(lane)}</span>
-                            <small>{rows.length}</small>
-                          </button>
-                          {!collapsed.has(key) ? rows.map(renderStep) : null}
-                        </section>
-                      );
-                    })
+                            <button
+                              className="client-trajectory__category-header"
+                              type="button"
+                              aria-expanded={!collapsed.has(key)}
+                              onClick={() => toggle(key)}
+                            >
+                              {collapsed.has(key) ? (
+                                <RightOutlined />
+                              ) : (
+                                <DownOutlined />
+                              )}
+                              <span>{categoryLabel(lane)}</span>
+                              <small>{rows.length}</small>
+                            </button>
+                            {!collapsed.has(key) ? rows.map(renderStep) : null}
+                          </section>
+                        );
+                      })
                   : null}
               </section>
             );

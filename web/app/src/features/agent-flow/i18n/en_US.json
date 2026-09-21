@@ -799,6 +799,7 @@
     "node_scope": "Only client protocol records explicitly associated with this node are shown.",
     "open_run": "View requests for this run",
     "no_records": "No original client protocol records found. Historical input is never reconstructed from AI Native.",
-    "close": "Close details"
+    "close": "Close details",
+    "group_categories": "Group categories"
   }
 }

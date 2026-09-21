@@ -21,7 +21,13 @@ export function ClientTrajectoryDetail({
   onRelated: (id: string) => void;
 }) {
   const [section, setSection] = useState(
-    step.available_sections[0] ?? 'overview'
+    ['system', 'user', 'assistant', 'reasoning'].includes(step.category)
+      ? step.available_sections.includes('result')
+        ? 'result'
+        : step.available_sections.includes('parameters')
+          ? 'parameters'
+          : 'overview'
+      : (step.available_sections[0] ?? 'overview')
   );
   const pages = useInfiniteQuery({
     queryKey: [
