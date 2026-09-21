@@ -509,7 +509,7 @@ test('collectSchemaInventory rejects empty schema instead of silently passing', 
   );
 });
 
-test('collectSchemaInventory reports unsupported table elements and alter actions', () => {
+test('collectSchemaInventory reports unsupported table elements but applies alter column types', () => {
   const repoRoot = createRepoWithMigration(`
     create table copied_table (
       like base_table including all
@@ -522,19 +522,23 @@ test('collectSchemaInventory reports unsupported table elements and alter action
 
   const inventory = collectSchemaInventory({ repoRoot });
 
+  const table = inventory.tables.find((candidate) => candidate.name === 'editable_table');
+
   assert.deepEqual(
     inventory.parseErrors.map((parseError) => parseError.rule),
-    ['unsupported-table-element', 'unsupported-alter-table-action']
+    ['unsupported-table-element']
   );
+  assert.equal(table.columns.find((column) => column.name === 'id').type, 'text');
 });
 
-test('collectSchemaInventory applies supported alter column nullability, default, and expression actions', () => {
+test('collectSchemaInventory applies supported alter column nullability, default, type, and expression actions', () => {
   const repoRoot = createRepoWithMigration(`
     create table editable_table (
       id uuid primary key,
       label text
     );
     alter table editable_table
+      alter column label type jsonb using to_jsonb(label),
       alter column label set not null,
       alter column label set default 'untitled';
     alter table editable_table alter column label drop expression;
@@ -547,9 +551,11 @@ test('collectSchemaInventory applies supported alter column nullability, default
   assert.equal(inventory.parseErrors.length, 0);
   assert.equal(label.nullable, false);
   assert.equal(label.default, true);
+  assert.equal(label.type, 'jsonb');
+  assert.deepEqual(table.jsonbColumns, ['label']);
 });
 
-test('collectSchemaInventory follows table renames without weakening unknown alter actions', () => {
+test('collectSchemaInventory follows table renames while applying alter column types', () => {
   const repoRoot = createRepoWithMigration(`
     create table catalog_rows (
       id uuid primary key
@@ -565,6 +571,24 @@ test('collectSchemaInventory follows table renames without weakening unknown alt
     inventory.tables.some((table) => table.name === 'catalog_rows_archived'),
     true
   );
+  assert.deepEqual(inventory.parseErrors, []);
+  assert.equal(
+    inventory.tables.find((table) => table.name === 'catalog_rows_archived')
+      .columns.find((column) => column.name === 'id').type,
+    'text'
+  );
+});
+
+test('collectSchemaInventory keeps unsupported alter column actions visible', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table editable_table (
+      id uuid primary key
+    );
+    alter table editable_table alter column id set storage external;
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+
   assert.deepEqual(
     inventory.parseErrors.map((parseError) => parseError.rule),
     ['unsupported-alter-table-action']
@@ -824,6 +848,14 @@ test('default schema hygiene config exempts bounded projection and release table
     ['workspace_i18n_catalog_states', 'workspace_state_root_declared'],
     ['workspace_i18n_catalog_obsolete_messages', 'bounded_workspace_projection_declared'],
     ['workspace_i18n_catalog_overrides', 'bounded_workspace_projection_declared'],
+    ['application_run_trace_refresh_queue', 'bounded_projection_exempt'],
+    ['client_trajectory_captures', 'bounded_projection_exempt'],
+    ['client_trajectory_steps', 'bounded_projection_exempt'],
+    ['client_trajectory_sections', 'bounded_projection_exempt'],
+    ['client_trajectory_node_links', 'bounded_projection_exempt'],
+    ['native_trajectory_integrity', 'bounded_projection_exempt'],
+    ['provider_protocol_trajectory_events', 'bounded_projection_exempt'],
+    ['provider_semantic_trajectory_steps', 'bounded_projection_exempt'],
   ]) {
     const table = report.tables.find((candidate) => candidate.name === tableName);
     assert.ok(table.exemption.kind);

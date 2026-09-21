@@ -1749,7 +1749,11 @@ async fn llm_json_schema_response_rejects_invalid_structured_output() {
 
 #[test]
 fn recovery_failure_projection_preserves_first_and_last_without_secrets() {
-    let runtime = base_plan().nodes["node-llm"].llm_runtime.as_ref().unwrap().clone();
+    let runtime = base_plan().nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .unwrap()
+        .clone();
     let error = ProviderRuntimeError::new(ProviderRuntimeErrorKind::ProviderTransportUnavailable, "safe terminal")
         .with_provider_details(json!({
             "native_inference_configuration_digest":"sha256:host-failed-request",
@@ -1762,8 +1766,12 @@ fn recovery_failure_projection_preserves_first_and_last_without_secrets() {
             },
             "1flowbase_provider_recovery_original_error":{"message":"SECRET_CANARY"}
         }));
-    let payload = crate::execution_engine::llm_final_content::build_provider_error_payload(&runtime, &error);
-    assert_eq!(payload["native_inference_configuration_digest"], "sha256:host-failed-request");
+    let payload =
+        crate::execution_engine::llm_final_content::build_provider_error_payload(&runtime, &error);
+    assert_eq!(
+        payload["native_inference_configuration_digest"],
+        "sha256:host-failed-request"
+    );
     let diag = &payload["1flowbase_provider_recovery_diagnostics"];
     assert_eq!(diag["first_failure"]["close_code"], 1011);
     assert_eq!(diag["last_failure"]["close_code"], 1008);

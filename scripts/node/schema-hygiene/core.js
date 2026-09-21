@@ -669,6 +669,23 @@ function parseAlterTableAlterColumn(table, action) {
     return true;
   }
 
+  const typeMatch = /^type\s+([\s\S]+)$/iu.exec(operation);
+  if (typeMatch) {
+    const typeAndUsing = typeMatch[1].trim();
+    const usingMatch = /\s+using\s+/iu.exec(typeAndUsing);
+    const type = (usingMatch ? typeAndUsing.slice(0, usingMatch.index) : typeAndUsing)
+      .trim()
+      .replace(/\s+/gu, ' ');
+    if (type.length === 0) {
+      return false;
+    }
+    column.type = type;
+    table.jsonbColumns = table.columns
+      .filter((candidate) => /\bjsonb\b/iu.test(candidate.type))
+      .map((candidate) => candidate.name);
+    return true;
+  }
+
   return false;
 }
 

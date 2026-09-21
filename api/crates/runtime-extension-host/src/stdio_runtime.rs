@@ -314,6 +314,7 @@ impl ProviderWorker {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn call_streaming_with_limits_and_host_calls(
         &mut self,
         request: &ProviderStdioRequest,
@@ -454,6 +455,7 @@ impl ProviderWorker {
         Err(worker_ended_without_output_error())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn call_streaming_inner(
         &mut self,
         request: &ProviderStdioRequest,

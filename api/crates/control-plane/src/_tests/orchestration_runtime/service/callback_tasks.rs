@@ -1066,7 +1066,10 @@ async fn complete_callback_task_preserves_nul_in_response_and_execution() {
         .await;
     assert_eq!(callback_task.status, domain::CallbackTaskStatus::Completed);
     assert_eq!(callback_task.response_payload.as_ref().unwrap(), &payload);
-    assert_eq!(completed.flow_run.output_payload["answer"], payload["result"]);
+    assert_eq!(
+        completed.flow_run.output_payload["answer"],
+        payload["result"]
+    );
 }
 
 #[tokio::test]

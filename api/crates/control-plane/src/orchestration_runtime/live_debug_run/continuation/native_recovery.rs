@@ -1,7 +1,7 @@
 use crate::ports::OrchestrationRuntimeRepository;
 use anyhow::{anyhow, ensure, Result};
 use orchestration_runtime::{compiled_plan::CompiledPlan, execution_state::CheckpointSnapshot};
-use serde_json::{json, Value};
+use serde_json::json;
 use uuid::Uuid;
 
 pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
@@ -79,14 +79,14 @@ pub(super) async fn load_snapshot<R: OrchestrationRuntimeRepository>(
     );
     // The predecessor sys/env and every upstream value come from its persisted checkpoint.
     // Only host recovery authorization is overlaid; current mutable environment is never read.
-    if !snapshot
+    let sys = snapshot
         .variable_pool
-        .get("sys")
-        .is_some_and(Value::is_object)
-    {
-        snapshot.variable_pool.insert("sys".into(), json!({}));
+        .entry("sys")
+        .or_insert_with(|| json!({}));
+    if !sys.is_object() {
+        *sys = json!({});
     }
-    snapshot.variable_pool.get_mut("sys").unwrap()["native_inference_recovery"] = grant.clone();
+    sys["native_inference_recovery"] = grant.clone();
     let binding = &grant["binding"];
     let text = |key: &str| -> Result<String> {
         binding[key]

@@ -1051,6 +1051,7 @@ impl ProviderHost {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn invoke_stream_with_host_calls_operation(
         &self,
         plugin_id: &str,

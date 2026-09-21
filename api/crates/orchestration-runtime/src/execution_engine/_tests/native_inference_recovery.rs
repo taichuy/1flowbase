@@ -258,30 +258,31 @@ async fn real_engine_recovers_one_of_four_llms_and_inherits_budget_without_recon
         json!({"must_remain":"original"})
     );
     assert_eq!(checkpoint, before, "source callback snapshot is immutable");
-    let calls = invoker.calls.lock().unwrap();
-    assert_eq!(
-        calls.len(),
-        1,
-        "other LLM branches and consumed tools must not be invoked"
-    );
-    assert_eq!(calls[0].trace_context["node_id"], "llm-b");
-    assert!(calls[0].previous_response_id.is_none());
-    assert!(!serde_json::to_string(&calls[0].messages)
-        .unwrap()
-        .contains("already-consumed-result"));
-    let directive: extension_contracts::provider_contract::ProviderRecoveryDirective =
-        serde_json::from_value(
-            calls[0].run_context
-                [extension_contracts::provider_contract::PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
-                .clone(),
-        )
-        .unwrap();
-    assert_eq!(
-        directive.policy.budget().absolute_deadline_unix_ms,
-        deadline
-    );
-    assert_eq!(directive.policy.budget().max_inner_attempts, 1);
-    drop(calls);
+    {
+        let calls = invoker.calls.lock().unwrap();
+        assert_eq!(
+            calls.len(),
+            1,
+            "other LLM branches and consumed tools must not be invoked"
+        );
+        assert_eq!(calls[0].trace_context["node_id"], "llm-b");
+        assert!(calls[0].previous_response_id.is_none());
+        assert!(!serde_json::to_string(&calls[0].messages)
+            .unwrap()
+            .contains("already-consumed-result"));
+        let directive: extension_contracts::provider_contract::ProviderRecoveryDirective =
+            serde_json::from_value(
+                calls[0].run_context
+                    [extension_contracts::provider_contract::PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY]
+                    .clone(),
+            )
+            .unwrap();
+        assert_eq!(
+            directive.policy.budget().absolute_deadline_unix_ms,
+            deadline
+        );
+        assert_eq!(directive.policy.budget().max_inner_attempts, 1);
+    }
     let mut parallel = checkpoint;
     parallel.active_node_ids.push("llm-c".into());
     assert!(recover_native_inference_with_runtime_context_and_lifecycle(

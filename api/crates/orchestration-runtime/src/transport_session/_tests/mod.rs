@@ -893,7 +893,9 @@ fn orphaned_completion_keeps_the_unbound_fact_and_uses_the_completion_lease() {
     clock.advance(Duration::from_secs(6));
     registry.maintain();
     assert!(
-        registry.tombstone(&session_id("orphan-completion")).is_none(),
+        registry
+            .tombstone(&session_id("orphan-completion"))
+            .is_none(),
         "the in-flight orphan grace no longer reaps a completed call"
     );
 

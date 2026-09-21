@@ -246,6 +246,7 @@ impl ProviderWorkerSupervisor {
         result
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn call_streaming_with_limits_and_host_calls(
         self: &Arc<Self>,
         request: &ProviderStdioRequest,

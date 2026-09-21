@@ -582,14 +582,19 @@ async fn host_preserves_the_typed_recovery_receipt_from_a_worker_error() {
         .expect("the worker's provider_details must survive the host boundary");
     let receipt = &details["1flowbase_provider_recovery"];
     assert_eq!(receipt["transport_epoch"], serde_json::json!(149));
-    assert_eq!(receipt["disposition"], serde_json::json!("terminal_interruption"));
+    assert_eq!(
+        receipt["disposition"],
+        serde_json::json!("terminal_interruption")
+    );
     assert_eq!(receipt["commit_level"], serde_json::json!("terminal"));
     assert!(
         receipt.get("socket_incarnation").is_none(),
         "the host must not invent a socket incarnation for a pre-connect failure"
     );
-    assert!(details["1flowbase_provider_recovery_original_error"]["message"]
-        .as_str()
-        .expect("the preserved original failure must be a typed message")
-        .contains("1011"));
+    assert!(
+        details["1flowbase_provider_recovery_original_error"]["message"]
+            .as_str()
+            .expect("the preserved original failure must be a typed message")
+            .contains("1011")
+    );
 }

@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use extension_contracts::provider_contract::{
-    message_block_required_capabilities, semantic_required_capabilities, CommitLevel,
-    CursorProvenance, ModelDiscoveryMode, NativeModelRequestContext, NativePromptBlock,
-    NativePromptCacheControl, NativePromptCacheControlType, ProtocolContextEnvelope,
-    ProviderBalanceInfo, ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
+    message_block_required_capabilities, recovery_receipt_from_details,
+    semantic_required_capabilities, CommitLevel, CursorProvenance, ModelDiscoveryMode,
+    NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
+    NativePromptCacheControlType, ProtocolContextEnvelope, ProviderBalanceInfo,
+    ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensCoverage,
     ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderGenerateProjectionError,
@@ -28,7 +29,7 @@ use extension_contracts::provider_contract::{
     TransportEpoch, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     PROVIDER_INVOCATION_TIMING_SCHEMA_VERSION, PROVIDER_RECOVERY_DIRECTIVE_CONTEXT_KEY,
     PROVIDER_RECOVERY_RECEIPT_METADATA_KEY, PROVIDER_TRANSPORT_SESSION_CONTEXT_KEY,
-    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY, recovery_receipt_from_details,
+    PROVIDER_TRANSPORT_SESSION_RECEIPT_METADATA_KEY,
 };
 use serde_json::json;
 
@@ -2595,7 +2596,10 @@ const RECOVERY_RECEIPT_WIRE_KEY: &str = "1flowbase_provider_recovery";
 
 #[test]
 fn recovery_receipt_is_parsed_from_the_shared_details_key_on_both_paths() {
-    assert_eq!(RECOVERY_RECEIPT_WIRE_KEY, PROVIDER_RECOVERY_RECEIPT_METADATA_KEY);
+    assert_eq!(
+        RECOVERY_RECEIPT_WIRE_KEY,
+        PROVIDER_RECOVERY_RECEIPT_METADATA_KEY
+    );
     let epoch = TransportEpoch::new(149).unwrap();
     let receipt = ProviderRecoveryReceipt {
         attempt: 0,
@@ -2678,13 +2682,23 @@ fn terminal_websocket_receipt_may_report_a_socketless_failure() {
 fn recovery_attempt_index_and_consumed_count_respect_total_budget() {
     for budget in [1, 2, 16] {
         let directive = ProviderRecoveryDirective {
-            policy: RecoveryPolicy::NativeOpaque { budget: RecoveryBudget { max_inner_attempts: budget, absolute_deadline_unix_ms: 100 } },
-            transport_epoch: TransportEpoch::new(1).unwrap(), initial_commit_level: CommitLevel::LifecycleOnly, cursor_provenance: None,
+            policy: RecoveryPolicy::NativeOpaque {
+                budget: RecoveryBudget {
+                    max_inner_attempts: budget,
+                    absolute_deadline_unix_ms: 100,
+                },
+            },
+            transport_epoch: TransportEpoch::new(1).unwrap(),
+            initial_commit_level: CommitLevel::LifecycleOnly,
+            cursor_provenance: None,
         };
         let mut receipt = ProviderRecoveryReceipt {
-            attempt: budget - 1, transport: RecoveryTransport::AiNativeWebSocket,
-            transport_epoch: directive.transport_epoch, socket_incarnation: None,
-            commit_level: CommitLevel::Terminal, disposition: RecoveryDisposition::TerminalInterruption,
+            attempt: budget - 1,
+            transport: RecoveryTransport::AiNativeWebSocket,
+            transport_epoch: directive.transport_epoch,
+            socket_incarnation: None,
+            commit_level: CommitLevel::Terminal,
+            disposition: RecoveryDisposition::TerminalInterruption,
             reason: RecoveryReason::BudgetExhausted,
         };
         assert!(receipt.validate_against(&directive).is_ok());

@@ -61,7 +61,7 @@ pub(super) async fn select_worker(
     }
     let key = (
         plugin.to_owned(),
-        directive.logical_session_id,
+        directive.logical_session_id.clone(),
         directive.generation,
     );
     let capacity = {
@@ -92,7 +92,6 @@ pub(super) async fn select_worker(
             "transport worker binding capacity exhausted",
         ));
     }
-    let directive = input.transport_session_directive().unwrap().unwrap();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

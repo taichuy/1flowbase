@@ -1255,6 +1255,91 @@
       "reason": "global upgrade attempts are bounded by their marker and run id instead of workspace row routing",
       "skip": ["managed-table-id", "managed-table-created-at", "managed-table-scope-column", "managed-table-scope-time-index"]
     },
+    "application_run_trace_refresh_queue": {
+      "kind": "bounded_projection",
+      "reason": "trace refresh queue is a bounded per-flow projection scheduler keyed by flow_run_id with lease fields instead of generic row identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_captures": {
+      "kind": "bounded_projection",
+      "reason": "client capture integrity is a bounded one-row-per-request projection keyed by request_id and linked to runtime event evidence",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_steps": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory steps are bounded event projections keyed by request and event identity with pagination indexes on flow runs",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_sections": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory sections are bounded event projections keyed by event_id and request with section-specific evidence ordering",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_node_links": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory node links are a bounded many-to-many correlation projection keyed by request_id and node_run_id, sourced from runtime_events and scoped through the owning flow run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "native_trajectory_integrity": {
+      "kind": "bounded_projection",
+      "reason": "native trajectory integrity is a bounded latest-fact projection keyed by flow run node invocation and provider attempt",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "provider_protocol_trajectory_events": {
+      "kind": "bounded_projection",
+      "reason": "provider protocol events are append-only evidence projections keyed by runtime event and read through flow-run sequence",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "provider_semantic_trajectory_steps": {
+      "kind": "bounded_projection",
+      "reason": "provider semantic steps are bounded latest-step projections keyed by flow run node invocation attempt and step",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "runtime_canonical_contents": {
       "kind": "immutable_application_content",
       "reason": "canonical content is immutable and addressed by application plus content hash rather than a scope chronology scan",
