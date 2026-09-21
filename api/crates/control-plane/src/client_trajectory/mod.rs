@@ -25,7 +25,10 @@ use uuid::Uuid;
 
 const FRAME_BYTES: usize = 64 * 1024;
 const QUEUE_BYTES: usize = 2 * 1024 * 1024;
-const QUEUE_RECORDS: usize = 128;
+// Charge timestamp/Vec/permit storage, queue bookkeeping and allocation slack per
+// resident frame, including frames retained before binding and during persistence.
+const FRAME_OVERHEAD_BYTES: usize = 512;
+const QUEUE_RECORDS: usize = QUEUE_BYTES / FRAME_OVERHEAD_BYTES;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -148,7 +151,7 @@ impl ClientTrajectoryRecorder {
                 .owner
                 .bytes
                 .clone()
-                .try_acquire_many_owned(chunk.len() as u32)
+                .try_acquire_many_owned((chunk.len() + FRAME_OVERHEAD_BYTES) as u32)
             else {
                 self.mark_incomplete();
                 return;
@@ -232,7 +235,7 @@ async fn worker(
         }
         tokio::select! {
             _=state.notify.notified()=>{},
-            frame=receiver.recv()=>match frame {Some(frame)=>{if pending.len()<QUEUE_RECORDS {pending.push_back(frame);}else{state.dropped.fetch_add(1,Ordering::Relaxed);}},None=>break None},
+            frame=receiver.recv()=>match frame {Some(frame)=>pending.push_back(frame),None=>break None},
             _=tokio::time::sleep(IDLE_TIMEOUT)=>{state.dropped.fetch_add(1,Ordering::Relaxed);break None;}
         }
     };
