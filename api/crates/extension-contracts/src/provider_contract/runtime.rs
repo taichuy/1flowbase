@@ -383,6 +383,7 @@ impl std::error::Error for ProviderCompactError {}
 pub enum ProviderStreamEvent {
     /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
     /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// Emit only when outer stdio host_capabilities declares protocol_observation_v1.
     /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
     /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.
     /// `kind` is request/response_head/response_body/message/stream_end; headers are never included.
@@ -457,6 +458,7 @@ pub enum ProviderStreamEvent {
 pub enum ProviderRuntimeLine {
     /// Actual provider transport bytes. Authentication headers and credential URLs are excluded.
     /// This is a required observation lane, independent of best-effort NativeEvent diagnostics.
+    /// Emit only when outer stdio host_capabilities declares protocol_observation_v1.
     /// `protocol` identifies the supplier wire protocol; `transport` is http/sse/websocket.
     /// `direction` is sent/received. A sent request is handed to the transport, not a delivery ACK.
     /// `kind` is request/response_head/response_body/message/stream_end; headers are never included.

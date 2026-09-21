@@ -795,7 +795,7 @@ pub async fn call_executable(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serde_json::to_vec(request)
+        let mut payload = serialize_provider_stdio_request(request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         payload.push(b'\n');
         stdin
@@ -811,6 +811,25 @@ pub async fn call_executable(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     parse_stdio_response(executable_path, &output.stdout, &output.stderr)
+}
+
+/// Negotiate additive events outside the strict ProviderInvocationInput schema.
+/// Older providers ignore unknown outer request fields; callers cannot supply this field.
+fn serialize_provider_stdio_request(request: &ProviderStdioRequest) -> serde_json::Result<Vec<u8>> {
+    let mut wire = serde_json::to_value(request)?;
+    if matches!(
+        request.method,
+        extension_contracts::provider_contract::ProviderStdioMethod::Invoke
+    ) && matches!(
+        request.input.get("operation").and_then(Value::as_str),
+        None | Some("generate")
+    ) {
+        wire[extension_contracts::provider_contract::PROVIDER_HOST_CAPABILITIES_FIELD] =
+            serde_json::json!([
+                extension_contracts::provider_contract::PROVIDER_PROTOCOL_OBSERVATION_CAPABILITY
+            ]);
+    }
+    serde_json::to_vec(&wire)
 }
 
 async fn forward_provider_live_event(
@@ -883,7 +902,7 @@ async fn write_worker_request(
     stdin: &mut ChildStdin,
     request: &ProviderStdioRequest,
 ) -> FrameworkResult<()> {
-    let mut payload = serde_json::to_vec(request)
+    let mut payload = serialize_provider_stdio_request(request)
         .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
     payload.push(b'\n');
     stdin
@@ -1223,6 +1242,31 @@ mod tests {
             .unwrap();
 
         assert_eq!(required_receiver.recv().await, Some(required_event));
+    }
+
+    #[test]
+    fn protocol_observation_capability_is_outer_host_owned_and_legacy_compatible() {
+        let request = ProviderStdioRequest {
+            method: extension_contracts::provider_contract::ProviderStdioMethod::Invoke,
+            input: serde_json::json!({"model": "fixture", "run_context": {"host_capabilities": ["untrusted"]}}),
+        };
+        let wire: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&request).unwrap()).unwrap();
+        assert_eq!(
+            wire["host_capabilities"],
+            serde_json::json!(["protocol_observation_v1"])
+        );
+        assert_eq!(wire["input"], request.input);
+        // The old stdio envelope ignores new outer metadata without changing strict input.
+        let legacy: ProviderStdioRequest = serde_json::from_value(wire).unwrap();
+        assert_eq!(legacy, request);
+        let unary = ProviderStdioRequest {
+            input: serde_json::json!({"operation":"compact"}),
+            ..request
+        };
+        let wire: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&unary).unwrap()).unwrap();
+        assert!(wire.get("host_capabilities").is_none());
     }
 
     #[tokio::test]
