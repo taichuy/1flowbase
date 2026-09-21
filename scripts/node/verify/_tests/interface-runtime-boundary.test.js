@@ -194,11 +194,6 @@ test('Delivery 1944 typed production handlers do not import request or host capa
       'McpInvocationHandler',
       'McpInvocationAuthorization',
     ],
-    [
-      'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
-      'HostInfrastructureProvidersViewHandler',
-      'ConsoleInterfaceAuthorizationPort',
-    ],
   ];
   for (const [file, startProbe, endProbe] of handlers) {
     const source = read(file);
@@ -227,10 +222,8 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
   const runtimeCargo = read('api/crates/interface-runtime/Cargo.toml');
   const kernel = read('api/crates/interface-runtime/src/invocation.rs');
 
-  assert.match(boot, /compile_hook_plans/u);
-  assert.match(boot, /TypedInterfaceHookPlan::new/u);
-  assert.match(operation, /compiler\.bind_hook_plan/u);
-  assert.match(operation, /\.invoke::<\s*HostInfrastructureProvidersViewInput/u);
+  assert.match(boot, /compile_complete_console_snapshot/u);
+  assert.match(read('api/apps/api-server/src/routes/console_interface.rs'), /\.invoke::<I, O, ConsoleInterfaceTargetError>/u);
   assert.doesNotMatch(operation, /invoke_with_hook_plan/u);
   assert.doesNotMatch(kernel, /pub async fn invoke_with_hook_plan/u);
   assert.match(transaction, /record_lifecycle_fact_in_transaction\(&mut tx/u);
@@ -244,58 +237,15 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
   assert.doesNotMatch(runtimeCargo, /plugin-framework|extension-contracts|storage-durable/u);
 });
 
-test('Delivery 1912 production slice consumes one compiled registry for HTTP and MCP', () => {
+test('retired provider configuration is absent while observation uses the compiled Console kernel', () => {
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
-  const composition = read('api/apps/api-server/src/lib.rs');
   const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
-  const permissionMiddleware = read(
-    'api/apps/api-server/src/middleware/require_settings_feature_permission.rs',
-  );
-  const operation = read(
-    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
-  );
-  const mcp = read('api/apps/api-server/src/extension_bus/interface_contributions.rs');
-
-  assert.match(boot, /DynamicInterfaceRegistry/u);
-  assert.match(boot, /compile_interface_registry/u);
-  assert.match(composition, /interface_registry\(\)/u);
-  assert.match(http, /invoke_providers_view/u);
-  assert.match(mcp, /invoke_providers_view/u);
-  assert.match(operation, /registry\.snapshot\(\)/u);
-  assert.match(operation, /\.into_envelope/u);
-  assert.match(operation, /InterfaceProtocol/u);
-  assert.doesNotMatch(operation, /require_session|Cookie|HeaderMap/u);
-  const contractDeclarations = [
-    ...operation.matchAll(
-      /pub struct\s+HostInfrastructureProvidersView(?:Input|Output)(?:\s*\{[^}]*\}|\s*;)/gu,
-    ),
-  ].map((match) => match[0]);
-  const forbiddenContractCapabilities = (source) =>
-    ['ApiState', 'MainDurableStore', 'HostInfrastructureRegistry', 'Store', 'Registry'].filter(
-      (capability) => source.includes(capability),
-    );
-  assert.equal(contractDeclarations.length, 2);
-  assert.deepEqual(contractDeclarations.flatMap(forbiddenContractCapabilities), []);
-  assert.deepEqual(
-    forbiddenContractCapabilities(
-      'pub struct HostInfrastructureProvidersViewInput { state: Arc<ApiState> }',
-    ),
-    ['ApiState'],
-  );
-  assert.match(operation, /HostInfrastructureProvidersViewHandler\s*\{[\s\S]*query/u);
-  assert.match(permissionMiddleware, /is_active_interface_route/u);
-  assert.ok(
-    permissionMiddleware.indexOf('is_active_interface_route') <
-      permissionMiddleware.indexOf('require_session(&state, request.headers())'),
-  );
-  assert.doesNotMatch(permissionMiddleware, /insert\(context\.interface_principal\(\)\)/u);
-  assert.match(
-    http,
-    /list_host_infrastructure_providers\([\s\S]*headers: HeaderMap[\s\S]*ConsoleAuthenticationCredential::Protocol/u,
-  );
-  assert.doesNotMatch(
-    http,
-    /Extension\(principal\): Extension<interface_runtime::UserPrincipal>/u,
-  );
-  assert.doesNotMatch(boot, /InterfaceOperationCatalog/u);
+  const consoleInterface = read('api/apps/api-server/src/routes/console_interface.rs');
+  const contributions = read('api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  assert.doesNotMatch(boot + http + contributions, /invoke_providers_view|providers_view_query|interface_provider_config/u);
+  assert.match(http, /get_host_infrastructure_memory_overview/u);
+  assert.match(http, /console_interface::invoke/u);
+  assert.match(consoleInterface, /authenticate_invocation/u);
+  assert.match(consoleInterface, /authenticated\.into_envelope/u);
+  assert.match(boot, /compile_complete_console_snapshot/u);
 });

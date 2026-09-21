@@ -59,36 +59,3 @@ pub struct HostExtensionInventoryRecord {
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostInfrastructureConfigStatus {
-    Disabled,
-    PendingRestart,
-    Active,
-}
-
-impl HostInfrastructureConfigStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Disabled => "disabled",
-            Self::PendingRestart => "pending_restart",
-            Self::Active => "active",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HostInfrastructureProviderConfigRecord {
-    pub id: Uuid,
-    pub installation_id: Uuid,
-    pub extension_id: String,
-    pub provider_code: String,
-    pub config_ref: String,
-    pub enabled_contracts: Vec<String>,
-    pub config_json: serde_json::Value,
-    pub status: HostInfrastructureConfigStatus,
-    pub updated_by: Uuid,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
-}

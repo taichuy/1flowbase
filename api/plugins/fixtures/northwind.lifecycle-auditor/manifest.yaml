@@ -71,37 +71,37 @@ managed:
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.authorization
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.authorization
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.authorization
         contract_version: 1
         required_permissions: [hook.interface.authorization]
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.admission
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.admission
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.admission
         contract_version: 1
         required_permissions: [hook.interface.admission]
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.before
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.before
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.before
         contract_version: 1
         required_permissions: [hook.interface.before]
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.after
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.after
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.after
         contract_version: 1
         required_permissions: [hook.interface.after]
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.failure
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.failure
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.failure
         contract_version: 1
         required_permissions: [hook.interface.failure]
         mode: append
       - contribution_id: northwind.lifecycle-auditor.i1.completion
         contributor_module_id: northwind.lifecycle-auditor
-        point_id: 1flowbase.interface.host_infrastructure.providers.view.completion
+        point_id: 1flowbase.interface.host_infrastructure.memory.overview.get.completion
         contract_version: 1
         required_permissions: [hook.interface.completion]
         mode: append

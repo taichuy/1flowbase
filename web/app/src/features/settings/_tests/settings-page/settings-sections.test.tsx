@@ -198,11 +198,6 @@ const fileManagementApi = vi.hoisted(() => ({
 }));
 
 const hostInfrastructureApi = vi.hoisted(() => ({
-  settingsHostInfrastructureProvidersQueryKey: [
-    'settings',
-    'host-infrastructure',
-    'providers'
-  ],
   settingsHostInfrastructureMemoryOverviewQueryKey: [
     'settings',
     'host-infrastructure',
@@ -254,8 +249,6 @@ const hostInfrastructureApi = vi.hoisted(() => ({
       'search'
     ]
   ),
-  fetchSettingsHostInfrastructureProviders: vi.fn(),
-  saveSettingsHostInfrastructureProviderConfig: vi.fn(),
   fetchSettingsHostInfrastructureMemoryOverview: vi.fn(),
   fetchSettingsHostInfrastructureMemoryStatsOverview: vi.fn(),
   fetchSettingsHostInfrastructureMemoryStats: vi.fn(),
@@ -832,9 +825,6 @@ describe('SettingsPage', () => {
         status: 'active'
       }
     ]);
-    hostInfrastructureApi.fetchSettingsHostInfrastructureProviders.mockResolvedValue(
-      []
-    );
     hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryOverview.mockResolvedValue(
       {
         can_manage: true,
@@ -1179,25 +1169,14 @@ describe('SettingsPage', () => {
     ).toHaveBeenCalled();
   });
 
-  test('shows 基础设施 and 内存观察 when plugin_config.view.all is present', async () => {
+  test('retired infrastructure URL falls back without showing an infrastructure entry', async () => {
     authenticateWithPermissions(['plugin_config.view.all']);
-
     renderApp('/settings/host-infrastructure');
-
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/host-infrastructure');
-    });
-    expect(
-      await screen.findByRole('link', { name: '内存观察' }, { timeout: 10000 })
-    ).toHaveAttribute('href', '/settings/memory-observation');
-    expect(
-      await screen.findByText(
-        '安装、配置和启用会保存为待应用变更，重启 api-server 一次后生效。'
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: '内存观察' })
-    ).not.toBeInTheDocument();
+      expect(window.location.pathname).not.toBe('/settings/host-infrastructure');
+    }, { timeout: 10000 });
+    expect(screen.queryByRole('link', { name: '基础设施' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '内存观察' })).toHaveAttribute('href', '/settings/memory-observation');
   });
 
   test('renders memory observation as a settings section route', async () => {

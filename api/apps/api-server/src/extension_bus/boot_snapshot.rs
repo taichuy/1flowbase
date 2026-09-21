@@ -1,74 +1,17 @@
-use std::{
-    num::NonZeroU64,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
-use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
-    compile_hook_plans, ContractDescriptor, ContributionId, ContributionResolutionReceipt,
-    EffectiveExtensionGraph, EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract,
-    HookMutationCapability, HookPhase, HookPointBinding, HookPointContract, ModuleId,
+    ContributionResolutionReceipt, EffectiveExtensionGraph, EffectiveExtensionPoint, ModuleId,
     ModuleResolutionReceipt, Provenance,
 };
 use serde::Serialize;
-use storage_durable_postgres::MainDurableStore;
 
 use super::{
     input_assembly::ExtensionGraphInputAssembly,
     production_host_extension_authentication_factories, production_interface_contributions,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    InterfaceContributionCollector, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
-    INTERFACE_COMPLETION_HOOK_POINT_ID,
+    InterfaceContributionCollector,
 };
-const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
-const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
-
-struct ProvidersViewCompletionObserver;
-
-impl interface_runtime::InterfaceCompletionHook for ProvidersViewCompletionObserver {
-    fn completed(
-        &self,
-        context: interface_runtime::InterfaceHookContext,
-        terminal: interface_runtime::InterfaceInvocationTerminal,
-    ) -> interface_runtime::InterfaceCompletionHookFuture<'_> {
-        Box::pin(async move {
-            tracing::debug!(
-                invocation_id = %context.invocation_id().value(),
-                graph_fingerprint = context.graph_fingerprint().as_str(),
-                ?terminal,
-                "interface invocation completed"
-            );
-        })
-    }
-}
-
-pub(crate) struct DurableHostInfrastructureProvidersViewQuery {
-    store: MainDurableStore,
-    node_id: String,
-}
-
-impl DurableHostInfrastructureProvidersViewQuery {
-    pub(crate) fn new(store: MainDurableStore, node_id: String) -> Self {
-        Self { store, node_id }
-    }
-}
-
-impl crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery
-    for DurableHostInfrastructureProvidersViewQuery
-{
-    fn list(
-        &self,
-    ) -> crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQueryFuture<'_>
-    {
-        Box::pin(async move {
-            Ok(
-                HostInfrastructureConfigService::new(self.store.clone(), self.node_id.clone())
-                    .list_providers()
-                    .await?,
-            )
-        })
-    }
-}
 
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
@@ -86,19 +29,12 @@ pub struct ExtensionBootSnapshot {
 pub fn compile_extension_boot_snapshot(
     graph: Arc<EffectiveExtensionGraph>,
     assembly: &ExtensionGraphInputAssembly,
-    store: MainDurableStore,
-    api_node_id: String,
 ) -> anyhow::Result<ExtensionBootSnapshot> {
     let host_authentication_factories = production_host_extension_authentication_factories()
         .activate(assembly.host_extension_manifests())?;
     ExtensionBootSnapshot::compile(
         graph,
         assembly.interface_operations(),
-        assembly.host_extension_manifests(),
-        Arc::new(DurableHostInfrastructureProvidersViewQuery::new(
-            store,
-            api_node_id,
-        )),
         host_authentication_factories,
     )
 }
@@ -138,62 +74,17 @@ impl ExtensionBootSnapshot {
     pub(crate) fn compile(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
-        active_extensions: &[(
-            plugin_framework::PluginManifestV1,
-            plugin_framework::HostExtensionContributionManifest,
-        )],
-        providers_view_query: Arc<
-            dyn crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery,
-        >,
         host_authentication_factories: Vec<AuthenticationAdapterFactoryBinding>,
     ) -> anyhow::Result<Self> {
-        let hook_contract = HookPointContract {
-            context: ContractDescriptor::new(
-                INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID,
-                INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION,
-            )?,
-            decision: None,
-            phase: HookPhase::Completion,
-            timeout_ms: NonZeroU64::new(1_000).expect("hook timeout is non-zero"),
-            mutation: HookMutationCapability::ObserveOnly,
-        };
-        let effective_plans = compile_hook_plans(
-            &graph,
-            vec![HookPointBinding::new(
-                plugin_framework::extension_bus::ExtensionPointId::new(
-                    INTERFACE_COMPLETION_HOOK_POINT_ID,
-                )?,
-                hook_contract.clone(),
-            )],
-            vec![HookHandlerBinding::new(
-                ContributionId::new(INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID)?,
-                HookHandlerContract {
-                    context: hook_contract.context,
-                    decision: None,
-                    phase: HookPhase::Completion,
-                },
-            )],
-        )?;
-        if effective_plans.len() != 1 {
-            anyhow::bail!("providers view completion hook plan is not unique");
+        if !descriptors.is_empty() {
+            anyhow::bail!("host interface operation descriptors have no registered native handler");
         }
-        let providers_view_hook_plan = Arc::new(
-            interface_runtime::TypedInterfaceHookPlan::new(
-                interface_runtime::GraphFingerprint::new(graph.fingerprint().as_str())?,
-            )
-            .bind_completion(
-                interface_runtime::PluginIdentity::new("api-server.providers-view-completion")?,
-                Arc::new(ProvidersViewCompletionObserver),
-            ),
-        );
-        let interface_snapshot =
-            crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
-                Arc::clone(&graph),
-                descriptors,
-                active_extensions,
-                providers_view_query,
-                Arc::clone(&providers_view_hook_plan),
-            )?;
+        let interface_snapshot = interface_runtime::RegistryCompiler::new(
+            interface_runtime::GraphFingerprint::new(graph.fingerprint().as_str())?,
+            [],
+            [],
+        )
+        .compile()?;
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
         ));
@@ -214,15 +105,7 @@ impl ExtensionBootSnapshot {
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
     ) -> anyhow::Result<Self> {
-        Self::compile(
-            graph,
-            descriptors,
-            &[],
-            Arc::new(
-                crate::routes::host_infrastructure::interface_operation::UnavailableHostInfrastructureProvidersViewQuery,
-            ),
-            Vec::new(),
-        )
+        Self::compile(graph, descriptors, Vec::new())
     }
 
     pub fn graph(&self) -> &EffectiveExtensionGraph {
@@ -270,18 +153,6 @@ impl ExtensionBootSnapshot {
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
         )
         .with_managed_invocations(managed.clone());
-        collector.absorb_published_interface(
-            registry.snapshot(),
-            interface_runtime::InterfaceId::new(
-                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
-            )?,
-            interface_runtime::AuthorizationOperation::new(
-                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
-            )?,
-            interface_runtime::InterfaceOwner::new(
-                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
-            )?,
-        );
         for contribution in production_interface_contributions(state)? {
             collector.add(contribution)?;
         }

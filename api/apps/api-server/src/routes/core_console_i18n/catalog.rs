@@ -38,7 +38,6 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.backups", "Backup and recovery"),
     settings_feature!("auto.data_source", "Data source"),
     settings_feature!("auto.file_management", "File management"),
-    settings_feature!("auto.infrastructure", "Infrastructure"),
     settings_feature!("auto.memory_observation", "Memory observation"),
     settings_feature!("auto.user_management", "User management"),
     settings_feature!("auto.model_providers", "Model providers"),
@@ -81,10 +80,6 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!(
         "console.policy_groups.settings.system.files.description",
         "File management operations"
-    ),
-    settings_feature!(
-        "console.policy_groups.settings.system.host-infrastructure.description",
-        "Host infrastructure operations"
     ),
     settings_feature!(
         "console.policy_groups.settings.system.memory-observation.description",

@@ -161,13 +161,6 @@ const fileManagementApi = vi.hoisted(() => ({
 }));
 
 const hostInfrastructureApi = vi.hoisted(() => ({
-  settingsHostInfrastructureProvidersQueryKey: [
-    'settings',
-    'host-infrastructure',
-    'providers'
-  ],
-  fetchSettingsHostInfrastructureProviders: vi.fn(),
-  saveSettingsHostInfrastructureProviderConfig: vi.fn()
 }));
 
 const consoleNavigationApi = vi.hoisted(() => ({
@@ -787,9 +780,6 @@ export function setupDataModelsPageTest() {
   });
   fileManagementApi.fetchSettingsFileStorages.mockResolvedValue([]);
   fileManagementApi.fetchSettingsFileTables.mockResolvedValue([]);
-  hostInfrastructureApi.fetchSettingsHostInfrastructureProviders.mockResolvedValue(
-    []
-  );
 
   dataModelsApi.fetchSettingsDataSources.mockResolvedValue([
     {

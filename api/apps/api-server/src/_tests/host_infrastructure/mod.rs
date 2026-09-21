@@ -1,4 +1,3 @@
 mod host_infrastructure_cache_routes;
-mod host_infrastructure_config_routes;
 mod host_infrastructure_memory_routes;
 mod host_infrastructure_tests;

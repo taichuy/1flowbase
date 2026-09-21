@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use control_plane::mcp_management::McpManagementService;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
@@ -20,17 +19,11 @@ use crate::{
     },
 };
 
-#[async_trait]
-pub(crate) trait McpDebugActivatedOperationPort: Send + Sync {
-    async fn providers_view(&self, principal: &UserPrincipal) -> Result<Value, ApiError>;
-}
-
 #[derive(Clone)]
 pub(crate) struct McpDebugDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) catalog: McpInterfaceCatalogDependencies,
     pub(crate) dispatcher: Arc<dyn CallableDispatchPort>,
-    pub(crate) activated_operations: Arc<dyn McpDebugActivatedOperationPort>,
 }
 
 pub(crate) struct McpDebugInput {
@@ -145,13 +138,6 @@ impl McpDebugAdapter {
             .await?;
         let interface_entry =
             bindable_mcp_interface_with(&self.0.catalog, actor, &input.body.interface_id).await?;
-        let activated_interface_response = if interface_entry.interface_id
-            == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-        {
-            Some(self.0.activated_operations.providers_view(principal).await?)
-        } else {
-            None
-        };
         match debug_execute::execute_with_dispatch_port(
             self.0.dispatcher.as_ref(),
             input.forwarding,
@@ -160,7 +146,7 @@ impl McpDebugAdapter {
             McpServerBoundInputs {
                 workspace_id: actor.current_workspace_id,
             },
-            activated_interface_response,
+            None,
         )
         .await
         {

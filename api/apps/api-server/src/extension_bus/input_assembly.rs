@@ -20,9 +20,6 @@ use plugin_framework::{
 };
 
 use crate::routes::host_infrastructure::interface_operation::{
-    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID,
-    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
-    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID, HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
     INTERFACE_OPERATION_CONTRACT_ID, INTERFACE_OPERATION_CONTRACT_VERSION,
     INTERFACE_OPERATION_OWNER_MODULE_ID, INTERFACE_OPERATION_POINT_ID,
 };
@@ -414,9 +411,7 @@ fn interface_operation_extension_point() -> Result<ExtensionPointDescriptor> {
         failure: FailureSemantics::FailClosed,
         delivery: DeliverySemantics::Synchronous,
         lifecycle: LifecycleSemantics::BootSnapshot,
-        allowed_permissions: BTreeSet::from([PermissionCode::new(
-            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
-        )?]),
+        allowed_permissions: BTreeSet::new(),
         override_policy: OverridePolicy::Sealed,
     })
 }
@@ -629,21 +624,6 @@ fn derive_host_module_descriptor(
             mode: ContributionMode::Append,
             ordering: ContributionOrdering::default(),
         });
-    }
-    if contribution.extension_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID {
-        descriptor.granted_permissions.insert(PermissionCode::new(
-            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
-        )?);
-    }
-    if contribution.extension_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID
-        && contribution.interface_operations.iter().any(|operation| {
-            operation.operation_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-        })
-        && !descriptor.contributions.iter().any(|candidate| {
-            candidate.contribution_id.as_str() == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID
-        })
-    {
-        bail!("official providers view interface operation contribution id mismatch");
     }
     Ok(descriptor)
 }

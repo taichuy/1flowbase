@@ -288,7 +288,6 @@ async fn migration_smoke_creates_system_global_scoped_readiness_columns_and_inde
         "file_storages",
         "frontend_block_catalog",
         "host_extension_migrations",
-        "host_infrastructure_provider_configs",
         "js_dependency_registry",
         "node_contribution_registry",
         "permission_definitions",

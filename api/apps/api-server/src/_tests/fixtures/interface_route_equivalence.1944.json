@@ -24,12 +24,12 @@
       "status": "equivalent"
     },
     {
-      "id": "console.host-infrastructure.providers",
-      "route": "GET /api/console/settings/host-infrastructure/providers",
-      "source": "routes/settings/host_infrastructure/interface_operation.rs",
-      "kernel_probe": "invoke_providers_view",
-      "behavior_test": "_tests/host_infrastructure/host_infrastructure_config_routes.rs",
-      "behavior_probe": "invoke_providers_view",
+      "id": "console.host-infrastructure.memory",
+      "route": "GET /api/console/settings/host-infrastructure/memory",
+      "source": "routes/settings/host_infrastructure.rs",
+      "kernel_probe": "console_interface::invoke",
+      "behavior_test": "_tests/host_infrastructure/host_infrastructure_memory_routes.rs",
+      "behavior_probe": "host_infrastructure_memory_routes_list_categories_and_reveal_with_audit",
       "status": "equivalent"
     },
     {

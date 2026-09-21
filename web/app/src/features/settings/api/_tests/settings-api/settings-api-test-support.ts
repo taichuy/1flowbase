@@ -262,7 +262,6 @@ vi.mock('@1flowbase/api-client', () => ({
   getConsolePluginTask: vi.fn().mockResolvedValue({
     id: 'task-1'
   }),
-  listConsoleHostInfrastructureProviders: vi.fn().mockResolvedValue([]),
   getConsoleHostInfrastructureMemoryOverview: vi.fn().mockResolvedValue({
     can_manage: true,
     contracts: []
@@ -423,11 +422,6 @@ vi.mock('@1flowbase/api-client', () => ({
   }),
   clearConsoleHostInfrastructureCacheDomain: vi.fn().mockResolvedValue({
     cleared_count: 1
-  }),
-  saveConsoleHostInfrastructureProviderConfig: vi.fn().mockResolvedValue({
-    restart_required: true,
-    installation_desired_state: 'pending_restart',
-    provider_config_status: 'pending_restart'
   }),
   fetchConsoleSystemRuntimeProfile: vi.fn().mockResolvedValue({
     topology: { relationship: 'same_host' },

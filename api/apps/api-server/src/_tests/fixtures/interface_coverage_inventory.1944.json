@@ -4,25 +4,25 @@
   "frozen": true,
   "migration_scope": [
     "public.auth.login-entries",
-    "console.host-infrastructure.providers",
+    "console.host-infrastructure.memory",
     "application.native.runs",
     "mcp.user-api-key.tools"
   ],
   "entries": [
     {
-      "id": "console.host-infrastructure.providers",
+      "id": "console.host-infrastructure.memory",
       "family": "console_http",
-      "method_or_tool": "GET /api/console/settings/host-infrastructure/providers",
-      "request_response_stream_error": "none -> ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>; unary; ApiError",
+      "method_or_tool": "GET /api/console/settings/host-infrastructure/memory",
+      "request_response_stream_error": "none -> ApiSuccess<MemoryOverviewResponse>; unary; ApiError",
       "authentication": "require_session: Cookie session, User API key, or server delegation",
       "principal_actor_scope": "User principal; authenticated ActorContext; system settings scope",
-      "authorization_csrf": "compiled console operation host_infrastructure.providers.view; role row policy; read-only, no CSRF",
+      "authorization_csrf": "compiled console operation host_infrastructure.memory.overview.get; role row policy; read-only, no CSRF",
       "deadline_cancel_idempotency_retry": "kernel deadline optional; cancellation/deadline before terminal; read-only; no retry",
-      "handler_application_transaction_runtime": "typed HostInfrastructureProvidersViewHandler -> HostInfrastructureProvidersViewQuery -> control-plane list; no transaction/runtime dispatch",
+      "handler_application_transaction_runtime": "typed Console handler -> MemoryInspectionAdapter -> host observation ports; no transaction/runtime dispatch",
       "side_effects": "read-only receipt and completion hooks",
       "tests_consumers": "host_infrastructure_tests; interface_operation_tests; console settings UI",
       "source_anchor": "routes/settings/host_infrastructure/interface_operation.rs",
-      "source_probe": "HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH"
+      "source_probe": "invocation_kernel"
     },
     {
       "id": "public.auth.login-entries",
@@ -147,7 +147,7 @@
     {
       "id": "kernel.current-production",
       "family": "interface_invocation_kernel",
-      "method_or_tool": "HTTP and MCP projection of host_infrastructure.providers.view",
+      "method_or_tool": "Console HTTP invocation kernel",
       "request_response_stream_error": "typed input/output/target error -> HTTP or MCP projection; unary",
       "authentication": "outer adapter terminates Cookie/Bearer and passes ActorContext",
       "principal_actor_scope": "current Actor-only envelope; system scope",

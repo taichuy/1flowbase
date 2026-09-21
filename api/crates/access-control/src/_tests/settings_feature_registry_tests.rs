@@ -21,7 +21,6 @@ const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
     "system.files",
     "system.system-runtime",
     "system.memory-observation",
-    "system.host-infrastructure",
     "system.i18n-catalog",
 ];
 
@@ -277,60 +276,20 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         ]
     );
     assert_eq!(
-        routes("system.host-infrastructure"),
-        vec![
-            ("GET", "/api/console/settings/host-infrastructure/cache"),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries",
-            ),
-            ("GET", "/api/console/settings/host-infrastructure/providers"),
-            (
-                "POST",
-                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/clear",
-            ),
-            (
-                "POST",
-                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/clear",
-            ),
-            (
-                "POST",
-                "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/reveal",
-            ),
-            (
-                "PUT",
-                "/api/console/settings/host-infrastructure/providers/{installation_id}/{provider_code}/config",
-            ),
-        ]
-    );
-    assert_eq!(
         routes("system.memory-observation"),
         vec![
+            ("GET", "/api/console/settings/host-infrastructure/cache"),
+            ("GET", "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries"),
             ("GET", "/api/console/settings/host-infrastructure/memory"),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries",
-            ),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search",
-            ),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats",
-            ),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree",
-            ),
-            (
-                "GET",
-                "/api/console/settings/host-infrastructure/memory/stats",
-            ),
-            (
-                "POST",
-                "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/reveal",
-            ),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree"),
+            ("GET", "/api/console/settings/host-infrastructure/memory/stats"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/clear"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/clear"),
+            ("POST", "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/entries/reveal"),
+            ("POST", "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/reveal"),
         ]
     );
     assert_eq!(
@@ -368,7 +327,12 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         routes("system.system-runtime"),
         vec![
             ("GET", "/api/console/system/release-status"),
+            ("GET", "/api/console/system/runtime-processes"),
             ("GET", "/api/console/system/runtime-profile"),
+            (
+                "POST",
+                "/api/console/system/runtime-profile/processes/{pid}/terminate"
+            ),
         ]
     );
     let mcp_routes = routes("system.mcp-management");
@@ -691,4 +655,36 @@ fn root_2014_ac_009_page_only_registry_keeps_api_fail_closed() {
     let mut inactive = page;
     inactive.lifecycle = SettingsFeatureLifecycle::Inactive;
     assert!(SettingsFeatureRegistry::compile([inactive]).is_err());
+}
+
+#[test]
+fn retiring_infrastructure_surface_keeps_observation_routes_under_one_owner() {
+    let registrations = core_settings_feature_registrations();
+    assert!(registrations
+        .iter()
+        .all(|item| item.feature_id != "system.host-infrastructure"
+            && item.console_surface.path != "/settings/host-infrastructure"));
+    let registry = SettingsFeatureRegistry::compile(registrations.clone()).unwrap();
+    let observation = registrations
+        .iter()
+        .find(|item| item.feature_id == "system.memory-observation")
+        .unwrap();
+    assert_eq!(observation.api_routes.len(), 12);
+    assert_eq!(
+        observation
+            .api_routes
+            .iter()
+            .filter(|route| route.path.contains("/cache"))
+            .count(),
+        5
+    );
+    assert!(registrations
+        .iter()
+        .flat_map(|item| &item.api_routes)
+        .all(|route| !route.path.contains("/host-infrastructure/providers")));
+    for route in &observation.api_routes {
+        assert!(
+            matches!(registry.access_rule(&route.method, &route.path), Some(AccessRule::SettingsFeature(feature_id)) if feature_id == "system.memory-observation")
+        );
+    }
 }

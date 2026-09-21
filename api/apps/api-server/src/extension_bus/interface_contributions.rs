@@ -49,45 +49,11 @@ impl InterfaceRegistryContribution {
     }
 }
 
-struct PublishedInterfaceContribution {
-    registry: Arc<CompiledInterfaceRegistry>,
-    interface_id: InterfaceId,
-    authorization_operation: AuthorizationOperation,
-    owner: InterfaceOwner,
-}
-
 pub(crate) struct InterfaceContributionCollector {
     managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
-    published: Vec<PublishedInterfaceContribution>,
     contributions: Vec<InterfaceRegistryContribution>,
     contribution_ids: BTreeSet<&'static str>,
-}
-
-struct ApiMcpDebugActivatedOperations {
-    state: Arc<crate::app_state::ApiState>,
-}
-
-#[async_trait::async_trait]
-impl crate::routes::mcp_management::interface_debug::McpDebugActivatedOperationPort
-    for ApiMcpDebugActivatedOperations
-{
-    async fn providers_view(
-        &self,
-        principal: &interface_runtime::UserPrincipal,
-    ) -> Result<serde_json::Value, crate::error_response::ApiError> {
-        let (output, _) =
-            crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
-                Arc::clone(&self.state),
-                crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(
-                    principal.actor().clone(),
-                ),
-                interface_runtime::InterfaceProtocol::Mcp,
-            )
-            .await?;
-        serde_json::to_value(crate::response::ApiSuccess::new(output.into_providers()))
-            .map_err(crate::error_response::ApiError::from)
-    }
 }
 
 impl InterfaceContributionCollector {
@@ -95,25 +61,9 @@ impl InterfaceContributionCollector {
         Self {
             managed_factory: None,
             graph_fingerprint,
-            published: Vec::new(),
             contributions: Vec::new(),
             contribution_ids: BTreeSet::new(),
         }
-    }
-
-    pub(crate) fn absorb_published_interface(
-        &mut self,
-        registry: Arc<CompiledInterfaceRegistry>,
-        interface_id: InterfaceId,
-        authorization_operation: AuthorizationOperation,
-        owner: InterfaceOwner,
-    ) {
-        self.published.push(PublishedInterfaceContribution {
-            registry,
-            interface_id,
-            authorization_operation,
-            owner,
-        });
     }
 
     pub(crate) fn add(
@@ -133,10 +83,6 @@ impl InterfaceContributionCollector {
     pub(crate) fn compile(self) -> anyhow::Result<Arc<CompiledInterfaceRegistry>> {
         let mut operations = BTreeSet::new();
         let mut owners = BTreeSet::new();
-        for published in &self.published {
-            operations.insert(published.authorization_operation.clone());
-            owners.insert(published.owner.clone());
-        }
         for contribution in &self.contributions {
             for operation in contribution.authorization_operations {
                 operations.insert(AuthorizationOperation::new(operation)?);
@@ -149,9 +95,6 @@ impl InterfaceContributionCollector {
         let mut compiler = RegistryCompiler::new(self.graph_fingerprint, operations, owners);
         if let Some(factory) = self.managed_factory {
             compiler = compiler.with_managed_invocations(factory);
-        }
-        for published in self.published {
-            compiler.absorb_interface(published.registry.as_ref(), &published.interface_id)?;
         }
         for contribution in self.contributions {
             compiler.absorb_snapshot(contribution.registry.as_ref())?;
@@ -172,19 +115,6 @@ impl InterfaceContributionCollector {
             )?;
         let mut binding_contributions = Vec::new();
         let mut known_binding_owners = BTreeSet::new();
-        for published in &self.published {
-            binding_contributions.extend(console_bindings_from_registry(
-                published.owner.as_str(),
-                ConsoleBindingOwnerKind::HostExtension,
-                published.registry.as_ref(),
-            ));
-            known_binding_owners.extend(
-                published
-                    .registry
-                    .definitions()
-                    .map(|definition| definition.owner().as_str().to_string()),
-            );
-        }
         for contribution in &self.contributions {
             binding_contributions.extend(contribution.console_binding_contributions());
             known_binding_owners.extend(
@@ -774,17 +704,6 @@ pub(crate) fn production_interface_contributions(
                             Arc::clone(&state.console_operation_registry),
                         ),
                     ),
-                },
-            )?,
-        ),
-        InterfaceRegistryContribution::new(
-            "api-server.console-host-infrastructure-provider-config",
-            &["host_infrastructure.providers.configure"],
-            &["api-server.console-host-infrastructure-provider-config"],
-            crate::routes::host_infrastructure::interface_provider_config::compile_registry(
-                crate::routes::host_infrastructure::interface_provider_config::HostInfrastructureProviderConfigDependencies {
-                    store: state.store.clone(),
-                    api_node_id: state.api_node_id.clone(),
                 },
             )?,
         ),
@@ -1493,9 +1412,6 @@ pub(crate) fn production_interface_contributions(
                             },
                         },
                         dispatcher: Arc::clone(&console_frontstage_callable_dispatch),
-                        activated_operations: Arc::new(ApiMcpDebugActivatedOperations {
-                            state: Arc::clone(state),
-                        }),
                     },
                 ),
             )?,

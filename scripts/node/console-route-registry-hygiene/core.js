@@ -50,7 +50,6 @@ const SECTION_API_MODULES = {
   'api-key-authentication': ['personal-access-tokens.ts'],
   'auth-center': ['auth-center.ts'],
   'system-runtime': ['system-runtime.ts'],
-  'host-infrastructure': ['host-infrastructure.ts'],
   'memory-observation': ['host-infrastructure.ts'],
   files: ['file-management.ts'],
   'data-models': ['data-models.ts'],

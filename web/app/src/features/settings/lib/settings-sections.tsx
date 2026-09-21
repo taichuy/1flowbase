@@ -5,7 +5,6 @@ export type SettingsSectionKey =
   | 'api-key-authentication'
   | 'auth-center'
   | 'system-runtime'
-  | 'host-infrastructure'
   | 'memory-observation'
   | 'i18n'
   | 'applications'
@@ -59,7 +58,6 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'api-key-authentication',
   'auth-center',
   'system-runtime',
-  'host-infrastructure',
   'memory-observation',
   'i18n',
   'applications',
@@ -144,11 +142,6 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'system-runtime',
     label_key: 'auto.system_runtime',
     to: '/settings/system-runtime'
-  },
-  {
-    key: 'host-infrastructure',
-    label_key: 'auto.infrastructure',
-    to: '/settings/host-infrastructure'
   },
   {
     key: 'memory-observation',

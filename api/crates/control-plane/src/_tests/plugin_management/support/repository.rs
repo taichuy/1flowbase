@@ -17,8 +17,6 @@ pub(crate) struct MemoryPluginManagementRepository {
     node_contributions: Arc<RwLock<Vec<domain::NodeContributionRegistryEntry>>>,
     js_dependencies: Arc<RwLock<Vec<domain::JsDependencyRegistryEntry>>>,
     frontend_blocks: Arc<RwLock<Vec<domain::FrontendBlockCatalogEntry>>>,
-    host_infrastructure_configs:
-        Arc<RwLock<HashMap<(Uuid, String), HostInfrastructureProviderConfigRecord>>>,
     audit_events: Arc<RwLock<Vec<String>>>,
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
     created_task_status_override: Arc<RwLock<Option<PluginTaskStatus>>>,
@@ -49,7 +47,6 @@ impl MemoryPluginManagementRepository {
             node_contributions: Arc::new(RwLock::new(Vec::new())),
             js_dependencies: Arc::new(RwLock::new(Vec::new())),
             frontend_blocks: Arc::new(RwLock::new(Vec::new())),
-            host_infrastructure_configs: Arc::new(RwLock::new(HashMap::new())),
             audit_events: Arc::new(RwLock::new(Vec::new())),
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
             created_task_status_override: Arc::new(RwLock::new(None)),
@@ -191,18 +188,6 @@ impl MemoryPluginManagementRepository {
 
     pub(crate) async fn set_created_task_status_override(&self, status: PluginTaskStatus) {
         *self.created_task_status_override.write().await = Some(status);
-    }
-
-    pub(crate) async fn host_infrastructure_config(
-        &self,
-        installation_id: Uuid,
-        provider_code: &str,
-    ) -> Option<HostInfrastructureProviderConfigRecord> {
-        self.host_infrastructure_configs
-            .read()
-            .await
-            .get(&(installation_id, provider_code.to_string()))
-            .cloned()
     }
 
     pub(crate) async fn seed_instance_with_ready_cache(
@@ -1017,54 +1002,6 @@ impl PluginRepository for MemoryPluginManagementRepository {
 
     async fn list_tasks(&self) -> Result<Vec<PluginTaskRecord>> {
         Ok(self.tasks.read().await.values().cloned().collect())
-    }
-}
-
-#[async_trait]
-impl HostInfrastructureConfigRepository for MemoryPluginManagementRepository {
-    async fn upsert_host_infrastructure_provider_config(
-        &self,
-        input: &UpsertHostInfrastructureProviderConfigInput,
-    ) -> Result<HostInfrastructureProviderConfigRecord> {
-        let now = OffsetDateTime::now_utc();
-        let key = (input.installation_id, input.provider_code.clone());
-        let created_at = self
-            .host_infrastructure_configs
-            .read()
-            .await
-            .get(&key)
-            .map(|record| record.created_at)
-            .unwrap_or(now);
-        let record = HostInfrastructureProviderConfigRecord {
-            id: Uuid::now_v7(),
-            installation_id: input.installation_id,
-            extension_id: input.extension_id.clone(),
-            provider_code: input.provider_code.clone(),
-            config_ref: input.config_ref.clone(),
-            enabled_contracts: input.enabled_contracts.clone(),
-            config_json: input.config_json.clone(),
-            status: input.status,
-            updated_by: input.actor_user_id,
-            created_at,
-            updated_at: now,
-        };
-        self.host_infrastructure_configs
-            .write()
-            .await
-            .insert(key, record.clone());
-        Ok(record)
-    }
-
-    async fn list_host_infrastructure_provider_configs(
-        &self,
-    ) -> Result<Vec<HostInfrastructureProviderConfigRecord>> {
-        Ok(self
-            .host_infrastructure_configs
-            .read()
-            .await
-            .values()
-            .cloned()
-            .collect())
     }
 }
 

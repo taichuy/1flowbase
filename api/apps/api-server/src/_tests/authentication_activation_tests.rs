@@ -191,65 +191,11 @@ fn rr14_host_extension_authentication_manifest_without_native_factory_fails_acti
 }
 
 #[tokio::test]
-async fn rr14_real_host_extension_route_authenticates_once_through_frozen_factory() {
+async fn memory_observation_route_authenticates_once_through_frozen_factory() {
     let (mut state, _) = test_api_state_with_database_url().await;
 
-    let manifest = plugin_framework::parse_plugin_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
-    ))
-    .unwrap();
-    let contribution = plugin_framework::parse_host_extension_contribution_manifest(include_str!(
-        "../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
-    ))
-    .unwrap();
-    let mut assembly = crate::extension_bus::assemble_extension_graph_input(
-        crate::api_workspace_root().unwrap(),
-        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
-        Vec::new(),
-    )
-    .unwrap();
-    assembly
-        .extend_active_host_extensions(&[(manifest, contribution)])
-        .unwrap();
-    let graph = Arc::new(assembly.compile_graph().unwrap());
-    let host_factories = crate::extension_bus::production_host_extension_authentication_factories()
-        .activate(assembly.host_extension_manifests())
-        .unwrap();
-    let snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
-            graph,
-            assembly.interface_operations(),
-            assembly.host_extension_manifests(),
-            Arc::new(
-                crate::extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
-                    state.store.clone(),
-                    state.api_node_id.clone(),
-                ),
-            ),
-            host_factories,
-        )
-        .unwrap(),
-    );
-    let compiled = snapshot.interface_registry().unwrap().snapshot();
-    let binding_id = interface_runtime::BindingId::new(
-        crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
-    )
-    .unwrap();
-    let activation = compiled.authentication(&binding_id).unwrap();
-    assert_eq!(activation.plugin().as_str(), "acme.authentication-host");
-    assert_eq!(activation.tier(), InterfaceExtensionTier::HostExtension);
-
-    let console_boot_plan = crate::app_state::compile_console_boot_plan_with_interface_operations(
-        Vec::new(),
-        Some(compiled.as_ref()),
-    )
-    .unwrap();
     let gets = Arc::new(AtomicUsize::new(0));
     let mutable = Arc::get_mut(&mut state).unwrap();
-    mutable.extension_boot_snapshot = Some(snapshot);
-    mutable.settings_feature_registry = console_boot_plan.settings_feature_registry;
-    mutable.console_operation_registry = console_boot_plan.console_operation_registry;
-    mutable.console_surface_registry = console_boot_plan.console_surface_registry;
     mutable.session_store = Arc::new(CountingSessionStore {
         inner: Arc::clone(&mutable.session_store),
         gets: Arc::clone(&gets),
@@ -262,9 +208,7 @@ async fn rr14_real_host_extension_route_authenticates_once_through_frozen_factor
         .clone()
         .oneshot(
             Request::builder()
-                .uri(
-                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH,
-                )
+                .uri("/api/console/settings/host-infrastructure/memory")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -284,9 +228,7 @@ async fn rr14_real_host_extension_route_authenticates_once_through_frozen_factor
     let rejected = app
         .oneshot(
             Request::builder()
-                .uri(
-                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH,
-                )
+                .uri("/api/console/settings/host-infrastructure/memory")
                 .header("cookie", invalid_cookie)
                 .body(Body::empty())
                 .unwrap(),

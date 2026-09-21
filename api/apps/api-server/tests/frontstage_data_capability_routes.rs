@@ -178,8 +178,6 @@ async fn fixture_state() -> (
         api_server::extension_bus::compile_extension_boot_snapshot(
             Arc::clone(&extension_graph),
             &extension_assembly,
-            store.clone(),
-            config.api_node_id.clone(),
         )
         .unwrap(),
     );

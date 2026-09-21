@@ -65,13 +65,6 @@ const SettingsMcpManagementSection = lazy(() =>
     default: module.SettingsMcpManagementSection
   }))
 );
-const HostInfrastructurePanel = lazy(() =>
-  import('../../components/host-infrastructure/HostInfrastructurePanel').then(
-    (module) => ({
-      default: module.HostInfrastructurePanel
-    })
-  )
-);
 const HostInfrastructureMemoryObservationPanel = lazy(() =>
   import('../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel').then(
     (module) => ({
@@ -231,14 +224,6 @@ export function SettingsSectionBody({
       return (
         <SettingsSectionBoundary>
           <UiManagementPanel canManage={access.canManageUiManagement} />
-        </SettingsSectionBoundary>
-      );
-    case 'host-infrastructure':
-      return (
-        <SettingsSectionBoundary>
-          <HostInfrastructurePanel
-            canManage={access.canManageHostInfrastructure}
-          />
         </SettingsSectionBoundary>
       );
     case 'memory-observation':

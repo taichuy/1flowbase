@@ -8,10 +8,8 @@ import {
   listConsoleHostInfrastructureCacheEntries,
   listConsoleHostInfrastructureMemoryEntries,
   listConsoleHostInfrastructureMemoryTree,
-  listConsoleHostInfrastructureProviders,
   revealConsoleHostInfrastructureCacheEntry,
   revealConsoleHostInfrastructureMemoryEntry,
-  saveConsoleHostInfrastructureProviderConfig,
   searchConsoleHostInfrastructureMemoryEntries,
   type ConsoleCacheEntryMetadata,
   type ConsoleCacheEntryValue,
@@ -20,7 +18,6 @@ import {
   type ConsoleHostInfrastructureMemoryOverview,
   type ConsoleMemoryStatsOverview,
   type ConsoleMemoryStats,
-  type ConsoleHostInfrastructureProviderConfig,
   type ConsoleHostInfrastructureCacheEntries,
   type ConsoleHostInfrastructureCacheOverview,
   type ConsoleMemoryContractSummary,
@@ -31,11 +28,8 @@ import {
   type ConsoleMemorySearchRequest,
   type ConsoleMemoryTreeNode,
   type ConsoleHostInfrastructureMemoryTree,
-  type SaveConsoleHostInfrastructureProviderConfigInput
 } from '@1flowbase/api-client';
 
-export type SettingsHostInfrastructureProviderConfig =
-  ConsoleHostInfrastructureProviderConfig;
 export type SettingsHostInfrastructureCacheOverview =
   ConsoleHostInfrastructureCacheOverview;
 export type SettingsHostInfrastructureCacheEntries =
@@ -64,15 +58,6 @@ export type SettingsHostInfrastructureMemorySearchRequest =
   ConsoleMemorySearchRequest;
 export type SettingsHostInfrastructureMemoryRevealMode =
   ConsoleMemoryRevealMode;
-
-export type SaveSettingsHostInfrastructureProviderConfigInput =
-  SaveConsoleHostInfrastructureProviderConfigInput;
-
-export const settingsHostInfrastructureProvidersQueryKey = [
-  'settings',
-  'host-infrastructure',
-  'providers'
-] as const;
 
 export const settingsHostInfrastructureCacheOverviewQueryKey = [
   'settings',
@@ -176,10 +161,6 @@ export function settingsHostInfrastructureMemorySearchQueryKey(
   ] as const;
 }
 
-export function fetchSettingsHostInfrastructureProviders() {
-  return listConsoleHostInfrastructureProviders();
-}
-
 export function fetchSettingsHostInfrastructureCacheOverview() {
   return getConsoleHostInfrastructureCacheOverview();
 }
@@ -261,18 +242,4 @@ export function clearSettingsHostInfrastructureCacheDomain(
   csrfToken: string
 ) {
   return clearConsoleHostInfrastructureCacheDomain(domainCode, csrfToken);
-}
-
-export function saveSettingsHostInfrastructureProviderConfig(
-  installationId: string,
-  providerCode: string,
-  input: SaveSettingsHostInfrastructureProviderConfigInput,
-  csrfToken: string
-) {
-  return saveConsoleHostInfrastructureProviderConfig(
-    installationId,
-    providerCode,
-    input,
-    csrfToken
-  );
 }

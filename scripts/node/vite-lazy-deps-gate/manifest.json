@@ -233,13 +233,6 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
-      "specifier": "../../components/host-infrastructure/HostInfrastructurePanel",
-      "smokePaths": [
-        "/settings/host-infrastructure"
-      ]
-    },
-    {
-      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "../../components/host-infrastructure/HostInfrastructureMemoryObservationPanel",
       "smokePaths": [
         "/settings/memory-observation"

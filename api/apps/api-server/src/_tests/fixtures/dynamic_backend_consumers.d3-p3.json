@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 373,
+  "projected_interface_count": 371,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -836,12 +836,6 @@
       "GET",
       "/api/console/settings/host-infrastructure/memory/stats",
       "Get host infrastructure memory stats overview"
-    ],
-    [
-      "host_infrastructure.providers.view",
-      "GET",
-      "/api/console/settings/host-infrastructure/providers",
-      "View host infrastructure providers"
     ],
     [
       "i18n_catalog.state.get",
@@ -2174,12 +2168,6 @@
       "PUT",
       "/api/console/settings/files/tables/:id/binding",
       "Bind file tables storage"
-    ],
-    [
-      "host_infrastructure.providers.configure",
-      "PUT",
-      "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
-      "Host infrastructure providers configure"
     ],
     [
       "i18n_catalog.custom_translations.upsert",
