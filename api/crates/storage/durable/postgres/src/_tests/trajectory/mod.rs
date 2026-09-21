@@ -10,7 +10,7 @@ async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_sco
     let (pool, flow_run_id) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
     let store = PgControlPlaneStore::new(pool);
     let node_run_id = Uuid::now_v7();
-    sqlx::query("insert into node_runs (id,flow_run_id,node_id,node_type,node_alias,status) values ($1,$2,'llm','llm','LLM','running')")
+    sqlx::query("insert into node_runs (id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'llm','llm','LLM','running' from flow_runs where id=$2")
         .bind(node_run_id).bind(flow_run_id).execute(store.pool()).await.unwrap();
     let payload = |sequence, body: &str| json!({"protocol":"openai", "transport":"http", "direction":"sent", "kind":"request", "body":body, "encoding":"utf8", "flow_run_id":flow_run_id, "node_run_id":node_run_id, "node_id":"llm", "invocation_id":"invocation-1", "provider_attempt_index":0, "sequence":sequence});
     let input = |event_type: &str, payload| AppendRuntimeEventInput {

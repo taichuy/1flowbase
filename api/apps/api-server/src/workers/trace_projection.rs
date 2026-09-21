@@ -1,7 +1,7 @@
 //! Durable, coalesced trace projection updates. Log reads never run this work.
 use crate::{
     app_state::ApiState,
-    routes::applications_group::application_runtime::enrich_application_run_detail_visible_internal_llm_route_traces,
+    routes::application_runtime::enrich_application_run_detail_visible_internal_llm_route_traces,
 };
 use control_plane::{
     orchestration_runtime::trace_projection::{
