@@ -55,14 +55,12 @@ async fn application_runtime_routes_logs_archive_import_restores_visible_target_
             .is_none(),
         "overview remains body-free after import"
     );
-    let imported_detail = get_console_json(
-        &app,
-        &cookie,
-        format!("/api/console/applications/{application_id}/logs/runs/{first_target_run_id}"),
-    )
-    .await;
+    let (reexport_status, reexport_bytes) =
+        get_run_archive(&app, &cookie, &application_id, &first_target_run_id, 1).await;
+    assert_eq!(reexport_status, StatusCode::OK);
+    let reexport: Value = serde_json::from_slice(&reexport_bytes).unwrap();
     assert_eq!(
-        imported_detail["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        reexport["entries"][0]["flow_run"]["input_payload"]["node-start"]["query"],
         json!(query)
     );
 

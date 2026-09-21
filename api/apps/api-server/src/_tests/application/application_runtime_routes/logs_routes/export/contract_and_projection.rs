@@ -393,14 +393,12 @@ async fn application_runtime_routes_logs_archive_import_accepts_zip_format() {
             .is_none(),
         "overview remains body-free after import"
     );
-    let imported_detail = get_console_json(
-        &app,
-        &cookie,
-        format!("/api/console/applications/{application_id}/logs/runs/{target_run_id}"),
-    )
-    .await;
+    let (reexport_status, reexport_bytes) =
+        get_run_archive(&app, &cookie, &application_id, &target_run_id, 1).await;
+    assert_eq!(reexport_status, StatusCode::OK);
+    let reexport: Value = serde_json::from_slice(&reexport_bytes).unwrap();
     assert_eq!(
-        imported_detail["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        reexport["entries"][0]["flow_run"]["input_payload"]["node-start"]["query"],
         json!("zip import test")
     );
 }
