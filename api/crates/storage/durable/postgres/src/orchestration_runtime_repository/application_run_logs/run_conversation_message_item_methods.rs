@@ -22,7 +22,7 @@ const APPLICATION_RUN_OUTPUT_SOURCE_ERROR: &str = "error";
 const APPLICATION_RUN_OUTPUT_SOURCE_NONE: &str = "none";
 
 impl PgControlPlaneStore {
-    /// Completed output boundaries refresh once per batch, never per token.
+    /// Completed output and node fact boundaries refresh once per batch, never per token.
     async fn refresh_completed_output_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run_id: Uuid,
@@ -31,7 +31,9 @@ impl PgControlPlaneStore {
             .bind(flow_run_id).fetch_one(&mut **tx).await?;
         let run = map_flow_run_record(row)?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &run).await?;
-        Self::ensure_application_run_conversation_message_items_projection(tx, &run).await?;
+        // Node debug/prompt facts are not part of the run/event watermark.
+        // A writer boundary must therefore replace the projection even when that watermark matches.
+        Self::replace_application_run_conversation_message_items_projection(tx, &run).await?;
         Self::refresh_application_run_log_task_for_flow_run(tx, flow_run_id).await
     }
 
@@ -690,7 +692,9 @@ fn application_run_task_message_items_cte() -> &'static str {
             coalesce(t.final_output_run_id,t.id) as flow_run_id,
             0::bigint as task_sequence, 'business_turn'::text as source_kind,
             null::text as role, null::text as content, t.user_input as query,
-            null::text as model,
+            coalesce((select m.model from application_run_conversation_message_items m
+                where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
+                order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
             case when t.outcome='final_answer_observed' then t.final_output end as answer,
             t.id as detail_run_id, true as can_open_detail, true as is_current,
             t.status, t.started_at, t.finished_at, $3::integer as projection_version,

@@ -240,7 +240,13 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
         .iter()
         .filter_map(|item| item.detail_run_id)
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(detail_ids, std::iter::once(ids[1]).collect());
+    assert_eq!(detail_ids, std::iter::once(ids[0]).collect());
+    assert_eq!(
+        messages.items.len(),
+        1,
+        "compaction calls belong to one business turn"
+    );
+    assert_eq!(messages.items[0].id, ids[0]);
 }
 
 // #2034 AC-007: existing summaries gain call_kind from the retained native

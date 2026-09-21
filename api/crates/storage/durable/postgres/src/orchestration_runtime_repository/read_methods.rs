@@ -782,7 +782,10 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id, runs.status, runs.started_at, runs.finished_at
                 union all
-                select t.id,t.status,t.user_input as query,null::text as model,
+                select t.id,t.status,t.user_input as query,
+                    coalesce((select m.model from application_run_conversation_message_items m
+                        where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
+                        order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
                     case when t.outcome='final_answer_observed' then t.final_output end as answer,
                     t.started_at,t.finished_at,
                     (extract(epoch from t.started_at)*1000000)::bigint as order_sequence

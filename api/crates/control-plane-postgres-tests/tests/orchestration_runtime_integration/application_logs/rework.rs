@@ -344,8 +344,12 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .unwrap();
     assert_eq!(
         history.items.len(),
-        5,
-        "original conversation includes both tasks, excludes other credential"
+        2,
+        "business conversation includes both tasks, excludes other credential"
+    );
+    assert_eq!(
+        history.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+        vec![ids[0], ids[4]]
     );
     assert_eq!(
         store

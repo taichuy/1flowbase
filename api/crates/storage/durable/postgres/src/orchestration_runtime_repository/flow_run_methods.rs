@@ -783,6 +783,11 @@ impl PgControlPlaneStore {
         .bind(input.finished_at)
         .execute(&mut *tx)
         .await?;
+        if node_run.node_type == "llm" {
+            // Effective prompt/debug facts are owned by the node writer. GET
+            // must never rebuild the business conversation to discover them.
+            Self::refresh_completed_output_projection(&mut tx, node_run.flow_run_id).await?;
+        }
         tx.commit().await?;
 
         Ok(node_run)

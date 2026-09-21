@@ -59,7 +59,7 @@ async fn requested_model_snapshot_migration_backfills_summary_and_task() {
 }
 
 // AC-012/013: populated old schema, exact facts, forward migration, original
-// read/rebuild, and retirement. Fresh installation is covered by rework.rs.
+// read-only projection, and retirement. Fresh installation is covered by rework.rs.
 #[tokio::test]
 async fn issue_2032_rework_migrates_populated_five_tables_into_original_logs() {
     let pool = isolated_database().await.connect().await.unwrap();
@@ -150,7 +150,11 @@ async fn issue_2032_rework_migrates_populated_five_tables_into_original_logs() {
         )
         .await
         .unwrap();
-    assert_eq!(page.items.len(), 2);
+    assert_eq!(
+        page.items.len(),
+        1,
+        "migration retains raw tool facts but exposes one business turn"
+    );
     let first = page.items.iter().map(|item| item.id).collect::<Vec<_>>();
     let facts:Vec<serde_json::Value>=sqlx::query_scalar("select native_message from application_run_conversation_message_items where flow_run_id=$1 order by display_sequence").bind(run).fetch_all(store.pool()).await.unwrap();
     assert!(facts
@@ -164,7 +168,7 @@ async fn issue_2032_rework_migrates_populated_five_tables_into_original_logs() {
         .execute(store.pool())
         .await
         .unwrap();
-    let rebuilt = store
+    let retained_page = store
         .list_application_run_conversation_message_items_page(
             seeded.application_id,
             run,
@@ -178,6 +182,28 @@ async fn issue_2032_rework_migrates_populated_five_tables_into_original_logs() {
         .unwrap();
     assert_eq!(
         first,
-        rebuilt.items.iter().map(|item| item.id).collect::<Vec<_>>()
+        retained_page
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>()
     );
+    let count: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
+    )
+    .bind(run)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        count, 0,
+        "read-only GET never repairs deleted native projections"
+    );
+    let retained_input: serde_json::Value =
+        sqlx::query_scalar("select input_payload from flow_runs where id=$1")
+            .bind(run)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(retained_input, original_input);
 }

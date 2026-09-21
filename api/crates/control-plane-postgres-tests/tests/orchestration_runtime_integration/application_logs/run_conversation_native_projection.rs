@@ -62,36 +62,18 @@ async fn native_running_run_projects_prompt_context_and_completed_output_items()
     )
     .await;
 
-    // #2090 AC-001/AC-005: a running call already exposes its retained input,
-    // its completed output items and the context in force.
+    // Running tasks expose the current input and context; completed provider
+    // facts remain available in output state without becoming extra turns.
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert_eq!(page.total_count, 3);
-    assert_eq!(
-        page.items
-            .iter()
-            .map(|item| (
-                item.role.as_deref(),
-                item.content.as_deref(),
-                item.output_source.as_deref(),
-                item.status.as_str(),
-            ))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("user"), Some("current question"), None, "running"),
-            (
-                Some("assistant"),
-                Some("exec"),
-                Some("provider_output_item"),
-                "running"
-            ),
-            (
-                Some("assistant"),
-                Some("done"),
-                Some("provider_output_item"),
-                "running"
-            ),
-        ]
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.items[0].query.as_deref(), Some("current question"));
+    assert_eq!(page.items[0].model.as_deref(), Some("gpt-native"));
+    assert_eq!(page.items[0].status, "running");
+    assert!(
+        page.items[0].answer.is_none(),
+        "a running task does not claim a final answer"
     );
+    assert_eq!(page.items[0].detail_run_id, Some(run.id));
     assert_eq!(
         page.contexts
             .iter()
@@ -108,7 +90,7 @@ async fn native_running_run_projects_prompt_context_and_completed_output_items()
     assert_eq!(output_state.status, "running");
     assert_eq!(output_state.output_source, "provider_output_item");
     assert_eq!(output_state.output_item_count, 2);
-    assert_eq!(page.newest_sequence, Some(2));
+    assert_eq!(page.newest_sequence, Some(0));
 
     // #2090 AC-001: the task row carries the same observed prompt while running,
     // without waiting for the run projection to be rebuilt.
@@ -184,6 +166,15 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
     .await
     .unwrap();
 
+    let persisted_effective: Option<String> = sqlx::query_scalar(
+        "select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
+        .bind(run.id).fetch_optional(store.pool()).await.unwrap();
+    assert_eq!(
+        persisted_effective.as_deref(),
+        Some("effective system"),
+        "node completion writes the effective context before any GET"
+    );
+
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(
         page.contexts
@@ -202,10 +193,78 @@ async fn native_projection_distinguishes_client_application_and_effective_contex
         ]
     );
     assert!(
-        page.items.iter().all(|item| item.role.as_deref() != Some("system")
-            && item.role.as_deref() != Some("developer")),
+        page.items
+            .iter()
+            .all(|item| item.role.as_deref() != Some("system")
+                && item.role.as_deref() != Some("developer")),
         "context never becomes part of the paged conversation stream"
     );
+}
+
+#[tokio::test]
+async fn native_node_updates_write_effective_context_without_get_repair() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-06-26 09:45:00 UTC);
+    let run = seed_native_run_conversation_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        "node-context-writes",
+        started_at,
+        json!({"node-start": {"query": "q"}}),
+        Some(json!({"role": "user", "content": "q"})),
+    )
+    .await;
+    let node = store
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "node-llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at,
+        })
+        .await
+        .unwrap();
+    // Identical explicit timestamps must not hide changed node debug facts.
+    for effective in ["first effective system", "second effective system"] {
+        store
+            .update_node_run(&UpdateNodeRunInput {
+                node_run_id: node.id,
+                status: NodeRunStatus::Running,
+                output_payload: json!({}),
+                error_payload: None,
+                metrics_payload: json!({}),
+                debug_payload: json!({"llm_context": {"effective_system": effective}}),
+                finished_at: Some(started_at),
+            })
+            .await
+            .unwrap();
+        let persisted: String = sqlx::query_scalar("select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
+            .bind(run.id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(persisted, effective);
+    }
+    store.complete_node_run(&CompleteNodeRunInput {
+        node_run_id: node.id, status: NodeRunStatus::Succeeded,
+        output_payload: json!({}), error_payload: None, metrics_payload: json!({}),
+        debug_payload: json!({"llm_context": {"effective_system": "completed effective system"}}),
+        finished_at: started_at,
+    }).await.unwrap();
+    let persisted: String = sqlx::query_scalar("select content from application_run_conversation_message_items where flow_run_id=$1 and context_source='effective_prompt'")
+        .bind(run.id).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(persisted, "completed effective system");
+    let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert!(page
+        .contexts
+        .iter()
+        .any(|context| context.context_source == "effective_prompt"
+            && context.content == "completed effective system"));
 }
 
 #[tokio::test]
@@ -246,30 +305,21 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
     .await
     .unwrap();
 
-    // #2090 AC-002: the saved answer is shown and its source is stated, while
-    // the call still runs.
+    // An in-flight saved answer retains its source without claiming completion.
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert_eq!(page.total_count, 2);
-    assert_eq!(
-        page.items
-            .iter()
-            .map(|item| (
-                item.role.as_deref(),
-                item.answer.as_deref(),
-                item.content.as_deref(),
-                item.output_source.as_deref(),
-            ))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("user"), None, Some("title question"), None),
-            (
-                Some("assistant"),
-                None,
-                Some("{\"title\":\"Review quality gates\"}"),
-                Some("persisted_answer")
-            ),
-        ]
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.items[0].query.as_deref(), Some("title question"));
+    assert!(
+        page.items[0].answer.is_none(),
+        "a persisted in-flight payload is not a completed business answer"
     );
+    let retained: serde_json::Value =
+        sqlx::query_scalar("select output_payload from flow_runs where id=$1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(retained["answer"], "{\"title\":\"Review quality gates\"}");
     assert_eq!(
         page.output_state.as_ref().unwrap().output_source,
         "persisted_answer"
@@ -279,10 +329,9 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
         .await
         .unwrap()
         .expect("task row");
-    assert_eq!(
-        running_task.final_output.as_deref(),
-        Some("{\"title\":\"Review quality gates\"}"),
-        "an observed answer stays on the task row"
+    assert!(
+        running_task.final_output.is_none(),
+        "persisted output requires successful completion"
     );
     assert_eq!(
         running_task.outcome, "in_progress",
@@ -303,20 +352,12 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
         }),
     )
     .await;
-    let replaced = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert_eq!(replaced.total_count, 2);
-    assert_eq!(
-        replaced
-            .items
-            .iter()
-            .map(|item| (item.content.as_deref(), item.output_source.as_deref()))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("title question"), None),
-            (Some("formal answer"), Some("provider_output_item")),
-        ],
-        "a later formal item replaces the persisted fallback instead of duplicating it"
-    );
+    let replaced =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(replaced.total_count, 1);
+    assert_eq!(replaced.items[0].id, page.items[0].id);
+    assert!(replaced.items[0].answer.is_none());
+    assert_eq!(replaced.output_state.as_ref().unwrap().output_item_count, 1);
 
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
         &store,
@@ -337,6 +378,10 @@ async fn native_persisted_answer_is_projected_with_its_source_and_replaced_by_a_
         .expect("task row");
     assert_eq!(finished_task.outcome, "final_answer_observed");
     assert_eq!(finished_task.final_output.as_deref(), Some("formal answer"));
+    let final_page =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(final_page.items[0].id, page.items[0].id);
+    assert_eq!(final_page.items[0].answer.as_deref(), Some("formal answer"));
 }
 
 #[tokio::test]
@@ -386,17 +431,14 @@ async fn native_tool_call_items_do_not_hide_a_persisted_answer() {
     .unwrap();
 
     let page = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].query.as_deref(), Some("run it"));
+    assert_eq!(page.items[0].answer.as_deref(), Some("the final answer"));
+    let tool_name: String = sqlx::query_scalar("select payload#>>'{item,name}' from runtime_events where flow_run_id=$1 and event_type='provider_output_item_done'")
+        .bind(run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
-        page.items
-            .iter()
-            .map(|item| (item.content.as_deref(), item.output_source.as_deref()))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("run it"), None),
-            (Some("exec"), Some("provider_output_item")),
-            (Some("the final answer"), Some("persisted_answer")),
-        ],
-        "a tool-call round must not hide the answer the call stored"
+        tool_name, "exec",
+        "tool execution remains retained outside chat"
     );
     assert_eq!(
         page.output_state.as_ref().unwrap().output_source,
@@ -454,26 +496,33 @@ async fn native_projection_refreshes_when_late_facts_arrive() {
     )
     .await;
 
-    let refreshed = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert_eq!(
-        refreshed
-            .items
-            .iter()
-            .map(|item| (
-                item.role.as_deref(),
-                item.content.as_deref(),
-                item.output_source.as_deref(),
-            ))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("user"), Some("late question"), None),
-            (
-                Some("assistant"),
-                Some("late answer"),
-                Some("provider_output_item")
-            ),
-        ]
-    );
+    let refreshed =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(refreshed.items.len(), 1);
+    assert_eq!(refreshed.items[0].id, first.items[0].id);
+    assert_eq!(refreshed.items[0].query.as_deref(), Some("late question"));
+    assert!(refreshed.items[0].answer.is_none());
+    let task = store
+        .get_application_run_log_task(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.final_output.as_deref(), Some("late answer"));
+    assert_eq!(task.outcome, "in_progress");
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({"answer":"late answer"}),
+            error_payload: None,
+            finished_at: Some(started_at + Duration::seconds(2)),
+        })
+        .await
+        .unwrap();
+    let complete =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    assert_eq!(complete.items[0].id, first.items[0].id);
+    assert_eq!(complete.items[0].answer.as_deref(), Some("late answer"));
 }
 
 #[tokio::test]
@@ -517,19 +566,16 @@ async fn run_conversation_keeps_message_ids_and_reports_updated_existing_items()
 
     // #2090 AC-004: an updated item keeps its identity so a client can replace
     // the stale copy instead of showing both.
-    let finished = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
+    let finished =
+        run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
     assert_eq!(finished.items[0].id, prompt_id);
     assert_eq!(finished.items[0].status, "succeeded");
+    assert_eq!(finished.items.len(), 1);
+    assert_eq!(finished.items[0].query.as_deref(), Some("current question"));
+    assert_eq!(finished.items[0].answer.as_deref(), Some("final answer"));
     assert_eq!(
-        finished
-            .items
-            .iter()
-            .map(|item| (item.content.as_deref(), item.output_source.as_deref()))
-            .collect::<Vec<_>>(),
-        vec![
-            (Some("current question"), None),
-            (Some("final answer"), Some("persisted_answer")),
-        ]
+        finished.items[0].output_source.as_deref(),
+        Some("persisted_answer")
     );
 }
 
@@ -541,87 +587,148 @@ async fn run_conversation_after_cursor_drains_a_backlog_larger_than_one_page() {
     let seeded = seed_runtime_base(&store).await;
     let compiled = seed_compiled_plan(&store, &seeded).await;
     let started_at = datetime!(2026-06-26 11:30:00 UTC);
-    let run = seed_native_run_conversation_flow_run(
-        &store,
-        &seeded,
-        &compiled,
-        "native-cursor-backlog",
-        started_at,
-        json!({
-            "__native_model_prompt_context": { "system": [], "messages": [] },
-            "node-start": { "query": "q" }
-        }),
-        Some(json!({ "role": "user", "content": "current question" })),
-    )
-    .await;
-    for index in 0..6 {
-        append_provider_output_item(
+    let api_key_id = seed_application_api_key(&store, &seeded).await;
+    let mut ids = Vec::new();
+    let mut conversation_id = None;
+    let mut watermark = None;
+    for index in 0..13 {
+        let debug_session_id = format!("native-backlog-{index}");
+        let run = ApplicationPublishedFlowRunRepository::create_published_flow_run(
             &store,
-            run.id,
-            json!({
-                "type": "message",
-                "id": format!("message-{index}"),
-                "role": "assistant",
-                "content": [{ "type": "output_text", "text": format!("answer-{index}") }]
-            }),
+            &CreateFlowRunInput {
+                application_run_log_context: Some(ApplicationRunLogContext {
+                    identity_status: "identified".into(),
+                    protocol: Some("openai_responses".into()),
+                    thread_id: Some("thread-native-cursor-backlog".into()),
+                    turn_id: Some(format!("turn-{debug_session_id}")),
+                    prompt: Some(json!({"role": "user", "content": format!("question-{index}")})),
+                    ..Default::default()
+                }),
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                flow_id: seeded.flow_id,
+                flow_draft_id: seeded.draft_id,
+                compiled_plan_id: compiled.id,
+                debug_session_id: debug_session_id.to_string(),
+                flow_schema_version: compiled.schema_version.clone(),
+                document_hash: compiled.document_hash.clone(),
+                run_mode: FlowRunMode::PublishedApiRun,
+                target_node_id: None,
+                title: "native run conversation".into(),
+                status: FlowRunStatus::Running,
+                input_payload: json!({"node-start": {"query": format!("question-{index}")}}),
+                started_at: started_at + Duration::seconds(index * 2),
+                api_key_id: Some(api_key_id),
+                publication_version_id: Some(Uuid::now_v7()),
+                assistant_conversation_id: None,
+                external_user: None,
+                external_conversation_id: None,
+                external_trace_id: None,
+                compatibility_mode: Some("openai-responses".into()),
+                idempotency_key: Some(format!("native-{debug_session_id}")),
+            },
         )
-        .await;
+        .await
+        .unwrap()
+        .flow_run;
+        append_provider_output_item(&store, run.id, json!({
+            "type": "custom_tool_call", "call_id": format!("call-{index}"), "name": "exec", "input": "ls"
+        })).await;
+        store
+            .update_flow_run(&UpdateFlowRunInput {
+                flow_run_id: run.id,
+                status: FlowRunStatus::Succeeded,
+                output_payload: json!({"answer": format!("answer-{index}")}),
+                error_payload: None,
+                finished_at: Some(started_at + Duration::seconds(index * 2 + 1)),
+            })
+            .await
+            .unwrap();
+        ids.push(run.id);
+        if index == 0 {
+            conversation_id = store
+                .get_application_run_log_task(seeded.application_id, run.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .log_conversation_id;
+        }
+        if index == 5 {
+            let first = store
+                .list_application_conversation_runs_page(
+                    seeded.application_id,
+                    ListApplicationConversationRunsPageInput {
+                        external_conversation_id: conversation_id.unwrap().to_string(),
+                        around_run_id: None,
+                        before_run_id: None,
+                        after_run_id: None,
+                        limit: 5,
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                first.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+                ids[1..]
+            );
+            assert!(first.has_before);
+            assert!(!first.has_after);
+            watermark = first.after_cursor;
+        }
     }
-
-    let first = run_conversation_page(&store, seeded.application_id, run.id, None, None, 5).await;
-    assert_eq!(first.total_count, 7);
-    assert!(first.has_before);
-    assert!(!first.has_after);
-    assert_eq!(first.items.len(), 5);
-    let watermark = first.newest_sequence.expect("newest sequence");
-
-    for index in 6..13 {
-        append_provider_output_item(
-            &store,
-            run.id,
-            json!({
-                "type": "message",
-                "id": format!("message-{index}"),
-                "role": "assistant",
-                "content": [{ "type": "output_text", "text": format!("answer-{index}") }]
-            }),
-        )
-        .await;
-    }
-
-    // Reading forward from the newest known position drains the backlog in
-    // pages, without a gap and without repeating an item.
     let mut collected = Vec::new();
-    let mut after = Some(watermark);
-    let mut guard = 0;
+    let mut after = Some(watermark.expect("latest business turn cursor"));
+    let mut pages = 0;
     while let Some(cursor) = after {
-        let page =
-            run_conversation_page(&store, seeded.application_id, run.id, None, Some(cursor), 5)
-                .await;
-        collected.extend(
-            page.items
-                .iter()
-                .map(|item| (item.display_sequence, item.content.clone().unwrap())),
-        );
-        after = page.has_after.then(|| page.after_cursor).flatten();
-        guard += 1;
-        assert!(guard < 20, "catch-up must terminate");
+        let page = store
+            .list_application_conversation_runs_page(
+                seeded.application_id,
+                ListApplicationConversationRunsPageInput {
+                    external_conversation_id: conversation_id.unwrap().to_string(),
+                    around_run_id: None,
+                    before_run_id: None,
+                    after_run_id: Some(cursor),
+                    limit: 5,
+                },
+            )
+            .await
+            .unwrap();
+        for item in &page.items {
+            let index = ids.iter().position(|id| *id == item.id).unwrap();
+            assert_eq!(
+                item.query.as_deref(),
+                Some(format!("question-{index}").as_str())
+            );
+            assert_eq!(
+                item.answer.as_deref(),
+                Some(format!("answer-{index}").as_str())
+            );
+        }
+        collected.extend(page.items.iter().map(|item| item.id));
+        after = page.has_after.then_some(page.after_cursor).flatten();
+        pages += 1;
+        assert!(pages <= 2, "catch-up must terminate after two pages");
     }
+    assert_eq!(pages, 2);
     assert_eq!(
-        collected
-            .iter()
-            .map(|(_, content)| content.as_str())
-            .collect::<Vec<_>>(),
-        (6..13).map(|index| format!("answer-{index}")).collect::<Vec<_>>()
+        collected,
+        ids[6..],
+        "catch-up yields every new task exactly once, in order"
     );
-    let sequences = collected
-        .iter()
-        .map(|(sequence, _)| *sequence)
-        .collect::<Vec<_>>();
-    let mut sorted = sequences.clone();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(sequences, sorted, "catch-up yields ordered, unique items");
+    let wrong_scope = store
+        .list_application_conversation_runs_page(
+            Uuid::now_v7(),
+            ListApplicationConversationRunsPageInput {
+                external_conversation_id: conversation_id.unwrap().to_string(),
+                around_run_id: None,
+                before_run_id: None,
+                after_run_id: watermark,
+                limit: 5,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(wrong_scope.items.is_empty());
 }
 
 /// A native (client protocol) run keeps its request facts in `log_context`, so

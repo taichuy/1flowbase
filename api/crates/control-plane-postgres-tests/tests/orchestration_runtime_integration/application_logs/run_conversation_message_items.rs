@@ -154,40 +154,47 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
         )
         .await
         .unwrap();
-    // #2090: the context entry is served beside the page, so the paged stream
-    // counts and pages only conversation turns.
-    assert_eq!(initial_page.total_count, 5);
-    assert!(initial_page.has_before);
+    // Imported history stays in the retained projection above; a task page
+    // exposes only the current business turn, with context outside its limit.
+    assert_eq!(initial_page.total_count, 1);
+    assert!(!initial_page.has_before);
     assert!(!initial_page.has_after);
-    assert_eq!(initial_page.before_cursor, Some(3));
+    assert_eq!(initial_page.before_cursor, None);
     assert_eq!(initial_page.after_cursor, None);
-    assert_eq!(initial_page.newest_sequence, Some(4));
+    assert_eq!(initial_page.newest_sequence, Some(0));
     assert_eq!(initial_page.contexts.len(), 1);
     assert_eq!(initial_page.contexts[0].role, "system");
-    assert_eq!(initial_page.contexts[0].context_source, "application_config");
     assert_eq!(
-        initial_page.contexts[0].content,
-        "Use concise Chinese.",
-        "the effective system prompt stays discoverable beside the newest page"
+        initial_page.contexts[0].context_source,
+        "application_config"
     );
+    assert_eq!(initial_page.contexts[0].content, "Use concise Chinese.");
+    assert_eq!(initial_page.items.len(), 1);
+    assert_eq!(initial_page.items[0].source_kind, "business_turn");
     assert_eq!(
-        initial_page
-            .items
-            .iter()
-            .map(|item| (item.display_sequence, item.source_kind.as_str()))
-            .collect::<Vec<_>>(),
-        vec![(3, "imported_context"), (4, "current_run")]
-    );
-    assert_eq!(
-        initial_page.items[1].query.as_deref(),
+        initial_page.items[0].query.as_deref(),
         Some("current question")
     );
     assert_eq!(
-        initial_page.items[1].answer.as_deref(),
+        initial_page.items[0].model.as_deref(),
+        Some("deepseek-chat")
+    );
+    assert_eq!(
+        initial_page.items[0].answer.as_deref(),
         Some("current answer")
     );
-    assert_eq!(initial_page.items[1].detail_run_id, Some(run.id));
-    assert!(initial_page.items[1].can_open_detail);
+    assert_eq!(initial_page.items[0].detail_run_id, Some(run.id));
+    assert!(initial_page.items[0].can_open_detail);
+    let task = store
+        .get_application_run_log_task(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        task.user_input.as_deref(),
+        Some("current question"),
+        "task list and chat must not use imported history as the current input"
+    );
 
     let previous_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
@@ -195,28 +202,19 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
             seeded.application_id,
             run.id,
             ListApplicationRunConversationMessageItemsPageInput {
-                before_sequence: Some(3),
+                before_sequence: Some(0),
                 after_sequence: None,
                 limit: 3,
             },
         )
         .await
         .unwrap();
-    assert_eq!(
-        previous_page
-            .items
-            .iter()
-            .map(|item| item.display_sequence)
-            .collect::<Vec<_>>(),
-        vec![0, 1, 2]
-    );
-    assert!(
-        !previous_page.has_before,
-        "the context entry is not a conversation turn, so nothing precedes the first history item"
-    );
+    assert!(previous_page.items.is_empty());
+    assert!(!previous_page.has_before);
     assert!(previous_page.has_after);
     assert_eq!(previous_page.before_cursor, None);
-    assert_eq!(previous_page.after_cursor, Some(2));
+    assert_eq!(previous_page.after_cursor, Some(-1));
+    assert_eq!(previous_page.contexts.len(), 1);
 
     let empty_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
@@ -232,7 +230,7 @@ async fn terminal_run_writes_conversation_message_items_and_pages_by_display_seq
         .await
         .unwrap();
     assert!(empty_page.items.is_empty());
-    assert_eq!(empty_page.total_count, 5);
+    assert_eq!(empty_page.total_count, 1);
     assert!(empty_page.has_before);
     assert!(!empty_page.has_after);
     assert_eq!(empty_page.before_cursor, Some(6));
@@ -295,10 +293,11 @@ async fn terminal_failed_and_cancelled_runs_write_current_projection_items() {
             .unwrap()
             .expect("terminal run should exist");
         assert_eq!(current_item.status, status.as_str());
-        assert_eq!(
-            current_item.answer.as_deref(),
-            Some(format!("terminal error {index}").as_str())
+        assert!(
+            current_item.answer.is_none(),
+            "an error is not an assistant business answer"
         );
+        assert_eq!(current_item.output_source.as_deref(), Some("error"));
 
         let projected_current = sqlx::query_as::<_, (String, String)>(
             r#"
@@ -661,7 +660,13 @@ async fn non_terminal_run_projects_retained_input_before_the_call_finishes() {
                 item.is_current,
             ))
             .collect::<Vec<_>>(),
-        vec![(None, Some("running question"), Some("gpt-running"), "running", true)]
+        vec![(
+            None,
+            Some("running question"),
+            Some("gpt-running"),
+            "running",
+            true
+        )]
     );
     assert_eq!(projection_page.contexts.len(), 1);
     assert_eq!(
@@ -723,7 +728,7 @@ async fn non_terminal_run_projects_retained_input_before_the_call_finishes() {
 }
 
 #[tokio::test]
-async fn terminal_projection_missing_rebuilds_conversation_message_projection() {
+async fn terminal_projection_missing_is_not_rebuilt_by_conversation_get() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -781,35 +786,36 @@ async fn terminal_projection_missing_rebuilds_conversation_message_projection() 
         )
         .await
         .unwrap();
-    assert_eq!(projection_page.total_count, 3);
+    assert_eq!(projection_page.total_count, 1);
     assert_eq!(
-        projection_page
-            .items
-            .iter()
-            .map(|item| (
-                item.display_sequence,
-                item.role.as_deref(),
-                item.content.as_deref(),
-                item.is_current,
-            ))
-            .collect::<Vec<_>>(),
-        vec![
-            (0, Some("user"), Some("old question"), false),
-            (1, Some("assistant"), Some("old answer"), false),
-            (2, None, None, true),
-        ]
+        projection_page.items[0].query.as_deref(),
+        Some("historical question")
     );
     assert_eq!(
-        projection_page
-            .contexts
-            .iter()
-            .map(|context| (
-                context.role.as_str(),
-                context.context_source.as_str(),
-                context.content.as_str(),
-            ))
-            .collect::<Vec<_>>(),
-        vec![("system", "application_config", "Use the recovered system prompt.")]
+        projection_page.items[0].answer.as_deref(),
+        Some("historical answer")
+    );
+    assert!(
+        projection_page.contexts.is_empty(),
+        "GET does not fabricate or repair missing context"
+    );
+    let remaining: i64 = sqlx::query_scalar(
+        "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(remaining, 0, "GET must not repopulate a missing projection");
+    let input: serde_json::Value =
+        sqlx::query_scalar("select input_payload from flow_runs where id=$1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        input, run.input_payload,
+        "historical retained inputs are never rewritten by GET"
     );
 }
 
