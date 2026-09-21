@@ -43,17 +43,9 @@ impl PgControlPlaneStore {
         let mut tx = self.pool().begin().await?;
 
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, flow_run).await?;
-        if is_terminal {
-            Self::ensure_application_run_conversation_message_items_projection(&mut tx, flow_run)
-                .await?;
-        }
-        // A call that is still in flight keeps the messages it already
-        // published. Removing them would hide retained input and completed
-        // output items until the call reached a terminal state, and a status
-        // transition is not a reason to forget a fact. The read path reprojects
-        // the run when its watermark advances.
-        // The task row derives from member summaries and message projections;
-        // refresh it in the same transaction so list and detail never disagree.
+        Self::ensure_application_run_conversation_message_items_projection(&mut tx, flow_run)
+            .await?;
+        // Writers own projection freshness; GET never repairs retained facts.
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
 

@@ -245,6 +245,9 @@ impl PgControlPlaneStore {
         .fetch_one(&mut *tx)
         .await?;
         let event = map_runtime_event_record(row)?;
+        if input.event_type == "provider_output_item_done" {
+            Self::refresh_completed_output_projection(&mut tx, input.flow_run_id).await?;
+        }
         tx.commit().await?;
         Ok(event)
     }
@@ -342,6 +345,12 @@ impl PgControlPlaneStore {
                     .map(map_runtime_event_record)
                     .collect::<Result<Vec<_>>>()?,
             );
+        }
+        if inputs
+            .iter()
+            .any(|input| input.event_type == "provider_output_item_done")
+        {
+            Self::refresh_completed_output_projection(&mut tx, inputs[0].flow_run_id).await?;
         }
         tx.commit().await?;
         records.sort_by_key(|record| record.sequence);

@@ -180,43 +180,25 @@ describe('ApplicationRunDetailPanel', () => {
     debugConsoleState.latestMessages = [];
   });
 
-  test('AC-001/AC-003 renders a UI-only bot message for waiting callback runs with no answer and keeps the detail action', async () => {
-    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
-      conversationPage([
-        {
-          status: 'waiting_callback',
-          query: '> 要我按 A + B1 动手吗？',
-          answer: null,
-          can_open_detail: true
-        }
-      ])
-    );
-    const { onOpenMessageLog } = renderPanel({});
-
-    expect(
-      await screen.findByText('等待 Callback 回填中，暂时还没有输出。')
-    ).toBeInTheDocument();
-    expect(screen.getByText('> 要我按 A + B1 动手吗？')).toBeInTheDocument();
-
-    const assistantMessage = screen.getByTestId('message-assistant');
-    expect(assistantMessage).toHaveAttribute('data-can-open-detail', 'true');
-    fireEvent.click(
-      within(assistantMessage).getByRole('button', {
-        name: 'open-assistant-run-1'
-      })
-    );
-
-    await waitFor(() => {
-      expect(onOpenMessageLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: 'assistant',
-          content: '等待 Callback 回填中，暂时还没有输出。',
-          detailRunId: 'run-1',
-          canOpenDetail: true
-        })
+  test.each([
+    'waiting_callback',
+    'waiting_human',
+    'running',
+    'failed',
+    'cancelled'
+  ])(
+    '#2105 %s retains the user input without inventing an assistant answer',
+    async (status) => {
+      runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+        conversationPage([
+          { status, query: 'Review this change', answer: null }
+        ])
       );
-    });
-  });
+      renderPanel({});
+      expect(await screen.findByText('Review this change')).toBeInTheDocument();
+      expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    }
+  );
 
   test('AC-002 does not synthesize a bot message for succeeded runs without an answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
@@ -303,7 +285,7 @@ describe('ApplicationRunDetailPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('#2090 AC-003 states that a finished call generated no answer', async () => {
+  test('#2105 prewarm remains empty instead of inventing a business answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage(
         [
@@ -329,9 +311,12 @@ describe('ApplicationRunDetailPanel', () => {
     );
     renderPanel({});
 
-    expect(
-      await screen.findByText('本次调用为预热（prewarm），未生成回答。')
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages
+      ).toHaveBeenCalled()
+    );
+    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
   });
 
   test('#2090 AC-004 keeps refreshing a waiting call whose page has no active item', async () => {
@@ -503,7 +488,7 @@ describe('ApplicationRunDetailPanel', () => {
     }
   });
 
-  test('#2090 AC-003 keeps the fallback bot message closed when can_open_detail is false', async () => {
+  test('#2105 a waiting turn preserves the input detail permission without a placeholder answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage([
         {
@@ -515,17 +500,11 @@ describe('ApplicationRunDetailPanel', () => {
       ])
     );
     renderPanel({});
-
-    expect(
-      await screen.findByText('等待人工输入中，暂时还没有输出。')
-    ).toBeInTheDocument();
-
-    const assistantMessage = screen.getByTestId('message-assistant');
-    expect(assistantMessage).toHaveAttribute('data-can-open-detail', 'false');
-    expect(
-      within(assistantMessage).queryByRole('button', {
-        name: 'open-assistant-run-1'
-      })
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText('请人工审核')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    expect(screen.getByTestId('message-user')).toHaveAttribute(
+      'data-can-open-detail',
+      'false'
+    );
   });
 });

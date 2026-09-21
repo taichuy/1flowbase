@@ -275,13 +275,31 @@ impl ApplicationRuntimeReadsAdapter {
             },
         )
         .await?;
-        let items = page
-            .items
-            .into_iter()
-            .map(|run| {
-                to_application_conversation_message_summary_response(run, query.around_run_id)
-            })
-            .collect();
+        let mut items = Vec::new();
+        for run in page.items {
+            // Each page slot is one business turn; its effective context travels
+            // with it, including when the caller prepends an older page.
+            let projection = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
+                &self.store, application_id, run.id,
+                ListApplicationRunConversationMessageItemsPageInput {
+                    before_sequence: None, after_sequence: None, limit: 1,
+                },
+            ).await?;
+            if projection.total_count > 0 {
+                let mut turn = conversation_messages_from_projection_page(run.id, projection);
+                let started_at = format_time(run.started_at);
+                for item in &mut turn.items {
+                    item.started_at = started_at.clone();
+                    item.sequence = None;
+                }
+                items.extend(turn.items);
+            } else {
+                items.push(to_application_conversation_message_summary_response(
+                    run,
+                    query.around_run_id,
+                ));
+            }
+        }
         Ok(ApplicationConversationMessagesPageResponse {
             items,
             output_state: None,
@@ -290,7 +308,7 @@ impl ApplicationRuntimeReadsAdapter {
                 has_after: page.has_after,
                 before_cursor: page.before_cursor.map(|value| value.to_string()),
                 after_cursor: page.after_cursor.map(|value| value.to_string()),
-                newest_cursor: None,
+                newest_cursor: page.after_cursor.map(|value| value.to_string()),
             },
         })
     }
@@ -303,35 +321,6 @@ impl ApplicationRuntimeReadsAdapter {
         query: ApplicationConversationMessagesQuery,
     ) -> Result<ApplicationConversationMessagesPageResponse, ApiError> {
         self.visible_application(actor, application_id).await?;
-        // A task anchor converges to what the user asked and what the model
-        // finally answered; the calls in between live in the trace tree. Its
-        // context and output state still come from the run projection so the
-        // console can name the source instead of guessing at a missing answer.
-        if let Some(task) = <_ as OrchestrationRuntimeRepository>::get_application_run_log_task(
-            &self.store,
-            application_id,
-            run_id,
-        )
-        .await?
-        .filter(|task| task.member_run_ids.len() > 1)
-        {
-            let anchor_projection = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
-                &self.store,
-                application_id,
-                run_id,
-                ListApplicationRunConversationMessageItemsPageInput {
-                    before_sequence: None,
-                    after_sequence: None,
-                    limit: 1,
-                },
-            )
-            .await?;
-            return Ok(converged_task_conversation_messages(
-                &task,
-                anchor_projection.contexts,
-                anchor_projection.output_state,
-            ));
-        }
         let projection_page = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &self.store,
             application_id,

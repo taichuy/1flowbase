@@ -51,6 +51,7 @@ pub struct ApplicationConversationRunsPage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Page units are business turns (task anchors), never provider message items.
 pub struct ListApplicationRunConversationMessageItemsPageInput {
     pub before_sequence: Option<i64>,
     pub after_sequence: Option<i64>,
@@ -60,8 +61,8 @@ pub struct ListApplicationRunConversationMessageItemsPageInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationRunConversationMessageItemsPage {
     pub items: Vec<domain::ApplicationRunConversationMessageItem>,
-    /// System/developer context in effect for this run. Context is not part of
-    /// the paged conversation stream so the newest page never hides it.
+    /// System/developer context retained by the member runs of this task.
+    /// Context travels with its turn and does not consume the turn limit.
     pub contexts: Vec<domain::ApplicationRunConversationContextItem>,
     pub output_state: Option<domain::ApplicationRunConversationOutputState>,
     pub total_count: i64,

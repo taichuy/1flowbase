@@ -47,8 +47,12 @@ mod converged_task_tests {
         assert!(page.items[1].is_current);
         // #2090 AC-002: the answer carries its own source instead of making the
         // console report a missing answer for a task that observed one.
-        assert_eq!(page.items[1].output_source.as_deref(), Some("persisted_answer"));
-        let open = converged_task_conversation_messages(&task("in_progress", None), Vec::new(), None);
+        assert_eq!(
+            page.items[1].output_source.as_deref(),
+            Some("persisted_answer")
+        );
+        let open =
+            converged_task_conversation_messages(&task("in_progress", None), Vec::new(), None);
         assert_eq!(open.items[1].status, "running");
         assert_eq!(open.items[1].answer, None);
         assert_eq!(open.items[1].output_source.as_deref(), Some("none"));
@@ -246,7 +250,7 @@ fn conversation_items_with_context(
         .into_iter()
         .map(|context| ApplicationConversationMessageResponse {
             message_id: context.id.to_string(),
-            run_id: run_id.to_string(),
+            run_id: context.flow_run_id.to_string(),
             detail_run_id: None,
             can_open_detail: false,
             role: Some(context.role),
@@ -314,6 +318,7 @@ fn application_run_conversation_output_state_response(
 /// The task anchor's detail: one user turn and the model's final answer. The
 /// answer item points at the member run that produced it so the console can
 /// still open that run; an unobserved answer stays an open, non-terminal item.
+#[cfg(test)]
 fn converged_task_conversation_messages(
     task: &domain::ApplicationRunLogTask,
     contexts: Vec<domain::ApplicationRunConversationContextItem>,
@@ -395,10 +400,7 @@ fn converged_task_conversation_messages(
         sequence: Some(1),
     });
     ApplicationConversationMessagesPageResponse {
-        items: context_responses
-            .into_iter()
-            .chain(items)
-            .collect(),
+        items: context_responses.into_iter().chain(items).collect(),
         output_state: output_state.map(application_run_conversation_output_state_response),
         page: ApplicationConversationMessagesPageInfoResponse {
             has_before: false,
@@ -412,6 +414,7 @@ fn converged_task_conversation_messages(
 
 /// A converged task states where its answer came from instead of letting the
 /// console report a missing answer for a task that already observed one.
+#[cfg(test)]
 fn converged_task_output_source<'a>(
     task: &domain::ApplicationRunLogTask,
     output_state: &'a Option<domain::ApplicationRunConversationOutputState>,
@@ -448,7 +451,7 @@ fn application_run_conversation_message_item_response(
     run_id: Uuid,
     item: domain::ApplicationRunConversationMessageItem,
 ) -> ApplicationConversationMessageResponse {
-    let item_run_id = if item.source_kind == "current_run" {
+    let item_run_id = if matches!(item.source_kind.as_str(), "current_run" | "business_turn") {
         item.flow_run_id.to_string()
     } else {
         usize::try_from(item.display_sequence)

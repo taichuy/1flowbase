@@ -739,9 +739,8 @@ impl PgControlPlaneStore {
             else {
                 return Ok(empty_application_conversation_runs_page());
             };
-            let latest_start = (total - limit + 1).max(1);
-            let centered_start = anchor_rn - (limit / 2);
-            let start_rn = centered_start.max(1).min(latest_start);
+            let _ = anchor_rn;
+            let start_rn = (total - limit + 1).max(1);
             (start_rn, (start_rn + limit - 1).min(total), total)
         };
 
@@ -785,27 +784,13 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id, runs.status, runs.started_at, runs.finished_at
                 union all
-                select runs.id,runs.status,
-                    case when s.log_task_run_id=runs.id or s.log_task_run_id is null
-                        then (select m.content from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='user' order by m.display_sequence limit 1) end as query,
-                    null::text as model,(
-                        -- The card answers with the call's answer only: tool-call
-                        -- items are output items but not the answer, so their
-                        -- names never leak into the summary text.
-                        select string_agg(m.content,E'\n' order by m.display_sequence)
-                        from application_run_conversation_message_items m
-                        where m.flow_run_id=runs.id
-                          and m.role='assistant'
-                          and (m.native_message is null
-                               or m.native_message #>> '{_source_item,type}' = 'message'
-                               or m.output_source = 'persisted_answer')
-                    ) as answer,
-                    runs.started_at,runs.finished_at,
-                    (extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_conversation_runs($1,
-                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
-                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
-                join flow_runs runs on runs.id=s.flow_run_id
+                select t.id,t.status,t.user_input as query,null::text as model,
+                    case when t.outcome='final_answer_observed' then t.final_output end as answer,
+                    t.started_at,t.finished_at,
+                    (extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_tasks t
+                where t.application_id=$1 and t.is_root
+                  and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
             ordered as (
                 select
@@ -887,11 +872,10 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id
                 union all
-                select runs.id,(extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_conversation_runs($1,
-                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
-                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
-                join flow_runs runs on runs.id=s.flow_run_id
+                select t.id,(extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_tasks t
+                where t.application_id=$1 and t.is_root
+                  and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
             ordered as (
                 select

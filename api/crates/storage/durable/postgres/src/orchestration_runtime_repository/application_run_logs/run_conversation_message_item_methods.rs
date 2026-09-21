@@ -22,6 +22,19 @@ const APPLICATION_RUN_OUTPUT_SOURCE_ERROR: &str = "error";
 const APPLICATION_RUN_OUTPUT_SOURCE_NONE: &str = "none";
 
 impl PgControlPlaneStore {
+    /// Completed output boundaries refresh once per batch, never per token.
+    async fn refresh_completed_output_projection(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        flow_run_id: Uuid,
+    ) -> Result<()> {
+        let row = sqlx::query("select f.*, runtime_original_json(f.input_payload,f.raw_json_payloads,'input_payload') as input_payload, runtime_original_json(f.output_payload,f.raw_json_payloads,'output_payload') as output_payload, runtime_original_json(f.error_payload,f.raw_json_payloads,'error_payload') as error_payload, (select account from users where id=f.created_by) as authorized_account from flow_runs f where f.id=$1")
+            .bind(flow_run_id).fetch_one(&mut **tx).await?;
+        let run = map_flow_run_record(row)?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &run).await?;
+        Self::ensure_application_run_conversation_message_items_projection(tx, &run).await?;
+        Self::refresh_application_run_log_task_for_flow_run(tx, flow_run_id).await
+    }
+
     /// Returns whether the stored rows were replaced.
     async fn ensure_application_run_conversation_message_items_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
@@ -291,11 +304,6 @@ impl PgControlPlaneStore {
         input: ListApplicationRunConversationMessageItemsPageInput,
     ) -> Result<control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage> {
         let limit = input.limit.clamp(1, 50);
-        self.ensure_application_run_conversation_message_items_projection_for_read(
-            application_id,
-            flow_run_id,
-        )
-        .await?;
         let total_count = self
             .application_run_conversation_message_items_count(application_id, flow_run_id)
             .await?;
@@ -465,13 +473,14 @@ impl PgControlPlaneStore {
     ) -> Result<Vec<domain::ApplicationRunConversationContextItem>> {
         let rows = sqlx::query(
             r#"
-            select id, flow_run_id, role, context_source, content, raw_json_payloads ->> 'content' as content_original, display_sequence
-            from application_run_conversation_message_items
-            where application_id = $1
-              and flow_run_id = $2
-              and projection_version = $3
-              and context_source is not null
-            order by display_sequence asc, id asc
+            select m.id, m.flow_run_id, m.role, m.context_source, m.content,
+                m.raw_json_payloads ->> 'content' as content_original, m.display_sequence
+            from application_run_conversation_message_items m
+            join application_run_log_tasks t on t.application_id=m.application_id
+                and m.flow_run_id=any(t.member_run_ids)
+            where m.application_id = $1 and $2=any(t.member_run_ids)
+              and m.projection_version = $3 and m.context_source is not null
+            order by array_position(t.member_run_ids,m.flow_run_id),m.display_sequence,m.id
             "#,
         )
         .bind(application_id)
@@ -545,49 +554,6 @@ impl PgControlPlaneStore {
             })
         })
         .transpose()
-    }
-
-    async fn ensure_application_run_conversation_message_items_projection_for_read(
-        &self,
-        application_id: Uuid,
-        flow_run_id: Uuid,
-    ) -> Result<()> {
-        let Some(flow_run) =
-            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
-        else {
-            return Ok(());
-        };
-
-        let mut tx = self.pool().begin().await?;
-        let locked_flow_run_id = sqlx::query_scalar::<_, Uuid>(
-            r#"
-            select id
-            from flow_runs
-            where application_id = $1
-              and id = $2
-            for update
-            "#,
-        )
-        .bind(application_id)
-        .bind(flow_run_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if locked_flow_run_id.is_some() {
-            // A call that is still running already retains its request and every
-            // completed provider output item, so the read model reflects those
-            // facts instead of hiding the call until it reaches a terminal state.
-            let replaced = Self::ensure_application_run_conversation_message_items_projection(
-                &mut tx, &flow_run,
-            )
-            .await?;
-            if replaced {
-                // The task row derives from member projections; refresh it in the
-                // same transaction so list and detail never disagree.
-                Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run_id).await?;
-            }
-        }
-        tx.commit().await?;
-        Ok(())
     }
 
     async fn get_application_run_conversation_current_item(
@@ -672,8 +638,14 @@ impl PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(map_application_run_conversation_message_item)
-            .transpose()
+        row.map(|row| {
+            let mut item = map_application_run_conversation_message_item(row)?;
+            if item.output_source.as_deref() == Some(APPLICATION_RUN_OUTPUT_SOURCE_ERROR) {
+                item.answer = None;
+            }
+            Ok(item)
+        })
+        .transpose()
     }
 
     async fn application_run_conversation_message_item_sequence_exists(
@@ -709,16 +681,24 @@ fn application_run_output_source_from_rank(rank: i32) -> &'static str {
     }
 }
 
-// The run message projection is single-run scoped; task-level convergence is
-// served from the task row, never by joining member projections at read time.
-// Context entries are not part of the paged stream, so a caller that only reads
-// the newest page still sees every context entry.
+// The business chat reads one stable task anchor, never the provider-item
+// stream. The native projection stays retained for trace readers. A final
+// answer carries its actual source run while detail opens the owning task.
 fn application_run_task_message_items_cte() -> &'static str {
     r#"with task_message_items as (
-        select m.*, m.display_sequence as task_sequence
-        from application_run_conversation_message_items m
-        where m.application_id=$1 and m.flow_run_id=$2 and m.projection_version=$3
-          and m.context_source is null
+        select t.id, t.scope_id, t.application_id,
+            coalesce(t.final_output_run_id,t.id) as flow_run_id,
+            0::bigint as task_sequence, 'business_turn'::text as source_kind,
+            null::text as role, null::text as content, t.user_input as query,
+            null::text as model,
+            case when t.outcome='final_answer_observed' then t.final_output end as answer,
+            t.id as detail_run_id, true as can_open_detail, true as is_current,
+            t.status, t.started_at, t.finished_at, $3::integer as projection_version,
+            t.created_at,t.updated_at,'{}'::jsonb as raw_json_payloads,
+            case when t.outcome='final_answer_observed' and t.final_output is not null
+                then 'persisted_answer' else 'none' end as output_source
+        from application_run_log_tasks t
+        where t.application_id=$1 and $2=any(t.member_run_ids)
     )"#
 }
 

@@ -102,55 +102,6 @@ function mapRunStatusToSessionStatus(
   }
 }
 
-function fallbackConversationAnswerContent(
-  item: ApplicationRunConversationMessage
-) {
-  if (!item.is_current || item.status === 'succeeded') {
-    return null;
-  }
-
-  switch (item.status) {
-    case 'waiting_callback':
-      return i18nText(
-        'applications',
-        'auto.run_waiting_callback_without_output'
-      );
-    case 'waiting_human':
-      return i18nText('applications', 'auto.run_waiting_human_without_output');
-    case 'running':
-      return i18nText('applications', 'auto.run_running_without_output');
-    case 'failed':
-      return i18nText('applications', 'auto.run_failed_without_output');
-    case 'cancelled':
-      return i18nText('applications', 'auto.run_cancelled_without_output');
-    default:
-      return i18nText('applications', 'auto.run_status_without_output');
-  }
-}
-
-/// A call that finished without producing an answer says so, instead of
-/// rendering an empty task. The backend states the output source; the console
-/// never guesses it from the raw payload.
-function noOutputSourceContent(
-  item: ApplicationRunConversationMessage,
-  outputState: ApplicationRunConversationOutputState | null
-) {
-  if (!item.is_current) {
-    return null;
-  }
-
-  switch (item.output_source) {
-    case 'none':
-      return outputState?.request_kind === 'prewarm'
-        ? i18nText('applications', 'auto.run_prewarm_no_answer_generated')
-        : i18nText('applications', 'auto.run_no_answer_generated');
-    case 'error':
-      return i18nText('applications', 'auto.run_error_without_output');
-    default:
-      return null;
-  }
-}
-
 /// The system/developer context is injected as the first turns of the
 /// conversation. The label states which layer it came from without adding
 /// another surface beside the chat.
@@ -200,8 +151,8 @@ function conversationMessageRole(
   item: ApplicationRunConversationMessage
 ): AgentFlowDebugMessage['role'] | null {
   switch (item.role) {
-    case 'tool':
-      return 'assistant';
+    case 'developer':
+      return 'system';
     case 'system':
     case 'user':
     case 'assistant':
@@ -213,7 +164,7 @@ function conversationMessageRole(
 
 function mapConversationItemToMessages(
   item: ApplicationRunConversationMessage,
-  outputState: ApplicationRunConversationOutputState | null
+  _outputState: ApplicationRunConversationOutputState | null
 ): AgentFlowDebugMessage[] {
   const detailRunId = conversationItemDetailRunId(item);
   const canOpenDetail = item.can_open_detail !== false && Boolean(detailRunId);
@@ -242,10 +193,7 @@ function mapConversationItemToMessages(
 
   const messages: AgentFlowDebugMessage[] = [];
   const queryContent = nonEmptyString(item.query);
-  const answerContent =
-    nonEmptyString(item.answer) ??
-    fallbackConversationAnswerContent(item) ??
-    noOutputSourceContent(item, outputState);
+  const answerContent = nonEmptyString(item.answer);
 
   if (queryContent) {
     messages.push({
@@ -253,7 +201,7 @@ function mapConversationItemToMessages(
       role: 'user',
       content: queryContent,
       status: mapRunStatusToMessageStatus(item.status),
-      runId: flowRunId,
+      runId: detailRunId ?? flowRunId,
       detailRunId,
       canOpenDetail,
       rawOutput: null,
@@ -330,7 +278,9 @@ function compareConversationItems(
   left: ApplicationRunConversationMessage,
   right: ApplicationRunConversationMessage
 ) {
-  // Context entries open the conversation and never take part in paging.
+  // A context belongs to its business turn, including across history pages.
+  const timeOrder = left.started_at.localeCompare(right.started_at);
+  if (timeOrder !== 0) return timeOrder;
   const leftContext = left.context_source ? 0 : 1;
   const rightContext = right.context_source ? 0 : 1;
   if (leftContext !== rightContext) {
@@ -459,9 +409,9 @@ function RunConversation({
   const refreshable = conversationRefreshable(conversationItems, outputState);
   // The scope switch is a conversation-level action: it belongs to the last
   // turn, so it appears once, at the end of the conversation.
-  const lastAssistantMessageId = useMemo(
+  const lastConversationMessageId = useMemo(
     () =>
-      [...messages].reverse().find((message) => message.role === 'assistant')
+      [...messages].reverse().find((message) => message.role !== 'system')
         ?.id ?? null,
     [messages]
   );
@@ -479,7 +429,7 @@ function RunConversation({
     return () => window.clearInterval(intervalId);
   }, [refreshable, refetchInitialConversation]);
 
-  // The newest page holds five items. When more than five arrived between two
+  // The newest page holds five business turns. When more than five arrived between two
   // refreshes, read forward from the previously observed position until the
   // backlog is drained, so the newest page never hides the items in between.
   useEffect(() => {
@@ -487,7 +437,6 @@ function RunConversation({
     observedNewestCursorRef.current = newestCursor;
 
     if (
-      conversationScope ||
       !newestCursor ||
       !previousNewestCursor ||
       previousNewestCursor === newestCursor
@@ -502,11 +451,24 @@ function RunConversation({
       const collected: ApplicationRunConversationMessagesPage[] = [];
       let after: string | null = previousNewestCursor;
       while (after && collected.length < RUN_CONVERSATION_CATCH_UP_PAGE_LIMIT) {
-        const page = await fetchApplicationRunConversationMessages(
-          applicationId,
-          runId,
-          { after, limit: RUN_CONVERSATION_PAGE_LIMIT }
-        );
+        const page: ApplicationRunConversationMessagesPage =
+          conversationScope && logConversationId
+            ? await fetchApplicationLogConversationMessages(
+                applicationId,
+                logConversationId,
+                {
+                  after,
+                  limit: RUN_CONVERSATION_PAGE_LIMIT
+                }
+              )
+            : await fetchApplicationRunConversationMessages(
+                applicationId,
+                runId,
+                {
+                  after,
+                  limit: RUN_CONVERSATION_PAGE_LIMIT
+                }
+              );
         if (cancelled || generation !== conversationScopeGeneration.current) {
           return;
         }
@@ -521,7 +483,13 @@ function RunConversation({
     return () => {
       cancelled = true;
     };
-  }, [applicationId, conversationScope, newestCursor, runId]);
+  }, [
+    applicationId,
+    conversationScope,
+    logConversationId,
+    newestCursor,
+    runId
+  ]);
 
   function handleOpenMessageLog(message: AgentFlowDebugMessage) {
     if (message.canOpenDetail === false) {
@@ -596,7 +564,7 @@ function RunConversation({
         assistantMessageActions={
           logConversationId
             ? (message) =>
-                message.id !== lastAssistantMessageId ? null : (
+                message.id !== lastConversationMessageId ? null : (
                   // The conversation scope switch lives in the message action
                   // row of the last turn, next to the call log and resume
                   // timeline actions.

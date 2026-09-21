@@ -230,11 +230,6 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Vec<Value>> {
-        self.ensure_application_run_conversation_message_items_projection_for_read(
-            application_id,
-            flow_run_id,
-        )
-        .await?;
         // Reuse the original persisted native message projection. A result may
         // arrive in a later call, but only within the same authenticated log
         // conversation and with the exact call ID and result type.
