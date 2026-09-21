@@ -383,7 +383,7 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
       await within(detail).findByLabelText('数据处理 JSON')
     ).toHaveTextContent('recorded-provider');
     expect(
-      within(detail).queryByRole('button', { name: '供应商轨迹' })
+      within(detail).queryByRole('button', { name: '调用轨迹' })
     ).not.toBeInTheDocument();
     expect(
       within(detail).getByRole('button', { name: /branch_policy_lookup/ })

@@ -1,17 +1,21 @@
 use super::*;
-use control_plane::ports::{ProviderTrajectoryBody, ProviderTrajectoryPage};
+use control_plane::ports::{
+    ProviderTrajectoryBody, ProviderTrajectoryPage, ProviderTrajectoryView,
+};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ProviderTrajectoryQuery {
     pub cursor: Option<i64>,
     pub limit: Option<i64>,
+    #[serde(default)]
+    pub view: ProviderTrajectoryView,
 }
 
-/// List recorded provider protocol trajectory summaries.
+/// List recorded Native and historical supplier semantic trajectory summaries.
 /// Returns a bounded page without reading protocol bodies, scoped to the visible application and exact node execution.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/nodes/{node_run_id}/trajectory",
     params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path),
-        ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+        ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_provider_trajectory(
     State(state): State<Arc<ApiState>>,
@@ -38,10 +42,10 @@ pub async fn list_provider_trajectory(
     Ok(Json(ApiSuccess::new(page)))
 }
 
-/// Read a bounded page of original evidence for one semantic step or protocol observation.
+/// Read Native step details or explicitly selected supplier protocol evidence.
 /// Resolves only the selected durable event within the authorized run and node execution.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/nodes/{node_run_id}/trajectory/{event_id}",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path), ("event_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path), ("event_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn get_provider_trajectory_body(
     State(state): State<Arc<ApiState>>,

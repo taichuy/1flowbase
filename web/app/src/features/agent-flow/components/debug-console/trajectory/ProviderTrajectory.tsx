@@ -14,7 +14,10 @@ import {
   Typography
 } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
-import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
+import type {
+  ProviderTrajectoryStep,
+  ProviderTrajectoryView
+} from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
@@ -52,6 +55,7 @@ export function ProviderTrajectory({
   const overlayZIndex = useWindowWorkspaceOverlayZIndex();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('protocol');
+  const [view, setView] = useState<ProviderTrajectoryView>('semantic');
   const [selected, setSelected] = useState<ProviderTrajectoryStep | null>(null);
   const pages = useInfiniteQuery({
     queryKey: ['provider-trajectory', runId, nodeRunId],
@@ -67,7 +71,8 @@ export function ProviderTrajectory({
       'provider-trajectory-body',
       runId,
       nodeRunId,
-      selected?.event_id
+      selected?.event_id,
+      view
     ],
     enabled:
       open &&
@@ -79,20 +84,23 @@ export function ProviderTrajectory({
         runId,
         nodeRunId,
         selected!.event_id,
-        pageParam
+        pageParam,
+        view
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchOnWindowFocus: false,
-    staleTime: Infinity
+    staleTime: 0
   });
   const overview = pages.data?.pages[0];
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
   const integrityLabel =
     overview?.integrity === 'complete'
       ? i18nText('agentFlow', 'trajectory.complete')
-      : overview?.integrity === 'incomplete'
-        ? i18nText('agentFlow', 'trajectory.incomplete')
-        : i18nText('agentFlow', 'trajectory.unavailable');
+      : overview?.integrity === 'pending'
+        ? i18nText('agentFlow', 'trajectory.pending')
+        : overview?.integrity === 'incomplete'
+          ? i18nText('agentFlow', 'trajectory.incomplete')
+          : i18nText('agentFlow', 'trajectory.unavailable');
 
   return (
     <>
@@ -167,7 +175,24 @@ export function ProviderTrajectory({
                   overview?.integrity === 'incomplete' ? 'warning' : undefined
                 }
               >
+                {i18nText('agentFlow', 'trajectory.semantic_integrity')}:{' '}
                 {integrityLabel}
+              </Tag>
+              <Tag
+                color={
+                  overview?.protocol_integrity === 'incomplete'
+                    ? 'warning'
+                    : undefined
+                }
+              >
+                {i18nText('agentFlow', 'trajectory.protocol_integrity')}:{' '}
+                {overview?.protocol_integrity === 'complete'
+                  ? i18nText('agentFlow', 'trajectory.complete')
+                  : overview?.protocol_integrity === 'incomplete'
+                    ? i18nText('agentFlow', 'trajectory.incomplete')
+                    : overview?.protocol_integrity === 'pending'
+                      ? i18nText('agentFlow', 'trajectory.pending')
+                      : i18nText('agentFlow', 'trajectory.unavailable')}
               </Tag>
               <Typography.Text>
                 {i18nText('agentFlow', 'trajectory.observations', {
@@ -198,7 +223,10 @@ export function ProviderTrajectory({
                           : 'default'
                       }
                       title={`${formatDateTime(step.created_at)} · ${stepKind(step)}`}
-                      onClick={() => setSelected(step)}
+                      onClick={() => {
+                        setSelected(step);
+                        setView('semantic');
+                      }}
                     >
                       {step.event_sequence}
                     </Button>
@@ -214,7 +242,12 @@ export function ProviderTrajectory({
                       pagination={false}
                       dataSource={items}
                       scroll={{ y: 400 }}
-                      onRow={(step) => ({ onClick: () => setSelected(step) })}
+                      onRow={(step) => ({
+                        onClick: () => {
+                          setSelected(step);
+                          setView('semantic');
+                        }
+                      })}
                       rowClassName={(step) =>
                         selected?.event_id === step.event_id
                           ? 'provider-trajectory__selected'
@@ -228,7 +261,10 @@ export function ProviderTrajectory({
                             <Button
                               type="link"
                               size="small"
-                              onClick={() => setSelected(step)}
+                              onClick={() => {
+                                setSelected(step);
+                                setView('semantic');
+                              }}
                             >
                               {stepKind(step)}
                             </Button>
@@ -268,6 +304,20 @@ export function ProviderTrajectory({
                           column={1}
                           items={[
                             {
+                              key: 'source',
+                              label: i18nText('agentFlow', 'trajectory.source'),
+                              children:
+                                selected.metadata.source === 'ai_native'
+                                  ? i18nText(
+                                      'agentFlow',
+                                      'trajectory.native_source'
+                                    )
+                                  : i18nText(
+                                      'agentFlow',
+                                      'trajectory.supplier_source'
+                                    )
+                            },
+                            {
                               key: 'protocol',
                               label: i18nText(
                                 'agentFlow',
@@ -288,14 +338,19 @@ export function ProviderTrajectory({
                               ),
                               children: selected.metadata.invocation_id
                             },
-                            {
-                              key: 'sequence',
-                              label: i18nText(
-                                'agentFlow',
-                                'trajectory.sequence'
-                              ),
-                              children: `${selected.metadata.raw_sequence_start}–${selected.metadata.raw_sequence_end}`
-                            },
+                            ...(selected.metadata.raw_sequence_start ===
+                            undefined
+                              ? []
+                              : [
+                                  {
+                                    key: 'sequence',
+                                    label: i18nText(
+                                      'agentFlow',
+                                      'trajectory.sequence'
+                                    ),
+                                    children: `${selected.metadata.raw_sequence_start}–${selected.metadata.raw_sequence_end}`
+                                  }
+                                ]),
                             {
                               key: 'time',
                               label: i18nText('agentFlow', 'trajectory.time'),
@@ -330,6 +385,39 @@ export function ProviderTrajectory({
                                 ])
                           ]}
                         />
+                        <Tabs
+                          activeKey={view}
+                          onChange={(key) =>
+                            setView(key as ProviderTrajectoryView)
+                          }
+                          items={[
+                            {
+                              key: 'semantic',
+                              label: i18nText(
+                                'agentFlow',
+                                'trajectory.step_detail'
+                              )
+                            },
+                            {
+                              key: 'protocol',
+                              label: i18nText(
+                                'agentFlow',
+                                'trajectory.raw_evidence'
+                              )
+                            }
+                          ]}
+                        />
+                        {view === 'protocol' &&
+                        body.data?.pages[0]?.evidence_scope === 'invocation' ? (
+                          <Alert
+                            type="info"
+                            showIcon
+                            title={i18nText(
+                              'agentFlow',
+                              'trajectory.invocation_evidence'
+                            )}
+                          />
+                        ) : null}
                         {body.isLoading ? <Spin /> : null}
                         {body.isError ? (
                           <Alert
@@ -352,6 +440,15 @@ export function ProviderTrajectory({
                           <Typography.Text code>
                             {selected.metadata.tool_call_id}
                           </Typography.Text>
+                        ) : null}
+                        {body.isSuccess &&
+                        !body.data.pages.some((page) => page.items.length) ? (
+                          <Empty
+                            description={i18nText(
+                              'agentFlow',
+                              'trajectory.no_evidence'
+                            )}
+                          />
                         ) : null}
                         {body.data?.pages
                           .flatMap((page) => page.items)

@@ -1,6 +1,7 @@
 import {
   getConsoleProviderTrajectory,
-  getConsoleProviderTrajectoryBody
+  getConsoleProviderTrajectoryBody,
+  type ProviderTrajectoryView
 } from '@1flowbase/api-client';
 import { getApplicationsApiBaseUrl } from './applications';
 
@@ -23,7 +24,8 @@ export function fetchProviderTrajectoryBody(
   runId: string,
   nodeRunId: string,
   eventId: string,
-  cursor?: number
+  cursor?: number,
+  view: ProviderTrajectoryView = 'semantic'
 ) {
   return getConsoleProviderTrajectoryBody(
     applicationId,
@@ -31,6 +33,7 @@ export function fetchProviderTrajectoryBody(
     nodeRunId,
     eventId,
     cursor,
+    view,
     getApplicationsApiBaseUrl()
   );
 }

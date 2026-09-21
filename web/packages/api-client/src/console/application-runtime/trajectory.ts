@@ -1,11 +1,14 @@
 import { apiFetch } from '../../transport';
 
+export type ProviderTrajectoryView = 'semantic' | 'protocol';
+
 export interface ProviderTrajectoryStep {
   event_id: string;
   event_sequence: number;
   event_type: 'provider_semantic_step';
   created_at: string;
   metadata: {
+    source: 'ai_native' | 'supplier_protocol';
     protocol?: string;
     transport?: 'http' | 'sse' | 'websocket';
     direction?: 'prepared' | 'received';
@@ -20,15 +23,15 @@ export interface ProviderTrajectoryStep {
     step_key: string;
     preview?: string;
     tool_call_id?: string;
-    provenance?: 'submitted_tool_result' | 'supplier_protocol';
+    provenance?: 'submitted_tool_result' | 'supplier_protocol' | 'ai_native';
     reason?: string;
     flow_run_id: string;
     node_id: string;
     node_run_id: string;
     invocation_id: string;
     provider_attempt_index: number;
-    raw_sequence_start: number;
-    raw_sequence_end: number;
+    raw_sequence_start?: number;
+    raw_sequence_end?: number;
   };
 }
 export interface ProviderTrajectoryPage {
@@ -36,9 +39,18 @@ export interface ProviderTrajectoryPage {
   next_cursor: number | null;
   observation_count: number;
   persist_failed_count: number;
-  integrity: 'complete' | 'incomplete' | 'unavailable' | 'not_recorded';
+  protocol_integrity: 'complete' | 'incomplete' | 'pending' | 'not_recorded';
+  protocol_persist_failed_count: number;
+  integrity:
+    | 'complete'
+    | 'incomplete'
+    | 'pending'
+    | 'unavailable'
+    | 'not_recorded';
 }
 export interface ProviderTrajectoryBody {
+  source: 'ai_native' | 'supplier_protocol';
+  evidence_scope: 'step' | 'invocation';
   event_id: string;
   items: Array<{
     event_id: string;
@@ -68,9 +80,10 @@ export function getConsoleProviderTrajectoryBody(
   nodeRunId: string,
   eventId: string,
   cursor?: number,
+  view: ProviderTrajectoryView = 'semantic',
   baseUrl?: string
 ) {
-  const query = new URLSearchParams({ limit: '8' });
+  const query = new URLSearchParams({ limit: '8', view });
   if (cursor !== undefined) query.set('cursor', String(cursor));
   return apiFetch<ProviderTrajectoryBody>({
     path: `/api/console/applications/${applicationId}/logs/runs/${runId}/nodes/${nodeRunId}/trajectory/${eventId}?${query}`,

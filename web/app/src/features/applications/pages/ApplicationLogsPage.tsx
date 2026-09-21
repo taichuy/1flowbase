@@ -1182,7 +1182,7 @@ export function ApplicationLogsPage({
               }
               traceLoader={{
                 loadTrajectory: (runId, nodeRunId, cursor) => fetchProviderTrajectory(applicationId, runId, nodeRunId, cursor),
-                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor) => fetchProviderTrajectoryBody(applicationId, runId, nodeRunId, eventId, cursor),
+                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) => fetchProviderTrajectoryBody(applicationId, runId, nodeRunId, eventId, cursor, view),
                 loadTree: (runId) =>
                   fetchApplicationRunTraceTree(applicationId, runId),
                 loadChildren: (runId, traceNodeId, cursor) =>

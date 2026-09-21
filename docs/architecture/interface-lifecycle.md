@@ -353,3 +353,15 @@ Outbox lease/retry/去重/每订阅者 ACK 与 PluginData 局部幂等归各自 
 实现流程见 [backend-development](../../.agents/skills/backend-development/references/interface-lifecycle.md)，验收方法见 [qa-evaluation](../../.agents/skills/qa-evaluation/references/backend/interface-lifecycle-gate.md)。本文定义证明边界，不保存不断变化的全绿计数。
 
 已有测试入口包括 [HTTP/MCP成对fixture](../../api/apps/api-server/src/_tests/interface_lifecycle_acceptance/create_pair.rs)、[流式收尾fixture](../../api/apps/api-server/src/routes/application_public_api/responses_websocket/tests/turn_finalization.rs)、[在线生命周期](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/lifecycle.js)和[在线错误矩阵](../../scripts/node/ai-gateway-concurrency/responses-websocket-acceptance/error-matrix.js)。这些路径用于定位测试，不表示本次文档整理重新执行了测试。
+
+
+## AI Native 调用轨迹与协议诊断
+
+AI Gateway 的映射协议层将请求接入 AI Native 统一契约；供应商插件负责将 Native 翻译为上游协议及通讯。日志不迁移这一翻译职责。
+
+- 主轨迹在 Native 调用边界记录安全输入快照、标准输出/工具请求、调用结果及供应商扩展信息。工具请求与提交的工具结果不证明工具已执行；真实执行沿工作流执行记录关联。
+- 原始供应商协议是可选诊断证据，不是主轨迹成立的前提。Native 详情不能标成供应商实际报文，未知供应商元信息只保留为扩展，不据此推断插件内部重试或执行成功。
+- `FLOWBASE_PROVIDER_PROTOCOL_CAPTURE=1` 在 API 服务端显式启用原始采集，默认关闭；启用后重启服务生效。宿主仅在具备原始观测 sink 的调用上向插件协商能力，客户端输入不能打开该能力。插件不支持此可选能力时，Native 主轨迹仍可用。
+- 语义记录与原始协议分别计算采集完整性；一次失败调用可以被完整记录，缺少原始证据不会降低完整的 Native 轨迹。旁路丢失、写失败、取消和超限必须如实表达。
+- 列表只读取摘要；选择步骤获取 `view=semantic` 的 Native 详情或历史投影详情，显式打开协议证据才读取 `view=protocol`。Native 步骤的原始证据按 invocation/attempt 关联，显示调用级范围，不伪造逐步骤网络对应关系。
+- 历史供应商投影保留 `supplier_protocol` 来源；新 Native 记录标明 `ai_native`。不从旧协议反向伪造 Native 历史，不在 GET 路径重建投影。

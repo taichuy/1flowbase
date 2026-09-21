@@ -51,6 +51,7 @@ impl ApplicationRuntimeReadsAdapter {
                 event_id,
                 query.cursor,
                 query.limit.unwrap_or(8),
+                query.view,
             )
             .await?
             .ok_or_else(|| ControlPlaneError::NotFound("provider_protocol_observation").into())
