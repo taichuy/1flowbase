@@ -1008,10 +1008,6 @@ impl ProviderHost {
     }
 
     #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "internal direct-call fixture; production facade supplies explicit required and diagnostic sinks"
-    )]
     pub async fn invoke_stream_with_live_events(
         &self,
         plugin_id: &str,
