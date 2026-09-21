@@ -479,6 +479,9 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     let active = ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
         .await
         .unwrap();
+    let projection_before_read: serde_json::Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(m) order by id),'[]'::jsonb) from application_run_conversation_message_items m where flow_run_id=$1",
+    ).bind(active.flow_run.id).fetch_one(store.pool()).await.unwrap();
     let live_page = store
         .list_application_run_conversation_message_items_page(
             seeded.application_id,
@@ -517,16 +520,12 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             && live_task.outcome == "in_progress",
         "an active member keeps the task visibly in progress: {live_task:?}"
     );
-    let persisted: i64 = sqlx::query_scalar(
-        "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
-    )
-    .bind(active.flow_run.id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
+    let projection_after_read: serde_json::Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(m) order by id),'[]'::jsonb) from application_run_conversation_message_items m where flow_run_id=$1",
+    ).bind(active.flow_run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
-        persisted, 0,
-        "reading a live member must not persist a terminal projection"
+        projection_after_read, projection_before_read,
+        "reading a live task must not mutate its writer-owned projection"
     );
     input.external_user = Some(String::new());
     input.idempotency_key = Some("rework-empty-external-user".into());
@@ -571,8 +570,11 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    // #2035: the run projection stays single-run; the blank-user call is a task member.
-    assert!(live.items.iter().all(|item| item.flow_run_id == ids[0]));
+    // Empty external user joins the same business task, preserving its detail anchor.
+    assert_eq!(live.items.len(), 1);
+    assert_eq!(live.items[0].detail_run_id, Some(ids[0]));
+    assert_eq!(live.items[0].flow_run_id, ids[3]);
+    assert_eq!(live.items[0].answer, None);
     assert!(store
         .get_application_run_log_task(seeded.application_id, ids[0])
         .await
