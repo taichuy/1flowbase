@@ -107,6 +107,10 @@ impl PgControlPlaneStore {
         sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
             .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
             .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
+        if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result") {
+            sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
+                .bind(input.flow_run_id).execute(&mut *tx).await?;
+        }
         tx.commit().await?;
         Ok(())
     }

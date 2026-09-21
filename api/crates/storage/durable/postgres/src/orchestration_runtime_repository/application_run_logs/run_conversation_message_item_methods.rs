@@ -695,12 +695,17 @@ fn application_run_task_message_items_cte() -> &'static str {
             coalesce((select m.model from application_run_conversation_message_items m
                 where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
                 order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
-            case when t.outcome='final_answer_observed' then t.final_output end as answer,
+            case when t.outcome='final_answer_observed' then t.final_output
+                when t.projection_settled_at is not null then t.projection_output
+                when t.status='waiting_callback' then 'waiting_callback' end as answer,
             t.id as detail_run_id, true as can_open_detail, true as is_current,
             t.status, t.started_at, t.finished_at, $3::integer as projection_version,
             t.created_at,t.updated_at,'{}'::jsonb as raw_json_payloads,
             case when t.outcome='final_answer_observed' and t.final_output is not null
-                then 'persisted_answer' else 'none' end as output_source
+                then 'persisted_answer'
+                when t.projection_settled_at is not null then 'projection_timeout'
+                when t.status='waiting_callback' then 'waiting_callback'
+                else 'none' end as output_source
         from application_run_log_tasks t
         where t.application_id=$1 and $2=any(t.member_run_ids)
     )"#

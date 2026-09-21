@@ -21,6 +21,14 @@ pub fn spawn_trace_projection_worker(state: Arc<ApiState>) {
                 _=&mut shutdown => return,
                 _=tokio::time::sleep(Duration::from_millis(250)) => {}
             }
+            if let Ok(_permit) = state
+                .system_maintenance
+                .try_enter_write(SystemWriteOwner::TraceProjectionPersistence)
+            {
+                if let Err(error) = state.store.settle_next_application_log_projection().await {
+                    tracing::warn!(%error, "conversation projection settlement failed; will retry");
+                }
+            }
             if let Err(error) = refresh_next_trace_projection(&state).await {
                 tracing::warn!(%error, "trace projection refresh failed; durable queue will retry");
             }

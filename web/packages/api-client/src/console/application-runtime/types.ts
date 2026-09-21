@@ -943,6 +943,8 @@ export interface ConsoleApplicationConversationMessage {
 
 export type ConsoleApplicationRunOutputSource =
   | 'provider_output_item'
+  | 'projection_timeout'
+  | 'waiting_callback'
   | 'persisted_answer'
   | 'error'
   | 'none';

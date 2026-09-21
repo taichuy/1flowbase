@@ -1071,6 +1071,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn settle_next_application_log_projection(&self) -> Result<bool> {
+        sqlx::query_scalar("select settle_next_application_log_projection()")
+            .fetch_one(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
     async fn claim_application_run_trace_refresh(
         &self,
     ) -> Result<Option<ApplicationRunTraceRefreshJob>> {

@@ -729,6 +729,10 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (flow_run_id, projection_version);
         anyhow::bail!("get_application_run_trace_projection_status not implemented")
     }
+    /// Settle one due conversation read model without changing execution state.
+    async fn settle_next_application_log_projection(&self) -> anyhow::Result<bool> {
+        anyhow::bail!("settle_next_application_log_projection not implemented")
+    }
     async fn claim_application_run_trace_refresh(
         &self,
     ) -> anyhow::Result<Option<ApplicationRunTraceRefreshJob>> {

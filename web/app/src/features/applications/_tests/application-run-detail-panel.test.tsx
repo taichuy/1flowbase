@@ -104,6 +104,8 @@ type ConversationItemInput = {
   is_current?: boolean;
   output_source?:
     | 'provider_output_item'
+    | 'projection_timeout'
+    | 'waiting_callback'
     | 'persisted_answer'
     | 'error'
     | 'none';
@@ -259,6 +261,41 @@ describe('ApplicationRunDetailPanel', () => {
       renderPanel({});
       expect(await screen.findByText('Review this change')).toBeInTheDocument();
       expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    }
+  );
+
+  test.each([
+    ['waiting_callback', 'waiting_callback'],
+    ['Timeout', 'projection_timeout'],
+    ['最后一次模型输出', 'projection_timeout']
+  ] as const)(
+    'renders backend projection %s with its log entry',
+    async (answer, output_source) => {
+      runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+        conversationPage([
+          {
+            status: 'waiting_callback',
+            query: '继续',
+            answer,
+            output_source,
+            can_open_detail: true
+          }
+        ])
+      );
+      const onOpenMessageLog = vi.fn();
+      renderPanel({ onOpenMessageLog });
+      expect(await screen.findByText(answer)).toBeInTheDocument();
+      expect(screen.getAllByTestId('message-assistant')).toHaveLength(1);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'open-assistant-run-1' })
+      );
+      expect(onOpenMessageLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detailRunId: 'run-1',
+          canOpenDetail: true,
+          content: answer
+        })
+      );
     }
   );
 

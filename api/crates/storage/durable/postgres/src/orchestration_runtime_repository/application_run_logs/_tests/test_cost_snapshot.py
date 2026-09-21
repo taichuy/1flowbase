@@ -40,6 +40,12 @@ def main():
             sql += 'begin;\n' + migration.read_text() + '\ncommit;\n'
     sql += 'prepare save_cost(uuid) as ' + (here.parent / 'cost_snapshot.sql').read_text() + ';\n'
     sql += (here / 'cost_snapshot.sql').read_text()
+    sql += (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+    source = (here.parent / 'run_conversation_message_item_methods.rs').read_text()
+    cte = source.split('fn application_run_task_message_items_cte()')[1].split('r#"')[1].split('"#')[0]
+    # Exercise the exact production conversation read, not a test-only equivalent.
+    sql += 'prepare read_task(uuid,uuid,integer) as ' + cte + ' select * from task_message_items;\n'
+    sql += (here / 'projection_settlement.sql').read_text() + '\nrollback;\n'
     with log.open('w') as output:
         try:
             result = subprocess.run(command, input=sql, text=True, env=env,
