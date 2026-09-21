@@ -57,6 +57,14 @@ struct ObservedBody {
     capture: CaptureGuard,
     kind: ClientTrajectoryFrameKind,
 }
+impl Drop for ObservedBody {
+    fn drop(&mut self) {
+        // HTTP clients may stop reading after a protocol terminal while SSE keepalive
+        // remains open. The recorder verifies the terminal; an explicit I/O error
+        // still calls fail() before this drop, and a missing terminal is incomplete.
+        self.capture.finish();
+    }
+}
 impl HttpBody for ObservedBody {
     type Data = Bytes;
     type Error = axum::Error;

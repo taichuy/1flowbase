@@ -266,3 +266,101 @@ async fn client_http_observer_preserves_trailers_and_size_hint() {
             .unwrap();
     assert_eq!(status, "complete");
 }
+
+#[tokio::test]
+async fn client_http_pending_drop_uses_protocol_terminal_but_io_errors_remain_incomplete() {
+    let (pool, flow) = seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    for (terminal, io_error, expected) in [
+        (true, false, "complete"),
+        (false, false, "incomplete"),
+        (true, true, "incomplete"),
+    ] {
+        let recorder =
+            ClientTrajectoryRecorder::new(Arc::new(store.clone()), ClientTrajectoryTransport::Http);
+        recorder.record(
+            ClientTrajectoryFrameKind::Request,
+            b"{\"input\":\"x\",\"stream\":true}",
+        );
+        recorder.bind_run(flow, None);
+        let bytes = Bytes::from_static(if terminal {
+            b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n"
+        } else {
+            b"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"unfinished\"}\n\n"
+        });
+        let (sender, receiver) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(1);
+        sender.send(Ok(bytes.clone())).await.unwrap();
+        let body = Body::from_stream(tokio_stream::wrappers::ReceiverStream::new(receiver));
+        let response = Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(body)
+            .unwrap();
+        let mut observed =
+            observe_response(response, CaptureGuard::new(recorder.clone())).into_body();
+        let first = futures_util::future::poll_fn(|cx| Pin::new(&mut observed).poll_frame(cx))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.into_data().unwrap(), bytes);
+        assert!(!observed.is_end_stream());
+        assert!(
+            futures_util::future::poll_fn(|cx| {
+                Poll::Ready(Pin::new(&mut observed).poll_frame(cx).is_pending())
+            })
+            .await
+        );
+        if io_error {
+            sender
+                .send(Err(std::io::Error::other(
+                    "transport failed after terminal",
+                )))
+                .await
+                .unwrap();
+            assert!(
+                futures_util::future::poll_fn(|cx| Pin::new(&mut observed).poll_frame(cx))
+                    .await
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        // The upstream SSE stream remains open even after a response terminal.
+        drop(observed);
+        drop(sender);
+        recorder.wait_finished().await;
+        let status: String =
+            sqlx::query_scalar("select status from client_trajectory_captures where request_id=$1")
+                .bind(recorder.capture_id())
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(status, expected, "terminal={terminal}, io_error={io_error}");
+        assert_eq!(
+            raw_bytes(&store, flow, recorder.capture_id(), "emitted").await,
+            bytes.as_ref()
+        );
+    }
+
+    // The HTTP-specific close policy must not relax the shared WebSocket guard.
+    let recorder = ClientTrajectoryRecorder::new(
+        Arc::new(store.clone()),
+        ClientTrajectoryTransport::Websocket,
+    );
+    recorder.record(
+        ClientTrajectoryFrameKind::Request,
+        b"{\"type\":\"response.create\",\"input\":\"x\"}",
+    );
+    recorder.bind_run(flow, None);
+    recorder.record(
+        ClientTrajectoryFrameKind::ResponseJson,
+        b"{\"type\":\"response.completed\",\"response\":{\"output\":[]}}",
+    );
+    drop(CaptureGuard::new(recorder.clone()));
+    recorder.wait_finished().await;
+    let status: String =
+        sqlx::query_scalar("select status from client_trajectory_captures where request_id=$1")
+            .bind(recorder.capture_id())
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(status, "incomplete");
+}
