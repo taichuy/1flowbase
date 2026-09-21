@@ -1,3 +1,4 @@
+import { fetchProviderTrajectory, fetchProviderTrajectoryBody } from '../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -1180,6 +1181,8 @@ export function ApplicationLogsPage({
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
               traceLoader={{
+                loadTrajectory: (runId, nodeRunId, cursor) => fetchProviderTrajectory(applicationId, runId, nodeRunId, cursor),
+                loadTrajectoryBody: (runId, nodeRunId, eventId) => fetchProviderTrajectoryBody(applicationId, runId, nodeRunId, eventId),
                 loadTree: (runId) =>
                   fetchApplicationRunTraceTree(applicationId, runId),
                 loadChildren: (runId, traceNodeId, cursor) =>

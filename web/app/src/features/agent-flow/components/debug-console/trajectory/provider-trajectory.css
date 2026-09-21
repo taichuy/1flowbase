@@ -1,0 +1,38 @@
+.provider-trajectory__overview {
+  margin-bottom: 12px;
+}
+.provider-trajectory__sequence {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+.provider-trajectory__workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+.provider-trajectory__inspector {
+  min-width: 0;
+  border-inline-start: 1px solid var(--border-subtle);
+  padding-inline-start: 16px;
+}
+.provider-trajectory__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 12px;
+}
+.provider-trajectory__selected {
+  background: var(--bg-selected);
+}
+@media (max-width: 720px) {
+  .provider-trajectory__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .provider-trajectory__inspector {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+  }
+}

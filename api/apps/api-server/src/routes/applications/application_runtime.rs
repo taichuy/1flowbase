@@ -37,6 +37,8 @@ use crate::{
 };
 
 use super::debug_run_stream;
+pub(crate) mod provider_trajectory;
+use provider_trajectory::{get_provider_trajectory_body, list_provider_trajectory};
 mod application_log_cache;
 mod application_logs;
 pub(crate) mod application_monitoring;
@@ -85,6 +87,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", console_get(list_provider_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id", console_get(get_provider_trajectory_body, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route(
             "/applications/:id/orchestration/debug-runs",
             console_post(

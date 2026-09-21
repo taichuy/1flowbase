@@ -4,6 +4,8 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            mp::object_schema(&[("variant", mp::tag_schema("TrajectoryPage")), ("application_id", mp::text_schema()), ("run_id", mp::text_schema()), ("node_run_id", mp::text_schema())]),
+            mp::object_schema(&[("variant", mp::tag_schema("TrajectoryBody")), ("application_id", mp::text_schema()), ("run_id", mp::text_schema()), ("node_run_id", mp::text_schema()), ("event_id", mp::text_schema())]),
             mp::object_schema(&[
                 ("variant", mp::tag_schema("ListRuns")),
                 ("application_id", mp::text_schema()),
@@ -191,6 +193,8 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::TrajectoryPage { application_id, run_id, node_run_id, .. } => serde_json::json!({"variant":"TrajectoryPage", "application_id":application_id, "run_id":run_id, "node_run_id":node_run_id}),
+            Self::TrajectoryBody { application_id, run_id, node_run_id, event_id } => serde_json::json!({"variant":"TrajectoryBody", "application_id":application_id, "run_id":run_id, "node_run_id":node_run_id, "event_id":event_id}),
             Self::ListRuns {
                 application_id: _field_application_id,
                 query: _field_query,

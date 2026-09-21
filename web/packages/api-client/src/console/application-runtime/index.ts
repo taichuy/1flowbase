@@ -5,3 +5,5 @@ export {
   getConsoleApplicationConversationMessages,
   getConsoleApplicationRunConversationMessages
 } from '../application-run-conversation';
+
+export * from './trajectory';

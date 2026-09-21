@@ -28,3 +28,6 @@ pub use trace_projection::*;
 
 mod application_run_log_context;
 pub use application_run_log_context::*;
+
+pub mod trajectory;
+pub use trajectory::*;

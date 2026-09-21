@@ -1,3 +1,4 @@
+import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import {
   useCallback,
   useEffect,
@@ -854,7 +855,30 @@ function LazyTraceNodeItem({
             <div className="agent-flow-editor__conversation-log-json-list">
               <DebugWorkflowNodeDetailContent
                 onLoadSection={loadNodeRunSection}
-                beforePayloadContent={childNodesBeforePayload}
+                beforePayloadContent={
+                  node.node_type === 'llm' ? undefined : childNodesBeforePayload
+                }
+                toolPresentation={
+                  node.node_type === 'llm' ? 'hidden' : 'complete'
+                }
+                processAction={
+                  node.node_type === 'llm' && node.node_run_id ? (
+                    <ProviderTrajectory
+                      runId={
+                        node.source_flow_run_id ?? node.flow_run_id ?? runId
+                      }
+                      nodeRunId={node.node_run_id}
+                      loader={traceLoader}
+                      executionContent={
+                        <>
+                          {childLoadStatusContent}
+                          {childNodesBeforePayload}
+                          {loadMoreChildrenButton}
+                        </>
+                      }
+                    />
+                  ) : undefined
+                }
                 defaultToolsExpanded={defaultToolsExpanded}
                 item={item}
                 onLoadArtifact={onLoadArtifact}
@@ -872,8 +896,12 @@ function LazyTraceNodeItem({
               />
             </div>
           )}
-          {childLoadStatusContent}
-          {loadMoreChildrenButton}
+          {node.node_type === 'llm' ? null : (
+            <>
+              {childLoadStatusContent}
+              {loadMoreChildrenButton}
+            </>
+          )}
         </section>
       )}
     </DebugWorkflowNodeItem>

@@ -36,3 +36,5 @@ mod workspace_scope_tests;
 mod plugin_settings_template_tests;
 
 mod runtime_json_storage_tests;
+
+mod trajectory;

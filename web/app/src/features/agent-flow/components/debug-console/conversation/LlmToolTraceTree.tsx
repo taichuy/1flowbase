@@ -220,6 +220,7 @@ function routeBranchNodeKey(
 export function DebugWorkflowNodeDetailContent({
   item,
   beforePayloadContent,
+  processAction,
   defaultToolsExpanded = false,
   toolPresentation = 'complete',
   payloadDisclosure = 'immediate',
@@ -235,6 +236,7 @@ export function DebugWorkflowNodeDetailContent({
   ) => Promise<unknown>;
   processAction?: ReactNode;
   beforePayloadContent?: ReactNode;
+  processAction?: ReactNode;
   defaultToolsExpanded?: boolean;
   toolPresentation?: 'complete' | 'hidden';
   payloadDisclosure?: 'immediate' | 'after-finished';

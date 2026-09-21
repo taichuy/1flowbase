@@ -1,4 +1,5 @@
 mod managed_projection;
+mod trajectory;
 
 use std::sync::Arc;
 
@@ -29,6 +30,18 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    TrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        node_run_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
+    },
+    TrajectoryBody {
+        application_id: Uuid,
+        run_id: Uuid,
+        node_run_id: Uuid,
+        event_id: Uuid,
+    },
     ListRuns {
         application_id: Uuid,
         query: ApplicationRunsQuery,
@@ -92,6 +105,8 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    TrajectoryPage(control_plane::ports::ProviderTrajectoryPage),
+    TrajectoryBody(control_plane::ports::ProviderTrajectoryBody),
     Runs(FlowRunSummaryPageResponse),
     ConversationMessages(ApplicationConversationMessagesPageResponse),
     RunOverview(ApplicationRunOverviewResponse),
@@ -746,6 +761,24 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::TrajectoryPage {
+                application_id,
+                run_id,
+                node_run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryPage(
+                self.trajectory_page(actor, application_id, run_id, node_run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::TrajectoryBody {
+                application_id,
+                run_id,
+                node_run_id,
+                event_id,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryBody(
+                self.trajectory_body(actor, application_id, run_id, node_run_id, event_id)
+                    .await?,
+            )),
             ApplicationRuntimeReadsInput::ListRuns {
                 application_id,
                 query,
@@ -857,6 +890,8 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.list", binding_id: "http.console.applications.runtime.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.body.get", binding_id: "http.console.applications.runtime.trajectory.body.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id", mutating: false },
     ConsoleInterfaceDeclaration {
         interface_id: "applications.runtime.logs.list",
         binding_id: "http.console.applications.runtime.logs.list.v1",

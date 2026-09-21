@@ -682,6 +682,8 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-reads",
             &[
+                "applications.runtime.trajectory.list",
+                "applications.runtime.trajectory.body.get",
                 "applications.runtime.logs.list",
                 "applications.runtime.conversations.messages.list",
                 "applications.runtime.run-conversation.messages.list",
