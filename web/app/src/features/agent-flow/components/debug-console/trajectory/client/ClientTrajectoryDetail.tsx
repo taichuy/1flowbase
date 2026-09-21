@@ -60,6 +60,15 @@ export function ClientTrajectoryDetail({
         size="small"
         column={1}
         items={[
+          ...(step.namespace
+            ? [
+                {
+                  key: 'namespace',
+                  label: 'namespace',
+                  children: step.namespace
+                }
+              ]
+            : []),
           {
             key: 'origin',
             label: i18nText('agentFlow', 'client_trajectory.direction'),

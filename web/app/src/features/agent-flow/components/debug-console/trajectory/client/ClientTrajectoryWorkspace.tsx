@@ -54,6 +54,7 @@ export function ClientTrajectoryWorkspace({
     (!query ||
       [
         step.name,
+        step.namespace,
         step.preview,
         step.call_id,
         step.parameters_preview,
@@ -116,7 +117,7 @@ export function ClientTrajectoryWorkspace({
         className="provider-trajectory__row client-trajectory__row"
         data-lane={clientLane(step)}
         data-selected={selected === step.id || undefined}
-        aria-label={`${categoryLabel(step.category)} · ${step.name}`}
+        aria-label={`${categoryLabel(step.category)} · ${step.namespace ? `${step.namespace}.${step.name}` : step.name}`}
         aria-pressed={selected === step.id}
         onClick={() => setSelected(step.id)}
       >
@@ -125,7 +126,9 @@ export function ClientTrajectoryWorkspace({
           {categoryLabel(step.category)}
         </span>
         <span className="client-trajectory__summary">
-          <strong>{step.name}</strong>
+          <strong>
+            {step.namespace ? `${step.namespace}.${step.name}` : step.name}
+          </strong>
           <span className="provider-trajectory__preview">
             {step.parameters_preview ||
               step.result_preview ||
@@ -428,7 +431,9 @@ export function ClientTrajectoryWorkspace({
                 {categoryLabel(selectedStep.category)}
               </span>
               <strong className="provider-trajectory__preview">
-                {selectedStep.name}
+                {selectedStep.namespace
+                  ? `${selectedStep.namespace}.${selectedStep.name}`
+                  : selectedStep.name}
               </strong>
               <Button
                 size="small"

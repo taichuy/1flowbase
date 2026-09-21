@@ -6,6 +6,7 @@ export interface ClientTrajectoryStep {
   created_at: string;
   category: string;
   name: string;
+  namespace: string | null;
   preview: string;
   parameters_preview: string | null;
   result_preview: string | null;

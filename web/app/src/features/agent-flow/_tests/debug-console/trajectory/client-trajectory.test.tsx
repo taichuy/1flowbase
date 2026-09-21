@@ -22,6 +22,7 @@ const root: ClientTrajectoryStep = {
   created_at: '2026-09-22T00:00:00Z',
   category: 'request',
   name: 'Responses request',
+  namespace: null,
   preview: 'gpt-5.6-luna · max',
   parameters_preview: null,
   result_preview: null,
@@ -52,7 +53,7 @@ const tool: ClientTrajectoryStep = {
   origin: 'emitted',
   available_sections: ['overview', 'parameters', 'schema', 'timing', 'raw']
 };
-function fixture() {
+function fixture(namespace: string | null = null) {
   const loadClientTrajectory = vi
     .fn()
     .mockImplementation((_run, _node, cursor) =>
@@ -71,7 +72,7 @@ function fixture() {
                 available_sections: ['result']
               }
             ]
-          : [root, tool],
+          : [root, { ...tool, namespace }],
         next_cursor: cursor ? null : 2,
         integrity: 'complete'
       })
@@ -205,5 +206,23 @@ test('paginates summaries, keeps original categories and follows actual call rel
   fireEvent.click(screen.getByRole('button', { name: '展开请求' }));
   expect(
     screen.getByRole('button', { name: '工具调用 · exec_command' })
+  ).toBeInTheDocument();
+});
+
+test('shows and searches actual protocol namespace without replacing the original tool name', async () => {
+  fixture('mcp__codex_apps__github');
+  fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
+  const row = await screen.findByRole('button', {
+    name: '工具调用 · mcp__codex_apps__github.exec_command'
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索已加载步骤' }), {
+    target: { value: 'mcp__codex_apps__github' }
+  });
+  expect(row).toBeInTheDocument();
+  fireEvent.click(row);
+  const inspector = screen.getByRole('complementary', { name: '步骤检查器' });
+  expect(within(inspector).getByText('namespace')).toBeInTheDocument();
+  expect(
+    within(inspector).getByText('mcp__codex_apps__github')
   ).toBeInTheDocument();
 });
