@@ -7,7 +7,7 @@ fn package() -> TempProviderPackage {
 
 fn named_package(plugin_id: &str) -> TempProviderPackage {
     let package = TempProviderPackage::new();
-    package.write_stateful_provider_package(plugin_id, "fixture_provider", "Fixture");
+    package.write_stateful_provider_package(plugin_id, plugin_id, "Fixture");
     package.write("bin/fixture_provider", r#"#!/usr/bin/env python3
 import json, os, sys, time
 root = os.path.dirname(__file__)
@@ -451,14 +451,17 @@ async fn stop_all_retires_busy_workers_across_plugins_with_one_host_budget() {
             .unwrap()
             .plugin_id;
         let (sender, mut events) = tokio::sync::mpsc::channel(8);
+        let mut request = input("busy", true);
+        request.provider_code = host
+            .loaded_package(&id)
+            .unwrap()
+            .package
+            .provider
+            .provider_code
+            .clone();
         calls.push(tokio::spawn(
-            host.invoke_stream_with_live_events_operation(
-                &id,
-                input("busy", true),
-                Some(sender),
-                None,
-            )
-            .unwrap(),
+            host.invoke_stream_with_live_events_operation(&id, request, Some(sender), None)
+                .unwrap(),
         ));
         entered(&mut events).await;
         receivers.push(events);
@@ -493,13 +496,18 @@ async fn stop_all_retires_busy_workers_across_plugins_with_one_host_budget() {
             .load(package.path().to_str().unwrap())
             .unwrap()
             .plugin_id;
-        tokio::time::timeout(
-            Duration::from_secs(3),
-            host.invoke_stream(&id, input("new", false)),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let mut request = input("new", false);
+        request.provider_code = host
+            .loaded_package(&id)
+            .unwrap()
+            .package
+            .provider
+            .provider_code
+            .clone();
+        tokio::time::timeout(Duration::from_secs(3), host.invoke_stream(&id, request))
+            .await
+            .unwrap()
+            .unwrap();
     }
     host.stop_all().await.unwrap();
 }
