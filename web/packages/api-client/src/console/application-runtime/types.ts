@@ -910,7 +910,8 @@ export interface ConsoleApplicationConversationMessage {
   run_id: string;
   detail_run_id?: string | null;
   can_open_detail?: boolean;
-  role?: 'system' | 'user' | 'assistant' | 'tool' | null;
+  // The backend preserves the canonical message role as Option<String>, including developer.
+  role?: string | null;
   content?: string | null;
   started_at: string;
   finished_at: string | null;
