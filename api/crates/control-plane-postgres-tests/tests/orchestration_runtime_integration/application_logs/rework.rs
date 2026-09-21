@@ -503,7 +503,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         "retain the actual answer source run"
     );
     assert_eq!(live_turn.query.as_deref(), Some("same question"));
-    assert_eq!(live_turn.status, FlowRunStatus::Running);
+    assert_eq!(live_turn.status, "running");
     assert_eq!(live_turn.answer, None, "an active task has no final answer");
     assert_eq!(live_turn.output_source.as_deref(), Some("none"));
     let live_task = store
