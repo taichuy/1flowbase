@@ -446,6 +446,13 @@ impl Capture {
                     .or_else(|| item.get("id"))
                     .and_then(Value::as_str)
                 {
+                    // Done carries both Native identities: argument deltas may use
+                    // the output-item id while the displayed tool uses call_id.
+                    // Close only aliases explicitly attached to this committed item.
+                    if let Some(item_id) = item.get("id").and_then(Value::as_str) {
+                        state.open_tools.remove(item_id);
+                    }
+                    state.open_tools.remove(id);
                     state.tools.insert(id.into(), item);
                 } else {
                     state.gap = true;

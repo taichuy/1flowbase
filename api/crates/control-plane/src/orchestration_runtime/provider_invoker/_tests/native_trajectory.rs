@@ -265,8 +265,10 @@ async fn native_tool_output_done_closes_argument_stream_without_tool_commit_or_r
             output_index: 0,
             item: item.clone(),
         });
+        // Actual Native passthrough shape: delta identity is the output-item id,
+        // while Done also carries a different canonical tool call_id.
         observer.observe(&ProviderStreamEvent::ToolCallDelta {
-            call_id: "call-1".into(),
+            call_id: "fc-1".into(),
             delta: json!({"arguments":"{\"text\":\"trace-ok\"}"}),
         });
         observer.observe(&ProviderStreamEvent::ResponsesOutputDelta {
