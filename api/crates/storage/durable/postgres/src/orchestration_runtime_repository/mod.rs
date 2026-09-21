@@ -1560,11 +1560,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                case
-                    when callback_kind = 'llm_tool_calls'
-                    then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
-                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
-                end as request_payload,
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
                 runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then null
@@ -1580,7 +1576,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(map_callback_task_record).transpose()
+        row.map(map_callback_task_tool_summary_record).transpose()
     }
 
     async fn get_published_run_stream_state(
@@ -1643,14 +1639,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 flow_run_id,
                 node_run_id,
                 callback_kind,
-                case
-                    when callback_kind = 'llm_tool_calls' then null
-                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
-                end as request_payload,
-                case
-                    when callback_kind = 'llm_tool_calls' then request_payload -> 'tool_calls'
-                    else null
-                end as tool_calls
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload
             from flow_run_callback_tasks
             where flow_run_id = $1
               and status = 'pending'
@@ -1661,13 +1650,22 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .bind(flow_run_id)
         .fetch_optional(self.pool())
         .await?
-        .map(|row| PublishedRunPendingCallback {
-            id: row.get("id"),
-            flow_run_id: row.get("flow_run_id"),
-            node_run_id: row.get("node_run_id"),
-            callback_kind: row.get("callback_kind"),
-            request_payload: row.get("request_payload"),
-            tool_calls: row.get("tool_calls"),
+        .map(|row| {
+            let callback_kind: String = row.get("callback_kind");
+            let original: Value = row.get("request_payload");
+            let (request_payload, tool_calls) = if callback_kind == "llm_tool_calls" {
+                (None, original.get("tool_calls").cloned())
+            } else {
+                (Some(original), None)
+            };
+            PublishedRunPendingCallback {
+                id: row.get("id"),
+                flow_run_id: row.get("flow_run_id"),
+                node_run_id: row.get("node_run_id"),
+                callback_kind,
+                request_payload,
+                tool_calls,
+            }
         });
 
         Ok(Some(PublishedRunStreamState {

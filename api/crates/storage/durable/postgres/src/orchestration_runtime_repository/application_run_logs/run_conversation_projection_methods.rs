@@ -436,16 +436,18 @@ impl PgControlPlaneStore {
                     'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
                         else coalesce(e.payload->'item'->>'type','unknown') end||':'||
                         coalesce(e.payload->'item'->>'call_id',e.payload->'item'->>'id',e.id::text) as source_key,
-                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload')->'item' as item
+                    runtime_original_json(e.payload, e.raw_json_payloads, 'payload') as original,
+                    null::bigint as result_ordinal
                 from scope_runs f join runtime_events e on e.flow_run_id=f.id
                 where e.event_type='provider_output_item_done' and e.payload->'item' is not null
                 union all
                 select f.id,-1000000+r.ordinality,
-                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),r.item
-                from scope_runs f cross join lateral json_array_elements(
-                    coalesce(runtime_original_json(f.log_context, f.raw_json_payloads, 'log_context')->'tool_results','[]'::json)) with ordinality r(item,ordinality)
+                    'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),
+                    runtime_original_json(f.log_context, f.raw_json_payloads, 'log_context'), r.ordinality
+                from scope_runs f cross join lateral jsonb_array_elements(
+                    coalesce(f.log_context->'tool_results','[]'::jsonb)) with ordinality r(item,ordinality)
             )
-            select run_id, sequence, source_key, item from facts order by source_key, run_id, sequence"#,
+            select run_id, sequence, source_key, original, result_ordinal from facts order by source_key, run_id, sequence"#,
         ).bind(run.id).bind(run.application_id)
             .bind(context.get("log_conversation_id").and_then(Value::as_str).and_then(|v| Uuid::parse_str(v).ok()))
             .fetch_all(&mut **tx).await?;
@@ -454,10 +456,26 @@ impl PgControlPlaneStore {
         // real NUL and a literal escape remain different facts.
         let mut groups = std::collections::BTreeMap::<String, Vec<(Uuid, i64, Value)>>::new();
         for row in rows {
+            let original: Value = row.try_get("original")?;
+            let ordinal: Option<i64> = row.try_get("result_ordinal")?;
+            let item = match ordinal {
+                Some(ordinal) => ordinal
+                    .checked_sub(1)
+                    .and_then(|index| usize::try_from(index).ok())
+                    .and_then(|index| {
+                        original
+                            .get("tool_results")
+                            .and_then(Value::as_array)
+                            .and_then(|results| results.get(index))
+                    }),
+                None => original.get("item"),
+            }
+            .cloned()
+            .ok_or_else(|| anyhow!("native log fact projection does not match its original"))?;
             groups.entry(row.try_get("source_key")?).or_default().push((
                 row.try_get("run_id")?,
                 row.try_get("sequence")?,
-                row.try_get("item")?,
+                item,
             ));
         }
         let mut facts = Vec::new();

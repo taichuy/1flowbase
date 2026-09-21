@@ -27,7 +27,10 @@ query representation is not a source for recovery or exact-content equality.
 
 `runtime_original_json` returns PostgreSQL **json**, not jsonb. That wire format
 keeps the encoded escape until SQLx/serde_json decodes it in Rust. Do not cast
-its result back to JSONB or extract arbitrary content with `->>` in PostgreSQL.
+its result back to JSONB or apply PostgreSQL JSON operators/array extraction to
+it: even `->` reparses strings and rejects NUL. Return the entire value and
+select child fields in Rust after decoding. Callback privacy projections and
+stream tool-call selection follow this rule.
 TEXT reads select the serialized original under `<column>_original` and use
 `original_optional_text` / `original_required_text` at the Rust row boundary.
 Ordinary rows without original slots retain their previous values.
@@ -78,7 +81,7 @@ provider metrics ledgers, or unrelated metadata.
 
 ## Verification Entry
 
-`runtime_json_storage_tests` contains four real repository lifecycle tests using
+`runtime_json_storage_tests` contains five real repository lifecycle tests using
 isolated schemas and the formal migrations. `_tests/codec.rs` covers marker
 collision, object-key collision, literal escapes and SQL/JSON-null distinction.
 The source does not claim that these tests have been executed.

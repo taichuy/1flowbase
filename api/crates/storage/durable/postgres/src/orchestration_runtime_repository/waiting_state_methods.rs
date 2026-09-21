@@ -149,9 +149,7 @@ impl PgControlPlaneStore {
                         request_payload, external_ref_payload
                     , raw_json_payloads) values ( $1, $2, $3, $4, $5, 'pending', ($6::jsonb -> 0), ($7::jsonb -> 0), jsonb_strip_nulls(jsonb_build_object('request_payload', ($6::jsonb -> 1), 'external_ref_payload', ($7::jsonb -> 1))) )
                     returning id, flow_run_id, node_run_id, callback_kind, status,
-                              case when callback_kind = 'llm_tool_calls'
-                                   then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
-                                   else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') end as request_payload,
+                              runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
                               runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                               case when callback_kind = 'llm_tool_calls' then null
                                    else runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') end as external_ref_payload,
@@ -167,7 +165,7 @@ impl PgControlPlaneStore {
                 .bind(lossless_json_parameter(&(&callback.external_ref_payload)))
                 .fetch_one(&mut *tx)
                 .await?;
-                let callback_task = map_callback_task_record(row)?;
+                let callback_task = map_callback_task_tool_summary_record(row)?;
                 if callback.callback_kind == "llm_tool_calls" {
                     let tool_calls = callback
                         .request_payload

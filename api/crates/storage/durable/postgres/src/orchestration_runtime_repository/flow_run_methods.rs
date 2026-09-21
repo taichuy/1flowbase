@@ -1301,11 +1301,7 @@ impl PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                case
-                    when callback_kind = 'llm_tool_calls'
-                    then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
-                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
-                end as request_payload,
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
                 runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then null
@@ -1324,7 +1320,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        map_callback_task_record(row)
+        map_callback_task_tool_summary_record(row)
     }
 
     async fn get_callback_task(
@@ -1373,11 +1369,7 @@ impl PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                case
-                    when callback_kind = 'llm_tool_calls'
-                    then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
-                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
-                end as request_payload,
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
                 runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then null
@@ -1399,9 +1391,7 @@ impl PgControlPlaneStore {
                 let replay = sqlx::query(
                     r#"
                     select id, flow_run_id, node_run_id, callback_kind, status,
-                           case when callback_kind = 'llm_tool_calls'
-                                then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
-                                else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') end as request_payload,
+                           runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
                            runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                            case when callback_kind = 'llm_tool_calls' then null
                                 else runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') end as external_ref_payload,
@@ -1429,6 +1419,6 @@ impl PgControlPlaneStore {
             }
         };
 
-        map_callback_task_record(row)
+        map_callback_task_tool_summary_record(row)
     }
 }
