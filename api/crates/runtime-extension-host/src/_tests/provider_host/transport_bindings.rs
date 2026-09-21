@@ -274,6 +274,9 @@ async fn final_failure_proof_closes_without_queueing_behind_busy_worker() {
     fs::write(package.path().join("bin/release"), b"release").unwrap();
     let completed = running.await.unwrap().unwrap();
     let readmission = host.invoke_stream(&id, input()).await;
+    let mut host = Arc::try_unwrap(host)
+        .ok()
+        .expect("joined invocation released its host owner");
     host.stop_all().await.unwrap();
     assert!(
         observed_busy,
