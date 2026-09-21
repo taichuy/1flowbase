@@ -349,8 +349,7 @@ pub struct StoredApplicationRunSummaryRow {
 
 #[derive(Debug, Clone)]
 pub struct StoredApplicationRunLogSummaryRow {
-    pub total_cost: Option<String>,
-    pub currency_code: Option<String>,
+    pub cost_breakdown: Option<Vec<domain::ApplicationRunCost>>,
     pub parent_run_id: Option<Uuid>,
     pub caused_by_run_id: Option<Uuid>,
     pub call_kind: String,
@@ -762,8 +761,7 @@ impl PgOrchestrationRuntimeMapper {
         row: StoredApplicationRunLogSummaryRow,
     ) -> Result<domain::ApplicationRunLogSummary> {
         Ok(domain::ApplicationRunLogSummary {
-            total_cost: row.total_cost,
-            currency_code: row.currency_code,
+            cost_breakdown: row.cost_breakdown,
             parent_run_id: row.parent_run_id,
             caused_by_run_id: row.caused_by_run_id,
             call_kind: row.call_kind,

@@ -28,6 +28,10 @@ def main():
     migrations = root / 'api/crates/storage/durable/postgres/migrations'
     sql = f'create schema {schema}; set search_path to {schema};\n'
     for migration in sorted(migrations.glob('*.sql')):
+        if migration.name == '20260921150000_group_application_log_cost_by_currency.sql':
+            fixture = (here / 'cost_snapshot.sql').read_text().split('-- A failed provider attempt')[0]
+            before, after = (here / 'cost_snapshot_upgrade.sql').read_text().split('-- APPLY MIGRATION')
+            sql += fixture + before + migration.read_text() + after + '\nrollback;\n'
         if not migration.name.endswith('.down.sql'):
             sql += 'begin;\n' + migration.read_text() + '\ncommit;\n'
     sql += 'prepare save_cost(uuid) as ' + (here.parent / 'cost_snapshot.sql').read_text() + ';\n'

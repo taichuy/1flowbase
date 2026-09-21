@@ -536,8 +536,10 @@ pub(super) fn map_application_run_log_summary(
 ) -> Result<domain::ApplicationRunLogSummary> {
     PgOrchestrationRuntimeMapper::to_application_run_log_summary(
         StoredApplicationRunLogSummaryRow {
-            total_cost: row.get("total_cost"),
-            currency_code: row.get("currency_code"),
+            cost_breakdown: row
+                .get::<Option<serde_json::Value>, _>("cost_breakdown")
+                .map(serde_json::from_value)
+                .transpose()?,
             parent_run_id: row.try_get("parent_run_id").unwrap_or(None),
             caused_by_run_id: row.try_get("caused_by_run_id").unwrap_or(None),
             call_kind: row.get("call_kind"),

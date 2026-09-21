@@ -162,7 +162,7 @@ fn field_code_to_static(model_code: &'static str, field_code: &str) -> Option<&'
 
 fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKind {
     match field_code {
-        "meta" | "member_run_ids" => crate::ModelFieldKind::Json,
+        "meta" | "member_run_ids" | "cost_breakdown" => crate::ModelFieldKind::Json,
         "is_root" => crate::ModelFieldKind::Boolean,
         "user_input" | "final_output" => crate::ModelFieldKind::Text,
         "email_login_enabled"
@@ -251,8 +251,7 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         ),
         "application_run_log_tasks" => !matches!(
             field_code,
-            "total_cost"
-                | "currency_code"
+            "cost_breakdown"
                 | "parent_task_run_id"
                 | "log_conversation_id"
                 | "client_thread_id"
@@ -281,8 +280,7 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         ),
         "application_run_log_summaries" => !matches!(
             field_code,
-            "total_cost"
-                | "currency_code"
+            "cost_breakdown"
                 | "log_conversation_id"
                 | "log_task_run_id"
                 | "parent_run_id"
@@ -426,8 +424,7 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
 ];
 
 const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
-    "total_cost",
-    "currency_code",
+    "cost_breakdown",
     "id",
     "application_id",
     "scope_id",
@@ -473,8 +470,7 @@ const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
 ];
 
 const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
-    "total_cost",
-    "currency_code",
+    "cost_breakdown",
     "log_conversation_id",
     "log_task_run_id",
     "parent_run_id",

@@ -474,10 +474,16 @@ pub struct ApplicationRunSummary {
     pub updated_at: OffsetDateTime,
 }
 
+/// One currency's recorded cost. Decimal strings avoid precision loss in clients.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ApplicationRunCost {
+    pub total_cost: String,
+    pub currency_code: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationRunLogSummary {
-    pub total_cost: Option<String>,
-    pub currency_code: Option<String>,
+    pub cost_breakdown: Option<Vec<ApplicationRunCost>>,
     pub parent_run_id: Option<Uuid>,
     pub caused_by_run_id: Option<Uuid>,
     pub call_kind: String,

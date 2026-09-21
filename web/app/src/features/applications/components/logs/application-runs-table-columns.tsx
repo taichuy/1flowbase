@@ -249,12 +249,17 @@ export function getApplicationRunsTableColumns(
       )
     },
     {
-      key: 'total_cost',
+      key: 'cost_breakdown',
       title: t('auto.total_cost'),
-      width: 160,
+      width: 240,
       render: (_value, run) =>
-        run.total_cost != null && run.currency_code
-          ? `${run.total_cost.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')} ${run.currency_code}`
+        run.cost_breakdown?.length
+          ? run.cost_breakdown
+              .map(
+                ({ total_cost, currency_code }) =>
+                  `${total_cost.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')} ${currency_code}`
+              )
+              .join(' + ')
           : '—'
     },
     {

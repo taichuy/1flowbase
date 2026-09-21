@@ -159,8 +159,8 @@ pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRe
 pub use orchestration::{
     ApplicationConversationRunSummary, ApplicationRunChildTaskTrace,
     ApplicationRunConversationMessageItem, ApplicationRunConversationContextItem,
-    ApplicationRunConversationOutputState, ApplicationRunDetail, ApplicationRunLogSummary,
-    ApplicationRunLogTask, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
+    ApplicationRunConversationOutputState, ApplicationRunCost, ApplicationRunDetail,
+    ApplicationRunLogSummary, ApplicationRunLogTask, ApplicationRunStitchedTrace, ApplicationRunSubagentTrace,
     ApplicationRunSummary, ApplicationRunTaskRoundTrace, ApplicationRunTraceNodeContentRecord,
     ApplicationRunTraceNodeRecord, ApplicationRunTraceProjectionDiagnostic,
     ApplicationRunTraceProjectionStatus, ApplicationRunTraceProjectionStatusRecord,

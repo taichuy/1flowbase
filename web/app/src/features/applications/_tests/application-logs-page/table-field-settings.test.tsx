@@ -215,8 +215,10 @@ describe('ApplicationLogsPage - table field settings', () => {
           expand_id: 'customer-42',
           authorized_account: 'root',
           compatibility_mode: 'openai-responses-v1',
-          total_cost: '0.000001250000000000',
-          currency_code: 'USD',
+          cost_breakdown: [
+            { total_cost: '0.150000', currency_code: 'CNY' },
+            { total_cost: '0.000001250000000000', currency_code: 'USD' }
+          ],
           total_tokens: 128,
           input_tokens: 100,
           output_tokens: 28,
@@ -283,13 +285,14 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test.each([
-    ['0.000000000000000000', 'USD', '0 USD'],
-    ['0.000000000000000001', 'USD', '0.000000000000000001 USD'],
-    [null, null, '—']
-  ])('renders the saved cost %s without losing decimal precision', (total_cost, currency_code, expected) => {
+    { cost_breakdown: [{ total_cost: '0.000000000000000000', currency_code: 'USD' }], expected: '0 USD' },
+    { cost_breakdown: [{ total_cost: '0.000000000000000001', currency_code: 'USD' }], expected: '0.000000000000000001 USD' },
+    { cost_breakdown: [{ total_cost: '0.15', currency_code: 'CNY' }, { total_cost: '0.02', currency_code: 'USD' }], expected: '0.15 CNY + 0.02 USD' },
+    { cost_breakdown: null, expected: '—' }
+  ])('renders the saved currency breakdown: $expected', ({ cost_breakdown, expected }) => {
     const column = getApplicationRunsTableColumns(appI18n.getFixedT(null, 'applications'))
-      .find((item) => item.key === 'total_cost');
-    expect(column?.render?.(null, { total_cost, currency_code } as ApplicationRunSummary, 0)).toBe(expected);
+      .find((item) => item.key === 'cost_breakdown');
+    expect(column?.render?.(null, { cost_breakdown } as ApplicationRunSummary, 0)).toBe(expected);
   });
 
   test('shows token breakdown columns from run summaries', async () => {
@@ -317,7 +320,7 @@ describe('ApplicationLogsPage - table field settings', () => {
       screen.getByRole('columnheader', { name: '缓存命中率' })
     ).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '费用' })).toBeInTheDocument();
-    expect(screen.getByText('0.00000125 USD')).toBeInTheDocument();
+    expect(screen.getByText('0.15 CNY + 0.00000125 USD')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('28')).toBeInTheDocument();
     expect(screen.getByText('6,956')).toBeInTheDocument();

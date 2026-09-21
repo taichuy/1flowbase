@@ -27,7 +27,7 @@ insert into runtime_cost_ledger(id,flow_run_id,workspace_id,normalized_cost,sett
 select gen_random_uuid(),('00000000-0000-4000-8000-' || lpad(run::text,12,'0'))::uuid,
  '00000000-0000-4000-8000-000000000002',amount,currency,'local_token_pricing','rated'
 from (values (10,0.000001250000000001::numeric,'USD'),(10,0.000002::numeric,'USD'),
- (11,0.000003::numeric,'USD'),(12,0::numeric,'USD'),(14,1::numeric,'USD'),(14,2::numeric,'EUR')) v(run,amount,currency);
+ (11,0.000003::numeric,'USD'),(10,0.1::numeric,'CNY'),(11,0.05::numeric,'CNY'),(12,0::numeric,'USD'),(14,1::numeric,'USD'),(14,2::numeric,'EUR')) v(run,amount,currency);
 execute save_cost('00000000-0000-4000-8000-000000000010');
 execute save_cost('00000000-0000-4000-8000-000000000011');
 execute save_cost('00000000-0000-4000-8000-000000000012');
@@ -35,10 +35,10 @@ execute save_cost('00000000-0000-4000-8000-000000000013');
 execute save_cost('00000000-0000-4000-8000-000000000014');
 select application_run_log_task_refresh(log_task_run_id) from (select distinct log_task_run_id from application_run_log_summaries) anchors;
 do $$ begin
- assert (select total_cost::numeric = 0.000006250000000001 and currency_code='USD' from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'sum all retries and task rounds exactly';
- assert (select total_cost='0' and currency_code='USD' from application_run_log_tasks where id='00000000-0000-4000-8000-000000000012'), 'known zero stays zero';
- assert (select total_cost is null and currency_code is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000013'), 'missing cost is unknown';
- assert (select total_cost is null and currency_code is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000014'), 'never add different currencies';
+ assert (select cost_breakdown = '[{"currency_code":"CNY","total_cost":"0.15"},{"currency_code":"USD","total_cost":"0.000006250000000001"}]'::jsonb from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'sum all retries and task rounds exactly';
+ assert (select cost_breakdown = '[{"currency_code":"USD","total_cost":"0"}]'::jsonb from application_run_log_tasks where id='00000000-0000-4000-8000-000000000012'), 'known zero stays zero';
+ assert (select cost_breakdown is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000013'), 'missing cost is unknown';
+ assert (select cost_breakdown = '[{"currency_code":"EUR","total_cost":"2"},{"currency_code":"USD","total_cost":"1"}]'::jsonb from application_run_log_tasks where id='00000000-0000-4000-8000-000000000014'), 'mixed currency charges must be retained';
 end $$;
 -- No request-log delivery is needed. Removing the synchronous source after
 -- finalization cannot change a recorded task even if its projection refreshes.
@@ -46,19 +46,19 @@ delete from model_provider_request_logs;
 delete from runtime_cost_ledger;
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
- assert (select total_cost::numeric = 0.000006250000000001 from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'snapshot survives source cleanup';
+ assert (select cost_breakdown = '[{"currency_code":"CNY","total_cost":"0.15"},{"currency_code":"USD","total_cost":"0.000006250000000001"}]'::jsonb from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'snapshot survives source cleanup';
 end $$;
 -- Reopened tasks and tasks with an unknown member must not present a partial
 -- amount as a completed total.
 update application_run_log_summaries set finished_at=null,status='running' where flow_run_id='00000000-0000-4000-8000-000000000011';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
- assert (select total_cost is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'active task has no final total';
+ assert (select cost_breakdown is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'active task has no final total';
 end $$;
-update application_run_log_summaries set finished_at=now(),status='succeeded',total_cost=null,currency_code=null where flow_run_id='00000000-0000-4000-8000-000000000011';
+update application_run_log_summaries set finished_at=now(),status='succeeded',cost_breakdown=null where flow_run_id='00000000-0000-4000-8000-000000000011';
 select application_run_log_task_refresh('00000000-0000-4000-8000-000000000010');
 do $$ begin
- assert (select total_cost is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'unknown member must not be silently omitted';
+ assert (select cost_breakdown is null from application_run_log_tasks where id='00000000-0000-4000-8000-000000000010'), 'unknown member must not be silently omitted';
 end $$;
 deallocate save_cost;
 rollback;

@@ -91,8 +91,7 @@ export type ApplicationRunSummary = {
   external_trace_id?: string | null;
   compatibility_mode?: string | null;
   idempotency_key?: string | null;
-  total_cost: string | null;
-  currency_code: string | null;
+  cost_breakdown: ConsoleApplicationRunSummary['cost_breakdown'];
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -1091,6 +1090,21 @@ function optionalRecordPayload(
   return value as Record<string, unknown>;
 }
 
+function costBreakdownField(
+  record: Record<string, unknown>
+): ConsoleApplicationRunSummary['cost_breakdown'] {
+  const value = record.cost_breakdown;
+  if (value == null) return null;
+  if (!Array.isArray(value)) throw new Error('invalid_cost_breakdown');
+  return value.map((item) => {
+    const cost = recordPayload({ cost: item }, 'cost');
+    return {
+      total_cost: stringField(cost, 'total_cost'),
+      currency_code: stringField(cost, 'currency_code')
+    };
+  });
+}
+
 function toApplicationRunSummary(
   record: Record<string, unknown>
 ): ApplicationRunSummary {
@@ -1149,8 +1163,7 @@ function toApplicationRunSummary(
     external_trace_id: optionalStringField(record, 'external_trace_id'),
     compatibility_mode: optionalStringField(record, 'compatibility_mode'),
     idempotency_key: optionalStringField(record, 'idempotency_key'),
-    total_cost: optionalStringField(record, 'total_cost'),
-    currency_code: optionalStringField(record, 'currency_code'),
+    cost_breakdown: costBreakdownField(record),
     total_tokens: optionalNumberField(record, 'total_tokens'),
     input_tokens: optionalNumberField(record, 'input_tokens'),
     output_tokens: optionalNumberField(record, 'output_tokens'),
