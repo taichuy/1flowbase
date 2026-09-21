@@ -1,3 +1,7 @@
+import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../state/navigation-query-scope';
 import { Link } from '@tanstack/react-router';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import { Button, Drawer, Menu, Typography } from 'antd';
@@ -246,6 +250,7 @@ export function Navigation({
   pathname: string;
   useRouterLinks: boolean;
 }) {
+  const navigationScope = useAuthStore(selectNavigationQueryScope);
   const { t } = useTranslation('appShell');
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const workspaceId = useAuthStore(
@@ -256,11 +261,13 @@ export function Navigation({
   );
   const selectedKey = getSelectedRouteId(pathname);
   const consoleNavigationQuery = useQuery({
-    queryKey: settingsConsoleNavigationQueryKey,
+    queryKey: [...settingsConsoleNavigationQueryKey, navigationScope],
+    staleTime: navigationQueryStaleTime,
     queryFn: fetchSettingsConsoleNavigation
   });
   const frontstageNavigationQuery = useQuery({
-    queryKey: frontstagePageTreeQueryKey(workspaceId ?? ''),
+    queryKey: frontstagePageTreeQueryKey(workspaceId ?? '', navigationScope),
+    staleTime: navigationQueryStaleTime,
     queryFn: () => fetchFrontstagePageTree(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
     retry: false

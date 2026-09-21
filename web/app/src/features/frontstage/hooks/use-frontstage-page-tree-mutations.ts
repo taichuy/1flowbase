@@ -6,7 +6,6 @@ import {
   createFrontstagePageGroupNode,
   createFrontstagePageNode,
   deleteFrontstageNode,
-  frontstagePageTreeQueryKey,
   moveFrontstageNode,
   renameFrontstagePageNode,
   updateFrontstagePageNodeMetadata,
@@ -33,7 +32,7 @@ function toError(error: unknown): Error {
 export function useFrontstagePageTreeMutations(workspaceId: string) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const queryKey = frontstagePageTreeQueryKey(workspaceId);
+  const queryKey = ['frontstage', workspaceId, 'page-tree'] as const;
   const [mutationError, setMutationError] = useState<Error | null>(null);
 
   const invalidatePageTree = async () => {

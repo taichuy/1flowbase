@@ -501,6 +501,7 @@ pub struct RoleFrontstageRoutesView {
 
 pub struct RoleService<R> {
     repository: R,
+    navigation_cache: Option<crate::navigation_cache::NavigationCache>,
 }
 
 fn ensure_workspace_role_data_policy_scope(
@@ -544,7 +545,18 @@ where
     R: RoleRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            navigation_cache: None,
+        }
+    }
+
+    pub fn with_navigation_cache(
+        mut self,
+        cache: crate::navigation_cache::NavigationCache,
+    ) -> Self {
+        self.navigation_cache = Some(cache);
+        self
     }
 
     pub async fn get_console_policy_catalog(
@@ -624,6 +636,14 @@ where
                 group_ids: command.group_ids,
             })
             .await?;
+        if let Some(cache) = &self.navigation_cache {
+            cache
+                .invalidate(
+                    crate::navigation_cache::NavigationCacheDomain::ConsoleRoutes,
+                    actor.current_workspace_id,
+                )
+                .await;
+        }
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),

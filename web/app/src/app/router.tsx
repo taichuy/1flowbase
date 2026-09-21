@@ -1,4 +1,8 @@
 import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../state/navigation-query-scope';
+import {
   Navigate,
   Outlet,
   RouterProvider,
@@ -327,8 +331,10 @@ function FrontStageSlugRoute({
     (state) => state.actor?.current_workspace_id
   );
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
+  const navigationScope = useAuthStore(selectNavigationQueryScope);
   const pageTreeQuery = useQuery({
-    queryKey: frontstagePageTreeQueryKey(workspaceId ?? ''),
+    queryKey: frontstagePageTreeQueryKey(workspaceId ?? '', navigationScope),
+    staleTime: navigationQueryStaleTime,
     queryFn: () => fetchFrontstagePageTree(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
     retry: false

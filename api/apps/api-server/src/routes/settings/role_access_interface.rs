@@ -86,6 +86,7 @@ pub(crate) enum RoleAccessOutput {
 }
 
 struct RoleAccessAdapter {
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
     console_inventory: access_control::ConsoleOperationCompiledInventory,
     settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
@@ -93,12 +94,14 @@ struct RoleAccessAdapter {
 }
 
 pub(crate) fn role_access_port(
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
     console_inventory: access_control::ConsoleOperationCompiledInventory,
     settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
     bootstrap_workspace_id: uuid::Uuid,
 ) -> Arc<dyn ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput>> {
     Arc::new(RoleAccessAdapter {
+        navigation_cache,
         store,
         console_inventory,
         settings_features,
@@ -181,6 +184,7 @@ impl RoleAccessAdapter {
             RoleAccessInput::ReplaceConsoleSettingsOrder { locale, body } => {
                 let resolved = locale.resolve(self.preferred_locale(principal).await?);
                 let catalog = RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .replace_console_settings_order(
                         ReplaceConsoleSettingsOrderCommand {
                             actor_user_id: actor.user_id,

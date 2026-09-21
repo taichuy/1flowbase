@@ -429,6 +429,11 @@
   max-width: calc(100vw - 32px);
 }
 
+/* This popup owns its wheel boundary; reaching either end must not scroll the page. */
+.app-shell-settings-popup {
+  overscroll-behavior-y: contain;
+}
+
 .app-shell-settings-popup.ant-menu,
 .app-shell-settings-popup .ant-menu,
 .app-shell-help-popup.ant-menu,

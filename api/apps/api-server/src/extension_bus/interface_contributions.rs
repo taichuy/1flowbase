@@ -278,6 +278,9 @@ pub(crate) fn production_interface_contributions(
         crate::routes::membership_interface::membership_port(state.store.clone());
     let console_navigation = crate::routes::navigation_interface::port(
         crate::routes::navigation_interface::ConsoleNavigationDependencies {
+            navigation_cache: control_plane::navigation_cache::NavigationCache(
+                state.infrastructure.cache_store(),
+            ),
             store: state.store.clone(),
             surfaces: Arc::clone(&state.console_surface_registry),
             settings_features: state.settings_feature_registry.inventory().features.clone(),
@@ -293,6 +296,7 @@ pub(crate) fn production_interface_contributions(
         },
     );
     let console_role_access = crate::routes::role_access_interface::role_access_port(
+        control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
         state.store.clone(),
         state.console_operation_registry.inventory().clone(),
         state.settings_feature_registry.inventory().features.clone(),
@@ -1563,6 +1567,7 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-frontstage-pages"],
             crate::routes::frontstage::interface_pages::compile_registry(
                 crate::routes::frontstage::interface_pages::FrontstagePagesDependencies {
+                    navigation_cache: control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
                     store: state.store.clone(),
                     bootstrap_workspace_id: state.bootstrap_workspace_id,
                     api_node_id: state.api_node_id.clone(),

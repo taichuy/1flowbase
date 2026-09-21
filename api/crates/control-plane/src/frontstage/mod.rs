@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod block_tree;
+mod navigation;
 
 pub use block_tree::*;
 
@@ -201,6 +202,7 @@ pub struct FrontstagePageService<R> {
     repository: R,
     actor_override: Option<domain::ActorContext>,
     node_id: Option<String>,
+    navigation_cache: Option<crate::navigation_cache::NavigationCache>,
 }
 
 impl<R> FrontstagePageService<R>
@@ -212,6 +214,7 @@ where
             repository,
             actor_override: None,
             node_id: None,
+            navigation_cache: None,
         }
     }
 
@@ -220,6 +223,7 @@ where
             repository,
             actor_override: Some(actor),
             node_id: None,
+            navigation_cache: None,
         }
     }
 
@@ -242,24 +246,6 @@ where
         self.repository
             .load_actor_context_for_workspace(actor_user_id, workspace_id)
             .await
-    }
-
-    pub async fn list_page_tree(
-        &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
-    ) -> Result<Vec<domain::FrontstagePageTreeNode>> {
-        let actor = self.load_actor_context(actor_user_id, workspace_id).await?;
-        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
-        let visibility_rules = self
-            .visibility_rules_for_actor(&actor, actor_user_id, workspace_id)
-            .await?;
-
-        Ok(build_visible_frontstage_page_tree(
-            pages,
-            &visibility_rules,
-            &actor,
-        ))
     }
 
     pub async fn create_group(
@@ -302,6 +288,7 @@ where
                 default_tab: None,
             })
             .await?;
+        self.invalidate_navigation(command.workspace_id).await;
         self.audit(&actor, &created.page, "frontstage.page_group_created")
             .await?;
 
@@ -354,6 +341,7 @@ where
                 }),
             })
             .await?;
+        self.invalidate_navigation(command.workspace_id).await;
         self.audit(&actor, &created.page, "frontstage.page_created")
             .await?;
 
@@ -494,6 +482,7 @@ where
                 },
             })
             .await?;
+        self.invalidate_navigation(command.workspace_id).await;
         self.audit(&actor, &updated, "frontstage.page_metadata_updated")
             .await?;
 
@@ -544,6 +533,7 @@ where
                 rank: normalize_rank(command.rank),
             })
             .await?;
+        self.invalidate_navigation(command.workspace_id).await;
         self.audit(&actor, &moved, "frontstage.page_moved").await?;
 
         Ok(moved)
@@ -563,6 +553,7 @@ where
         self.repository
             .delete_frontstage_page(command.workspace_id, command.page_id)
             .await?;
+        self.invalidate_navigation(command.workspace_id).await;
         self.audit(&actor, &existing, "frontstage.page_deleted")
             .await?;
 

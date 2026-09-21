@@ -1,3 +1,8 @@
+import { useAuthStore } from '../../../state/auth-store';
+import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../../../state/navigation-query-scope';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
@@ -60,9 +65,11 @@ export function FrontstageWorkspacePage({
   blockInputSearch,
   rootNode
 }: FrontstageWorkspacePageProps) {
+  const navigationScope = useAuthStore(selectNavigationQueryScope);
   const navigate = useNavigate();
   const pageTreeQuery = useQuery({
-    queryKey: frontstagePageTreeQueryKey(workspaceId),
+    queryKey: frontstagePageTreeQueryKey(workspaceId, navigationScope),
+    staleTime: navigationQueryStaleTime,
     queryFn: () => fetchFrontstagePageTree(workspaceId),
     retry: false
   });
