@@ -33,9 +33,9 @@ pub(super) async fn fetch_flow_run_for_application(
             target_node_id,
             title,
             status,
-            input_payload,
-            output_payload,
-            error_payload,
+            runtime_original_json(input_payload, flow_runs.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(error_payload, flow_runs.raw_json_payloads, 'error_payload') as error_payload,
             created_by,
             (
                 select users.account
@@ -88,11 +88,11 @@ pub(super) async fn fetch_node_run(
             node_type,
             node_alias,
             status,
-            input_payload,
-            output_payload,
-            error_payload,
-            metrics_payload,
-            debug_payload,
+            runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
+            runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
+            runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
             finished_at
         from node_runs
@@ -119,11 +119,11 @@ pub(super) async fn list_node_runs_for_flow_run(
             node_type,
             node_alias,
             status,
-            input_payload,
-            output_payload,
-            error_payload,
-            metrics_payload,
-            debug_payload,
+            runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(output_payload, node_runs.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(error_payload, node_runs.raw_json_payloads, 'error_payload') as error_payload,
+            runtime_original_json(metrics_payload, node_runs.raw_json_payloads, 'metrics_payload') as metrics_payload,
+            runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload,
             started_at,
             finished_at
         from node_runs
@@ -146,9 +146,9 @@ pub(super) async fn list_checkpoints_for_flow_run(
         r#"
         select
             checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
-            checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
-            coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
-            checkpoints.external_ref_payload, checkpoints.created_at
+            checkpoints.status, checkpoints.reason, runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
+            coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot')) as variable_snapshot,
+            runtime_original_json(checkpoints.external_ref_payload, checkpoints.raw_json_payloads, 'external_ref_payload') as external_ref_payload, checkpoints.created_at
         from flow_run_checkpoints checkpoints
         left join runtime_legacy_shadow_rows shadow_rows
           on shadow_rows.source_table = 'flow_run_checkpoints'
@@ -157,6 +157,7 @@ pub(super) async fn list_checkpoints_for_flow_run(
         left join runtime_canonical_contents contents
           on contents.id = shadow_rows.canonical_content_id
          and contents.content = checkpoints.variable_snapshot
+             and (contents.raw_json_payloads -> 'content') is not distinct from (checkpoints.raw_json_payloads -> 'variable_snapshot')
         where checkpoints.flow_run_id = $1
         order by checkpoints.created_at asc, checkpoints.id asc
         "#,
@@ -176,9 +177,9 @@ pub(super) async fn list_checkpoints_for_node_run(
         r#"
         select
             checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
-            checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
-            coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
-            checkpoints.external_ref_payload, checkpoints.created_at
+            checkpoints.status, checkpoints.reason, runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
+            coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot')) as variable_snapshot,
+            runtime_original_json(checkpoints.external_ref_payload, checkpoints.raw_json_payloads, 'external_ref_payload') as external_ref_payload, checkpoints.created_at
         from flow_run_checkpoints checkpoints
         left join runtime_legacy_shadow_rows shadow_rows
           on shadow_rows.source_table = 'flow_run_checkpoints'
@@ -187,6 +188,7 @@ pub(super) async fn list_checkpoints_for_node_run(
         left join runtime_canonical_contents contents
           on contents.id = shadow_rows.canonical_content_id
          and contents.content = checkpoints.variable_snapshot
+             and (contents.raw_json_payloads -> 'content') is not distinct from (checkpoints.raw_json_payloads -> 'variable_snapshot')
         where checkpoints.node_run_id = $1
         order by checkpoints.created_at asc, checkpoints.id asc
         "#,
@@ -210,7 +212,7 @@ pub(super) async fn list_events_for_flow_run(
             node_run_id,
             sequence,
             event_type,
-            payload,
+            runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
             created_at
         from flow_run_events
         where flow_run_id = $1
@@ -236,9 +238,9 @@ pub(super) async fn list_callback_tasks_for_flow_run(
             node_run_id,
             callback_kind,
             status,
-            request_payload,
-            response_payload,
-            external_ref_payload,
+            runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
+            runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
+            runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
             created_at,
             completed_at
         from flow_run_callback_tasks
@@ -319,7 +321,7 @@ pub(super) async fn list_resume_timeline_events_for_flow_run(
 ) -> Result<Vec<domain::RunEventRecord>> {
     let rows = sqlx::query(
         r#"
-        select id, flow_run_id, node_run_id, sequence, event_type, payload, created_at
+        select id, flow_run_id, node_run_id, sequence, event_type, runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload, created_at
         from flow_run_events
         where flow_run_id = $1
           and event_type in (
@@ -444,9 +446,9 @@ pub(super) async fn list_trace_checkpoints_for_node_runs(
     let rows = sqlx::query(
         r#"
         select checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
-               checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
-               coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
-               checkpoints.external_ref_payload,
+               checkpoints.status, checkpoints.reason, runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
+               coalesce(runtime_original_json(contents.content, contents.raw_json_payloads, 'content'), runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot')) as variable_snapshot,
+               runtime_original_json(checkpoints.external_ref_payload, checkpoints.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
                checkpoints.created_at
         from flow_run_checkpoints checkpoints
         join flow_runs runs on runs.id = checkpoints.flow_run_id
@@ -457,6 +459,7 @@ pub(super) async fn list_trace_checkpoints_for_node_runs(
         left join runtime_canonical_contents contents
           on contents.id = shadow_rows.canonical_content_id
          and contents.content = checkpoints.variable_snapshot
+             and (contents.raw_json_payloads -> 'content') is not distinct from (checkpoints.raw_json_payloads -> 'variable_snapshot')
         where runs.application_id = $1
           and checkpoints.flow_run_id = $2
           and checkpoints.node_run_id = any($3)
@@ -481,7 +484,7 @@ pub(super) async fn list_trace_events_for_node_runs(
     let rows = sqlx::query(
         r#"
         select events.id, events.flow_run_id, events.node_run_id, events.sequence,
-               events.event_type, events.payload, events.created_at
+               events.event_type, runtime_original_json(events.payload, events.raw_json_payloads, 'payload') as payload, events.created_at
         from flow_run_events events
         join flow_runs runs on runs.id = events.flow_run_id
         where runs.application_id = $1
@@ -535,9 +538,9 @@ pub(super) async fn list_stitched_trace_source_runs_for_flow_run(
             prior.target_node_id,
             prior.title,
             prior.status,
-            prior.input_payload,
-            prior.output_payload,
-            prior.error_payload,
+            runtime_original_json(prior.input_payload, prior.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(prior.output_payload, prior.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(prior.error_payload, prior.raw_json_payloads, 'error_payload') as error_payload,
             prior.created_by,
             (
                 select users.account
@@ -631,7 +634,7 @@ pub(super) async fn list_runtime_events_for_flow_run(
             trust_level,
             item_id,
             ledger_ref,
-            payload,
+            runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
             visibility,
             durability,
             created_at
@@ -775,9 +778,9 @@ async fn find_subagent_flow_run_candidates(
             candidate.target_node_id,
             candidate.title,
             candidate.status,
-            candidate.input_payload,
-            candidate.output_payload,
-            candidate.error_payload,
+            runtime_original_json(candidate.input_payload, candidate.raw_json_payloads, 'input_payload') as input_payload,
+            runtime_original_json(candidate.output_payload, candidate.raw_json_payloads, 'output_payload') as output_payload,
+            runtime_original_json(candidate.error_payload, candidate.raw_json_payloads, 'error_payload') as error_payload,
             candidate.created_by,
             (
                 select users.account
@@ -874,7 +877,7 @@ pub(super) async fn list_events_for_node_context(
             node_run_id,
             sequence,
             event_type,
-            payload,
+            runtime_original_json(payload, flow_run_events.raw_json_payloads, 'payload') as payload,
             created_at
         from flow_run_events
         where flow_run_id = $1

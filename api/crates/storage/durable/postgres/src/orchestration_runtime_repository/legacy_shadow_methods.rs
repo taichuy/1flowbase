@@ -40,7 +40,9 @@ fn parse_legacy_shadow_source_kind(
     }
 }
 
-fn legacy_run_classification(status: &str) -> control_plane_contracts::ports::LegacyRuntimeRunClassification {
+fn legacy_run_classification(
+    status: &str,
+) -> control_plane_contracts::ports::LegacyRuntimeRunClassification {
     use control_plane_contracts::ports::LegacyRuntimeRunClassification;
     match status {
         "succeeded" | "incomplete" | "failed" | "cancelled" => {
@@ -67,20 +69,22 @@ fn accumulate_legacy_shadow_statistics(
             && item.run_classification == classification
     });
     let index = position.unwrap_or_else(|| {
-        statistics.push(control_plane_contracts::ports::LegacyRuntimeShadowStatistics {
-            source_kind: candidate.source_kind,
-            source_table: candidate.source_table.clone(),
-            source_column: candidate.source_column.clone(),
-            application_id: candidate.application_id,
-            flow_run_id: candidate.flow_run_id,
-            run_classification: classification,
-            scanned_rows: 0,
-            shadowed_rows: 0,
-            already_shadowed_rows: 0,
-            difference_rows: 0,
-            source_bytes: 0,
-            canonical_bytes: 0,
-        });
+        statistics.push(
+            control_plane_contracts::ports::LegacyRuntimeShadowStatistics {
+                source_kind: candidate.source_kind,
+                source_table: candidate.source_table.clone(),
+                source_column: candidate.source_column.clone(),
+                application_id: candidate.application_id,
+                flow_run_id: candidate.flow_run_id,
+                run_classification: classification,
+                scanned_rows: 0,
+                shadowed_rows: 0,
+                already_shadowed_rows: 0,
+                difference_rows: 0,
+                source_bytes: 0,
+                canonical_bytes: 0,
+            },
+        );
         statistics.len() - 1
     });
     let item = &mut statistics[index];
@@ -120,28 +124,28 @@ impl PgControlPlaneStore {
                        'variable_snapshot'::text as source_column,
                        checkpoints.id as source_row_id, runs.scope_id, runs.application_id,
                        runs.id as flow_run_id, runs.status as run_status,
-                       checkpoints.variable_snapshot as payload,
-                       checkpoints.locator_payload as locator_payload,
+                       runtime_original_json(checkpoints.variable_snapshot, checkpoints.raw_json_payloads, 'variable_snapshot') as payload,
+                       runtime_original_json(checkpoints.locator_payload, checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
                        checkpoints.created_at as source_created_at
                   from flow_run_checkpoints checkpoints
                   join flow_runs runs on runs.id = checkpoints.flow_run_id
                 union all
                 select 2, 'callback_request', 'flow_run_callback_tasks', 'request_payload',
                        tasks.id, runs.scope_id, runs.application_id, runs.id, runs.status,
-                       tasks.request_payload, null::jsonb, tasks.created_at
+                       runtime_original_json(tasks.request_payload, tasks.raw_json_payloads, 'request_payload') as request_payload, null::json, tasks.created_at
                   from flow_run_callback_tasks tasks
                   join flow_runs runs on runs.id = tasks.flow_run_id
                 union all
                 select 3, 'callback_response', 'flow_run_callback_tasks', 'response_payload',
                        tasks.id, runs.scope_id, runs.application_id, runs.id, runs.status,
-                       tasks.response_payload, null::jsonb, tasks.created_at
+                       runtime_original_json(tasks.response_payload, tasks.raw_json_payloads, 'response_payload') as response_payload, null::json, tasks.created_at
                   from flow_run_callback_tasks tasks
                   join flow_runs runs on runs.id = tasks.flow_run_id
                  where tasks.response_payload is not null
                 union all
                 select 4, 'run_event_history', 'flow_run_events', 'payload',
                        events.id, runs.scope_id, runs.application_id, runs.id, runs.status,
-                       events.payload, null::jsonb, events.created_at
+                       runtime_original_json(events.payload, events.raw_json_payloads, 'payload') as payload, null::json, events.created_at
                   from flow_run_events events
                   join flow_runs runs on runs.id = events.flow_run_id
             )
@@ -188,14 +192,13 @@ impl PgControlPlaneStore {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let next =
-            candidates.last().map(
-                |candidate| control_plane_contracts::ports::LegacyRuntimeShadowCursor {
-                    source_kind: candidate.source_kind,
-                    created_at: candidate.source_created_at,
-                    source_row_id: candidate.source_row_id,
-                },
-            );
+        let next = candidates.last().map(|candidate| {
+            control_plane_contracts::ports::LegacyRuntimeShadowCursor {
+                source_kind: candidate.source_kind,
+                created_at: candidate.source_created_at,
+                source_row_id: candidate.source_row_id,
+            }
+        });
 
         let mut tx = self.pool().begin().await?;
         let lock_budget_ms = input.lock_budget_ms.clamp(1, 1_000);
@@ -258,7 +261,7 @@ impl PgControlPlaneStore {
 
             let existing = sqlx::query(
                 r#"
-                select rows.source_hash, contents.content, contents.byte_size
+                select rows.source_hash, runtime_original_json(contents.content, contents.raw_json_payloads, 'content') as content, contents.byte_size
                   from runtime_legacy_shadow_rows rows
                   join runtime_canonical_contents contents on contents.id = rows.canonical_content_id
                  where rows.source_table = $1 and rows.source_column = $2
@@ -436,7 +439,7 @@ impl PgControlPlaneStore {
                 r#"
                 insert into runtime_canonical_contents (
                     id, scope_id, application_id, content_hash, content, byte_size
-                ) values ($1, $2, $3, $4, $5, $6)
+                , raw_json_payloads) values ( $1, $2, $3, $4, ($5::jsonb -> 0), $6, jsonb_strip_nulls(jsonb_build_object('content', ($5::jsonb -> 1))) )
                 on conflict (application_id, content_hash) do nothing
                 returning id
                 "#,
@@ -445,18 +448,18 @@ impl PgControlPlaneStore {
             .bind(candidate.scope_id)
             .bind(candidate.application_id)
             .bind(&source_hash)
-            .bind(&candidate.payload)
+            .bind(lossless_json_parameter(&(&candidate.payload)))
             .bind(i64::try_from(canonical.len())?)
             .fetch_optional(&mut *tx)
             .await?;
             let content_id = match content_id {
                 Some(id) => id,
                 None => sqlx::query_scalar::<_, Uuid>(
-                    "select id from runtime_canonical_contents where application_id = $1 and content_hash = $2 and content = $3",
+                    "select id from runtime_canonical_contents where application_id = $1 and content_hash = $2 and content = ($3::jsonb -> 0) and (raw_json_payloads -> 'content') is not distinct from nullif($3::jsonb -> 1, 'null'::jsonb)",
                 )
                 .bind(candidate.application_id)
                 .bind(&source_hash)
-                .bind(&candidate.payload)
+                .bind(lossless_json_parameter(&candidate.payload))
                 .fetch_optional(&mut *tx)
                 .await?
                 .ok_or_else(|| anyhow!("canonical runtime content hash collision"))?,
@@ -516,8 +519,12 @@ impl PgControlPlaneStore {
             .bind(candidate.application_id)
             .bind(candidate.flow_run_id)
             .bind(match legacy_run_classification(&candidate.run_status) {
-                control_plane_contracts::ports::LegacyRuntimeRunClassification::Pending => "pending",
-                control_plane_contracts::ports::LegacyRuntimeRunClassification::Terminal => "terminal",
+                control_plane_contracts::ports::LegacyRuntimeRunClassification::Pending => {
+                    "pending"
+                }
+                control_plane_contracts::ports::LegacyRuntimeRunClassification::Terminal => {
+                    "terminal"
+                }
             })
             .bind(&source_hash)
             .bind(i64::try_from(canonical.len())?)

@@ -64,6 +64,11 @@ use uuid::Uuid;
 use crate::repositories::PgControlPlaneStore;
 
 mod detail_queries;
+mod json_storage;
+use json_storage::{
+    lossless_json_columns, lossless_json_parameter, lossless_text_parameter,
+    original_optional_text, original_required_text,
+};
 mod record_mappers;
 mod sequencing;
 
@@ -1301,9 +1306,9 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 target_node_id,
                 title,
                 status,
-                input_payload,
-                output_payload,
-                error_payload,
+                runtime_original_json(input_payload, flow_runs.raw_json_payloads, 'input_payload') as input_payload,
+                runtime_original_json(output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(error_payload, flow_runs.raw_json_payloads, 'error_payload') as error_payload,
                 created_by,
                 null::text as authorized_account,
                 api_key_id,
@@ -1350,9 +1355,9 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 flow_runs.target_node_id,
                 flow_runs.title,
                 flow_runs.status,
-                flow_runs.input_payload,
-                flow_runs.output_payload,
-                flow_runs.error_payload,
+                runtime_original_json(flow_runs.input_payload, flow_runs.raw_json_payloads, 'input_payload') as input_payload,
+                runtime_original_json(flow_runs.output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(flow_runs.error_payload, flow_runs.raw_json_payloads, 'error_payload') as error_payload,
                 flow_runs.created_by,
                 null::text as authorized_account,
                 flow_runs.api_key_id,
@@ -1426,9 +1431,9 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 node_run_id,
                 callback_kind,
                 status,
-                request_payload,
-                response_payload,
-                external_ref_payload,
+                runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') as request_payload,
+                runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
+                runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
                 created_at,
                 completed_at
             "#,
@@ -1479,7 +1484,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
-                   c.request_payload, c.response_payload, c.external_ref_payload,
+                   runtime_original_json(c.request_payload, c.raw_json_payloads, 'request_payload') as request_payload, runtime_original_json(c.response_payload, c.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(c.external_ref_payload, c.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
                    c.created_at, c.completed_at
             from flow_run_callback_tasks c
             join flow_runs f on f.id = c.flow_run_id
@@ -1520,7 +1525,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
-                   c.request_payload, c.response_payload, c.external_ref_payload,
+                   runtime_original_json(c.request_payload, c.raw_json_payloads, 'request_payload') as request_payload, runtime_original_json(c.response_payload, c.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(c.external_ref_payload, c.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
                    c.created_at, c.completed_at
             from flow_run_callback_tasks c
             join flow_runs f on f.id = c.flow_run_id
@@ -1557,13 +1562,13 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 status,
                 case
                     when callback_kind = 'llm_tool_calls'
-                    then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
-                    else request_payload
+                    then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
+                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
                 end as request_payload,
-                response_payload,
+                runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then null
-                    else external_ref_payload
+                    else runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload')
                 end as external_ref_payload,
                 created_at,
                 completed_at
@@ -1587,8 +1592,8 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
             r#"
             select
                 status,
-                output_payload,
-                error_payload
+                runtime_original_json(output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload,
+                runtime_original_json(error_payload, flow_runs.raw_json_payloads, 'error_payload') as error_payload
             from flow_runs
             where application_id = $1
               and id = $2
@@ -1640,7 +1645,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
                 callback_kind,
                 case
                     when callback_kind = 'llm_tool_calls' then null
-                    else request_payload
+                    else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload')
                 end as request_payload,
                 case
                     when callback_kind = 'llm_tool_calls' then request_payload -> 'tool_calls'
@@ -1781,15 +1786,16 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
                 r#"
                 update node_runs
                 set status = 'succeeded',
-                    output_payload = $2,
-                    error_payload = null,
-                    finished_at = $3
-                where flow_run_id = $1
+                output_payload = ($2::jsonb -> 0),
+                error_payload = null,
+                finished_at = $3,
+                raw_json_payloads = (node_runs.raw_json_payloads - 'output_payload' - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($2::jsonb -> 1), 'error_payload', null))
+            where flow_run_id = $1
                   and status = 'waiting_callback'
                 "#,
             )
             .bind(flow_run_id)
-            .bind(&output_payload)
+            .bind(lossless_json_parameter(&(&output_payload)))
             .bind(finished_at)
             .execute(self.pool())
             .await?;
@@ -1890,6 +1896,7 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
                     messages.flow_run_id,
                     messages.role,
                     messages.content,
+                    messages.raw_json_payloads ->> 'content' as content_original,
                     messages.sequence,
                     messages.created_at,
                     coalesce(messages.started_at, messages.created_at) as occurred_at
@@ -1919,6 +1926,7 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
                     messages.id,
                     messages.role,
                     messages.content,
+                    messages.content_original,
                     messages.sequence,
                     messages.created_at,
                     messages.occurred_at
@@ -1934,12 +1942,13 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
                        and messages.sequence > boundaries.current_user_sequence)
                   )
             )
-            select role, content, sequence
+            select role, content, content_original, sequence
             from (
                 select
                     id,
                     role,
                     content,
+                    content_original,
                     sequence,
                     created_at,
                     occurred_at
@@ -1965,11 +1974,13 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| ApplicationPublicConversationMessageRecord {
-                role: row.get("role"),
-                content: row.get("content"),
-                sequence: row.get("sequence"),
+            .map(|row| {
+                Ok(ApplicationPublicConversationMessageRecord {
+                    role: row.get("role"),
+                    content: original_required_text(&row, "content")?,
+                    sequence: row.get("sequence"),
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()?)
     }
 }

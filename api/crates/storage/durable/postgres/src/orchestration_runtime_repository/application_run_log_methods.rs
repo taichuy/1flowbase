@@ -8,7 +8,7 @@ impl PgControlPlaneStore {
         }
         let rows = sqlx::query(
             r#"
-            select id, output_payload
+            select id, runtime_original_json(output_payload, flow_runs.raw_json_payloads, 'output_payload') as output_payload
             from flow_runs
             where id = any($1)
               and output_payload ->> 'semantic_terminal' = 'count_tokens'
@@ -522,7 +522,7 @@ impl PgControlPlaneStore {
                 "#,
             )
             .bind(conversation_id)
-            .bind(title)
+            .bind(title.replace('\0', "␀"))
             .bind(flow_run.updated_at)
             .execute(&mut *tx)
             .await?;
@@ -546,9 +546,7 @@ impl PgControlPlaneStore {
                     finished_at,
                     created_at,
                     updated_at
-                ) values (
-                    $1, $2, $3, $4, $5, null, $6, $7, $8, $9, $10, $11, $12, $13
-                )
+                , raw_json_payloads) values ( $1, $2, $3, $4, $5, null, $6, ($7::jsonb ->> 0), $8, $9, $10, $11, $12, $13, jsonb_strip_nulls(jsonb_build_object('content', ($7::jsonb -> 1))) )
                 on conflict (conversation_id, flow_run_id, sequence) do update
                 set role = excluded.role,
                     content = excluded.content,
@@ -556,7 +554,7 @@ impl PgControlPlaneStore {
                     started_at = excluded.started_at,
                     finished_at = excluded.finished_at,
                     updated_at = excluded.updated_at
-                "#,
+                , raw_json_payloads = (application_conversation_messages.raw_json_payloads - 'content') || jsonb_strip_nulls(jsonb_build_object('content', excluded.raw_json_payloads -> 'content')) "#,
             )
             .bind(Uuid::now_v7())
             .bind(scope_id)
@@ -564,7 +562,7 @@ impl PgControlPlaneStore {
             .bind(flow_run.application_id)
             .bind(flow_run.id)
             .bind(message.role)
-            .bind(&message.content)
+            .bind(lossless_text_parameter(&(&message.content)))
             .bind(message.sequence)
             .bind(flow_run.status.as_str())
             .bind(flow_run.started_at)

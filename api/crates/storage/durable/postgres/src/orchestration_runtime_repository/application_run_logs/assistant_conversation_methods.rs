@@ -59,7 +59,8 @@ impl PgControlPlaneStore {
     async fn list_assistant_conversations(
         &self,
         input: &control_plane_contracts::application_public_runtime::ListAssistantConversationsInput,
-    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage> {
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage>
+    {
         let page = input.page.max(1);
         let page_size = input.page_size.clamp(1, 50);
         let offset = (page - 1) * page_size;
@@ -278,12 +279,13 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         conversation_id: Uuid,
-    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
-    {
+    ) -> Result<
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>,
+    > {
         let rows = sqlx::query(
             r#"
             with visible_runs as (
-                select seed.id, seed.input_payload, 0 as source_order
+                select seed.id, runtime_original_json(seed.input_payload, seed.raw_json_payloads, 'input_payload') as input_payload, 0 as source_order
                 from assistant_conversations conversations
                 join flow_runs seed
                   on seed.id = conversations.seed_legacy_flow_run_id
@@ -299,7 +301,7 @@ impl PgControlPlaneStore {
                   and seed.compatibility_mode = 'embedded_assistant'
                   and seed.assistant_conversation_id is null
                 union all
-                select runs.id, runs.input_payload, 1 as source_order
+                select runs.id, runtime_original_json(runs.input_payload, runs.raw_json_payloads, 'input_payload') as input_payload, 1 as source_order
                 from flow_runs runs
                 join assistant_conversations conversations
                   on conversations.conversation_id = runs.assistant_conversation_id
@@ -313,6 +315,7 @@ impl PgControlPlaneStore {
                 select
                     items.flow_run_id,
                     items.query,
+                    items.raw_json_payloads,
                     items.answer,
                     items.status,
                     items.started_at,
@@ -330,6 +333,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'user'::text as role,
                     query as content,
+                    raw_json_payloads ->> 'query' as content_original,
                     input_payload,
                     status,
                     coalesce(started_at, updated_at) as created_at,
@@ -343,6 +347,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'assistant'::text as role,
                     answer as content,
+                    raw_json_payloads ->> 'answer' as content_original,
                     input_payload,
                     status,
                     coalesce(updated_at, started_at) as created_at,
@@ -371,7 +376,9 @@ impl PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Vec<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>,
+        Vec<
+            control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage,
+        >,
     > {
         let rows = sqlx::query(
             r#"
@@ -407,13 +414,15 @@ impl PgControlPlaneStore {
                 join visible_runs on visible_runs.id = items.flow_run_id
                 where items.is_current
             )
-            select role, content, native_message
+            select role, content, content_original, has_answer, native_message
             from (
                 select
                     flow_run_id,
                     'user'::text as role,
                     query as content,
-                    null::jsonb as native_message,
+                    raw_json_payloads ->> 'query' as content_original,
+                    true as has_answer,
+                    null::json as native_message,
                     started_at as created_at,
                     0 as message_order,
                     source_order
@@ -424,7 +433,9 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'assistant'::text as role,
                     coalesce(answer, native_message ->> 'content', '') as content,
-                    native_message,
+                    raw_json_payloads ->> 'answer' as content_original,
+                    answer is not null as has_answer,
+                    runtime_original_json(native_message, raw_json_payloads, 'native_message') as native_message,
                     coalesce(finished_at, updated_at) as created_at,
                     1 as message_order,
                     source_order
@@ -445,7 +456,9 @@ impl PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        rows.into_iter().map(native_assistant_message_from_row).collect()
+        rows.into_iter()
+            .map(native_assistant_message_from_row)
+            .collect()
     }
 
     async fn list_assistant_legacy_snapshot_messages(
@@ -454,12 +467,13 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
-    {
+    ) -> Result<
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>,
+    > {
         let rows = sqlx::query(
             r#"
             with visible_run as (
-                select runs.id, runs.input_payload
+                select runs.id, runtime_original_json(runs.input_payload, runs.raw_json_payloads, 'input_payload') as input_payload
                 from flow_runs runs
                 join applications on applications.id = runs.application_id
                 where runs.id = $1
@@ -473,6 +487,7 @@ impl PgControlPlaneStore {
                 select
                     items.flow_run_id,
                     items.query,
+                    items.raw_json_payloads,
                     items.answer,
                     items.status,
                     items.started_at,
@@ -489,6 +504,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'user'::text as role,
                     query as content,
+                    raw_json_payloads ->> 'query' as content_original,
                     input_payload,
                     status,
                     coalesce(started_at, updated_at) as created_at,
@@ -501,6 +517,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'assistant'::text as role,
                     answer as content,
+                    raw_json_payloads ->> 'answer' as content_original,
                     input_payload,
                     status,
                     coalesce(updated_at, started_at) as created_at,
@@ -578,7 +595,8 @@ fn assistant_conversation_record_from_row(
 
 fn assistant_conversation_messages_from_rows(
     rows: Vec<sqlx::postgres::PgRow>,
-) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>> {
+) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
+{
     rows.into_iter()
         .map(|row| {
             let role: String = row.try_get("role")?;
@@ -597,7 +615,7 @@ fn assistant_conversation_messages_from_rows(
                     id: row.try_get("id")?,
                     flow_run_id: row.try_get("flow_run_id")?,
                     role,
-                    content: row.try_get("content")?,
+                    content: original_required_text(&row, "content")?,
                     status: row.try_get("status")?,
                     page_references,
                     created_at: row.try_get("created_at")?,
@@ -612,8 +630,17 @@ fn native_assistant_message_from_row(
 ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>
 {
     let role: String = row.try_get("role")?;
-    let content: String = row.try_get("content")?;
+    let mut content = original_required_text(&row, "content")?;
     let native_message: Option<serde_json::Value> = row.try_get("native_message")?;
+    if !row.try_get::<bool, _>("has_answer")? {
+        if let Some(text) = native_message
+            .as_ref()
+            .and_then(|value| value.get("content"))
+            .and_then(Value::as_str)
+        {
+            content = text.to_owned();
+        }
+    }
     let content_blocks = native_message
         .as_ref()
         .and_then(|message| message.get("content_blocks"))

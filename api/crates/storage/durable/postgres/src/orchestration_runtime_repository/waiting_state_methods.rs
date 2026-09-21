@@ -15,7 +15,7 @@ impl PgControlPlaneStore {
                   from runtime_context_projections parent
                   join lineage child on child.previous_projection_id = parent.id
             )
-            select lineage.id, lineage.context_sequence, runtime_canonical_contents.content
+            select lineage.id, lineage.context_sequence, runtime_original_json(runtime_canonical_contents.content, runtime_canonical_contents.raw_json_payloads, 'content') as content
               from lineage
               join runtime_canonical_contents on runtime_canonical_contents.id = lineage.actual_content_id
              order by lineage.context_sequence asc, lineage.id asc
@@ -47,15 +47,19 @@ impl PgControlPlaneStore {
         let updated = sqlx::query_scalar::<_, Uuid>(
             r#"
             update flow_runs
-               set status = $2, output_payload = $3, error_payload = null,
-                   finished_at = null, updated_at = now()
-             where id = $1 and application_id = $4 and scope_id = $5 and status = $6
+               set status = $2,
+                output_payload = ($3::jsonb -> 0),
+                error_payload = null,
+                finished_at = null,
+                updated_at = now(),
+                raw_json_payloads = (flow_runs.raw_json_payloads - 'output_payload' - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('output_payload', ($3::jsonb -> 1), 'error_payload', null))
+            where id = $1 and application_id = $4 and scope_id = $5 and status = $6
              returning id
             "#,
         )
         .bind(input.flow_run_id)
         .bind(target_status.as_str())
-        .bind(&input.output_payload)
+        .bind(lossless_json_parameter(&(&input.output_payload)))
         .bind(input.application_id)
         .bind(input.scope_id)
         .bind(input.expected_status.as_str())
@@ -117,9 +121,9 @@ impl PgControlPlaneStore {
             insert into flow_run_checkpoints (
                 id, scope_id, flow_run_id, node_run_id, status, reason,
                 locator_payload, variable_snapshot, external_ref_payload
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            returning id, flow_run_id, node_run_id, status, reason, locator_payload,
-                      variable_snapshot, external_ref_payload, created_at
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, ($7::jsonb -> 0), ($8::jsonb -> 0), ($9::jsonb -> 0), jsonb_strip_nulls(jsonb_build_object('locator_payload', ($7::jsonb -> 1), 'variable_snapshot', ($8::jsonb -> 1), 'external_ref_payload', ($9::jsonb -> 1))) )
+            returning id, flow_run_id, node_run_id, status, reason, runtime_original_json(locator_payload, flow_run_checkpoints.raw_json_payloads, 'locator_payload') as locator_payload,
+                      runtime_original_json(variable_snapshot, flow_run_checkpoints.raw_json_payloads, 'variable_snapshot') as variable_snapshot, runtime_original_json(external_ref_payload, flow_run_checkpoints.raw_json_payloads, 'external_ref_payload') as external_ref_payload, created_at
             "#,
         )
         .bind(input.checkpoint_id)
@@ -128,9 +132,9 @@ impl PgControlPlaneStore {
         .bind(input.node_run_id)
         .bind(&input.checkpoint_status)
         .bind(&input.checkpoint_reason)
-        .bind(&locator_payload)
-        .bind(&variable_snapshot)
-        .bind(&input.checkpoint_external_ref_payload)
+        .bind(lossless_json_parameter(&(&locator_payload)))
+        .bind(lossless_json_parameter(&(&variable_snapshot)))
+        .bind(lossless_json_parameter(&(&input.checkpoint_external_ref_payload)))
         .fetch_one(&mut *tx)
         .await?;
         let checkpoint = map_checkpoint_record(checkpoint_row);
@@ -143,14 +147,14 @@ impl PgControlPlaneStore {
                     insert into flow_run_callback_tasks (
                         id, scope_id, flow_run_id, node_run_id, callback_kind, status,
                         request_payload, external_ref_payload
-                    ) values ($1, $2, $3, $4, $5, 'pending', $6, $7)
+                    , raw_json_payloads) values ( $1, $2, $3, $4, $5, 'pending', ($6::jsonb -> 0), ($7::jsonb -> 0), jsonb_strip_nulls(jsonb_build_object('request_payload', ($6::jsonb -> 1), 'external_ref_payload', ($7::jsonb -> 1))) )
                     returning id, flow_run_id, node_run_id, callback_kind, status,
                               case when callback_kind = 'llm_tool_calls'
-                                   then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
-                                   else request_payload end as request_payload,
-                              response_payload,
+                                   then json_build_object('tool_calls', runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') -> 'tool_calls')
+                                   else runtime_original_json(request_payload, flow_run_callback_tasks.raw_json_payloads, 'request_payload') end as request_payload,
+                              runtime_original_json(response_payload, flow_run_callback_tasks.raw_json_payloads, 'response_payload') as response_payload,
                               case when callback_kind = 'llm_tool_calls' then null
-                                   else external_ref_payload end as external_ref_payload,
+                                   else runtime_original_json(external_ref_payload, flow_run_callback_tasks.raw_json_payloads, 'external_ref_payload') end as external_ref_payload,
                               created_at, completed_at
                     "#,
                 )
@@ -159,8 +163,8 @@ impl PgControlPlaneStore {
                 .bind(input.flow_run_id)
                 .bind(input.node_run_id)
                 .bind(&callback.callback_kind)
-                .bind(&callback.request_payload)
-                .bind(&callback.external_ref_payload)
+                .bind(lossless_json_parameter(&(&callback.request_payload)))
+                .bind(lossless_json_parameter(&(&callback.external_ref_payload)))
                 .fetch_one(&mut *tx)
                 .await?;
                 let callback_task = map_callback_task_record(row)?;
@@ -169,7 +173,9 @@ impl PgControlPlaneStore {
                         .request_payload
                         .get("tool_calls")
                         .and_then(Value::as_array)
-                        .ok_or_else(|| anyhow!("llm tool callback request is missing tool_calls"))?;
+                        .ok_or_else(|| {
+                            anyhow!("llm tool callback request is missing tool_calls")
+                        })?;
                     let mut ids = std::collections::BTreeSet::new();
                     for (ordinal, tool_call) in tool_calls.iter().enumerate() {
                         let tool_call_id = tool_call
@@ -177,9 +183,13 @@ impl PgControlPlaneStore {
                             .or_else(|| tool_call.get("id"))
                             .and_then(Value::as_str)
                             .filter(|id| !id.is_empty())
-                            .ok_or_else(|| anyhow!("llm tool callback request has an unstable tool call id"))?;
+                            .ok_or_else(|| {
+                                anyhow!("llm tool callback request has an unstable tool call id")
+                            })?;
                         if !ids.insert(tool_call_id) {
-                            return Err(anyhow!("llm tool callback request has duplicate tool call ids"));
+                            return Err(anyhow!(
+                                "llm tool callback request has duplicate tool call ids"
+                            ));
                         }
                         sqlx::query(
                             r#"
@@ -220,9 +230,9 @@ impl PgControlPlaneStore {
                     id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
                     event_type, layer, source, trust_level, item_id, ledger_ref, payload,
                     visibility, durability, delivery_status
-                ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending')
+                , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ($14::jsonb -> 0), $15, $16, 'pending', jsonb_strip_nulls(jsonb_build_object('payload', ($14::jsonb -> 1))) )
                 returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                          event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                          event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                           visibility, durability, created_at
                 "#,
             )
@@ -239,7 +249,7 @@ impl PgControlPlaneStore {
             .bind(delivery.trust_level.as_str())
             .bind(delivery.item_id)
             .bind(delivery.ledger_ref.as_deref())
-            .bind(&delivery.payload)
+            .bind(lossless_json_parameter(&(&delivery.payload)))
             .bind(delivery.visibility.as_str())
             .bind(delivery.durability.as_str())
             .fetch_one(&mut *tx)
@@ -254,9 +264,9 @@ impl PgControlPlaneStore {
                 id, scope_id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
                 event_type, layer, source, trust_level, item_id, ledger_ref, payload,
                 visibility, durability
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ($14::jsonb -> 0), $15, $16, jsonb_strip_nulls(jsonb_build_object('payload', ($14::jsonb -> 1))) )
             returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                      event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                       visibility, durability, created_at
             "#,
         )
@@ -273,7 +283,7 @@ impl PgControlPlaneStore {
         .bind(input.waiting_event.trust_level.as_str())
         .bind(input.waiting_event.item_id)
         .bind(input.waiting_event.ledger_ref.as_deref())
-        .bind(&input.waiting_event.payload)
+        .bind(lossless_json_parameter(&(&input.waiting_event.payload)))
         .bind(input.waiting_event.visibility.as_str())
         .bind(input.waiting_event.durability.as_str())
         .fetch_one(&mut *tx)

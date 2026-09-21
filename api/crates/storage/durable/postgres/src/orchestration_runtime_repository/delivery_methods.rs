@@ -35,7 +35,7 @@ impl PgControlPlaneStore {
             returning event.id, event.flow_run_id, event.node_run_id, event.span_id,
                       event.parent_span_id, event.sequence, event.event_type, event.layer,
                       event.source, event.trust_level, event.item_id, event.ledger_ref,
-                      event.payload, event.visibility, event.durability, event.created_at,
+                      runtime_original_json(event.payload, event.raw_json_payloads, 'payload') as payload, event.visibility, event.durability, event.created_at,
                       event.delivery_claim_token, event.delivery_generation,
                       event.delivery_lease_expires_at
             "#,
@@ -74,7 +74,7 @@ impl PgControlPlaneStore {
                and delivery_claim_token = $2
                and delivery_generation = $3
             returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                      event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                       visibility, durability, created_at
             "#,
         )
@@ -102,7 +102,7 @@ impl PgControlPlaneStore {
                and delivery_claim_token = $2
                and delivery_generation = $3
             returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                      event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                       visibility, durability, created_at
             "#,
         )
@@ -128,7 +128,7 @@ impl PgControlPlaneStore {
                and delivery_claim_token = $2
                and delivery_generation = $3
             returning id, flow_run_id, node_run_id, span_id, parent_span_id, sequence,
-                      event_type, layer, source, trust_level, item_id, ledger_ref, payload,
+                      event_type, layer, source, trust_level, item_id, ledger_ref, runtime_original_json(payload, runtime_events.raw_json_payloads, 'payload') as payload,
                       visibility, durability, created_at
             "#,
         )

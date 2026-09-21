@@ -110,28 +110,20 @@ impl PgControlPlaneStore {
                     id,scope_id,application_id,flow_run_id,display_sequence,source_kind,role,content,
                     native_message,detail_run_id,can_open_detail,is_current,status,started_at,finished_at,
                     projection_version,log_conversation_id,source_item_key,
-                    output_source,context_source,source_revision)
-                    select md5(coalesce(log_context->>'log_conversation_id',id::text)||':'||$5)::uuid,
-                        $2,application_id,id,$3,'current_run',$6,$7,$8,
-                        case when $10::text is null then id else null end,
-                        $10::text is null,
-                        $10::text is null,
-                        case when $10::text is null then status else 'succeeded' end,
-                        started_at,finished_at,
-                        $4,(log_context->>'log_conversation_id')::uuid,
-                        case when $8::jsonb ? '_source_item' then $5 else null end,
-                        $9,$10,$11 from flow_runs where id=$1"#)
+                    output_source,context_source,source_revision, raw_json_payloads)
+                    select md5(coalesce(log_context->>'log_conversation_id',id::text)||':'||$5)::uuid, $2, application_id, id, $3, 'current_run', $6, ($7::jsonb ->> 0), ($8::jsonb -> 0), case when $10::text is null then id else null end, $10::text is null, $10::text is null, case when $10::text is null then status else 'succeeded' end, started_at, finished_at, $4, (log_context->>'log_conversation_id')::uuid, case when ($8::jsonb -> 0) ? '_source_item' then $5 else null end, $9, $10, $11, jsonb_strip_nulls(jsonb_build_object('content', ($7::jsonb -> 1), 'native_message', ($8::jsonb -> 1))) from flow_runs where id=$1"#)
                     .bind(flow_run.id).bind(scope_id).bind(sequence)
                     .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION).bind(source_key)
-                    .bind(native.get("role").and_then(Value::as_str)).bind(native.get("content").and_then(Value::as_str))
-                    .bind(&native).bind(output_source).bind(context_source).bind(&revision)
+                    .bind(native.get("role").and_then(Value::as_str)).bind(lossless_text_parameter(&(native.get("content").and_then(Value::as_str))))
+                    .bind(lossless_json_parameter(&(&native))).bind(output_source).bind(context_source).bind(&revision)
                     .execute(&mut **tx).await?;
             }
             return Ok(());
         }
         let effective_system =
             Self::application_run_conversation_llm_effective_system(tx, flow_run.id).await?;
-        let contexts = application_run_conversation_contexts(&flow_run.input_payload, effective_system);
+        let contexts =
+            application_run_conversation_contexts(&flow_run.input_payload, effective_system);
         let llm_assistant_message =
             Self::application_run_conversation_llm_assistant_message(tx, flow_run.id).await?;
         let items = application_run_conversation_message_items_from_flow_run(
@@ -169,11 +161,7 @@ impl PgControlPlaneStore {
                     output_source,
                     context_source,
                     source_revision
-                ) values (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                    $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-                    $21, $22, $23, $24
-                )
+                , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, ($8::jsonb ->> 0), ($9::jsonb ->> 0), $10, ($11::jsonb ->> 0), ($12::jsonb -> 0), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, jsonb_strip_nulls(jsonb_build_object('content', ($8::jsonb -> 1), 'query', ($9::jsonb -> 1), 'answer', ($11::jsonb -> 1), 'native_message', ($12::jsonb -> 1))) )
                 "#,
             )
             .bind(
@@ -191,11 +179,11 @@ impl PgControlPlaneStore {
             .bind(item.display_sequence)
             .bind(item.source_kind)
             .bind(item.role)
-            .bind(item.content)
-            .bind(item.query)
+            .bind(lossless_text_parameter(&(item.content)))
+            .bind(lossless_text_parameter(&(item.query)))
             .bind(item.model)
-            .bind(item.answer)
-            .bind(item.native_message)
+            .bind(lossless_text_parameter(&(item.answer)))
+            .bind(lossless_json_parameter(&(item.native_message)))
             .bind(item.detail_run_id)
             .bind(item.can_open_detail)
             .bind(item.is_current)
@@ -223,7 +211,7 @@ impl PgControlPlaneStore {
     ) -> Result<Option<String>> {
         let rows = sqlx::query(
             r#"
-            select input_payload, debug_payload
+            select runtime_original_json(input_payload, node_runs.raw_json_payloads, 'input_payload') as input_payload, runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload
             from node_runs
             where flow_run_id = $1
               and node_type = 'llm'
@@ -255,7 +243,7 @@ impl PgControlPlaneStore {
     ) -> Result<Option<serde_json::Value>> {
         let rows = sqlx::query(
             r#"
-            select debug_payload
+            select runtime_original_json(debug_payload, node_runs.raw_json_payloads, 'debug_payload') as debug_payload
             from node_runs
             where flow_run_id = $1
               and node_type = 'llm'
@@ -477,7 +465,7 @@ impl PgControlPlaneStore {
     ) -> Result<Vec<domain::ApplicationRunConversationContextItem>> {
         let rows = sqlx::query(
             r#"
-            select id, flow_run_id, role, context_source, content, display_sequence
+            select id, flow_run_id, role, context_source, content, raw_json_payloads ->> 'content' as content_original, display_sequence
             from application_run_conversation_message_items
             where application_id = $1
               and flow_run_id = $2
@@ -499,7 +487,7 @@ impl PgControlPlaneStore {
                     flow_run_id: row.try_get("flow_run_id")?,
                     role: row.try_get("role")?,
                     context_source: row.try_get("context_source")?,
-                    content: row.try_get("content")?,
+                    content: original_required_text(&row, "content")?,
                     display_sequence: row.try_get("display_sequence")?,
                 })
             })
@@ -588,9 +576,10 @@ impl PgControlPlaneStore {
             // A call that is still running already retains its request and every
             // completed provider output item, so the read model reflects those
             // facts instead of hiding the call until it reaches a terminal state.
-            let replaced =
-                Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
-                    .await?;
+            let replaced = Self::ensure_application_run_conversation_message_items_projection(
+                &mut tx, &flow_run,
+            )
+            .await?;
             if replaced {
                 // The task row derives from member projections; refresh it in the
                 // same transaction so list and detail never disagree.
@@ -742,6 +731,9 @@ fn run_conversation_message_items_select_sql(
         r#"{}
         select id,scope_id,application_id,flow_run_id,task_sequence as display_sequence,
             source_kind,role,content,query,model,answer,detail_run_id,can_open_detail,
+            raw_json_payloads ->> 'content' as content_original,
+            raw_json_payloads ->> 'query' as query_original,
+            raw_json_payloads ->> 'answer' as answer_original,
             is_current,status,started_at,finished_at,projection_version,created_at,updated_at,
             output_source
         from task_message_items where true {}
@@ -763,10 +755,10 @@ fn map_application_run_conversation_message_item(
         display_sequence: row.try_get("display_sequence")?,
         source_kind: row.try_get("source_kind")?,
         role: row.try_get("role")?,
-        content: row.try_get("content")?,
-        query: row.try_get("query")?,
+        content: original_optional_text(&row, "content")?,
+        query: original_optional_text(&row, "query")?,
         model: row.try_get("model")?,
-        answer: row.try_get("answer")?,
+        answer: original_optional_text(&row, "answer")?,
         detail_run_id: row.try_get("detail_run_id")?,
         can_open_detail: row.try_get("can_open_detail")?,
         is_current: row.try_get("is_current")?,
