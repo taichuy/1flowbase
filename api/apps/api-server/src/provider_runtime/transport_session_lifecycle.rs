@@ -286,6 +286,56 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         });
     }
 
+    /// A read-only liveness check also used before cancellable handoff lock waits.
+    /// Closing a scope is still serialized by the dispatcher; until that close
+    /// is committed, the handoff deadline bounds contention rather than claiming
+    /// that the scope has already closed.
+    fn admission_scope(
+        &self,
+        connection_scope_id: Option<&str>,
+        session_id: &TransportSessionId,
+    ) -> anyhow::Result<Option<Arc<TransportConnectionScope>>> {
+        let scope_requested = connection_scope_id.is_some();
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err(admission_error(
+                "transport_session_shutdown",
+                admission_details(session_id, None, None, None, scope_requested),
+            ));
+        }
+        let connection_scope = match connection_scope_id {
+            Some(id) => {
+                let scope = self
+                    .connection_scopes
+                    .lock()
+                    .expect("transport scopes")
+                    .get(id)
+                    .and_then(Weak::upgrade);
+                let Some(scope) = scope else {
+                    // The request names a delivery scope this host no longer owns:
+                    // either it was already closed, or the reference is stale.
+                    return Err(admission_error(
+                        "transport_session_scope_unknown",
+                        admission_details(session_id, None, None, None, true),
+                    ));
+                };
+                if scope
+                    .state
+                    .lock()
+                    .expect("transport connection bindings")
+                    .closed
+                {
+                    return Err(admission_error(
+                        "transport_session_scope_closed",
+                        admission_details(session_id, None, None, None, true),
+                    ));
+                }
+                Some(scope)
+            }
+            None => None,
+        };
+        Ok(connection_scope)
+    }
+
     pub(crate) async fn prepare(
         &self,
         target_id: &str,
@@ -334,48 +384,46 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             let changed = self.invocation_changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            let _dispatcher = self.dispatcher.lock().await;
-            if self.shutdown.load(Ordering::Acquire) {
-                return Err(admission_error(
-                    "transport_session_shutdown",
-                    admission_details(&session_id, None, None, None, scope_requested),
-                ));
-            }
-            let connection_scope = match connection_scope_id.as_ref() {
-                Some(id) => {
-                    let scope = self
-                        .connection_scopes
-                        .lock()
-                        .expect("transport scopes")
-                        .get(id)
-                        .and_then(Weak::upgrade);
-                    let Some(scope) = scope else {
-                        // The request names a delivery scope this host no longer owns:
-                        // either it was already closed, or the reference is stale.
-                        return Err(admission_error(
-                            "transport_session_scope_unknown",
-                            admission_details(&session_id, None, None, None, true),
-                        ));
-                    };
-                    if scope
-                        .state
-                        .lock()
-                        .expect("transport connection bindings")
-                        .closed
-                    {
-                        return Err(admission_error(
-                            "transport_session_scope_closed",
-                            admission_details(&session_id, None, None, None, true),
-                        ));
-                    }
-                    Some(scope)
+            let _dispatcher = if let Some(deadline) = handoff_deadline {
+                let _ = self.admission_scope(connection_scope_id.as_deref(), &session_id)?;
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(transport_error("transport_invocation_deadline_exceeded"));
                 }
-                None => None,
+                tokio::select! {
+                    result = tokio::time::timeout_at(deadline, self.dispatcher.lock()) => {
+                        result.map_err(|_| transport_error("transport_invocation_deadline_exceeded"))?
+                    }
+                    _ = changed.as_mut() => continue,
+                }
+            } else {
+                self.dispatcher.lock().await
             };
-            self.registry.lock().await.maintain();
-            self.dispatch_pending_events_locked().await;
+            let connection_scope =
+                self.admission_scope(connection_scope_id.as_deref(), &session_id)?;
+            if handoff_deadline.is_none() {
+                // Initial admission retains its existing control owner. A resumed
+                // handoff must not drain or await provider Close work: cancelling
+                // that dispatched future could lose its command/stdio retirement.
+                // Existing finish/maintenance/shutdown owners dispatch those events.
+                self.registry.lock().await.maintain();
+                self.dispatch_pending_events_locked().await;
+            }
 
-            let mut registry = self.registry.lock().await;
+            let mut registry = if let Some(deadline) = handoff_deadline {
+                tokio::select! {
+                    result = tokio::time::timeout_at(deadline, self.registry.lock()) => {
+                        result.map_err(|_| transport_error("transport_invocation_deadline_exceeded"))?
+                    }
+                    _ = changed.as_mut() => continue,
+                }
+            } else {
+                self.registry.lock().await
+            };
+            if handoff_deadline.is_some() {
+                // Leave any newly generated lifecycle events queued for their
+                // existing owner; admission still checks the maintained state.
+                registry.maintain();
+            }
             let now = registry.safe_snapshot().observed_at;
             if invocation_deadline.is_some_and(|deadline| deadline <= now)
                 || handoff_deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline)
