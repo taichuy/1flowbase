@@ -1,5 +1,6 @@
 import Bubble from '@ant-design/x/es/bubble';
-import { Empty, Flex, Typography } from 'antd';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import { Button, Empty, Flex, Tooltip, Typography } from 'antd';
 import {
   useCallback,
   useLayoutEffect,
@@ -121,6 +122,30 @@ export function DebugConversationPane({
   const activeAssistantContent = activeAssistantMessage?.content ?? '';
   const firstMessageId = messages[0]?.id ?? null;
   const lastMessageId = messages.at(-1)?.id ?? null;
+  const userLogMessageIds = useMemo(() => {
+    const assistantRunIds = new Set(
+      messages
+        .filter(
+          (message) =>
+            message.role === 'assistant' && message.canOpenDetail !== false
+        )
+        .map((message) => message.detailRunId ?? message.runId)
+    );
+    return new Set(
+      messages
+        .filter((message) => {
+          const detailRunId = message.detailRunId ?? message.runId;
+          return (
+            message.role === 'user' &&
+            message.canOpenDetail === true &&
+            Boolean(detailRunId) &&
+            (!logActionRunId || detailRunId === logActionRunId) &&
+            !assistantRunIds.has(detailRunId)
+          );
+        })
+        .map((message) => message.id)
+    );
+  }, [messages, logActionRunId]);
   const bubbleItems = useMemo(
     () =>
       messages.map((message) => ({
@@ -197,6 +222,21 @@ export function DebugConversationPane({
                 reference={reference}
               />
             ))}
+            {onOpenMessageLog && userLogMessageIds.has(message.id) ? (
+              <Tooltip
+                title={i18nText('agentFlow', 'auto.view_conversation_log')}
+              >
+                <Button
+                  aria-label={i18nText(
+                    'agentFlow',
+                    'auto.view_conversation_log'
+                  )}
+                  icon={<FileTextOutlined />}
+                  size="small"
+                  onClick={() => onOpenMessageLog(message)}
+                />
+              </Tooltip>
+            ) : null}
           </Flex>
         )
       }
@@ -208,7 +248,8 @@ export function DebugConversationPane({
       onLoadArtifact,
       onLoadArtifacts,
       onOpenMessageLog,
-      onOpenResumeTimeline
+      onOpenResumeTimeline,
+      userLogMessageIds
     ]
   );
   const rememberScrollPosition = useCallback(
