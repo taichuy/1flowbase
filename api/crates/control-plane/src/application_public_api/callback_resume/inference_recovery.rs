@@ -217,7 +217,9 @@ pub(super) fn is_full_context_continuation(
     if remainder.is_empty() {
         return Ok(false);
     }
-    let items = body["input"].as_array().expect("proven input array");
+    let items = body["input"].as_array().ok_or(ControlPlaneError::Conflict(
+        "native_recovery_history_invalid",
+    ))?;
     let output_end = items.len() - remainder.len();
     let accepted = command.response_payload["tool_results"].as_array();
     let outputs_match = accepted.is_some_and(|results| {

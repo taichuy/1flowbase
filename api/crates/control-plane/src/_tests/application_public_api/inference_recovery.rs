@@ -33,7 +33,8 @@ use crate::application_public_api::{
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use crate::ports::{
-    ProviderProtocolContextLocator, ProviderProtocolContextValue, ProviderTransportPayload,
+    FlowRepository, ProviderProtocolContextLocator, ProviderProtocolContextValue,
+    ProviderTransportPayload,
 };
 
 #[derive(Clone)]
@@ -124,6 +125,29 @@ async fn fixture_with_protocol_context(
     let harness = ApplicationPublicApiTestHarness::new();
     let application = harness.seed_application(actor, "Native inference recovery");
     let repository = harness.repository();
+    let editor_state = repository
+        .get_or_create_editor_state(application.workspace_id, application.id, actor)
+        .await
+        .unwrap();
+    let mut document = editor_state.draft.document;
+    let start = document["graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["type"] == "start")
+        .unwrap();
+    start["config"]["model_list"] = json!(["fixture"]);
+    FlowRepository::save_draft(
+        &repository,
+        application.workspace_id,
+        application.id,
+        actor,
+        document,
+        domain::FlowChangeKind::Logical,
+        "Configure native recovery public model fixture",
+    )
+    .await
+    .unwrap();
     let token = ApplicationApiKeyService::new(repository.clone())
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: actor,
