@@ -139,6 +139,12 @@ API_COOKIE_SECURE=false
 
 注意：不要把整个 `api/plugins` 挂载到容器里；镜像内置的 `api/plugins/host-extensions` 和 `api/plugins/sets` 是启动所需的官方插件工作区，只挂载上面的可写子目录。
 
+### API 进程的 glibc 内存保留
+
+Bookworm API 镜像与 Linux 的 `node scripts/node/dev-up.js` 默认在启动前设置 `MALLOC_ARENA_MAX=8`，限制 glibc 分配区数量，减少长会话临时分配后保留的空闲堆页。它不是 RSS 上限，也不改变业务缓存或请求超时；非 glibc 分配器不受此参数控制。更低的值可能进一步降低内存，但增加线程间锁竞争，应按实际并发负载验证。
+
+开发启动允许 API `.env`、shell 环境、service override 依次覆盖默认值。容器可用 `docker run -e MALLOC_ARENA_MAX=...`，或在 Compose 的 `api.environment` 中显式覆盖；仅向 Compose 插值用的 `.env` 添加字段不会自动传入容器。设为 `0` 可恢复 glibc 自身的 arena 上限策略。直接运行二进制或 `cargo run` 时，需自行在进程启动前设置环境；应用启动后再加载 dotenv 不能可靠配置已初始化的分配器。
+
 ### 部署 External npm Pack
 
 扩展依赖由 [`taichuy/1flowbase-web-external-npm`](https://github.com/taichuy/1flowbase-web-external-npm) 在本地或 CI 预构建。服务器不运行 npm，也不保存扩展包历史：

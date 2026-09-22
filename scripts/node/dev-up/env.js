@@ -152,10 +152,21 @@ function ensureServiceEnvFile(service, { logImpl = log } = {}) {
   return true;
 }
 
-function buildServiceEnv(service, sourceEnv = process.env) {
+function buildServiceEnv(
+  service,
+  sourceEnv = process.env,
+  { platform = process.platform } = {},
+) {
   const fileEnv = parseEnvFile(service.envFile);
   const envOverrides = service.envOverrides || {};
+  // Bound glibc arena retention before process startup. Explicit deployment
+  // values still win; non-glibc allocators ignore this setting.
+  const allocatorDefaults =
+    service.key === "api-server" && platform === "linux"
+      ? { MALLOC_ARENA_MAX: "8" }
+      : {};
   return buildLocalLoopbackEnv({
+    ...allocatorDefaults,
     ...fileEnv,
     ...sourceEnv,
     ...envOverrides,

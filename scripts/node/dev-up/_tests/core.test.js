@@ -1162,6 +1162,35 @@ test('buildServiceEnv applies service env overrides after shell env', () => {
   assert.equal(env.PATH, '/bin');
 });
 
+test('buildServiceEnv bounds arenas only for the Linux API launch', () => {
+  assert.equal(
+    buildServiceEnv({ key: 'api-server' }, {}, { platform: 'linux' }).MALLOC_ARENA_MAX,
+    '8'
+  );
+  for (const [key, platform] of [['web', 'linux'], ['api-server', 'darwin'], ['api-server', 'win32']]) {
+    assert.equal(buildServiceEnv({ key }, {}, { platform }).MALLOC_ARENA_MAX, undefined);
+    assert.equal(buildServiceEnv({ key }, { MALLOC_ARENA_MAX: '16' }, { platform }).MALLOC_ARENA_MAX, '16');
+  }
+});
+
+test('buildServiceEnv preserves explicit allocator settings in file, shell and service order', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-allocator-env-'));
+  try {
+    const envFile = path.join(tempDir, '.env');
+    fs.writeFileSync(envFile, 'MALLOC_ARENA_MAX=4\n');
+    const service = { key: 'api-server', envFile };
+    const platform = { platform: 'linux' };
+    assert.equal(buildServiceEnv(service, {}, platform).MALLOC_ARENA_MAX, '4');
+    const shell = { MALLOC_ARENA_MAX: '16', GLIBC_TUNABLES: 'glibc.malloc.arena_max=12' };
+    assert.equal(buildServiceEnv(service, shell, platform).MALLOC_ARENA_MAX, '16');
+    const env = buildServiceEnv({ ...service, envOverrides: { MALLOC_ARENA_MAX: '0' } }, shell, platform);
+    assert.equal(env.MALLOC_ARENA_MAX, '0');
+    assert.equal(env.GLIBC_TUNABLES, shell.GLIBC_TUNABLES);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('ensureServiceEnvFile leaves existing api-server env values untouched even if they use old branding', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-legacy-env-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');

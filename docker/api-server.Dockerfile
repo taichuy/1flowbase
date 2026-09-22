@@ -63,6 +63,9 @@ RUN apt-get update \
   && usermod --uid "${APP_UID}" --gid "${APP_GID}" --login flowbase \
     --home /home/flowbase --move-home --shell /usr/sbin/nologin node
 
+# Bound glibc arena retention; deployments can override the memory/contention tradeoff.
+ENV MALLOC_ARENA_MAX=8
+
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \
     API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing
