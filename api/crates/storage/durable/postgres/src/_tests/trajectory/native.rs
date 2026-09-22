@@ -848,6 +848,42 @@ async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
         .any(|s| s.kind == "context" && s.value["messages"][0]["content"] == "actual-context"));
     // Wrong application context is not promoted into a navigable link.
     let wrong = Uuid::now_v7();
+    let other_application = Uuid::now_v7();
+    let other_flow = Uuid::now_v7();
+    let other_draft = Uuid::now_v7();
+    let other_plan = Uuid::now_v7();
+    sqlx::query("insert into applications (id,workspace_id,application_type,name,description,created_by,updated_by) select $1,a.workspace_id,a.application_type,'Other application','',a.created_by,a.updated_by from applications a join flow_runs r on r.application_id=a.id where r.id=$2")
+        .bind(other_application).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flows (id,application_id,scope_id,created_by,updated_by) select $1,$2,scope_id,created_by,updated_by from applications where id=$2")
+        .bind(other_flow).bind(other_application).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_drafts (id,flow_id,scope_id,schema_version,document,created_by,updated_by) select $1,$2,d.scope_id,d.schema_version,d.document,d.created_by,d.updated_by from flow_drafts d join flow_runs r on r.flow_draft_id=d.id where r.id=$3")
+        .bind(other_draft).bind(other_flow).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_compiled_plans (id,flow_id,flow_draft_id,schema_version,document_updated_at,plan,scope_id,created_by,updated_by) select $1,$2,$3,p.schema_version,p.document_updated_at,p.plan,p.scope_id,p.created_by,p.updated_by from flow_compiled_plans p join flow_runs r on r.compiled_plan_id=p.id where r.id=$4")
+        .bind(other_plan).bind(other_flow).bind(other_draft).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_runs (id,application_id,flow_id,flow_draft_id,compiled_plan_id,run_mode,status,created_by) select $1,$2,$3,$4,$5,run_mode,status,created_by from flow_runs where id=$6")
+        .bind(wrong).bind(other_application).bind(other_flow).bind(other_draft).bind(other_plan).bind(flow).execute(store.pool()).await.unwrap();
+    let other_request = Uuid::now_v7();
+    for fact in [
+        ClientTrajectoryFact::Integrity {
+            status: "complete".into(),
+            dropped_count: 0,
+            persist_failed_count: 0,
+        },
+        ClientTrajectoryFact::ResponseLink {
+            response_id: "resp-a".into(),
+        },
+    ] {
+        store
+            .append_client_trajectory(&AppendClientTrajectoryInput {
+                flow_run_id: wrong,
+                node_run_id: None,
+                request_id: other_request,
+                observed_at: "2026-09-22T00:00:00Z".into(),
+                fact,
+            })
+            .await
+            .unwrap();
+    }
     let mut forged = make_call("no-parent", b, "generate", 2);
     forged["context_flow_run_id"] = json!(wrong);
     forged["context_response_id"] = json!("resp-a");
@@ -869,6 +905,28 @@ async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
         .links
         .iter()
         .any(|l| l.relation == "context"));
+    // Controlled positive: this exact response is resolvable inside its own application.
+    sqlx::query("insert into node_runs (id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'llm','llm','LLM','running' from flow_runs where id=$2")
+        .bind(other_request).bind(wrong).execute(store.pool()).await.unwrap();
+    let mut local_context = make_call("own-parent", other_request, "generate", 0);
+    local_context["context_flow_run_id"] = json!(wrong);
+    local_context["context_response_id"] = json!("resp-a");
+    append(
+        &store,
+        wrong,
+        other_request,
+        "provider_semantic_step",
+        local_context,
+    )
+    .await;
+    let own = store
+        .provider_run_trajectory_page(wrong, None, 10)
+        .await
+        .unwrap();
+    assert!(own.items[0]
+        .links
+        .iter()
+        .any(|l| l.relation == "context" && l.request_id == other_request));
     // Poison bodies: list/focus/link queries must still operate only on indexes.
     sqlx::query("update runtime_events set raw_json_payloads=jsonb_build_object('payload','invalid JSON') where flow_run_id=$1").bind(flow).execute(store.pool()).await.unwrap();
     assert_eq!(

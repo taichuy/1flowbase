@@ -1,5 +1,6 @@
 {
   "trajectory": {
+    "duration": "Duration",
     "title": "Invocation trajectory",
     "overview": "Overview",
     "complete": "Complete",

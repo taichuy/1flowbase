@@ -1,5 +1,6 @@
 {
   "trajectory": {
+    "duration": "耗时",
     "title": "调用轨迹",
     "overview": "概览",
     "complete": "记录完整",

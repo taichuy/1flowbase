@@ -9,6 +9,7 @@ import type { ConversationLogTraceLoader } from '../conversation-log-trace-model
 import { i18nText } from '../../../../../shared/i18n/text';
 import { nativeSectionLabel, purposeLabel } from './trajectory-presentation';
 import { JsonPreviewBlock } from '../../../../../shared/ui/json-preview/JsonPreviewBlock';
+import { formatDurationScaled } from '../conversation/metrics-formatter';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 
 export function TrajectoryStepDetail({
@@ -65,6 +66,12 @@ export function TrajectoryStepDetail({
       </div>
       <div className="provider-trajectory__detail-meta">
         <span>{purposeLabel(step.metadata.purpose)}</span>
+        {step.metadata.duration_ms != null ? (
+          <span title={`${step.metadata.duration_ms} ms`}>
+            {i18nText('agentFlow', 'trajectory.duration')}:{' '}
+            {formatDurationScaled(step.metadata.duration_ms)}
+          </span>
+        ) : null}
         {step.metadata.run_mode ? <span>{step.metadata.run_mode}</span> : null}
         {step.links.length ? (
           step.links.map((link, index) => (

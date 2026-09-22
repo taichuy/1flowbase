@@ -241,3 +241,30 @@ test('request without linked invocations shows an empty state without inventing 
     await screen.findByText('此请求没有关联的内部调用')
   ).toBeInTheDocument();
 });
+
+test.each([
+  ['model_reply', 1250, '耗时: 1.25 s'],
+  ['error', 0, '耗时: 0 ms'],
+  ['model_reply', null, null],
+  ['model_call', undefined, null]
+] as const)(
+  'shows recorded %s duration %s without inventing missing timing',
+  async (kind, duration_ms, text) => {
+    const { loadRunTrajectory } = fixture('node-current');
+    const event = invocation('timed-event', 0, 'generate');
+    event.metadata.kind = kind;
+    event.metadata.duration_ms = duration_ms;
+    loadRunTrajectory.mockResolvedValue({ items: [event], next_cursor: null });
+    fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
+    const label =
+      kind === 'model_reply'
+        ? '模型回复'
+        : kind === 'error'
+          ? '调用错误'
+          : '模型调用准备';
+    fireEvent.click(await screen.findByRole('button', { name: label }));
+    const detail = within(screen.getByRole('complementary'));
+    if (text) expect(detail.getByText(text)).toBeInTheDocument();
+    else expect(detail.queryByText(/^耗时:/)).not.toBeInTheDocument();
+  }
+);

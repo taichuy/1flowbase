@@ -20,6 +20,7 @@ export interface ProviderTrajectoryStep {
   metadata: {
     purpose: 'prewarm' | 'generate' | 'tool_resume' | 'compact' | 'unknown';
     run_mode?: string;
+    duration_ms?: number | null;
     source: 'ai_native' | 'supplier_protocol';
     protocol?: string;
     transport?: 'http' | 'sse' | 'websocket';
