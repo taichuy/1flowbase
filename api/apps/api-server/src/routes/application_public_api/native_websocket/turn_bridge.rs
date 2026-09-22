@@ -198,6 +198,7 @@ impl NativeTurnBridge {
         frames: mpsc::Sender<String>,
     ) -> Result<(), NativeTurnBridgeError> {
         let command = ResumePublishedCallbackCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             reserved_attempt_id: None,

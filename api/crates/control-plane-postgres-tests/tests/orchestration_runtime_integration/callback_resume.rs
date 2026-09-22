@@ -371,6 +371,7 @@ async fn tool_callback_inbox_replays_same_result_conflicts_on_difference_and_wai
             .await;
     let callback = waiting.callback_task.unwrap();
     let input = |results| CommitToolCallbackResultsInput {
+        responses_continuation: None,
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
         flow_run_id: run.id,
@@ -449,6 +450,7 @@ async fn concurrent_identical_tool_results_have_one_round_advancement_owner() {
     let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
     let callback = waiting.callback_task.unwrap();
     let input = CommitToolCallbackResultsInput {
+        responses_continuation: None,
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
         flow_run_id: run.id,
@@ -702,5 +704,241 @@ async fn callback_resume_context_keeps_200_large_snapshots_out_of_process_histor
     assert!(
         rss_growth <= MAX_RSS_GROWTH_BYTES,
         "callback resume RSS grew by {rss_growth} bytes; expected at most {MAX_RSS_GROWTH_BYTES}"
+    );
+}
+
+#[derive(Clone)]
+struct AdmissionOnlyConsumer;
+#[async_trait::async_trait]
+impl control_plane::application_public_api::callback_resume::ApplicationPublishedCallbackConsumer
+    for AdmissionOnlyConsumer
+{
+    async fn complete_published_callback(
+        &self,
+        _: control_plane::application_public_api::callback_resume::CompletePublishedCallbackInput,
+    ) -> anyhow::Result<domain::FlowRunRecord> {
+        panic!("admission must not invoke execution")
+    }
+}
+
+// Real durable transaction + public service admission. The interruption is after
+// receipt/claim commit and before execution; the execution engine order fixture
+// independently asserts how the recovered receipt is appended to checkpoint state.
+#[tokio::test]
+async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_claim_owner() {
+    use control_plane::application_public_api::{
+        api_keys::ApplicationApiKeyActor,
+        callback_resume::{
+            ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
+            PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+        },
+        compat::openai::OpenAiResponsesEnvelope,
+        native_tool_resume::correlate_semantic_responses_callback,
+    };
+    use control_plane_contracts::application_public_runtime::{
+        ApplicationPublishedCallbackAttemptRepository, ApplicationPublishedRunControlRepository,
+    };
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = OffsetDateTime::now_utc();
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let api_key_id = seed_application_api_key(&store, &seeded).await;
+    let node = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node, 1, None, None).await;
+    let callback = waiting.callback_task.unwrap();
+    let request = json!({"model":"fixture","previous_response_id":format!("resp_{}",run.id),"input":[
+        {"role":"user","content":"before"},{"type":"function_call_output","call_id":"call-1-0","output":"ok"},{"role":"user","content":"after"}]});
+    let digest =
+        control_plane_contracts::ports::ProviderTransportPayload::openai_responses(request.clone())
+            .unwrap()
+            .configuration_digest()
+            .unwrap();
+    sqlx::query("update flow_runs set api_key_id=$2, input_payload=$3 where id=$1")
+        .bind(run.id)
+        .bind(api_key_id)
+        .bind(json!({"sys":{"responses_configuration_digest":digest}}))
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let mut callback_request = callback.request_payload.clone();
+    callback_request["responses_round"] = json!({"response_id":format!("resp_{}",run.id),"history":{"version":2,"item_count":2,"digest":"0".repeat(64)},"output":[]});
+    sqlx::query("update flow_run_callback_tasks set request_payload=$2 where id=$1")
+        .bind(callback.id)
+        .bind(callback_request)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let actor = ApplicationApiKeyActor {
+        api_key_id,
+        application_id: seeded.application_id,
+        creator_user_id: seeded.actor_user_id,
+        tenant_id: root_tenant_id(&store).await,
+        workspace_id: seeded.workspace_id,
+        actor: domain::ActorContext::scoped_in_scope(
+            seeded.actor_user_id,
+            Uuid::nil(),
+            seeded.workspace_id,
+            "application_api_key",
+            Vec::<String>::new(),
+        ),
+    };
+    let envelope = OpenAiResponsesEnvelope::capture(request.clone()).unwrap();
+    let grant = correlate_semantic_responses_callback(&store, &actor, &envelope)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(store
+        .find_native_responses_callbacks_by_call_ids(
+            seeded.workspace_id,
+            seeded.application_id,
+            api_key_id,
+            seeded.actor_user_id,
+            &["call-1-0".into()]
+        )
+        .await
+        .unwrap()
+        .is_empty());
+    let mut crossed = actor.clone();
+    crossed.api_key_id = Uuid::now_v7();
+    assert!(
+        correlate_semantic_responses_callback(&store, &crossed, &envelope)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let command = ResumePublishedCallbackCommand {
+        responses_continuation: Some(grant.clone()),
+        transport_connection_scope: None,
+        observation_context: None,
+        reserved_attempt_id: None,
+        native_transport: None,
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask {
+            callback_task_id: callback.id,
+        },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: grant.payload().clone(),
+        response_mode: Some("streaming".into()),
+    };
+    let service =
+        ApplicationPublishedCallbackResumeService::new(store.clone(), AdmissionOnlyConsumer);
+    service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .unwrap();
+    let attempt_id = service
+        .reserve_native_callback_for_actor(actor.clone(), &command)
+        .await
+        .unwrap();
+    let input = CommitToolCallbackResultsInput {
+        responses_continuation: Some(
+            serde_json::from_value(grant.payload()["responses_continuation"].clone()).unwrap(),
+        ),
+        scope_id: seeded.workspace_id,
+        application_id: seeded.application_id,
+        flow_run_id: run.id,
+        checkpoint_id: waiting.checkpoint.id,
+        callback_task_id: callback.id,
+        results: vec![tool_result("call-1-0", json!("ok"))],
+    };
+    let committed = store.commit_tool_callback_results(&input).await.unwrap();
+    assert_eq!(
+        committed.disposition,
+        ToolCallbackRoundDisposition::Acquired
+    );
+    let first_claim = committed.claim.unwrap();
+    let receipt = committed.callback_task.response_payload.unwrap();
+    assert_eq!(first_claim.request_payload, receipt);
+    assert_eq!(
+        receipt["responses_continuation"]["ordered_input"],
+        request["input"]
+    );
+    let mut conflicting = input.clone();
+    conflicting
+        .responses_continuation
+        .as_mut()
+        .unwrap()
+        .ordered_input[0]["content"] = json!("changed");
+    assert!(store
+        .commit_tool_callback_results(&conflicting)
+        .await
+        .is_err());
+    assert!(service
+        .reserve_native_callback_for_actor(actor.clone(), &command)
+        .await
+        .is_err());
+    // Process disappeared here. Expire only this isolated task's two leases.
+    sqlx::query(
+        "update flow_run_resume_claims set lease_expires_at=now()-interval '1 second' where id=$1",
+    )
+    .bind(first_claim.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query("update flow_run_callback_resume_attempts set updated_at=now()-interval '6 minutes' where id=$1").bind(attempt_id).execute(store.pool()).await.unwrap();
+    service
+        .prepare_callback_resume_for_actor(actor.clone(), &command)
+        .await
+        .unwrap();
+    let (left, right) = tokio::join!(
+        service.reserve_native_callback_for_actor(actor.clone(), &command),
+        service.reserve_native_callback_for_actor(actor.clone(), &command)
+    );
+    assert_ne!(left.is_ok(), right.is_ok());
+    let stored = store.commit_tool_callback_results(&input).await.unwrap();
+    let acquire = AcquireResumeClaimInput {
+        scope_id: seeded.workspace_id,
+        application_id: seeded.application_id,
+        flow_run_id: run.id,
+        checkpoint_id: waiting.checkpoint.id,
+        callback_task_id: Some(callback.id),
+        kind: ResumeClaimKind::Callback,
+        request_payload: stored.callback_task.response_payload.unwrap(),
+    };
+    let (left, right) = tokio::join!(
+        store.acquire_resume_claim(&acquire),
+        store.acquire_resume_claim(&acquire)
+    );
+    let results = [left.unwrap(), right.unwrap()];
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| result.disposition == ResumeClaimDisposition::Acquired)
+            .count(),
+        1
+    );
+    let restored = results
+        .iter()
+        .find(|result| result.disposition == ResumeClaimDisposition::Acquired)
+        .unwrap();
+    assert_eq!(restored.claim.id, first_claim.id);
+    assert_eq!(restored.claim.generation, first_claim.generation + 1);
+    assert_eq!(restored.claim.request_payload, receipt);
+    assert_ne!(restored.claim.claim_token, first_claim.claim_token);
+    let mut forged = command.clone();
+    forged.responses_continuation = None;
+    assert!(service
+        .prepare_callback_resume_for_actor(actor, &forged)
+        .await
+        .is_err());
+    assert_eq!(
+        store
+            .get_published_callback_resume_attempt(callback.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        attempt_id
     );
 }

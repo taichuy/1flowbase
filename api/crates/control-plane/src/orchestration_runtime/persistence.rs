@@ -524,7 +524,21 @@ where
                 domain::FlowRunStatus::Succeeded,
                 "persist_flow_completed",
             )?;
-            let output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
+            let mut output_payload = canonical_terminal_output_payload(compiled_plan, outcome)?;
+            if let Some((round_id, prefix)) = &responses_round {
+                let output = match answer_presentation {
+                    Some(cursor) => cursor.lock().await.responses_output(flow_run.id),
+                    None => Vec::new(),
+                };
+                output_payload["responses_round"] = serde_json::to_value(
+                    crate::application_public_api::compat::openai::projection::round_evidence(
+                        *round_id,
+                        prefix,
+                        output,
+                        &[],
+                    )?,
+                )?;
+            }
             stream_events.extend(presentation_events);
             let terminal_event =
                 debug_stream_events::flow_finished(flow_run.id, output_payload.clone());

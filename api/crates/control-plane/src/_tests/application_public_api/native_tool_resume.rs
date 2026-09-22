@@ -669,6 +669,7 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
     let service =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
     let mut command = ResumePublishedCallbackCommand {
+        responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
         reserved_attempt_id: None,
@@ -728,4 +729,164 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn semantic_owned_round_verifies_full_delta_and_rejects_crossed_or_modified_inputs() {
+    let first = json!({"model":"fixture", "tools":[], "input":[{"role":"user","content":"work"}]});
+    let digest = ProviderTransportPayload::openai_responses(first.clone())
+        .unwrap()
+        .configuration_digest()
+        .unwrap();
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"responses_configuration_digest":digest}})).await;
+    let calls = vec![json!({"id":"call_semantic","name":"read","arguments":{}})];
+    let output =
+        crate::application_public_api::compat::openai::projection::function_call_items(&calls);
+    let history = crate::application_public_api::compat::openai::history::completed_history(
+        &first, None, &output,
+    )
+    .unwrap()
+    .unwrap();
+    let callback = repository.seed_pending_llm_tool_callback_task(run, json!({"tool_calls":calls,"responses_round":{"response_id":format!("resp_{run}"),"history":history,"output":output}}));
+    let suffix = json!([{"role":"user","content":"before"},{"type":"function_call_output","call_id":"call_semantic","output":"ok"},{"role":"user","content":"after"}]);
+    let mut delta = first.clone();
+    delta["input"] = suffix.clone();
+    delta["previous_response_id"] = json!(format!("resp_{run}"));
+    let grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(delta.clone()).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(grant.callback_task_id(), callback.id);
+    assert_eq!(
+        grant.payload()["responses_continuation"]["ordered_input"],
+        suffix
+    );
+    assert_eq!(
+        grant.payload()["responses_continuation"]["ordered_messages"][2]["content"],
+        "after"
+    );
+    let mut full = first.clone();
+    full["input"] = json!(first["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .cloned()
+        .chain(output)
+        .chain(suffix.as_array().unwrap().iter().cloned())
+        .collect::<Vec<_>>());
+    let full_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(full.clone()).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(grant.payload(), full_grant.payload());
+    let mut changed = full.clone();
+    changed["input"][0]["content"] = json!("edited history");
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(changed).unwrap()
+    )
+    .await
+    .is_err());
+    let mut changed = delta.clone();
+    changed["instructions"] = json!("new instructions");
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(changed).unwrap()
+    )
+    .await
+    .is_err());
+    let mut changed = delta.clone();
+    changed["previous_response_id"] = json!("resp_wrong");
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(changed).unwrap()
+    )
+    .await
+    .is_err());
+    let mut changed = delta.clone();
+    changed["input"]
+        .as_array_mut()
+        .unwrap()
+        .push(suffix[1].clone());
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(changed).unwrap()
+    )
+    .await
+    .is_err());
+    for unsupported in [
+        json!({"role":"user","content":"context","phase":"analysis"}),
+        json!({"role":"assistant","content":"context","id":"msg_unowned"}),
+        json!({"role":7,"content":"context"}),
+        json!({"role":"user","content":[{"type":"input_text","text":"context","unknown_extension":true}]}),
+        json!({"role":"user","content":[{"type":"input_image","image_url":{"url":"https://example.test/image.png","unknown_extension":true}}]}),
+        json!({"role":"system","content":"new policy"}),
+        json!({"role":"developer","content":"new policy"}),
+        json!({"type":"reasoning","summary":[]}),
+    ] {
+        let mut changed = delta.clone();
+        changed["input"]
+            .as_array_mut()
+            .unwrap()
+            .insert(0, unsupported);
+        let error = correlate_semantic_responses_callback(
+            &repository,
+            &actor,
+            &OpenAiResponsesEnvelope::capture(changed).unwrap(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("semantic_responses_continuation_item_unsupported"));
+        let unchanged = repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(unchanged.status, CallbackTaskStatus::Pending);
+        assert!(unchanged.response_payload.is_none());
+    }
+    let mut media = delta.clone();
+    media["input"][0] = json!({"role":"user","content":[{"type":"input_text","text":"inspect"},{"type":"input_image","image_url":"https://example.test/image.png"}]});
+    let media_grant = correlate_semantic_responses_callback(
+        &repository,
+        &actor,
+        &OpenAiResponsesEnvelope::capture(media.clone()).unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        media_grant.payload()["responses_continuation"]["ordered_input"],
+        media["input"]
+    );
+    assert_eq!(
+        media_grant.payload()["responses_continuation"]["ordered_messages"][0]["content_blocks"][1]
+            ["image_url"]["url"],
+        "https://example.test/image.png"
+    );
+    let mut other = actor.clone();
+    other.api_key_id = Uuid::now_v7();
+    assert!(correlate_semantic_responses_callback(
+        &repository,
+        &other,
+        &OpenAiResponsesEnvelope::capture(delta).unwrap()
+    )
+    .await
+    .unwrap()
+    .is_none());
 }

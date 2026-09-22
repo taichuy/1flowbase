@@ -139,6 +139,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             reserved_attempt_id: None,
@@ -190,6 +191,7 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     };
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             reserved_attempt_id: None,
@@ -328,6 +330,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
     let result =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                responses_continuation: None,
                 transport_connection_scope: Some("host-generated-connection".into()),
                 observation_context: Some(observation.clone()),
                 reserved_attempt_id: None,
@@ -465,6 +468,7 @@ async fn callback_resume_preserves_original_compatibility_mode() {
     ] {
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
+                responses_continuation: None,
                 transport_connection_scope: None,
                 observation_context: None,
                 reserved_attempt_id: None,
@@ -781,6 +785,7 @@ mod tests {
         response_payload: Value,
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             reserved_attempt_id: None,

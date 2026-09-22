@@ -49,6 +49,19 @@ impl PgControlPlaneStore {
         }
 
         if callback_task.status == domain::CallbackTaskStatus::Completed {
+            let submitted_continuation = input
+                .responses_continuation
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()?;
+            if callback_task
+                .response_payload
+                .as_ref()
+                .and_then(|payload| payload.get("responses_continuation"))
+                != submitted_continuation.as_ref()
+            {
+                return Err(ControlPlaneError::Conflict("responses_continuation_conflict").into());
+            }
             let claim_row = sqlx::query(&format!(
                 "select {RESUME_CLAIM_COLUMNS} from flow_run_resume_claims where callback_task_id = $1"
             ))
@@ -141,6 +154,11 @@ impl PgControlPlaneStore {
         .fetch_one(&mut *tx)
         .await?;
         if remaining != 0 {
+            if input.responses_continuation.is_some() {
+                return Err(
+                    ControlPlaneError::Conflict("responses_tool_output_incomplete_round").into(),
+                );
+            }
             tx.commit().await?;
             return Ok(CommitToolCallbackResultsOutput {
                 callback_task,
@@ -155,7 +173,10 @@ impl PgControlPlaneStore {
         .bind(input.callback_task_id)
         .fetch_all(&mut *tx)
         .await?;
-        let response_payload = json!({ "tool_results": result_payloads });
+        let mut response_payload = json!({ "tool_results": result_payloads });
+        if let Some(continuation) = &input.responses_continuation {
+            response_payload["responses_continuation"] = serde_json::to_value(continuation)?;
+        }
         let callback_row = sqlx::query(
             r#"
             update flow_run_callback_tasks

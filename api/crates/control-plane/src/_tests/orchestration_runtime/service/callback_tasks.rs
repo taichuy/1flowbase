@@ -531,6 +531,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
     service.reset_application_run_detail_read_count();
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -678,6 +679,7 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -811,6 +813,7 @@ async fn assistant_llm_tool_callback_keeps_the_preview_stream_open_until_the_fin
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -951,6 +954,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let second_waiting = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -999,6 +1003,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1056,6 +1061,7 @@ async fn complete_callback_task_preserves_nul_in_response_and_execution() {
     });
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1072,7 +1078,10 @@ async fn complete_callback_task_preserves_nul_in_response_and_execution() {
         .await;
     assert_eq!(callback_task.status, domain::CallbackTaskStatus::Completed);
     assert_eq!(callback_task.response_payload.as_ref().unwrap(), &payload);
-    assert_eq!(completed.flow_run.output_payload["answer"], payload["result"]);
+    assert_eq!(
+        completed.flow_run.output_payload["answer"],
+        payload["result"]
+    );
 }
 
 #[tokio::test]
@@ -1148,6 +1157,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     });
     let partial = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1168,6 +1178,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
 
     let replay = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1185,6 +1196,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
 
     let conflict = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1211,6 +1223,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
         }]
     });
     let command = || CompleteCallbackTaskCommand {
+        responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
         native_transport: None,
@@ -1241,6 +1254,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -1310,6 +1324,7 @@ async fn complete_llm_tool_callback_rejects_wrong_application_without_consuming_
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,

@@ -1601,13 +1601,27 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 disposition: crate::ports::ToolCallbackRoundDisposition::WaitingForResults,
             });
         }
-        let response_payload = json!({
+        let mut response_payload = json!({
             "tool_results": rows
                 .iter()
                 .filter_map(|(_, result)| result.as_ref().map(|(_, payload)| payload.clone()))
                 .collect::<Vec<_>>()
         });
+        if let Some(continuation) = &input.responses_continuation {
+            response_payload["responses_continuation"] = serde_json::to_value(continuation)?;
+        }
         if callback.status == domain::CallbackTaskStatus::Completed {
+            if callback
+                .response_payload
+                .as_ref()
+                .and_then(|payload| payload.get("responses_continuation"))
+                != response_payload.get("responses_continuation")
+            {
+                return Err(crate::errors::ControlPlaneError::Conflict(
+                    "responses_continuation_conflict",
+                )
+                .into());
+            }
             let claim = inner
                 .resume_claims_by_target
                 .get(&input.callback_task_id)

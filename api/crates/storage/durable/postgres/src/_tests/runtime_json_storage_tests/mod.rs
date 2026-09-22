@@ -249,6 +249,7 @@ async fn runtime_json_callback_reservation_claim_replay_and_inbox() {
         ToolCallbackResultInput::from_payload(json!({"tool_call_id":"call_nul","output":original}))
             .unwrap();
     let command = CommitToolCallbackResultsInput {
+        responses_continuation: None,
         scope_id: scope,
         application_id: app,
         flow_run_id: run,

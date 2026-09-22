@@ -284,6 +284,10 @@ where
             .as_ref()
             .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
             .transpose()?;
+        let responses_configuration_digest = client_request
+            .metadata
+            .responses_configuration_digest()
+            .map(str::to_owned);
         let responses_input_history = client_request.metadata.responses_input_history().cloned();
         let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
         let supersedes_callback_predecessors = matches!(
@@ -399,6 +403,13 @@ where
             .as_object_mut()
             .unwrap()
             .remove("responses_input_history");
+        input_payload["sys"]
+            .as_object_mut()
+            .unwrap()
+            .remove("responses_configuration_digest");
+        if let Some(digest) = responses_configuration_digest {
+            input_payload["sys"]["responses_configuration_digest"] = json!(digest);
+        }
         if let Some(history) = responses_input_history {
             input_payload["sys"]["responses_input_history"] = history;
         }

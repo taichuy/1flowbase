@@ -323,6 +323,25 @@ pub trait ApplicationPublishedRunControlRepository: Send + Sync {
         provider_response_id: &str,
     ) -> Result<Vec<domain::CallbackTaskRecord>>;
 
+    async fn find_semantic_responses_callbacks_by_call_ids(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        call_ids: &[String],
+    ) -> Result<Vec<domain::CallbackTaskRecord>>;
+
+    /// Resolves a provider-owned Responses continuation within the API actor scope.
+    async fn find_semantic_responses_callbacks_by_response_id(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Vec<domain::CallbackTaskRecord>>;
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,

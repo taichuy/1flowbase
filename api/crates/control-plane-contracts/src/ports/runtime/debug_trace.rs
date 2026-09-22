@@ -515,6 +515,7 @@ fn canonical_json(value: &serde_json::Value) -> String {
 
 #[derive(Debug, Clone)]
 pub struct CommitToolCallbackResultsInput {
+    pub responses_continuation: Option<domain::orchestration::ResponsesContinuation>,
     pub scope_id: Uuid,
     pub application_id: Uuid,
     pub flow_run_id: Uuid,

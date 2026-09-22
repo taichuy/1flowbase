@@ -115,6 +115,7 @@ async fn complete_callback_task_updates_task_and_requeues_waiting_run() {
 
     let detail = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,
@@ -164,6 +165,7 @@ async fn complete_callback_task_rejects_terminal_flow_before_claim() {
 
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
             native_transport: None,

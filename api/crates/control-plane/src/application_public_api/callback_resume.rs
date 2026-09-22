@@ -60,6 +60,7 @@ pub enum PublishedCallbackResumeTarget {
 
 #[derive(Debug, Clone)]
 pub struct ResumePublishedCallbackCommand {
+    pub responses_continuation: Option<super::native_tool_resume::VerifiedResponsesContinuation>,
     /// Host-only transport ownership; never accepted from callback JSON.
     pub transport_connection_scope: Option<String>,
     pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
@@ -74,6 +75,7 @@ pub struct ResumePublishedCallbackCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompletePublishedCallbackInput {
+    pub responses_continuation: Option<super::native_tool_resume::VerifiedResponsesContinuation>,
     pub transport_connection_scope: Option<String>,
     pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
@@ -162,7 +164,8 @@ where
             .await?
         {
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
-            if command.source == PublishedCallbackResumeSource::OpenAiResponses
+            if command.responses_continuation.is_none()
+                && command.source == PublishedCallbackResumeSource::OpenAiResponses
                 && (command.native_transport.is_some()
                     || context.flow_run.status == domain::FlowRunStatus::Failed)
             {
@@ -250,6 +253,30 @@ where
             .get_published_callback_resume_attempt(context.callback_task.id)
             .await?
         {
+            if command.responses_continuation.is_some()
+                && matches!(
+                    existing.status,
+                    domain::FlowRunCallbackResumeAttemptStatus::Processing
+                        | domain::FlowRunCallbackResumeAttemptStatus::Received
+                )
+            {
+                if existing.response_payload != command.response_payload {
+                    return Err(
+                        ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
+                    );
+                }
+                return self
+                    .repository
+                    .reclaim_semantic_callback_resume_attempt(
+                        existing.id,
+                        command.response_payload.clone(),
+                    )
+                    .await?
+                    .map(|attempt| attempt.id)
+                    .ok_or_else(|| {
+                        ControlPlaneError::Conflict("callback_resume_already_admitted").into()
+                    });
+            }
             let is_tool_round = context.callback_task.callback_kind == "llm_tool_calls";
             if !is_tool_round && existing.response_payload != command.response_payload {
                 return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
@@ -314,8 +341,14 @@ where
     pub async fn resume_callback_for_actor(
         &self,
         actor: super::api_keys::ApplicationApiKeyActor,
-        command: ResumePublishedCallbackCommand,
+        mut command: ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
+        if command.responses_continuation.is_some() && command.reserved_attempt_id.is_none() {
+            command.reserved_attempt_id = Some(
+                self.reserve_native_callback_for_actor(actor.clone(), &command)
+                    .await?,
+            );
+        }
         let context = self
             .resolve_resume_context_for_actor(actor, &command)
             .await?;
@@ -430,6 +463,7 @@ where
         let result = self
             .consumer
             .complete_published_callback(CompletePublishedCallbackInput {
+                responses_continuation: command.responses_continuation.clone(),
                 transport_connection_scope: command.transport_connection_scope.clone(),
                 observation_context: command.observation_context.clone(),
                 native_transport: command.native_transport.clone(),
@@ -516,7 +550,9 @@ where
                 {
                     // A rejected partial result must not hold the round: park
                     // the attempt so a correct delivery can still re-acquire it.
-                    let _ = self.park_tool_round_attempt(attempt).await;
+                    if command.responses_continuation.is_none() {
+                        let _ = self.park_tool_round_attempt(attempt).await;
+                    }
                     return Err(error);
                 }
                 let error_payload = json!({ "message": error.to_string() });
@@ -675,6 +711,32 @@ where
                 ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
             );
         }
+        if let Some(grant) = &command.responses_continuation {
+            if command.source != PublishedCallbackResumeSource::OpenAiResponses
+                || command.native_transport.is_some()
+            {
+                return Err(ControlPlaneError::Conflict(
+                    "responses_continuation_transport_mismatch",
+                )
+                .into());
+            }
+            grant.validate(
+                actor.application_id,
+                actor.creator_user_id,
+                callback_task.id,
+                &command.response_payload,
+            )?;
+            grant.validate_api_key(actor.api_key_id)?;
+        } else if command
+            .response_payload
+            .get("responses_continuation")
+            .is_some()
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "responses_continuation_requires_verified_ingress",
+            )
+            .into());
+        }
         Ok(PublishedCallbackResumeContext {
             actor,
             callback_task,
@@ -740,6 +802,15 @@ fn ensure_existing_callback_resume_matches(
     }
     if attempt.source != command.source.as_str() {
         return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
+    }
+    if command.responses_continuation.is_some()
+        && matches!(
+            attempt.status,
+            domain::FlowRunCallbackResumeAttemptStatus::Processing
+                | domain::FlowRunCallbackResumeAttemptStatus::Received
+        )
+    {
+        return Ok(());
     }
     let replayable_terminal = matches!(
         attempt.status,
@@ -835,6 +906,7 @@ where
         input: CompletePublishedCallbackInput,
     ) -> Result<domain::FlowRunRecord> {
         self.complete_callback_task_run(CompleteCallbackTaskCommand {
+            responses_continuation: input.responses_continuation,
             transport_connection_scope: input.transport_connection_scope,
             observation_context: input.observation_context,
             native_transport: input.native_transport,

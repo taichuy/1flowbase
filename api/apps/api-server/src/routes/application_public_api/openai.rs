@@ -658,7 +658,13 @@ async fn dispatch_response_for_endpoint(
             previous_response_id.as_deref(),
         )
         .map_err(|error| openai_invalid_request(error.param, error.message))?;
-        let native_resume = if encoded_resume.is_none() {
+        let semantic_resume = if encoded_resume.is_none() {
+            control_plane::application_public_api::native_tool_resume::correlate_semantic_responses_callback(&state.store, &application_actor, &responses_envelope)
+                .await.map_err(native::service_error)?
+        } else {
+            None
+        };
+        let native_resume = if encoded_resume.is_none() && semantic_resume.is_none() {
             control_plane::application_public_api::native_tool_resume::correlate_native_responses_callback_from_envelope(
                 &state.store, &application_actor, &responses_envelope,
             ).await.map_err(native::service_error)?
@@ -671,14 +677,23 @@ async fn dispatch_response_for_endpoint(
             correlated_from_native_state,
             encoded_resume.is_some(),
         )?;
-        let resume = encoded_resume.or_else(|| {
-            native_resume.map(|(task, tool_results)| {
-                super::callback_adapter::CorrelatedToolCallback {
-                    callback_task_id: task.id,
-                    tool_results: tool_results["tool_results"].clone(),
-                }
+        let resume = encoded_resume
+            .or_else(|| {
+                semantic_resume.as_ref().map(|grant| {
+                    super::callback_adapter::CorrelatedToolCallback {
+                        callback_task_id: grant.callback_task_id(),
+                        tool_results: grant.payload()["tool_results"].clone(),
+                    }
+                })
             })
-        });
+            .or_else(|| {
+                native_resume.map(|(task, tool_results)| {
+                    super::callback_adapter::CorrelatedToolCallback {
+                        callback_task_id: task.id,
+                        tool_results: tool_results["tool_results"].clone(),
+                    }
+                })
+            });
         if let Some(resume) = resume {
             let mut command = openai_resume_command(
                 "",
@@ -687,6 +702,10 @@ async fn dispatch_response_for_endpoint(
                 resume.tool_results,
                 response_mode.clone(),
             );
+            if let Some(grant) = semantic_resume {
+                command.response_payload = grant.payload().clone();
+                command.responses_continuation = Some(grant);
+            }
             let uses_native_transport = native_transport.is_some();
             command.native_transport = native_transport;
             command.transport_connection_scope = transport_connection_scope.clone();
@@ -707,7 +726,8 @@ async fn dispatch_response_for_endpoint(
             {
                 Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                     if responses_resume_requires_previous_response_match(
-                        correlated_from_native_state,
+                        correlated_from_native_state
+                            || plan.command.responses_continuation.is_some(),
                     ) {
                         ensure_openai_responses_resume_matches_previous_response(
                             state.as_ref(),
@@ -1349,6 +1369,7 @@ fn openai_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
         reserved_attempt_id: None,
@@ -1395,22 +1416,46 @@ async fn load_previous_response_context_for_actor(
     };
     let service = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store());
-    let run = match run_id_from_response_id(response_id) {
-        Ok(run_id) => match service
-            .get_native_run_for_actor(actor.clone(), run_id)
+    let semantic = state
+        .store
+        .find_semantic_responses_callbacks_by_response_id(
+            actor.workspace_id,
+            actor.application_id,
+            actor.api_key_id,
+            actor.creator_user_id,
+            response_id,
+        )
+        .await
+        .map_err(native::service_error)?;
+    if semantic.len() > 1 {
+        return Err(native::service_error(anyhow::anyhow!(
+            "responses_tool_output_ambiguous_round"
+        ))
+        .into());
+    }
+    let run = if let Some(callback) = semantic.first() {
+        service
+            .get_native_run_for_actor(actor.clone(), callback.flow_run_id)
             .await
-        {
-            Ok(run) => run,
-            Err(NativeRunValidationError::NotFound) => service
-                .get_native_run_by_provider_response_id_for_actor(actor.clone(), response_id)
+            .map_err(native::native_error)?
+    } else {
+        match run_id_from_response_id(response_id) {
+            Ok(run_id) => match service
+                .get_native_run_for_actor(actor.clone(), run_id)
+                .await
+            {
+                Ok(run) => run,
+                Err(NativeRunValidationError::NotFound) => service
+                    .get_native_run_by_provider_response_id_for_actor(actor.clone(), response_id)
+                    .await
+                    .map_err(native::native_error)?,
+                Err(error) => return Err(native::native_error(error).into()),
+            },
+            Err(_) => service
+                .get_native_run_by_provider_response_id_for_actor(actor, response_id)
                 .await
                 .map_err(native::native_error)?,
-            Err(error) => return Err(native::native_error(error).into()),
-        },
-        Err(_) => service
-            .get_native_run_by_provider_response_id_for_actor(actor, response_id)
-            .await
-            .map_err(native::native_error)?,
+        }
     };
     ensure_previous_response_is_usable(&run)?;
     Ok(Some(LoadedOpenAiPreviousResponseContext {

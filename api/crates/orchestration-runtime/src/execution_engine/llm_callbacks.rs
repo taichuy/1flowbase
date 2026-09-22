@@ -386,6 +386,56 @@ pub(super) fn append_llm_tool_result_messages(
         delta_messages.push(message);
     }
 
+    if let Some(value) = resume_payload.get("responses_continuation") {
+        let continuation: domain::orchestration::ResponsesContinuation =
+            serde_json::from_value(value.clone())?;
+        // The control-plane verified ingress binds these messages to the owned full
+        // tool set. Replace only this round's append, preserving predecessor state.
+        if continuation.ordered_input.len() != continuation.ordered_messages.len() {
+            return Err(anyhow!("ordered continuation item count mismatch"));
+        }
+        let results = delta_messages
+            .iter()
+            .filter_map(|message| {
+                message
+                    .get("tool_call_id")
+                    .and_then(Value::as_str)
+                    .map(|id| (id.to_owned(), message.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut ordered = Vec::with_capacity(continuation.ordered_input.len());
+        let mut seen = BTreeSet::new();
+        for (item, context) in continuation
+            .ordered_input
+            .iter()
+            .zip(continuation.ordered_messages)
+        {
+            if item.get("type").and_then(Value::as_str) == Some("function_call_output") {
+                let id = item
+                    .get("call_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("ordered tool result missing call_id"))?;
+                if !seen.insert(id.to_owned()) {
+                    return Err(anyhow!("duplicate ordered tool result"));
+                }
+                ordered.push(
+                    results
+                        .get(id)
+                        .cloned()
+                        .ok_or_else(|| anyhow!("unknown ordered tool result"))?,
+                );
+            } else {
+                ordered.push(context);
+            }
+        }
+        if seen.len() != results.len() {
+            return Err(anyhow!("ordered continuation is missing tool results"));
+        }
+        history.truncate(history.len() - delta_messages.len());
+        delta_messages = ordered;
+        history.extend(delta_messages.iter().cloned());
+    }
+
     let mut callback_state = Map::new();
     callback_state.insert(
         "callback_kind".to_string(),
@@ -832,5 +882,44 @@ mod tests {
         assert!(!delta.contains("old body"));
         assert!(!delta.contains("old response"));
         assert!(!delta.contains("total_tokens"));
+    }
+    #[test]
+    fn semantic_callback_receipt_preserves_context_before_between_and_after_results() {
+        let predecessor = json!([{"role":"user","content":"original"}, {"role":"assistant","content":"","tool_calls":[{"id":"a"},{"id":"b"}]}]);
+        let mut pool = json!({"llm":{"__llm_tool_callback":{"pending_tool_calls":[{"id":"a","name":"first"},{"id":"b","name":"second"}],"history":predecessor,"system":[]}}}).as_object().unwrap().clone();
+        let ordered = json!([{"role":"user","content":"before"},{"role":"tool","tool_call_id":"b","content":"B","name":"second"},{"role":"user","content":"between"},{"role":"tool","tool_call_id":"a","content":"A","name":"first"},{"role":"user","content":"after"}]);
+        append_llm_tool_result_messages(&mut pool, "llm", &json!({"tool_results":[{"tool_call_id":"a","content":"A"},{"tool_call_id":"b","content":"B"}],
+            "responses_continuation":{"ordered_input":[{"role":"user","content":"before"},{"type":"function_call_output","call_id":"b","output":"B"},{"role":"user","content":"between"},{"type":"function_call_output","call_id":"a","output":"A"},{"role":"user","content":"after"}],"ordered_messages":ordered}})).unwrap();
+        let state = pending_llm_tool_callback_state(&pool, "llm").unwrap();
+        assert_eq!(state["delta_messages"], ordered);
+        assert_eq!(
+            state["history"].as_array().unwrap(),
+            &predecessor
+                .as_array()
+                .unwrap()
+                .iter()
+                .cloned()
+                .chain(ordered.as_array().unwrap().iter().cloned())
+                .collect::<Vec<_>>()
+        );
+    }
+    #[test]
+    fn semantic_ordered_receipt_reuses_multimodal_tool_result_conversion() {
+        let initial = json!({"llm":{"__llm_tool_callback":{"pending_tool_calls":[{"id":"a","name":"image_tool"}],"history":[],"system":[]}}}).as_object().unwrap().clone();
+        let result = json!({"tool_call_id":"a","content":[{"type":"text","text":"found"},{"type":"image_url","image_url":{"url":"https://example.test/image.png"}}],"is_error":true});
+        let mut ordinary = initial.clone();
+        append_llm_tool_result_messages(&mut ordinary, "llm", &json!({"tool_results":[result]}))
+            .unwrap();
+        let expected_tool = ordinary["llm"]["__llm_tool_callback"]["delta_messages"][0].clone();
+        let mut semantic = initial;
+        append_llm_tool_result_messages(&mut semantic, "llm", &json!({"tool_results":[result],"responses_continuation":{
+            "ordered_input":[{"role":"user","content":"before"},{"type":"function_call_output","call_id":"a","output":result["content"]},{"role":"user","content":"after"}],
+            "ordered_messages":[{"role":"user","content":"before"},{"role":"tool","tool_call_id":"a","content":"must not replace canonical result"},{"role":"user","content":"after"}]}})).unwrap();
+        let delta = &semantic["llm"]["__llm_tool_callback"]["delta_messages"];
+        assert_eq!(delta[1], expected_tool);
+        assert_eq!(delta[1]["name"], "image_tool");
+        assert_eq!(delta[1]["is_error"], true);
+        assert_eq!(delta[0]["content"], "before");
+        assert_eq!(delta[2]["content"], "after");
     }
 }

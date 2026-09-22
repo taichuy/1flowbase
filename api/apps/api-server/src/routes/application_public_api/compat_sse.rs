@@ -342,7 +342,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         .map_err(service_error)?;
     Ok(match prepared {
         PreparedPublishedCallbackResume::Resume { mut initial_run } => {
-            if command.native_transport.is_some() {
+            if command.native_transport.is_some() || command.responses_continuation.is_some() {
                 command.reserved_attempt_id = Some(
                     service
                         .reserve_native_callback_for_actor(actor, &command)

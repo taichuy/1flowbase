@@ -1653,6 +1653,87 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         rows.into_iter().map(map_callback_task_record).collect()
     }
 
+    async fn find_semantic_responses_callbacks_by_call_ids(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        call_ids: &[String],
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
+                   runtime_original_json(c.request_payload, c.raw_json_payloads, 'request_payload') as request_payload, runtime_original_json(c.response_payload, c.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(c.external_ref_payload, c.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
+                   c.created_at, c.completed_at
+            from flow_run_callback_tasks c
+            join flow_runs f on f.id = c.flow_run_id
+            join applications a on a.id = f.application_id
+            where a.workspace_id = $1 and f.application_id = $2
+              and f.api_key_id = $3 and f.created_by = $4
+              and f.run_mode = 'published_api_run'
+              and c.callback_kind = 'llm_tool_calls'
+              and jsonb_typeof(c.request_payload #> '{responses_round}') = 'object'
+              and (
+                  jsonb_path_query_array(c.request_payload, '$.tool_calls[*].call_id')
+                  || jsonb_path_query_array(c.request_payload, '$.tool_calls[*].id')
+              ) ?| $5::text[]
+              and exists (
+                  select 1 from jsonb_array_elements(
+                      case when jsonb_typeof(c.request_payload->'tool_calls') = 'array'
+                           then c.request_payload->'tool_calls' else '[]'::jsonb end
+                  ) tool_call(item)
+                  where coalesce(item->>'call_id', item->>'id') = any($5)
+              )
+            order by c.created_at, c.id
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(actor_user_id)
+        .bind(call_ids)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_callback_task_record).collect()
+    }
+
+    async fn find_semantic_responses_callbacks_by_response_id(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select c.id, c.flow_run_id, c.node_run_id, c.callback_kind, c.status,
+                   runtime_original_json(c.request_payload, c.raw_json_payloads, 'request_payload') as request_payload, runtime_original_json(c.response_payload, c.raw_json_payloads, 'response_payload') as response_payload, runtime_original_json(c.external_ref_payload, c.raw_json_payloads, 'external_ref_payload') as external_ref_payload,
+                   c.created_at, c.completed_at
+            from flow_run_callback_tasks c
+            join flow_runs f on f.id = c.flow_run_id
+            join applications a on a.id = f.application_id
+            where a.workspace_id = $1 and f.application_id = $2
+              and f.api_key_id = $3 and f.created_by = $4
+              and f.run_mode = 'published_api_run'
+              and c.callback_kind = 'llm_tool_calls'
+              and (c.request_payload #>> '{responses_round,response_id}' = $5
+                   or (c.id = $6 and f.output_payload #>> '{responses_round,response_id}' = $5))
+            order by c.created_at, c.id
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(api_key_id)
+        .bind(actor_user_id)
+        .bind(provider_response_id)
+        .bind(provider_response_id.strip_prefix("resp_").and_then(|id| Uuid::parse_str(id).ok()))
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_callback_task_record).collect()
+    }
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,
@@ -1823,6 +1904,30 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
             &response_payload,
         )
         .await
+    }
+
+    async fn reclaim_semantic_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let row = sqlx::query(r#"
+            update flow_run_callback_resume_attempts a set status = 'processing', updated_at = now(), completed_at = null
+            where a.id = $1
+              and runtime_original_json(a.response_payload, a.raw_json_payloads, 'response_payload') = $2
+              and a.source = 'openai_responses'
+              and a.response_payload ? 'responses_continuation'
+              and (a.status = 'received' or (a.status = 'processing' and a.updated_at <= now() - interval '5 minutes'))
+              and not exists (select 1 from flow_run_resume_claims c where c.callback_task_id = a.callback_task_id
+                              and c.status = 'processing' and c.lease_expires_at > now())
+            returning a.id, a.flow_run_id, a.callback_task_id, a.source, a.status,
+              runtime_original_json(a.response_payload, a.raw_json_payloads, 'response_payload') as response_payload,
+              a.idempotency_key, runtime_original_json(a.error_payload, a.raw_json_payloads, 'error_payload') as error_payload,
+              a.created_at, a.updated_at, a.completed_at
+        "#).bind(attempt_id).bind(response_payload).fetch_optional(self.pool()).await?;
+        row.as_ref()
+            .map(map_flow_run_callback_resume_attempt_record)
+            .transpose()
     }
 
     async fn park_published_callback_resume_attempt(

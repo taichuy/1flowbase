@@ -37,6 +37,27 @@ where
     where
         R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
+        if let Some(grant) = &command.responses_continuation {
+            grant.validate(
+                command.application_id,
+                command.actor_user_id,
+                command.callback_task_id,
+                &command.response_payload,
+            )?;
+        } else if command
+            .response_payload
+            .get("responses_continuation")
+            .is_some()
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "responses_continuation_requires_verified_ingress",
+            )
+            .into());
+        }
+        let responses_round = command
+            .responses_continuation
+            .as_ref()
+            .map(|grant| (command.callback_task_id, grant.input_history().clone()));
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
             .await?;
@@ -90,6 +111,15 @@ where
             let committed = self
                 .repository
                 .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+                    responses_continuation: command
+                        .responses_continuation
+                        .as_ref()
+                        .map(|grant| {
+                            serde_json::from_value(
+                                grant.payload()["responses_continuation"].clone(),
+                            )
+                        })
+                        .transpose()?,
                     scope_id: application.workspace_id,
                     application_id: command.application_id,
                     flow_run_id: flow_run.id,
@@ -98,6 +128,46 @@ where
                     results,
                 })
                 .await?;
+            let committed = if committed.disposition == ToolCallbackRoundDisposition::Completed
+                && command.responses_continuation.is_some()
+            {
+                let stored = committed
+                    .callback_task
+                    .response_payload
+                    .clone()
+                    .ok_or_else(|| anyhow!("tool callback receipt missing"))?;
+                let acquired = self
+                    .repository
+                    .acquire_resume_claim(&AcquireResumeClaimInput {
+                        scope_id: application.workspace_id,
+                        application_id: command.application_id,
+                        flow_run_id: flow_run.id,
+                        checkpoint_id: committed
+                            .claim
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("tool callback claim missing"))?
+                            .checkpoint_id,
+                        callback_task_id: Some(command.callback_task_id),
+                        kind: ResumeClaimKind::Callback,
+                        request_payload: stored,
+                    })
+                    .await?;
+                match acquired.disposition {
+                    ResumeClaimDisposition::Completed => return Ok(flow_run),
+                    ResumeClaimDisposition::InProgress => {
+                        return Err(
+                            ControlPlaneError::Conflict("callback_resume_already_admitted").into(),
+                        )
+                    }
+                    ResumeClaimDisposition::Acquired => CommitToolCallbackResultsOutput {
+                        callback_task: committed.callback_task,
+                        claim: Some(acquired.claim),
+                        disposition: ToolCallbackRoundDisposition::Acquired,
+                    },
+                }
+            } else {
+                committed
+            };
             if committed.disposition != ToolCallbackRoundDisposition::Acquired {
                 return Ok(flow_run);
             }
@@ -217,7 +287,7 @@ where
                 };
 
                 self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
-                    responses_round: None,
+                    responses_round: responses_round.clone(),
                     scope_id: application.workspace_id,
                     application_name: &application.name,
                     task_queue: self.provider_request_log_queue.as_ref(),

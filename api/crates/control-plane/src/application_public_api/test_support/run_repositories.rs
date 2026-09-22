@@ -586,6 +586,95 @@ impl run_service::ApplicationPublishedRunControlRepository for ApplicationPublic
             .collect())
     }
 
+    async fn find_semantic_responses_callbacks_by_call_ids(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        call_ids: &[String],
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        Ok(inner
+            .callback_tasks
+            .values()
+            .filter(|task| {
+                let owned = inner.flow_runs.get(&task.flow_run_id).is_some_and(|run| {
+                    run.application_id == application_id
+                        && run.api_key_id == Some(api_key_id)
+                        && run.created_by == actor_user_id
+                        && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                        && inner
+                            .applications
+                            .get(&application_id)
+                            .is_some_and(|app| app.workspace_id == workspace_id)
+                });
+                owned
+                    && task.callback_kind == "llm_tool_calls"
+                    && task
+                        .request_payload
+                        .pointer("/responses_round")
+                        .is_some_and(serde_json::Value::is_object)
+                    && task
+                        .request_payload
+                        .get("tool_calls")
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|calls| {
+                            calls.iter().any(|call| {
+                                call.get("call_id")
+                                    .or_else(|| call.get("id"))
+                                    .and_then(serde_json::Value::as_str)
+                                    .is_some_and(|id| {
+                                        call_ids.iter().any(|expected| expected == id)
+                                    })
+                            })
+                        })
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn find_semantic_responses_callbacks_by_response_id(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        api_key_id: Uuid,
+        actor_user_id: Uuid,
+        provider_response_id: &str,
+    ) -> Result<Vec<domain::CallbackTaskRecord>> {
+        let inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        Ok(inner
+            .callback_tasks
+            .values()
+            .filter(|task| {
+                let owned = inner.flow_runs.get(&task.flow_run_id).is_some_and(|run| {
+                    run.application_id == application_id
+                        && run.api_key_id == Some(api_key_id)
+                        && run.created_by == actor_user_id
+                        && run.run_mode == domain::FlowRunMode::PublishedApiRun
+                        && inner
+                            .applications
+                            .get(&application_id)
+                            .is_some_and(|app| app.workspace_id == workspace_id)
+                });
+                owned
+                    && task.callback_kind == "llm_tool_calls"
+                    && task
+                        .request_payload
+                        .pointer("/responses_round/response_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(provider_response_id)
+            })
+            .cloned()
+            .collect())
+    }
+
     async fn get_published_callback_task(
         &self,
         callback_task_id: Uuid,
@@ -766,6 +855,32 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
             domain::FlowRunCallbackResumeAttemptStatus::Processing,
             Some(response_payload),
         )
+    }
+
+    async fn reclaim_semantic_callback_resume_attempt(
+        &self,
+        attempt_id: Uuid,
+        response_payload: serde_json::Value,
+    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let mut inner = self.inner.lock().expect("test repo mutex poisoned");
+        let Some(attempt) = inner
+            .callback_resume_attempts
+            .values_mut()
+            .find(|attempt| attempt.id == attempt_id)
+        else {
+            return Ok(None);
+        };
+        if attempt.response_payload != response_payload
+            || !(attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
+                || (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
+                    && attempt.updated_at + time::Duration::minutes(5)
+                        <= OffsetDateTime::now_utc()))
+        {
+            return Ok(None);
+        }
+        attempt.status = domain::FlowRunCallbackResumeAttemptStatus::Processing;
+        attempt.updated_at = OffsetDateTime::now_utc();
+        Ok(Some(attempt.clone()))
     }
 
     async fn park_published_callback_resume_attempt(

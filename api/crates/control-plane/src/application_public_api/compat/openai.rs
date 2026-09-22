@@ -183,3 +183,5 @@ use response_input::*;
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use response_input::continuation_messages;

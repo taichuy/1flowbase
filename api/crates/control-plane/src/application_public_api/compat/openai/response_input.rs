@@ -205,6 +205,17 @@ pub(super) fn validate_responses_input_items(
     is_v2_compaction: bool,
     report: &mut TranslationReport,
 ) -> Result<(), OpenAiCompatError> {
+    validate_responses_items(input, is_v2_compaction, report, false)
+}
+
+/// Shared semantic item validation. Callback ownership/pairing was already proven
+/// by the scoped callback owner; all message, role and content field rules remain identical.
+fn validate_responses_items(
+    input: &Value,
+    is_v2_compaction: bool,
+    report: &mut TranslationReport,
+    verified_callback: bool,
+) -> Result<(), OpenAiCompatError> {
     if input.is_string() {
         report.record(
             "$.input",
@@ -228,7 +239,8 @@ pub(super) fn validate_responses_input_items(
                 .with_report(report.clone()),
         );
     };
-    let reconstructable_tool_continuation = responses_end_with_reconstructable_tool_output(items)?;
+    let reconstructable_tool_continuation =
+        verified_callback || responses_end_with_reconstructable_tool_output(items)?;
     let mut has_user_message = false;
     let mut has_compaction_trigger = false;
     for (index, item) in items.iter().enumerate() {
@@ -1358,4 +1370,25 @@ pub(super) fn openai_image_content_block(part: &Value) -> Option<Value> {
         "type": "image_url",
         "image_url": Value::Object(canonical_image_url)
     }))
+}
+
+/// Translate a verified callback suffix without extracting a latest user message or
+/// moving system/context entries away from their submitted position.
+pub(crate) fn continuation_messages(items: &[Value]) -> Result<Vec<Value>, OpenAiCompatError> {
+    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    validate_responses_items(&Value::Array(items.to_vec()), false, &mut report, true)?;
+    items.iter().map(|item| match item.get("type").and_then(Value::as_str) {
+        Some("function_call_output") => Ok(json!({"role":"tool", "tool_call_id":item["call_id"],
+            "content":match &item["output"] { Value::String(text) => text.clone(), other => other.to_string() }})),
+        None | Some("message") => {
+            let message = responses_input_message(item)?;
+            if !matches!(message.role.as_str(), "user" | "assistant") {
+                return Err(OpenAiCompatError::invalid("input", "this semantic recovery mapper cannot preserve this new context role"));
+            }
+            let mut value = json!({"role":message.role,"content":message.content});
+            if let Some(blocks) = message.content_blocks { value["content_blocks"] = blocks; }
+            Ok(value)
+        }
+        _ => Err(OpenAiCompatError::invalid("input", "unsupported semantic continuation item")),
+    }).collect()
 }

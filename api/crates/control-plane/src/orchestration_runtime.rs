@@ -31,13 +31,13 @@ use crate::{
         AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
         ApplicationRepository, BillingRepository, CacheStore, CallbackResumeWaitingNode,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
-        CompleteCallbackTaskInput, FinishResumeClaimInput, FlowRepository,
-        ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
-        OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
-        ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus,
-        RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
-        TaskQueue, ToolCallbackResultInput, ToolCallbackRoundDisposition, UpdateFlowRunInput,
-        UpdateNodeRunInput,
+        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, FinishResumeClaimInput,
+        FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
+        NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
+        ProviderRuntimePort, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
+        ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload,
+        RuntimeEventStream, TaskQueue, ToolCallbackResultInput, ToolCallbackRoundDisposition,
+        UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };
@@ -163,6 +163,8 @@ pub struct ResumeFlowRunCommand {
 pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-connection-scope";
 
 pub struct CompleteCallbackTaskCommand {
+    pub responses_continuation:
+        Option<crate::application_public_api::native_tool_resume::VerifiedResponsesContinuation>,
     pub transport_connection_scope: Option<String>,
     pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,

@@ -131,6 +131,7 @@ impl FullContextInput<'_> {
     pub(crate) fn continuation(&self) -> domain::orchestration::ResponsesContinuation {
         domain::orchestration::ResponsesContinuation {
             ordered_input: self.ordered.to_vec(),
+            ordered_messages: Vec::new(),
         }
     }
 }

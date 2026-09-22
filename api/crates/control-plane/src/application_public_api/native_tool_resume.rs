@@ -1,3 +1,5 @@
+mod semantic;
+pub use semantic::{correlate_semantic_responses_callback, VerifiedResponsesContinuation};
 use std::collections::BTreeSet;
 
 use anyhow::Result;

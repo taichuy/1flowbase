@@ -16,4 +16,5 @@ pub struct ResponsesRoundEvidence {
 #[serde(deny_unknown_fields)]
 pub struct ResponsesContinuation {
     pub ordered_input: Vec<Value>,
+    pub ordered_messages: Vec<Value>,
 }
