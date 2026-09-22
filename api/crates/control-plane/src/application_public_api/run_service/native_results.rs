@@ -12,8 +12,9 @@ use super::repository_contracts::{PublishedRunPendingCallback, PublishedRunStrea
 
 pub fn native_result_from_flow_run(
     flow_run: &domain::FlowRunRecord,
-    metadata: Value,
+    mut metadata: Value,
 ) -> NativeRunResult {
+    attach_responses_round(&mut metadata, &flow_run.output_payload);
     let status = native_status(flow_run.status);
     NativeRunResult {
         id: flow_run.id,
@@ -115,6 +116,7 @@ pub fn native_result_from_run_stream_state(
     stream_state: &PublishedRunStreamState,
 ) -> NativeRunResult {
     let mut result = initial_run.clone();
+    attach_responses_round(&mut result.metadata, &stream_state.output_payload);
     result.status = native_status(stream_state.status);
     result.answer = native_status_exposes_answer(result.status, &stream_state.output_payload)
         .then(|| extract_answer(&stream_state.output_payload))
@@ -449,4 +451,23 @@ fn native_status_exposes_tool_calls(status: NativeRunStatus) -> bool {
         status,
         NativeRunStatus::Succeeded | NativeRunStatus::Waiting
     )
+}
+
+fn attach_responses_round(metadata: &mut Value, output: &Value) {
+    if let Some(object) = metadata.as_object_mut() {
+        object.remove("responses_round");
+    }
+    if let Some(round) = output.get("responses_round") {
+        if !metadata.is_object() {
+            *metadata = json!({});
+        }
+        metadata["responses_round"] = round.clone();
+        if let Some(id) = round
+            .get("response_id")
+            .and_then(Value::as_str)
+            .and_then(|id| id.strip_prefix("resp_"))
+        {
+            metadata["response_round_id"] = json!(id);
+        }
+    }
 }

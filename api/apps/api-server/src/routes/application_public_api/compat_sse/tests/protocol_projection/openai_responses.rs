@@ -576,3 +576,68 @@ async fn failed_terminal_preserves_committed_output_and_absorbs_late_success() {
     );
     assert_eq!(frames[0]["response"]["output"], json!([item]));
 }
+
+#[tokio::test]
+async fn semantic_responses_done_completed_and_blocking_preserve_presented_prefix() {
+    use control_plane::application_public_api::compat::openai::projection::{
+        function_call_items, output_item, OutputKind,
+    };
+    let mut run = native_run();
+    let round = Uuid::now_v7();
+    run.metadata["response_round_id"] = json!(round);
+    let calls = vec![json!({"id":"call_visible","name":"read","arguments":{"path":"src"}})];
+    let mut expected = vec![
+        output_item(run.id, OutputKind::Reasoning, Some("plan".into())),
+        output_item(run.id, OutputKind::Message, Some("checking".into())),
+    ];
+    expected.extend(function_call_items(&calls));
+    let mut mapper = OpenAiResponseStreamMapper::new("fixture".into(), Some("resp_parent".into()));
+    let mut events = Vec::new();
+    for (index, event) in [
+        debug_stream_events::answer_reasoning_delta("answer", "plan".into(), 0, None, None, None),
+        debug_stream_events::answer_text_delta("answer", "checking".into(), 0, None, None, None),
+        RuntimeEventPayload { event_type:"waiting_callback".into(), source:RuntimeEventSource::Runtime,
+            durability:RuntimeEventDurability::DurableRequired, persist_required:true, trace_visible:true,
+            payload:json!({"callback_task_id":Uuid::now_v7(),"callback_kind":"llm_tool_calls","tool_calls":calls}) },
+    ].into_iter().enumerate() {
+        events.extend(mapper.runtime_event_to_sse(&run, RuntimeEventEnvelope::new(run.id, index as i64 + 1, event)));
+    }
+    let body = axum::body::to_bytes(
+        test_projected_events_response(events).into_body(),
+        usize::MAX,
+    )
+    .await
+    .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    let decoded = decode_responses_sse(&body);
+    let done = decoded
+        .output_item_events
+        .iter()
+        .filter(|item| item["type"] == "response.output_item.done")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        done.iter()
+            .map(|item| item["output_index"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert_eq!(
+        done.iter()
+            .map(|item| item["item"].clone())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(decoded.completed_output, expected);
+    run.status = NativeRunStatus::Waiting;
+    run.metadata["responses_round"] = json!({"output":expected});
+    let blocking = crate::routes::application_public_api::openai::to_openai_responses_response(
+        run,
+        "fixture".into(),
+        Some("resp_parent".into()),
+    )
+    .unwrap();
+    let blocking = serde_json::to_value(blocking).unwrap();
+    assert_eq!(blocking["output"], json!(decoded.completed_output));
+    assert_eq!(blocking["id"], format!("resp_{round}"));
+    assert_eq!(blocking["previous_response_id"], "resp_parent");
+}

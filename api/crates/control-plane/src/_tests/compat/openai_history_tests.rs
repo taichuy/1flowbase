@@ -354,3 +354,60 @@ fn full_context_proof_keeps_interleaved_context_out_of_exact_replay() {
     assert_eq!(proof.context, vec![&context]);
     assert!(validate_full_retry_input(&full, &history, &["call_1".into()]).is_err());
 }
+
+#[test]
+fn semantic_presented_round_proof_preserves_delta_order_across_rounds() {
+    use crate::application_public_api::compat::openai::projection::{
+        round_evidence, OutputKind, PresentedOutput,
+    };
+    let first_input = json!({"input":[{"role":"user","content":"work"}]});
+    let prefix = completed_history(&first_input, None, &[]).unwrap().unwrap();
+    let mut presented = PresentedOutput::default();
+    presented.push(OutputKind::Reasoning, "plan");
+    presented.push(OutputKind::Message, "checking");
+    presented.push(OutputKind::Message, " now");
+    let run_id = uuid::Uuid::now_v7();
+    let first = round_evidence(
+        run_id,
+        &prefix,
+        presented.items(run_id),
+        &[json!({"id":"call_a","name":"read","arguments":{}})],
+    )
+    .unwrap();
+    assert_eq!(first.output.len(), 3);
+    assert_eq!(first.output[1]["content"][0]["text"], "checking now");
+    let delta = vec![
+        json!({"role":"user","content":"before"}),
+        json!({"type":"function_call_output","call_id":"call_a","output":"ok"}),
+        json!({"role":"user","content":"after"}),
+    ];
+    let full: Vec<Value> = first_input["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .cloned()
+        .chain(first.output.clone())
+        .chain(delta.clone())
+        .collect();
+    let full = json!(full);
+    let proof = prove_full_context_input(&full, &first.history, &["call_a".into()]).unwrap();
+    assert_eq!(proof.continuation().ordered_input, delta);
+    let full_prefix = completed_history(&json!({"input":full}), None, &[])
+        .unwrap()
+        .unwrap();
+    let delta_prefix = append_items(&first.history, &proof.continuation().ordered_input).unwrap();
+    assert_eq!(full_prefix, delta_prefix);
+    let callback_id = uuid::Uuid::now_v7();
+    let second = round_evidence(
+        callback_id,
+        &delta_prefix,
+        vec![],
+        &[json!({"id":"call_b","name":"read","arguments":{}})],
+    )
+    .unwrap();
+    assert_ne!(first.response_id, second.response_id);
+    assert_eq!(second.response_id, format!("resp_{callback_id}"));
+    let mut tampered = full.clone();
+    tampered[1]["content"][0]["text"] = json!("changed reasoning");
+    assert!(prove_full_context_input(&tampered, &first.history, &["call_a".into()]).is_err());
+}

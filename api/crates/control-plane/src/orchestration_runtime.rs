@@ -1329,6 +1329,7 @@ where
                 .await?;
 
             self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+                responses_round: None,
                 scope_id: application.workspace_id,
                 application_name: &application.name,
                 task_queue: self.provider_request_log_queue.as_ref(),

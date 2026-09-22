@@ -32,6 +32,7 @@ pub(super) fn mark_canonical_answer_presentation_output(payload: &mut Value) {
 
 #[derive(Debug)]
 pub(super) struct AnswerPresentationCursor {
+    presented_output: crate::application_public_api::compat::openai::projection::PresentedOutput,
     candidates: Vec<AnswerPresentationCandidateCursor>,
     selected_candidate_index: Option<usize>,
 }
@@ -169,6 +170,7 @@ impl AnswerPresentationCursor {
         }
         let selected_candidate_index = (candidates.len() == 1).then_some(0);
         Some(Self {
+            presented_output: Default::default(),
             candidates,
             selected_candidate_index,
         })
@@ -176,6 +178,7 @@ impl AnswerPresentationCursor {
 
     pub(super) fn from_presentation(plan: AnswerPresentationPlan) -> Self {
         Self {
+            presented_output: Default::default(),
             candidates: vec![AnswerPresentationCandidateCursor::new(plan)],
             selected_candidate_index: Some(0),
         }
@@ -190,7 +193,9 @@ impl AnswerPresentationCursor {
         let Some(candidate) = self.select_candidate_for_source(source_node_id) else {
             return Vec::new();
         };
-        candidate.push_provider_event(source_node_id, source_node_run_id, event)
+        let events = candidate.push_provider_event(source_node_id, source_node_run_id, event);
+        self.record_presented_output(&events);
+        events
     }
 
     #[cfg(test)]
@@ -210,11 +215,13 @@ impl AnswerPresentationCursor {
         output_payload: &Value,
     ) -> Vec<RuntimeEventPayload> {
         if let Some(index) = self.selected_candidate_index {
-            return self.candidates[index].complete_node_with_run_id(
+            let events = self.candidates[index].complete_node_with_run_id(
                 node_id,
                 node_run_id,
                 output_payload,
             );
+            self.record_presented_output(&events);
+            return events;
         }
 
         let matching_candidates = self
@@ -227,17 +234,42 @@ impl AnswerPresentationCursor {
             .collect::<Vec<_>>();
         if let [index] = matching_candidates.as_slice() {
             self.selected_candidate_index = Some(*index);
-            return self.candidates[*index].complete_node_with_run_id(
+            let events = self.candidates[*index].complete_node_with_run_id(
                 node_id,
                 node_run_id,
                 output_payload,
             );
+            self.record_presented_output(&events);
+            return events;
         }
 
         for candidate in &mut self.candidates {
             let _ = candidate.complete_node_with_run_id(node_id, node_run_id, output_payload);
         }
         Vec::new()
+    }
+
+    fn record_presented_output(&mut self, events: &[RuntimeEventPayload]) {
+        use crate::application_public_api::compat::openai::projection::OutputKind;
+        for event in events {
+            let kind = match event.event_type.as_str() {
+                "text_delta" => OutputKind::Message,
+                "reasoning_delta" => OutputKind::Reasoning,
+                _ => continue,
+            };
+            self.presented_output.push(
+                kind,
+                event
+                    .payload
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            );
+        }
+    }
+
+    pub(super) fn responses_output(&self, flow_run_id: Uuid) -> Vec<Value> {
+        self.presented_output.items(flow_run_id)
     }
 
     fn select_candidate_for_source(

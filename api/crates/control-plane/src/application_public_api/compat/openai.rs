@@ -1,5 +1,6 @@
 pub(crate) mod history;
 pub(crate) mod log_context;
+pub mod projection;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 

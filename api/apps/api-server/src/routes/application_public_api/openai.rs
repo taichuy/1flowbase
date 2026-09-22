@@ -1634,7 +1634,7 @@ pub(super) fn native_response_id(run: &NativeRunResult) -> String {
 }
 
 #[cfg(test)]
-fn to_openai_responses_response(
+pub(super) fn to_openai_responses_response(
     run: NativeRunResult,
     model: String,
     previous_response_id: Option<String>,
@@ -1648,6 +1648,12 @@ fn to_openai_responses_response_with_native_items(
     previous_response_id: Option<String>,
     native_items: Option<Vec<Value>>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
+    let native_items = native_items.or_else(|| {
+        run.metadata
+            .pointer("/responses_round/output")
+            .and_then(Value::as_array)
+            .cloned()
+    });
     let function_call_items = if native_items.is_none() {
         openai_response_function_call_items(run.tool_calls.as_ref())
     } else {
@@ -1733,26 +1739,10 @@ fn openai_response_message_item(
 
 fn openai_response_function_call_items(tool_calls: Option<&Value>) -> Option<Vec<Value>> {
     let calls = external_llm_tool_calls(tool_calls)?;
-    let mapped = calls
-        .iter()
-        .filter_map(|call| {
-            let name = call.get("name").and_then(Value::as_str)?;
-            let original_id = call
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("tool_call")
-                .to_string();
-            let arguments = call.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            Some(json!({
-                "id": format!("fc_{}", original_id),
-                "type": "function_call",
-                "call_id": original_id,
-                "name": name,
-                "arguments": openai_arguments_string(arguments),
-                "status": "completed"
-            }))
-        })
-        .collect::<Vec<_>>();
+    let mapped =
+        control_plane::application_public_api::compat::openai::projection::function_call_items(
+            calls,
+        );
     (!mapped.is_empty()).then_some(mapped)
 }
 

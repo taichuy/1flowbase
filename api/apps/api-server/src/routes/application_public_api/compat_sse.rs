@@ -349,15 +349,18 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
                         .await
                         .map_err(service_error)?,
                 );
-                let round_id = match command.target {
-                    PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
-                    | PublishedCallbackResumeTarget::FlowRun {
-                        callback_task_id, ..
-                    } => callback_task_id,
-                };
-                if initial_run.metadata["native_inference_recovery_replay"] != true {
-                    initial_run.metadata["response_round_id"] = json!(round_id);
-                }
+            }
+            if let Some(metadata) = initial_run.metadata.as_object_mut() {
+                metadata.remove("responses_round");
+            }
+            let round_id = match command.target {
+                PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
+                | PublishedCallbackResumeTarget::FlowRun {
+                    callback_task_id, ..
+                } => callback_task_id,
+            };
+            if initial_run.metadata["native_inference_recovery_replay"] != true {
+                initial_run.metadata["response_round_id"] = json!(round_id);
             }
             CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
                 initial_run: *initial_run,
@@ -380,10 +383,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     command: ResumePublishedCallbackCommand,
 ) -> Result<NativeRunResult, NativeApiError> {
-    let round_id = command
-        .native_transport
-        .as_ref()
-        .map(|_| callback_task_id_from_resume_command(&command));
+    let round_id = Some(callback_task_id_from_resume_command(&command));
     let runtime_internal_tool_invoker = dependencies
         .native
         .runtime_invoker_factory

@@ -66,6 +66,7 @@ pub(super) struct WaitingNodeResumeUpdate {
 }
 
 pub(super) struct PersistFlowDebugOutcomeInput<'a> {
+    pub(super) responses_round: Option<(Uuid, Value)>,
     pub(super) scope_id: Uuid,
     pub(super) application_name: &'a str,
     pub(super) task_queue: Option<&'a Arc<dyn crate::ports::TaskQueue>>,
@@ -164,6 +165,7 @@ where
     R: OrchestrationRuntimeRepository,
 {
     let PersistFlowDebugOutcomeInput {
+        responses_round,
         scope_id,
         application_name,
         task_queue,
@@ -359,7 +361,7 @@ where
                 .ok_or_else(|| anyhow!("waiting_callback outcome is missing checkpoint"))?;
             let waiting_node_run = waiting_node_run
                 .ok_or_else(|| anyhow!("waiting_callback outcome is missing node run"))?;
-            let answer_output_payload =
+            let mut answer_output_payload =
                 ready_waiting_answer_output_payload(compiled_plan, outcome)?
                     .unwrap_or_else(|| json!({}));
             let (checkpoint_status, checkpoint_reason) =
@@ -376,7 +378,36 @@ where
                 domain::FlowRunStatus::WaitingCallback,
                 "persist_flow_waiting_callback",
             )?;
-            let recovery = prepare_recovery_checkpoint(repository, &wait.node_id, snapshot).await?;
+            let mut request_payload = wait.request_payload.clone();
+            let mut snapshot = snapshot.clone();
+            if wait.callback_kind == "llm_tool_calls" {
+                if let Some((round_id, prefix)) = &responses_round {
+                    let output = match answer_presentation {
+                        Some(cursor) => cursor.lock().await.responses_output(flow_run.id),
+                        None => Vec::new(),
+                    };
+                    let calls = request_payload
+                        .get("tool_calls")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| anyhow!("responses callback tool calls missing"))?;
+                    let evidence =
+                        crate::application_public_api::compat::openai::projection::round_evidence(
+                            *round_id, prefix, output, calls,
+                        )?;
+                    let evidence = serde_json::to_value(evidence)?;
+                    request_payload["responses_round"] = evidence.clone();
+                    snapshot
+                        .variable_pool
+                        .get_mut(&wait.node_id)
+                        .and_then(|node| node.get_mut("__llm_tool_callback"))
+                        .and_then(Value::as_object_mut)
+                        .ok_or_else(|| anyhow!("responses callback checkpoint missing"))?
+                        .insert("responses_round".into(), evidence.clone());
+                    answer_output_payload["responses_round"] = evidence;
+                }
+            }
+            let recovery =
+                prepare_recovery_checkpoint(repository, &wait.node_id, &snapshot).await?;
             let external_ref_payload =
                 (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
             let callback_task_id = Uuid::now_v7();
@@ -386,7 +417,7 @@ where
                 node_run_id: waiting_node_run.id,
                 callback_kind: wait.callback_kind.clone(),
                 status: domain::CallbackTaskStatus::Pending,
-                request_payload: wait.request_payload.clone(),
+                request_payload: request_payload.clone(),
                 response_payload: None,
                 external_ref_payload: external_ref_payload.clone(),
                 created_at: OffsetDateTime::now_utc(),
@@ -456,7 +487,7 @@ where
                     kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
                         id: callback_task_id,
                         callback_kind: wait.callback_kind.clone(),
-                        request_payload: wait.request_payload.clone(),
+                        request_payload: request_payload.clone(),
                         external_ref_payload: external_ref_payload.clone(),
                     }),
                 })

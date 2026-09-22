@@ -91,6 +91,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
     let projected = persist_flow_debug_outcome(
         &repository,
         PersistFlowDebugOutcomeInput {
+            responses_round: None,
             scope_id: Uuid::nil(),
             application_name: "fixture application",
             task_queue: None,

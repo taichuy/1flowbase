@@ -17,25 +17,11 @@ fn openai_response_output_item_payload(
     kind: OpenAiResponseOutputItemKind,
     text: Option<String>,
 ) -> Value {
-    match kind {
-        OpenAiResponseOutputItemKind::Reasoning => json!({
-            "type": "reasoning",
-            "id": format!("rs_{}", initial_run.id),
-            "summary": [],
-            "content": text
-                .map(|text| json!([{ "type": "reasoning_text", "text": text }]))
-                .unwrap_or_else(|| json!([])),
-            "encrypted_content": null
-        }),
-        OpenAiResponseOutputItemKind::Message => json!({
-            "type": "message",
-            "id": format!("msg_{}", initial_run.id),
-            "role": "assistant",
-            "content": text
-                .map(|text| json!([{ "type": "output_text", "text": text }]))
-                .unwrap_or_else(|| json!([]))
-        }),
-    }
+    control_plane::application_public_api::compat::openai::projection::output_item(
+        initial_run.id,
+        kind,
+        text,
+    )
 }
 
 #[cfg(test)]
@@ -185,7 +171,13 @@ fn openai_response_runtime_event_to_sse(
         }
         "waiting_callback" => {
             if let Some(items) = openai_response_function_call_output_items(&envelope.payload) {
-                openai_response_function_call_sse(initial_run, model, previous_response_id, items)
+                openai_response_function_call_sse(
+                    initial_run,
+                    model,
+                    previous_response_id,
+                    completed_output_items,
+                    items,
+                )
             } else {
                 required_action_not_supported_openai_response_sse(
                     initial_run,
@@ -340,26 +332,10 @@ fn anthropic_cache_read_input_tokens(usage: &NativeUsage) -> u64 {
 pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
     llm_tool_callback_task_id(payload)?;
     let calls = llm_tool_calls(payload)?;
-    let output = calls
-        .iter()
-        .filter_map(|call| {
-            let name = call.get("name").and_then(Value::as_str)?;
-            let original_id = call
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("tool_call")
-                .to_string();
-            let arguments = call.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            Some(json!({
-                "id": format!("fc_{}", original_id),
-                "type": "function_call",
-                "call_id": original_id,
-                "name": name,
-                "arguments": tool_call_arguments_string(arguments),
-                "status": "completed"
-            }))
-        })
-        .collect::<Vec<_>>();
+    let output =
+        control_plane::application_public_api::compat::openai::projection::function_call_items(
+            calls,
+        );
     (!output.is_empty()).then_some(output)
 }
 
@@ -367,10 +343,12 @@ fn openai_response_function_call_sse(
     initial_run: &NativeRunResult,
     model: &str,
     previous_response_id: Option<&str>,
+    previous: &[Value],
     output: Vec<Value>,
 ) -> Vec<(&'static str, Value)> {
     let mut events = Vec::with_capacity(output.len() * 2 + 1);
     for (index, item) in output.iter().enumerate() {
+        let index = previous.len() + index;
         events.push(named_sse_payload(
             "response.output_item.added",
             json!({
@@ -398,7 +376,7 @@ fn openai_response_function_call_sse(
                 initial_run,
                 model,
                 previous_response_id,
-                output
+                previous.iter().cloned().chain(output).collect()
             )
         }),
     ));
@@ -413,6 +391,14 @@ fn openai_response_stream_snapshot_with_output(
 ) -> Value {
     let mut response =
         openai_response_stream_snapshot(initial_run, model, previous_response_id, "completed");
+    response["output_text"] = json!(output
+        .iter()
+        .filter(|item| item["type"] == "message")
+        .filter_map(|item| item.get("content").and_then(Value::as_array))
+        .flatten()
+        .filter(|part| part["type"] == "output_text")
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .collect::<String>());
     response["output"] = Value::Array(output);
     response["usage"] = openai_responses_usage_payload(initial_run.usage.as_ref());
     response

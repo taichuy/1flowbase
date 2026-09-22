@@ -417,6 +417,12 @@ fn translate_indexed_response_request(
     }
     let mut metadata = openai_metadata(object, &mut report)?;
     metadata.set_responses_transport_requirement(transport_requirement);
+    if !uses_native_transport {
+        metadata.set_responses_input_history(
+            super::history::completed_history(&request, None, &[])
+                .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
+        );
+    }
     metadata.set_application_run_log_context(
         super::log_context::capture_application_run_log_context(
             &request,

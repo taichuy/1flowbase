@@ -124,6 +124,15 @@ pub(crate) fn validate_full_retry_input(
 pub(crate) struct FullContextInput<'a> {
     pub(crate) tool_outputs: Vec<&'a Value>,
     pub(crate) context: Vec<&'a Value>,
+    pub(crate) ordered: &'a [Value],
+}
+
+impl FullContextInput<'_> {
+    pub(crate) fn continuation(&self) -> domain::orchestration::ResponsesContinuation {
+        domain::orchestration::ResponsesContinuation {
+            ordered_input: self.ordered.to_vec(),
+        }
+    }
 }
 
 /// Proves ordered predecessor history and the complete callback-output set.
@@ -161,6 +170,7 @@ pub(crate) fn prove_full_context_input<'a>(
     let mut proof = FullContextInput {
         tool_outputs: Vec::with_capacity(owned_call_ids.len()),
         context: Vec::new(),
+        ordered: &items[expected.item_count..],
     };
     for item in &items[expected.item_count..] {
         match item.get("type").and_then(Value::as_str) {
@@ -204,3 +214,12 @@ fn canonical_json(value: &Value) -> Value {
 #[cfg(test)]
 #[path = "../../../_tests/compat/openai_history_tests.rs"]
 mod tests;
+
+/// Extend a trusted prefix with the exact public output or verified ordered delta.
+pub(crate) fn append_items(prefix: &Value, items: &[Value]) -> Result<Value> {
+    let mut history = History::parse(prefix)?;
+    for item in items {
+        history.append(item)?;
+    }
+    Ok(serde_json::to_value(history)?)
+}

@@ -1,10 +1,6 @@
 use super::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum OpenAiResponseOutputItemKind {
-    Reasoning,
-    Message,
-}
+pub(super) use control_plane::application_public_api::compat::openai::projection::OutputKind as OpenAiResponseOutputItemKind;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OpenAiResponseStreamState {

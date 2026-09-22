@@ -74,6 +74,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
     persist_flow_debug_outcome(
         &repository,
         PersistFlowDebugOutcomeInput {
+            responses_round: None,
             scope_id: Uuid::nil(),
             application_name: "fixture application",
             task_queue: None,

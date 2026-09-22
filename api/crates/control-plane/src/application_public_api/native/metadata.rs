@@ -15,6 +15,7 @@ const METADATA_PATH: &str = "$.metadata";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeRequestMetadata {
     trace_id: Option<String>,
+    responses_input_history: Option<Value>,
     recovery: Option<crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant>,
     transport_connection_scope: Option<String>,
     observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
@@ -62,6 +63,7 @@ impl NativeRequestMetadata {
         };
         Ok(Self {
             trace_id,
+            responses_input_history: None,
             recovery: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -75,6 +77,7 @@ impl NativeRequestMetadata {
     pub fn with_trace_id(trace_id: Option<String>) -> Self {
         Self {
             trace_id,
+            responses_input_history: None,
             recovery: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -137,6 +140,13 @@ impl NativeRequestMetadata {
         &mut self,
     ) -> Option<control_plane_contracts::ports::WorkflowObservationContext> {
         self.observation_context.take()
+    }
+
+    pub(crate) fn set_responses_input_history(&mut self, history: Option<Value>) {
+        self.responses_input_history = history;
+    }
+    pub(crate) fn responses_input_history(&self) -> Option<&Value> {
+        self.responses_input_history.as_ref()
     }
 
     pub fn trace_id(&self) -> Option<&str> {

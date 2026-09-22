@@ -167,6 +167,11 @@ where
 
     service
         .persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+            responses_round: flow_run
+                .input_payload
+                .pointer("/sys/responses_input_history")
+                .cloned()
+                .map(|history| (flow_run.id, history)),
             scope_id: application.workspace_id,
             application_name: &application.name,
             task_queue: service.provider_request_log_queue.as_ref(),

@@ -284,6 +284,7 @@ where
             .as_ref()
             .map(|_| public_run_idempotency_fingerprint(&client_request, protocol))
             .transpose()?;
+        let responses_input_history = client_request.metadata.responses_input_history().cloned();
         let provider_transport_summary = client_request.metadata.provider_transport_summary_value();
         let supersedes_callback_predecessors = matches!(
             client_request.execution.execution_operation(),
@@ -390,6 +391,17 @@ where
         );
         let mut input_payload =
             with_public_provider_transport_summary(input_payload, provider_transport_summary);
+        if !input_payload["sys"].is_object() {
+            input_payload["sys"] = json!({});
+        }
+        // Minted by the mapper's sealed metadata, never inherited from mapped public input.
+        input_payload["sys"]
+            .as_object_mut()
+            .unwrap()
+            .remove("responses_input_history");
+        if let Some(history) = responses_input_history {
+            input_payload["sys"]["responses_input_history"] = history;
+        }
         if let Some(grant) = &recovery {
             if !input_payload["sys"].is_object() {
                 input_payload["sys"] = json!({});
