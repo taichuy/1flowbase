@@ -1,5 +1,7 @@
 import type {
   ClientTrajectoryPage,
+  ClientTrajectoryOptions,
+  ProviderTrajectoryOptions,
   ClientTrajectorySection,
   ProviderTrajectoryPage,
   ProviderTrajectoryBody
@@ -117,7 +119,8 @@ export interface ConversationLogTraceLoader {
   loadClientTrajectory?: (
     runId: string,
     nodeRunId?: string,
-    cursor?: number
+    cursor?: number,
+    options?: ClientTrajectoryOptions
   ) => Promise<ClientTrajectoryPage>;
   loadClientTrajectorySection?: (
     runId: string,
@@ -128,12 +131,14 @@ export interface ConversationLogTraceLoader {
   ) => Promise<ClientTrajectorySection>;
   loadRunTrajectory?: (
     runId: string,
-    cursor?: number
+    cursor?: number,
+    options?: ProviderTrajectoryOptions
   ) => Promise<ProviderTrajectoryPage>;
   loadTrajectory?: (
     runId: string,
     nodeRunId: string,
-    cursor?: number
+    cursor?: number,
+    options?: ProviderTrajectoryOptions
   ) => Promise<ProviderTrajectoryPage>;
   loadTrajectoryBody?: (
     runId: string,

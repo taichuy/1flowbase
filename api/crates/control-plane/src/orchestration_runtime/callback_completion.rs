@@ -190,6 +190,7 @@ where
                 let execution = self
                     .resume_execution_segment(ResumeExecutionSegmentInput {
                         transport_connection_scope: command.transport_connection_scope.clone(),
+                        observation_context: command.observation_context.clone(),
                         resumed_node_run: command
                             .native_transport
                             .as_ref()
@@ -378,6 +379,7 @@ where
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
                 transport_connection_scope: command.transport_connection_scope.clone(),
+                observation_context: command.observation_context.clone(),
                 resumed_node_run: command
                     .native_transport
                     .as_ref()

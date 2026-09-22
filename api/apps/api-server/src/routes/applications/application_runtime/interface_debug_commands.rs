@@ -500,6 +500,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 )
                 .complete_callback_task(CompleteCallbackTaskCommand {
                     transport_connection_scope: None,
+                    observation_context: None,
                     native_transport: None,
                     actor_user_id: actor.user_id,
                     application_id,

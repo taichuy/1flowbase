@@ -18,6 +18,37 @@ pub struct ProviderTrajectoryStep {
     pub created_at: String,
     /// Narrow, persisted metadata; never contains protocol body.
     pub metadata: serde_json::Value,
+    pub links: Vec<WorkflowTrajectoryLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowTrajectoryLink {
+    pub relation: String,
+    pub flow_run_id: Uuid,
+    pub request_id: Uuid,
+    pub response_id: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct TrajectoryTargetNotFound;
+impl std::fmt::Display for TrajectoryTargetNotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("trajectory target not found")
+    }
+}
+impl std::error::Error for TrajectoryTargetNotFound {}
+
+/// Internal index selection; target_id is the native event or client step identity.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TrajectorySelection {
+    pub request_id: Option<Uuid>,
+    pub target_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowEventSection {
+    pub kind: String,
+    pub value: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +75,7 @@ pub struct ProviderTrajectoryBody {
     pub event_id: Uuid,
     pub source: String,
     pub evidence_scope: String,
+    pub sections: Vec<WorkflowEventSection>,
     pub items: Vec<ProviderTrajectoryEvidence>,
     pub next_cursor: Option<i64>,
 }
@@ -57,6 +89,23 @@ pub enum ApplicationRunPayloadSection {
 
 #[async_trait]
 pub trait ProviderTrajectoryRepository: Send + Sync {
+    async fn provider_trajectory_filtered_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: TrajectorySelection,
+    ) -> anyhow::Result<ProviderTrajectoryPage>;
+    async fn client_trajectory_filtered_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: TrajectorySelection,
+    ) -> anyhow::Result<super::ClientTrajectoryPage>;
+
     async fn provider_run_trajectory_page(
         &self,
         flow_run_id: Uuid,

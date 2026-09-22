@@ -100,6 +100,7 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         provider_transport_store: None,
         provider_continuation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
@@ -223,6 +224,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,

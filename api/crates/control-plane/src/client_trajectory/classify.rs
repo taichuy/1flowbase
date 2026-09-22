@@ -238,6 +238,13 @@ impl Classifier {
         if let Some(id) = value["id"].as_str() {
             self.response_id = bounded_id(id);
         }
+        if let Some(response_id) = &self.response_id {
+            facts
+                .push(Fact::ResponseLink {
+                    response_id: response_id.clone(),
+                })
+                .await;
+        }
         if let Some(items) = value["output"].as_array() {
             for (index, item) in items.iter().enumerate() {
                 self.output(item.clone(), Some(index), at, facts).await;

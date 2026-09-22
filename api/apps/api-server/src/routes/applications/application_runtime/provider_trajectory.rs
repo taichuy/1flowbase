@@ -5,6 +5,8 @@ use control_plane::ports::{
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ProviderTrajectoryQuery {
+    pub request_id: Option<Uuid>,
+    pub focus_event_id: Option<Uuid>,
     pub cursor: Option<i64>,
     pub limit: Option<i64>,
     #[serde(default)]
@@ -15,7 +17,7 @@ pub struct ProviderTrajectoryQuery {
 /// Returns a bounded page without reading protocol bodies, scoped to the visible application and exact node execution.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/nodes/{node_run_id}/trajectory",
     params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path),
-        ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
+        ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_event_id" = Option<Uuid>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_provider_trajectory(
     State(state): State<Arc<ApiState>>,
@@ -45,7 +47,7 @@ pub async fn list_provider_trajectory(
 /// Read Native step details or explicitly selected supplier protocol evidence.
 /// Resolves only the selected durable event within the authorized run and node execution.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/nodes/{node_run_id}/trajectory/{event_id}",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path), ("event_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Uuid, Path), ("event_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_event_id" = Option<Uuid>, Query), ("view" = Option<String>, Query, description = "semantic (default) or protocol")),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn get_provider_trajectory_body(
     State(state): State<Arc<ApiState>>,
@@ -76,7 +78,7 @@ pub async fn get_provider_trajectory_body(
 /// List the run-wide Native and historical supplier trajectory.
 /// Reads bounded step summaries across all nodes in the authorized run without loading event bodies.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/trajectory",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_event_id" = Option<Uuid>, Query)),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_run_trajectory(
     State(state): State<Arc<ApiState>>,
@@ -135,6 +137,8 @@ pub async fn get_run_payload(
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ClientTrajectoryQuery {
+    pub request_id: Option<Uuid>,
+    pub focus_step_id: Option<Uuid>,
     pub node_run_id: Option<Uuid>,
     pub cursor: Option<i64>,
     pub limit: Option<i64>,
@@ -144,7 +148,7 @@ pub struct ClientTrajectoryQuery {
 /// List original client Responses trajectory summaries.
 /// Reads bounded metadata within the authorized application and run without loading protocol bodies.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/client-trajectory",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_step_id" = Option<Uuid>, Query)),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn list_client_trajectory(
     State(state): State<Arc<ApiState>>,
@@ -173,7 +177,7 @@ pub async fn list_client_trajectory(
 /// Read one selected client protocol trajectory section.
 /// Loads only the requested section of a step scoped to the authorized application, run and optional node.
 #[utoipa::path(get, path = "/api/console/applications/{id}/logs/runs/{run_id}/client-trajectory/{step_id}",
-    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("step_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("section" = Option<String>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query)),
+    params(("id" = Uuid, Path), ("run_id" = Uuid, Path), ("step_id" = Uuid, Path), ("node_run_id" = Option<Uuid>, Query), ("section" = Option<String>, Query), ("cursor" = Option<i64>, Query), ("limit" = Option<i64>, Query), ("request_id" = Option<Uuid>, Query), ("focus_step_id" = Option<Uuid>, Query)),
     responses((status = 200, body = serde_json::Value)))]
 pub async fn get_client_trajectory_section(
     State(state): State<Arc<ApiState>>,

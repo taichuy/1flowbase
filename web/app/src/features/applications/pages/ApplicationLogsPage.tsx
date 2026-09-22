@@ -1188,12 +1188,13 @@ export function ApplicationLogsPage({
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
               traceLoader={{
-                loadClientTrajectory: (runId, nodeRunId, cursor) =>
+                loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
                   fetchClientTrajectory(
                     applicationId,
                     runId,
                     nodeRunId,
-                    cursor
+                    cursor,
+                    options
                   ),
                 loadClientTrajectorySection: (
                   runId,
@@ -1210,14 +1211,15 @@ export function ApplicationLogsPage({
                     nodeRunId,
                     cursor
                   ),
-                loadRunTrajectory: (runId, cursor) =>
-                  fetchRunTrajectory(applicationId, runId, cursor),
-                loadTrajectory: (runId, nodeRunId, cursor) =>
+                loadRunTrajectory: (runId, cursor, options) =>
+                  fetchRunTrajectory(applicationId, runId, cursor, options),
+                loadTrajectory: (runId, nodeRunId, cursor, options) =>
                   fetchProviderTrajectory(
                     applicationId,
                     runId,
                     nodeRunId,
-                    cursor
+                    cursor,
+                    options
                   ),
                 loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
                   fetchProviderTrajectoryBody(

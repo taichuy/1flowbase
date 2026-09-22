@@ -17,12 +17,14 @@ function fixture(inFloatingWindow = false, runScope = false) {
   const loadTrajectory = vi.fn().mockResolvedValue({
     items: [
       {
+        links: [],
         event_id: 'event-1',
         event_sequence: 7,
         event_type: 'provider_semantic_step',
         created_at: '2026-09-21T01:00:00Z',
         metadata: {
           source: 'ai_native',
+          purpose: 'unknown',
           preview: 'Native input preview',
           node_id: 'llm-one',
           protocol: 'openai',
@@ -54,6 +56,10 @@ function fixture(inFloatingWindow = false, runScope = false) {
         source: view === 'protocol' ? 'supplier_protocol' : 'ai_native',
         evidence_scope: view === 'protocol' ? 'invocation' : 'step',
         event_id: 'event-1',
+        sections:
+          view === 'semantic'
+            ? [{ kind: 'configuration', value: 'native-model' }]
+            : [],
         items: [
           {
             event_id: 'raw-1',
@@ -123,7 +129,7 @@ test('loads Native details on selection and raw protocol only after explicit ope
   const { loadTrajectory, loadTrajectoryBody } = fixture();
   expect(loadTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   fireEvent.click(await screen.findByRole('button', { name: '模型调用准备' }));
   await waitFor(() =>
     expect(loadTrajectoryBody).toHaveBeenCalledWith(
@@ -165,13 +171,18 @@ test('loads Native details on selection and raw protocol only after explicit ope
     1,
     'protocol'
   );
-  expect(loadTrajectory).toHaveBeenCalledWith('run-1', 'node-run-2', undefined);
+  expect(loadTrajectory).toHaveBeenCalledWith(
+    'run-1',
+    'node-run-2',
+    undefined,
+    undefined
+  );
   expect(screen.queryByRole('tab', { name: '执行关联' })).toBeNull();
 });
 test('does not fetch protocol bodies while browsing summary pages', async () => {
   const { loadTrajectory, loadTrajectoryBody } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByRole('button', { name: '模型调用准备' });
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
   loadTrajectory.mockResolvedValueOnce({
@@ -185,7 +196,12 @@ test('does not fetch protocol bodies while browsing summary pages', async () => 
   });
   fireEvent.click(screen.getByRole('button', { name: '加载更多步骤' }));
   await waitFor(() =>
-    expect(loadTrajectory).toHaveBeenCalledWith('run-1', 'node-run-2', 7)
+    expect(loadTrajectory).toHaveBeenCalledWith(
+      'run-1',
+      'node-run-2',
+      7,
+      undefined
+    )
   );
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
 });
@@ -228,7 +244,7 @@ test('shows not recorded for historical executions without supplier observations
     integrity: 'not_recorded'
   });
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await waitFor(() =>
     expect(screen.getAllByText(/未记录/).length).toBeGreaterThan(0)
   );
@@ -239,7 +255,7 @@ test('shows not recorded for historical executions without supplier observations
 test('keeps its accessible title beside page controls and opens above the containing floating window', async () => {
   fixture(true);
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   const dialog = await screen.findByRole('dialog', { name: '调用轨迹' });
   const title = document.getElementById(
     dialog.getAttribute('aria-labelledby')!
@@ -254,7 +270,7 @@ test('keeps its accessible title beside page controls and opens above the contai
 test('keeps complete semantic records when raw evidence was not captured', async () => {
   const { loadTrajectoryBody } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByText('语义记录: 记录完整');
   expect(screen.getByText('原始协议: 未记录')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
@@ -272,7 +288,7 @@ test('labels historical supplier projections and keeps raw failure separate', as
   page.protocol_integrity = 'incomplete';
   loadTrajectory.mockResolvedValue(page);
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByText('语义记录: 记录完整');
   expect(screen.getByText('原始协议: 记录不完整')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
@@ -286,9 +302,9 @@ test('run trajectory is lazy and resolves selected bodies using their own node i
   const { loadRunTrajectory, loadTrajectoryBody } = fixture(false, true);
   expect(loadRunTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByRole('button', { name: '模型调用准备' });
-  expect(loadRunTrajectory).toHaveBeenCalledWith('run-1', undefined);
+  expect(loadRunTrajectory).toHaveBeenCalledWith('run-1', undefined, undefined);
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
   await waitFor(() =>
@@ -306,7 +322,7 @@ test('run trajectory is lazy and resolves selected bodies using their own node i
 test('timeline navigation, loaded-step search and invocation folds do not eager-fetch bodies', async () => {
   const { loadTrajectoryBody } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByText('Native input preview');
   fireEvent.change(screen.getByRole('textbox', { name: '搜索已加载步骤' }), {
     target: { value: 'not-present' }
@@ -321,7 +337,10 @@ test('timeline navigation, loaded-step search and invocation folds do not eager-
     'aria-pressed',
     'true'
   );
-  fireEvent.click(screen.getByRole('button', { name: '调用分组' }));
+  expect(screen.getByRole('button', { name: '调用分组' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
   fireEvent.click(screen.getByRole('button', { name: /llm-one invocation-1/ }));
   expect(screen.queryByRole('button', { name: '模型调用准备' })).toBeNull();
   expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
@@ -330,7 +349,7 @@ test('timeline navigation, loaded-step search and invocation folds do not eager-
 test('keeps selection in a separate inspector and closes without changing the ledger', async () => {
   const { loadTrajectoryBody } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(screen.getByText('AI Native 内部诊断'));
+  fireEvent.click(screen.getByText('工作流内部事件'));
   const row = await screen.findByRole('button', { name: '模型调用准备' });
   fireEvent.click(row);
   await screen.findByText(/native-model/);

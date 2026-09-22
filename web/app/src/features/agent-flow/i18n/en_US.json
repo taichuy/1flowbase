@@ -37,7 +37,25 @@
     "loaded_steps": "{{count}} steps loaded",
     "no_matches": "No matches in loaded steps",
     "node_scope": "Current LLM node",
-    "run_scope": "Current run · All LLM nodes"
+    "run_scope": "Current run · All LLM nodes",
+    "return_view": "Back to previous view",
+    "no_internal_calls": "No internal calls are linked to this request",
+    "open_internal_calls": "View linked internal calls",
+    "attempt": "Attempt {{count}}",
+    "purpose_prewarm": "Prewarm",
+    "purpose_generate": "Generate",
+    "purpose_tool_resume": "Tool resume",
+    "purpose_compact": "Context compaction",
+    "purpose_unknown": "Unknown purpose",
+    "section_system": "Actual system input",
+    "section_context": "Actual context",
+    "section_tools": "Actual tool definitions",
+    "section_configuration": "Actual call configuration",
+    "section_output": "Actual output",
+    "trigger_request": "Trigger request",
+    "context_request": "Context source request",
+    "source_not_recorded": "Request source not recorded",
+    "semantic_raw": "Internal event source"
   },
   "auto": {
     "llm_tools": "LLM Tools",
@@ -766,8 +784,8 @@
     "retry": "Retry"
   },
   "client_trajectory": {
-    "client": "Original client protocol",
-    "native": "AI Native diagnostics",
+    "client": "Client requests",
+    "native": "Workflow internal events",
     "request": "Request",
     "system": "System prompt",
     "assistant": "Assistant",

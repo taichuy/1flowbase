@@ -107,7 +107,8 @@ impl PgControlPlaneStore {
         sqlx::query("insert into runtime_events(id,flow_run_id,node_run_id,sequence,event_type,layer,source,trust_level,payload,raw_json_payloads,visibility,durability) values($1,$2,$3,$4,'client_protocol_trajectory','runtime_item','host','host_fact',($5::jsonb->0),jsonb_strip_nulls(jsonb_build_object('payload',($5::jsonb->1))),'internal','durable')")
             .bind(Uuid::now_v7()).bind(input.flow_run_id).bind(input.node_run_id).bind(sequence)
             .bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
-        if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result") {
+        if matches!(&input.fact, ClientTrajectoryFact::Section { section, .. } if section == "result")
+        {
             sqlx::query("update application_run_log_tasks set projection_output=projection_output where id=(select coalesce(log_task_run_id,flow_run_id) from application_run_log_summaries where flow_run_id=$1) and projection_settled_at is not null")
                 .bind(input.flow_run_id).execute(&mut *tx).await?;
         }
@@ -122,9 +123,38 @@ impl PgControlPlaneStore {
         cursor: Option<i64>,
         limit: i64,
     ) -> Result<ClientTrajectoryPage> {
+        self.read_client_trajectory_selected_page(
+            flow_run_id,
+            node_run_id,
+            cursor,
+            limit,
+            Default::default(),
+        )
+        .await
+    }
+
+    pub(super) async fn read_client_trajectory_selected_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: control_plane_contracts::ports::TrajectorySelection,
+    ) -> Result<ClientTrajectoryPage> {
+        let cursor = if cursor.is_none() {
+            if let Some(target) = selection.target_id {
+                let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from client_trajectory_steps s where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and id=$3 and ($4::uuid is null or request_id=$4)")
+                    .bind(flow_run_id).bind(node_run_id).bind(target).bind(selection.request_id).fetch_optional(self.pool()).await?;
+                Some(sequence.ok_or(control_plane_contracts::ports::TrajectoryTargetNotFound)? - 1)
+            } else {
+                None
+            }
+        } else {
+            cursor
+        };
         let limit = limit.clamp(1, 100);
-        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures c where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=c.request_id and l.node_run_id=$2))")
-            .bind(flow_run_id).bind(node_run_id).fetch_one(self.pool()).await?;
+        let integrity: String = sqlx::query_scalar("select case when count(*)=0 then 'not_recorded' when bool_or(status not in ('pending','complete') or dropped_count>0 or persist_failed_count>0) then 'incomplete' when bool_or(status='pending') then 'pending' else 'complete' end from client_trajectory_captures c where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=c.request_id and l.node_run_id=$2)) and ($3::uuid is null or c.request_id=$3)")
+            .bind(flow_run_id).bind(node_run_id).bind(selection.request_id).fetch_one(self.pool()).await?;
         let rows = sqlx::query(r#"
             select s.metadata,s.event_sequence,related.id as related_step_id,related.namespace as related_namespace
             from client_trajectory_steps s
@@ -137,9 +167,9 @@ impl PgControlPlaneStore {
                     and p.metadata->'available_sections' ? 'parameters'
                 order by p.event_sequence desc limit 1
             ) related on s.metadata->>'origin'='submitted' and s.metadata->'available_sections' ? 'result'
-            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence>$3
+            where s.flow_run_id=$1 and ($2::uuid is null or s.node_run_id=$2 or exists(select 1 from client_trajectory_node_links l where l.request_id=s.request_id and l.node_run_id=$2)) and s.event_sequence>$3 and ($5::uuid is null or s.request_id=$5)
             order by s.event_sequence limit $4
-        "#).bind(flow_run_id).bind(node_run_id).bind(cursor.unwrap_or(0)).bind(limit+1).fetch_all(self.pool()).await?;
+        "#).bind(flow_run_id).bind(node_run_id).bind(cursor.unwrap_or(0)).bind(limit+1).bind(selection.request_id).fetch_all(self.pool()).await?;
         let more = rows.len() > limit as usize;
         let mut items = Vec::new();
         for row in rows.into_iter().take(limit as usize) {

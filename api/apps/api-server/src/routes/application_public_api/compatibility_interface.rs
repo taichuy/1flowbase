@@ -311,6 +311,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 }
             };
             let transport_connection_scope = request.metadata.take_transport_connection_scope();
+            let observation_context = request.metadata.take_observation_context();
             let protocol_context = request.client_protocol_envelope.clone();
             let operation = provider_transport
                 .as_ref()
@@ -346,6 +347,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 run,
                 provider_transport_slot,
                 transport_connection_scope,
+                observation_context,
             )
             .await
             .map(CompatibilityBlockingOutput)
@@ -382,6 +384,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     provider_transport,
                 } => {
                     let transport_connection_scope = request.metadata.take_transport_connection_scope();
+                    let observation_context = request.metadata.take_observation_context();
                     let protocol_context = request.client_protocol_envelope.clone();
                     let operation = provider_transport
                         .as_ref()
@@ -421,6 +424,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         run,
                         provider_transport_slot,
                         transport_connection_scope,
+                        observation_context,
                         actor,
                     )
                     .await

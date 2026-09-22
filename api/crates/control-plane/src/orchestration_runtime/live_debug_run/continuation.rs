@@ -45,8 +45,10 @@ where
         + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
         + Clone,
 {
-    continue_flow_debug_run_with_optional_live_provider_events(service, command, None, None, None)
-        .await
+    continue_flow_debug_run_with_optional_live_provider_events(
+        service, command, None, None, None, None,
+    )
+    .await
 }
 
 pub(in crate::orchestration_runtime) async fn continue_flow_debug_run_with_provider_transport<
@@ -57,6 +59,7 @@ pub(in crate::orchestration_runtime) async fn continue_flow_debug_run_with_provi
     command: ContinueFlowDebugRunCommand,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::BillingRepository
@@ -82,6 +85,7 @@ where
         None,
         provider_transport_payload,
         transport_connection_scope,
+        observation_context,
     )
     .await
 }
@@ -115,6 +119,7 @@ where
         Some(live_provider_events),
         None,
         None,
+        None,
     )
     .await
 }
@@ -125,6 +130,7 @@ async fn continue_flow_debug_run_with_optional_live_provider_events<R, H>(
     live_provider_events: Option<LiveProviderStreamEventSender>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Result<domain::ApplicationRunDetail>
 where
     R: crate::ports::BillingRepository
@@ -150,6 +156,7 @@ where
         live_provider_events,
         provider_transport_payload,
         transport_connection_scope,
+        observation_context,
     )
     .await;
 

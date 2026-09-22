@@ -8,13 +8,17 @@ import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import UnorderedListOutlined from '@ant-design/icons/es/icons/UnorderedListOutlined';
-import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
+import type {
+  ProviderTrajectoryStep,
+  ProviderTrajectoryOptions
+} from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { TrajectoryStepDetail } from './TrajectoryStepDetail';
 import {
   integrityLabel,
+  purposeLabel,
   invocationKey,
   stepLabel,
   stepLane
@@ -24,31 +28,39 @@ import './provider-trajectory.css';
 export function NativeTrajectoryWorkspace({
   runId,
   nodeRunId,
-  loader
+  loader,
+  options,
+  onClient
 }: {
   runId: string;
   nodeRunId?: string;
   loader: ConversationLogTraceLoader;
+  options?: ProviderTrajectoryOptions;
+  onClient?: (
+    link: NonNullable<ProviderTrajectoryStep['links']>[number]
+  ) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    options?.focus_event_id ?? null
+  );
   const [detailWidth, setDetailWidth] = useState<number | null>(null);
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
   const [search, setSearch] = useState('');
   const [timeScale, setTimeScale] = useState(false);
-  const [groupCalls, setGroupCalls] = useState(false);
+  const [groupCalls, setGroupCalls] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const pages = useInfiniteQuery({
-    queryKey: ['provider-trajectory', runId, nodeRunId ?? 'run'],
+    queryKey: ['provider-trajectory', runId, nodeRunId ?? 'run', options],
     enabled: Boolean(
       nodeRunId ? loader.loadTrajectory : loader.loadRunTrajectory
     ),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       nodeRunId
-        ? loader.loadTrajectory!(runId, nodeRunId, pageParam)
-        : loader.loadRunTrajectory!(runId, pageParam),
+        ? loader.loadTrajectory!(runId, nodeRunId, pageParam, options)
+        : loader.loadRunTrajectory!(runId, pageParam, options),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchOnWindowFocus: false
   });
@@ -272,7 +284,9 @@ export function NativeTrajectoryWorkspace({
               description={
                 items.length
                   ? i18nText('agentFlow', 'trajectory.no_matches')
-                  : i18nText('agentFlow', 'trajectory.not_recorded_detail')
+                  : options?.request_id
+                    ? i18nText('agentFlow', 'trajectory.no_internal_calls')
+                    : i18nText('agentFlow', 'trajectory.not_recorded_detail')
               }
             />
           ) : null}
@@ -298,8 +312,12 @@ export function NativeTrajectoryWorkspace({
                         steps[0].metadata.node_run_id}
                     </span>
                     <span className="provider-trajectory__group-id">
-                      {steps[0].metadata.invocation_id}
+                      {steps[0].metadata.invocation_id} ·{' '}
+                      {i18nText('agentFlow', 'trajectory.attempt', {
+                        count: steps[0].metadata.provider_attempt_index
+                      })}
                     </span>
+                    <span>{purposeLabel(steps[0].metadata.purpose)}</span>
                     <span>
                       {i18nText('agentFlow', 'trajectory.loaded_steps', {
                         count: steps.length
@@ -394,6 +412,7 @@ export function NativeTrajectoryWorkspace({
               key={selectedStep.event_id}
               step={selectedStep}
               loader={loader}
+              onClient={onClient}
             />
           </aside>
         ) : null}

@@ -532,6 +532,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -678,6 +679,7 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -810,6 +812,7 @@ async fn assistant_llm_tool_callback_keeps_the_preview_stream_open_until_the_fin
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -949,6 +952,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
     let second_waiting = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -996,6 +1000,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1052,6 +1057,7 @@ async fn complete_callback_task_preserves_nul_in_response_and_execution() {
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1143,6 +1149,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     let partial = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1162,6 +1169,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     let replay = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1178,6 +1186,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     let conflict = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1203,6 +1212,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     });
     let command = || CompleteCallbackTaskCommand {
         transport_connection_scope: None,
+        observation_context: None,
         native_transport: None,
         actor_user_id: seeded.actor_user_id,
         application_id: seeded.application_id,
@@ -1232,6 +1242,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -1300,6 +1311,7 @@ async fn complete_llm_tool_callback_rejects_wrong_application_without_consuming_
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: intruder.actor_user_id,
             application_id: intruder.application_id,

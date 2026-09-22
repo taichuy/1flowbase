@@ -81,6 +81,63 @@ async fn application_runtime_run_trajectory_and_payload_sections_are_scoped_lazy
     .await;
     assert_eq!(status, StatusCode::OK, "{next}");
     assert!(next["data"]["items"][0]["event_sequence"].as_i64().unwrap() > cursor);
+    let target: Uuid = sqlx::query_scalar("select event_id from provider_semantic_trajectory_steps where flow_run_id=$1 and step_key='step-1'").bind(run_id).fetch_one(&pool).await.unwrap();
+    let (focused_status, focused) = get(
+        &app,
+        Some(&cookie),
+        &format!("{base}/trajectory?limit=1&focus_event_id={target}"),
+    )
+    .await;
+    assert_eq!(focused_status, StatusCode::OK, "{focused}");
+    assert_eq!(focused["data"]["items"][0]["event_id"], target.to_string());
+    assert_eq!(focused["data"]["items"][0]["links"], json!([]));
+    assert_eq!(
+        focused["data"]["items"][0]["metadata"]["purpose"],
+        "unknown"
+    );
+    assert_eq!(
+        get(
+            &app,
+            Some(&cookie),
+            &format!("{base}/trajectory?focus_event_id={}", Uuid::now_v7())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(
+            &app,
+            Some(&cookie),
+            &format!(
+                "{base}/trajectory?request_id={}&focus_event_id={target}",
+                Uuid::now_v7()
+            )
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(
+            &app,
+            Some(&cookie),
+            &format!("{base}/client-trajectory?focus_step_id={}", Uuid::now_v7())
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(
+            &app,
+            None,
+            &format!("{base}/trajectory?focus_event_id={target}")
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     let item = &page["data"]["items"][0];
     assert_eq!(item["metadata"]["flow_run_id"], run);
     assert!(item["metadata"].get("body").is_none());

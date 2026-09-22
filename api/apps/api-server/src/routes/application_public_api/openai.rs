@@ -690,6 +690,14 @@ async fn dispatch_response_for_endpoint(
             let uses_native_transport = native_transport.is_some();
             command.native_transport = native_transport;
             command.transport_connection_scope = transport_connection_scope.clone();
+            command.observation_context = recorder.as_ref().map(|recorder| {
+                control_plane_contracts::ports::WorkflowObservationContext {
+                    client_request_id: recorder.capture_id(),
+                    context_flow_run_id: previous_flow_run_id,
+                    context_response_id: previous_response_id.clone(),
+                    is_resume: true,
+                }
+            });
             match compat_sse::prepare_compatible_resume_for_actor(
                 state.clone(),
                 application_actor.clone(),
@@ -838,6 +846,16 @@ async fn dispatch_response_for_endpoint(
     request
         .metadata
         .set_transport_connection_scope(transport_connection_scope);
+    request
+        .metadata
+        .set_observation_context(recorder.as_ref().map(|recorder| {
+            control_plane_contracts::ports::WorkflowObservationContext {
+                client_request_id: recorder.capture_id(),
+                context_flow_run_id: previous_flow_run_id,
+                context_response_id: previous_response_id.clone(),
+                is_resume: false,
+            }
+        }));
     let operation = *request.execution.execution_operation();
     attach_compact_provider_transport_payload(
         &mut request,
@@ -1332,6 +1350,7 @@ fn openai_resume_command(
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
         transport_connection_scope: None,
+        observation_context: None,
         reserved_attempt_id: None,
         native_transport: None,
         bearer_token: bearer_token.to_string(),

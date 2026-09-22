@@ -72,6 +72,10 @@ pub struct ClientTrajectorySection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClientTrajectoryFact {
+    /// Actual emitted response identity, including an empty successful prewarm.
+    ResponseLink {
+        response_id: String,
+    },
     /// A Native event identifies an LLM node traversed by this client request.
     /// This association does not claim that client content is provider wire data.
     NodeLink {

@@ -18,6 +18,9 @@ struct Identity {
     node_run: Uuid,
     invocation: Uuid,
     attempt: u64,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
+    purpose: &'static str,
+    duration_ms: Arc<AtomicU64>,
 }
 impl Identity {
     fn event(&self, kind: &str, mut value: Value) -> crate::ports::RuntimeEventPayload {
@@ -28,6 +31,21 @@ impl Identity {
         value["node_run_id"] = json!(self.node_run);
         value["invocation_id"] = json!(self.invocation);
         value["provider_attempt_index"] = json!(self.attempt);
+        value["trigger_request_id"] = json!(self
+            .observation_context
+            .as_ref()
+            .map(|context| context.client_request_id));
+        value["context_flow_run_id"] = json!(self
+            .observation_context
+            .as_ref()
+            .and_then(|context| context.context_flow_run_id));
+        value["context_response_id"] = json!(self
+            .observation_context
+            .as_ref()
+            .and_then(|context| context.context_response_id.as_deref()));
+        value["purpose"] = json!(self.purpose);
+        let duration = self.duration_ms.load(Relaxed);
+        value["duration_ms"] = json!((duration != u64::MAX).then_some(duration));
         crate::ports::RuntimeEventPayload {
             event_type: kind.into(),
             source: crate::ports::RuntimeEventSource::Provider,
@@ -518,15 +536,68 @@ pub(super) struct Capture {
     sink: Option<Sink>,
     aggregate: Arc<std::sync::Mutex<Aggregate>>,
     completion: Option<tokio::sync::oneshot::Sender<bool>>,
+    started_at: Option<std::time::Instant>,
 }
 impl Drop for Capture {
     fn drop(&mut self) {
+        self.record_duration();
         if let Some(done) = self.completion.take() {
             let _ = done.send(false);
         }
     }
 }
 impl Capture {
+    fn record_duration(&self) {
+        if let (Some(sink), Some(started)) = (&self.sink, self.started_at) {
+            let elapsed = started.elapsed().as_millis().min((u64::MAX - 1) as u128) as u64;
+            let _ = sink
+                .id
+                .duration_ms
+                .compare_exchange(u64::MAX, elapsed, Relaxed, Relaxed);
+        }
+    }
+
+    /// Remote compaction has its own typed result; preserve it without inventing generated text.
+    pub(super) fn finish_compact(
+        mut self,
+        result: Option<&plugin_framework::provider_contract::ProviderCompactResult>,
+        failed: bool,
+    ) {
+        self.record_duration();
+        let Some(sink) = self.sink.as_ref() else {
+            return;
+        };
+        let mut complete = self.aggregate.lock().is_ok_and(|state| !state.gap);
+        if let Some(result) = result {
+            let detail = bounded(result);
+            complete &= detail.is_some();
+            sink.step(
+                "model_reply",
+                &Uuid::now_v7().to_string(),
+                "received",
+                detail.unwrap_or_else(|| json!({"truncated":true})),
+                None,
+                !complete,
+            );
+        }
+        if failed {
+            sink.step(
+                "error",
+                "error:invocation",
+                "received",
+                json!({"message":"Native compaction failed"}),
+                None,
+                false,
+            );
+        }
+        if !complete {
+            sink.dropped.fetch_add(1, Relaxed);
+        }
+        if let Some(done) = self.completion.take() {
+            let _ = done.send(complete);
+        }
+    }
+
     pub(super) fn observer(&self) -> Observer {
         Observer(self.sink.as_ref().map(|_| self.aggregate.clone()))
     }
@@ -536,6 +607,7 @@ impl Capture {
         error: Option<&str>,
         forwarding_ok: bool,
     ) {
+        self.record_duration();
         let Some(sink) = self.sink.as_ref() else {
             return;
         };
@@ -698,6 +770,30 @@ impl Observer {
     }
 }
 
+// Classify the actual operation and this segment's admitted trigger. Client headers,
+// empty outputs, and submitted historical tool messages do not establish purpose.
+fn invocation_purpose(
+    input: &ProviderInvocationInput,
+    context: Option<&control_plane_contracts::ports::WorkflowObservationContext>,
+) -> &'static str {
+    use plugin_framework::provider_contract::ProviderWireOperation;
+    match input.operation {
+        ProviderWireOperation::Compact => "compact",
+        ProviderWireOperation::CountTokens => "unknown",
+        ProviderWireOperation::Generate => {
+            if input.native_transport.as_ref().is_some_and(|transport| {
+                transport.wire_body.get("generate").and_then(Value::as_bool) == Some(false)
+            }) {
+                "prewarm"
+            } else if context.is_some_and(|context| context.is_resume) {
+                "tool_resume"
+            } else {
+                "generate"
+            }
+        }
+    }
+}
+
 pub(super) fn start<
     R: crate::ports::OrchestrationRuntimeRepository + Clone + Send + Sync + 'static,
 >(
@@ -705,6 +801,7 @@ pub(super) fn start<
     run: Option<Uuid>,
     node: Option<(String, Uuid)>,
     input: &ProviderInvocationInput,
+    observation_context: Option<&control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Capture {
     let (Some(run), Some((node, node_run))) = (run, node) else {
         return Capture::default();
@@ -714,6 +811,9 @@ pub(super) fn start<
         return Capture::default();
     };
     let id = Identity {
+        observation_context: observation_context.cloned(),
+        purpose: invocation_purpose(input, observation_context),
+        duration_ms: Arc::new(AtomicU64::new(u64::MAX)),
         run,
         node,
         node_run,
@@ -770,6 +870,7 @@ pub(super) fn start<
             ..Default::default()
         })),
         completion: Some(done),
+        started_at: Some(std::time::Instant::now()),
     }
 }
 async fn write<F, Fut>(

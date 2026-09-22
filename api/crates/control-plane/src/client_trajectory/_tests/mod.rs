@@ -320,3 +320,26 @@ impl classify::Classifier {
     }
 }
 mod incremental;
+
+#[tokio::test]
+async fn empty_prewarm_keeps_response_identity_without_fabricating_output() {
+    let writer = Arc::new(MemoryWriter::default());
+    let recorder = capture(writer.clone());
+    recorder.bind_run(Uuid::now_v7(), None);
+    recorder.record(
+        ClientTrajectoryFrameKind::Request,
+        br#"{"generate":false,"input":[]}"#,
+    );
+    recorder.record(
+        ClientTrajectoryFrameKind::ResponseJson,
+        br#"{"id":"resp-prewarm","object":"response","status":"completed","output":[]}"#,
+    );
+    recorder.finish();
+    recorder.wait_finished().await;
+    let records = writer.records.lock().unwrap();
+    assert!(complete(&records));
+    assert!(records.iter().any(|r|matches!(&r.fact,ClientTrajectoryFact::ResponseLink{response_id} if response_id=="resp-prewarm")));
+    assert!(!records
+        .iter()
+        .any(|r| matches!(&r.fact,ClientTrajectoryFact::Step{step} if step.origin=="emitted")));
+}

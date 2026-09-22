@@ -43,3 +43,36 @@ export function integrityLabel(value?: string) {
       return i18nText('agentFlow', 'trajectory.unavailable');
   }
 }
+
+export function purposeLabel(purpose?: string) {
+  switch (purpose) {
+    case 'prewarm':
+      return i18nText('agentFlow', 'trajectory.purpose_prewarm');
+    case 'generate':
+      return i18nText('agentFlow', 'trajectory.purpose_generate');
+    case 'tool_resume':
+      return i18nText('agentFlow', 'trajectory.purpose_tool_resume');
+    case 'compact':
+      return i18nText('agentFlow', 'trajectory.purpose_compact');
+    default:
+      return i18nText('agentFlow', 'trajectory.purpose_unknown');
+  }
+}
+export function nativeSectionLabel(kind: string) {
+  switch (kind) {
+    case 'system':
+      return i18nText('agentFlow', 'trajectory.section_system');
+    case 'context':
+      return i18nText('agentFlow', 'trajectory.section_context');
+    case 'tools':
+      return i18nText('agentFlow', 'trajectory.section_tools');
+    case 'configuration':
+      return i18nText('agentFlow', 'trajectory.section_configuration');
+    case 'output':
+      return i18nText('agentFlow', 'trajectory.section_output');
+    case 'error':
+      return i18nText('agentFlow', 'trajectory.protocol_error');
+    default:
+      return kind;
+  }
+}

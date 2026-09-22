@@ -239,6 +239,7 @@ async fn persist(
     let kind = match &input.fact {
         ClientTrajectoryFact::Integrity { .. } => "integrity",
         ClientTrajectoryFact::NodeLink { .. } => "node_link",
+        ClientTrajectoryFact::ResponseLink { .. } => "response_link",
         ClientTrajectoryFact::Step { .. } => "step",
         ClientTrajectoryFact::Section { section, .. } => section.as_str(),
     };

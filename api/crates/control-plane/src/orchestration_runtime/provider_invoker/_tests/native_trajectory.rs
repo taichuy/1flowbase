@@ -16,6 +16,9 @@ fn fixture(
         node_run: Uuid::now_v7(),
         invocation: Uuid::now_v7(),
         attempt: 0,
+        observation_context: None,
+        purpose: "generate",
+        duration_ms: Arc::new(AtomicU64::new(u64::MAX)),
     };
     (
         Capture {
@@ -28,6 +31,7 @@ fn fixture(
             }),
             aggregate: Default::default(),
             completion: Some(done),
+            started_at: Some(std::time::Instant::now()),
         },
         receiver,
         completion,
@@ -486,4 +490,97 @@ fn repeated_large_reply_and_tool_are_stored_once_per_snapshot() {
     );
     assert_eq!(records.len(), 2);
     assert!(records[1].get("body").is_none());
+}
+
+#[test]
+fn workflow_purpose_uses_actual_operation_and_segment_facts() {
+    use plugin_framework::provider_contract::{ProviderNativeTransport, ProviderWireOperation};
+    let context = control_plane_contracts::ports::WorkflowObservationContext {
+        client_request_id: Uuid::now_v7(),
+        context_flow_run_id: Some(Uuid::now_v7()),
+        context_response_id: Some("resp-A".into()),
+        is_resume: true,
+    };
+    let mut input = ProviderInvocationInput::default();
+    input
+        .run_context
+        .insert("request_kind".into(), json!("prewarm"));
+    assert_eq!(invocation_purpose(&input, None), "generate");
+    assert_eq!(invocation_purpose(&input, Some(&context)), "tool_resume");
+    input.native_transport = Some(ProviderNativeTransport {
+        protocol: "openai.responses".into(),
+        digest: "digest".into(),
+        size_bytes: 20,
+        wire_body: json!({"generate":false}),
+    });
+    assert_eq!(invocation_purpose(&input, None), "prewarm");
+    input.native_transport.as_mut().unwrap().wire_body = json!({
+        "input":[{"type":"function_call_output", "call_id":"history", "output":"old"}],
+        "client_metadata":{"request_kind":"prewarm"}
+    });
+    assert_eq!(invocation_purpose(&input, None), "generate");
+    input.operation = ProviderWireOperation::Compact;
+    assert_eq!(invocation_purpose(&input, Some(&context)), "compact");
+    input.operation = ProviderWireOperation::CountTokens;
+    assert_eq!(invocation_purpose(&input, Some(&context)), "unknown");
+}
+
+#[test]
+fn workflow_identity_keeps_current_trigger_distinct_from_previous_context_on_all_facts() {
+    let (mut capture, receiver, _) = fixture(16);
+    let trigger = Uuid::now_v7();
+    let previous_flow = Uuid::now_v7();
+    let sink = capture.sink.as_mut().unwrap();
+    sink.id.observation_context =
+        Some(control_plane_contracts::ports::WorkflowObservationContext {
+            client_request_id: trigger,
+            context_flow_run_id: Some(previous_flow),
+            context_response_id: Some("resp-A".into()),
+            is_resume: true,
+        });
+    sink.id.purpose = "tool_resume";
+    let id = sink.id.clone();
+    record_input(sink, &ProviderInvocationInput::default());
+    capture.finish(None, Some("upstream error"), false);
+    let mut facts = records(receiver);
+    facts.push(
+        id.event(
+            "native_trajectory_integrity",
+            json!({"status":"incomplete"}),
+        )
+        .payload,
+    );
+    assert!(facts.iter().any(|fact| fact["kind"] == "error"));
+    for fact in facts {
+        assert_eq!(fact["trigger_request_id"], json!(trigger));
+        assert_eq!(fact["context_flow_run_id"], json!(previous_flow));
+        assert_eq!(fact["context_response_id"], "resp-A");
+        assert_eq!(fact["purpose"], "tool_resume");
+    }
+    let (capture, _, _) = fixture(1);
+    let event = capture.sink.as_ref().unwrap().id.event("test", json!({}));
+    assert!(event.payload["trigger_request_id"].is_null());
+    assert!(event.payload["context_flow_run_id"].is_null());
+}
+
+#[test]
+fn compact_observation_preserves_typed_result_and_real_elapsed_duration() {
+    use plugin_framework::provider_contract::{
+        ProviderCompactProfile, ProviderCompactResult, ProviderWireOperation,
+    };
+    let (mut capture, receiver, _) = fixture(8);
+    capture.started_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(25));
+    capture.sink.as_mut().unwrap().id.purpose = "compact";
+    let result = ProviderCompactResult::ResponseItems {
+        operation: ProviderWireOperation::Compact,
+        profile: ProviderCompactProfile::ResponsesCompact,
+        response_items: vec![json!({"type":"compaction", "encrypted_content":"opaque"})],
+    };
+    capture.finish_compact(Some(&result), false);
+    let facts = records(receiver);
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0]["purpose"], "compact");
+    assert!(facts[0]["duration_ms"].as_u64().unwrap() >= 25);
+    assert_eq!(body(&facts[0]), serde_json::to_value(result).unwrap());
+    assert!(body(&facts[0]).get("final_content").is_none());
 }

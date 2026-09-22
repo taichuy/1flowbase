@@ -1,4 +1,8 @@
 import { apiFetch } from '../../transport';
+export interface ClientTrajectoryOptions {
+  request_id?: string;
+  focus_step_id?: string;
+}
 export interface ClientTrajectoryStep {
   id: string;
   request_id: string;
@@ -42,9 +46,13 @@ export function getConsoleClientTrajectory(
   runId: string,
   nodeRunId?: string,
   cursor?: number,
-  baseUrl?: string
+  baseUrl?: string,
+  options?: ClientTrajectoryOptions
 ) {
   const query = new URLSearchParams({ limit: '50' });
+  if (options?.request_id) query.set('request_id', options.request_id);
+  if (options?.focus_step_id && cursor === undefined)
+    query.set('focus_step_id', options.focus_step_id);
   if (nodeRunId) query.set('node_run_id', nodeRunId);
   if (cursor !== undefined) query.set('cursor', String(cursor));
   return apiFetch<ClientTrajectoryPage>({

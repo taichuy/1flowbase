@@ -7,29 +7,22 @@ import type {
 } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { nativeSectionLabel, purposeLabel } from './trajectory-presentation';
+import { JsonPreviewBlock } from '../../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { formatDateTime } from '../../../../../shared/i18n/format';
-
-// Presentation only: raw evidence keeps its exact text, Native JSON is indented.
-function displayBody(
-  body: string,
-  view: ProviderTrajectoryView,
-  encoding: string
-) {
-  if (view !== 'semantic' || encoding !== 'utf8') return body;
-  try {
-    return JSON.stringify(JSON.parse(body), null, 2);
-  } catch {
-    return body;
-  }
-}
 
 export function TrajectoryStepDetail({
   step,
-  loader
+  loader,
+  onClient
 }: {
   step: ProviderTrajectoryStep;
   loader: ConversationLogTraceLoader;
+  onClient?: (
+    link: NonNullable<ProviderTrajectoryStep['links']>[number]
+  ) => void;
 }) {
+  const [rawSemantic, setRawSemantic] = useState(false);
   const [view, setView] = useState<ProviderTrajectoryView>('semantic');
   const { flow_run_id, node_run_id } = step.metadata;
   const body = useInfiniteQuery({
@@ -70,14 +63,43 @@ export function TrajectoryStepDetail({
           {step.metadata.invocation_id}
         </span>
       </div>
+      <div className="provider-trajectory__detail-meta">
+        <span>{purposeLabel(step.metadata.purpose)}</span>
+        {step.metadata.run_mode ? <span>{step.metadata.run_mode}</span> : null}
+        {step.links.length ? (
+          step.links.map((link, index) => (
+            <Button
+              key={`${link.relation}:${link.request_id}:${index}`}
+              type="link"
+              size="small"
+              onClick={() => onClient?.(link)}
+              disabled={!onClient}
+            >
+              {link.relation === 'trigger'
+                ? i18nText('agentFlow', 'trajectory.trigger_request')
+                : i18nText('agentFlow', 'trajectory.context_request')}{' '}
+              · {link.request_id}
+            </Button>
+          ))
+        ) : (
+          <span>{i18nText('agentFlow', 'trajectory.source_not_recorded')}</span>
+        )}
+      </div>
       <Tabs
         size="small"
-        activeKey={view}
-        onChange={(key) => setView(key as ProviderTrajectoryView)}
+        activeKey={rawSemantic ? 'semantic_raw' : view}
+        onChange={(key) => {
+          setRawSemantic(key === 'semantic_raw');
+          setView(key === 'protocol' ? 'protocol' : 'semantic');
+        }}
         items={[
           {
             key: 'semantic',
             label: i18nText('agentFlow', 'trajectory.step_detail')
+          },
+          {
+            key: 'semantic_raw',
+            label: i18nText('agentFlow', 'trajectory.semantic_raw')
           },
           {
             key: 'protocol',
@@ -106,19 +128,49 @@ export function TrajectoryStepDetail({
           }
         />
       ) : null}
-      {body.isSuccess && !body.data.pages.some((page) => page.items.length) ? (
+      {body.isSuccess &&
+      !body.data.pages.some((page) =>
+        view === 'semantic' && !rawSemantic
+          ? page.sections.length
+          : page.items.length
+      ) ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={i18nText('agentFlow', 'trajectory.no_evidence')}
         />
       ) : null}
-      {body.data?.pages
-        .flatMap((page) => page.items)
-        .map((evidence) => (
-          <pre key={evidence.event_id} className="provider-trajectory__body">
-            {displayBody(evidence.body, view, evidence.encoding)}
-          </pre>
-        ))}
+      {view === 'semantic' && !rawSemantic
+        ? body.data?.pages
+            .flatMap((page) => page.sections)
+            .map((section, index) => (
+              <section
+                key={`${section.kind}:${index}`}
+                aria-label={nativeSectionLabel(section.kind)}
+              >
+                <h4>{nativeSectionLabel(section.kind)}</h4>
+                {typeof section.value === 'string' ? (
+                  <pre className="provider-trajectory__body">
+                    {section.value}
+                  </pre>
+                ) : (
+                  <JsonPreviewBlock
+                    title={nativeSectionLabel(section.kind)}
+                    value={section.value}
+                    collapsible={false}
+                  />
+                )}
+              </section>
+            ))
+        : body.data?.pages
+            .flatMap((page) => page.items)
+            .map((evidence) => (
+              <pre
+                key={evidence.event_id}
+                className="provider-trajectory__body"
+              >
+                {evidence.body}
+              </pre>
+            ))}
       {body.hasNextPage ? (
         <Button
           size="small"

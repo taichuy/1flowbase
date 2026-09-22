@@ -5,6 +5,8 @@ import {
   getConsoleRunTrajectory,
   getConsoleRunPayload,
   getConsoleProviderTrajectoryBody,
+  type ProviderTrajectoryOptions,
+  type ClientTrajectoryOptions,
   type ProviderTrajectoryView
 } from '@1flowbase/api-client';
 import { getApplicationsApiBaseUrl } from './applications';
@@ -13,14 +15,16 @@ export function fetchProviderTrajectory(
   applicationId: string,
   runId: string,
   nodeRunId: string,
-  cursor?: number
+  cursor?: number,
+  options?: ProviderTrajectoryOptions
 ) {
   return getConsoleProviderTrajectory(
     applicationId,
     runId,
     nodeRunId,
     cursor,
-    getApplicationsApiBaseUrl()
+    getApplicationsApiBaseUrl(),
+    options
   );
 }
 export function fetchProviderTrajectoryBody(
@@ -45,13 +49,15 @@ export function fetchProviderTrajectoryBody(
 export function fetchRunTrajectory(
   applicationId: string,
   runId: string,
-  cursor?: number
+  cursor?: number,
+  options?: ProviderTrajectoryOptions
 ) {
   return getConsoleRunTrajectory(
     applicationId,
     runId,
     cursor,
-    getApplicationsApiBaseUrl()
+    getApplicationsApiBaseUrl(),
+    options
   );
 }
 
@@ -72,14 +78,16 @@ export function fetchClientTrajectory(
   applicationId: string,
   runId: string,
   nodeRunId?: string,
-  cursor?: number
+  cursor?: number,
+  options?: ClientTrajectoryOptions
 ) {
   return getConsoleClientTrajectory(
     applicationId,
     runId,
     nodeRunId,
     cursor,
-    getApplicationsApiBaseUrl()
+    getApplicationsApiBaseUrl(),
+    options
   );
 }
 export function fetchClientTrajectorySection(

@@ -103,6 +103,7 @@ pub(crate) enum CompatibleResumeAdmission {
 enum CompatibleTurnAction {
     Start {
         transport_connection_scope: Option<String>,
+        observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     },
     ResumeForActor {
         command: ResumePublishedCallbackCommand,
@@ -556,6 +557,7 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     initial_run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let mcp_runtime_invoker = dependencies
@@ -568,6 +570,7 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
         initial_run,
         CompatibleTurnAction::Start {
             transport_connection_scope,
+            observation_context,
         },
         provider_transport_slot,
         mcp_runtime_invoker,
@@ -761,6 +764,7 @@ async fn open_compatible_turn_with_invoker(
         match action {
             CompatibleTurnAction::Start {
                 transport_connection_scope,
+                observation_context,
             } => {
                 if let Err(runtime_error) = runtime_service
                     .start_published_flow_run(StartPublishedFlowRunCommand {
@@ -768,6 +772,7 @@ async fn open_compatible_turn_with_invoker(
                         flow_run_id: background_run.id,
                         provider_transport_slot,
                         transport_connection_scope,
+                        observation_context,
                     })
                     .await
                 {

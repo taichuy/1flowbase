@@ -1,21 +1,57 @@
 use super::*;
 mod native_body;
+mod sections;
 use control_plane_contracts::ports::{
     ApplicationRunPayloadSection, ProviderTrajectoryBody, ProviderTrajectoryEvidence,
     ProviderTrajectoryPage, ProviderTrajectoryRepository, ProviderTrajectoryStep,
-    ProviderTrajectoryView,
+    ProviderTrajectoryView, TrajectorySelection, WorkflowTrajectoryLink,
 };
 
 #[async_trait]
 impl ProviderTrajectoryRepository for PgControlPlaneStore {
+    async fn provider_trajectory_filtered_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: TrajectorySelection,
+    ) -> Result<ProviderTrajectoryPage> {
+        self.trajectory_page_for_scope(flow_run_id, node_run_id, cursor, limit, selection)
+            .await
+    }
+    async fn client_trajectory_filtered_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+        selection: TrajectorySelection,
+    ) -> Result<control_plane_contracts::ports::ClientTrajectoryPage> {
+        self.read_client_trajectory_selected_page(
+            flow_run_id,
+            node_run_id,
+            cursor,
+            limit,
+            selection,
+        )
+        .await
+    }
+
     async fn provider_run_trajectory_page(
         &self,
         flow_run_id: Uuid,
         cursor: Option<i64>,
         limit: i64,
     ) -> Result<ProviderTrajectoryPage> {
-        self.trajectory_page_for_scope(flow_run_id, None, cursor, limit)
-            .await
+        self.trajectory_page_for_scope(
+            flow_run_id,
+            None,
+            cursor,
+            limit,
+            TrajectorySelection::default(),
+        )
+        .await
     }
     async fn application_run_payload(
         &self,
@@ -40,8 +76,14 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
         cursor: Option<i64>,
         limit: i64,
     ) -> Result<ProviderTrajectoryPage> {
-        self.trajectory_page_for_scope(flow_run_id, Some(node_run_id), cursor, limit)
-            .await
+        self.trajectory_page_for_scope(
+            flow_run_id,
+            Some(node_run_id),
+            cursor,
+            limit,
+            TrajectorySelection::default(),
+        )
+        .await
     }
 
     async fn provider_trajectory_body(
@@ -107,6 +149,11 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
                 event_id,
                 source,
                 evidence_scope: "step".into(),
+                sections: if native {
+                    sections::native_sections(&metadata, &items)
+                } else {
+                    vec![]
+                },
                 items,
                 next_cursor: None,
             }));
@@ -195,6 +242,7 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
             event_id,
             source: "supplier_protocol".into(),
             evidence_scope: if native { "invocation" } else { "step" }.into(),
+            sections: vec![],
             items,
             next_cursor,
         }))
@@ -208,28 +256,34 @@ impl PgControlPlaneStore {
         node_run_id: Option<Uuid>,
         cursor: Option<i64>,
         limit: i64,
+        selection: TrajectorySelection,
     ) -> Result<ProviderTrajectoryPage> {
+        let cursor = if cursor.is_none() {
+            if let Some(target) = selection.target_id {
+                let sequence: Option<i64> = sqlx::query_scalar("select event_sequence from provider_semantic_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_id=$3 and ($4::text is null or metadata->>'trigger_request_id'=$4)")
+                    .bind(flow_run_id).bind(node_run_id).bind(target).bind(selection.request_id.map(|id|id.to_string())).fetch_optional(self.pool()).await?;
+                Some(sequence.ok_or(control_plane_contracts::ports::TrajectoryTargetNotFound)? - 1)
+            } else {
+                None
+            }
+        } else {
+            cursor
+        };
         let limit = limit.clamp(1, 100);
         let counts = sqlx::query(include_str!("integrity.sql"))
             .bind(flow_run_id)
             .bind(node_run_id)
+            .bind(selection.request_id.map(|id| id.to_string()))
             .fetch_one(self.pool())
             .await?;
-        let rows = sqlx::query(
-            r#"
-            select event_id,event_sequence,'provider_semantic_step' as event_type,
-                metadata || jsonb_build_object('source',coalesce(metadata->>'source','supplier_protocol'),'flow_run_id',flow_run_id,'node_run_id',node_run_id) as metadata,created_at
-            from provider_semantic_trajectory_steps
-            where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_sequence > $3
-            order by event_sequence asc limit $4
-        "#,
-        )
-        .bind(flow_run_id)
-        .bind(node_run_id)
-        .bind(cursor.unwrap_or(0))
-        .bind(limit + 1)
-        .fetch_all(self.pool())
-        .await?;
+        let rows = sqlx::query(include_str!("page.sql"))
+            .bind(flow_run_id)
+            .bind(node_run_id)
+            .bind(cursor.unwrap_or(0))
+            .bind(limit + 1)
+            .bind(selection.request_id.map(|id| id.to_string()))
+            .fetch_all(self.pool())
+            .await?;
         let has_more = rows.len() > limit as usize;
         let items: Vec<ProviderTrajectoryStep> = rows
             .into_iter()
@@ -240,6 +294,7 @@ impl PgControlPlaneStore {
                     event_sequence: row.get("event_sequence"),
                     event_type: row.get("event_type"),
                     metadata: row.get("metadata"),
+                    links: serde_json::from_value::<Vec<WorkflowTrajectoryLink>>(row.get("links"))?,
                     created_at: row
                         .get::<OffsetDateTime, _>("created_at")
                         .format(&time::format_description::well_known::Rfc3339)?,

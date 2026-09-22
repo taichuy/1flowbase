@@ -195,7 +195,12 @@ test('paginates summaries, keeps original categories and follows actual call rel
   const result = await screen.findByRole('button', {
     name: '工具结果 · exec_command'
   });
-  expect(loadClientTrajectory).toHaveBeenCalledWith('run-1', undefined, 2);
+  expect(loadClientTrajectory).toHaveBeenCalledWith(
+    'run-1',
+    undefined,
+    2,
+    undefined
+  );
   fireEvent.click(result);
   fireEvent.click(await screen.findByRole('button', { name: '定位关联调用' }));
   expect(

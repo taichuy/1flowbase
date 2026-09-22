@@ -618,3 +618,293 @@ async fn native_snapshot_references_are_lossless_scoped_immutable_and_read_only(
         .await
         .is_err());
 }
+
+#[tokio::test]
+async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
+    use control_plane_contracts::ports::{
+        AppendClientTrajectoryInput, ClientTrajectoryFact, ClientTrajectoryStep,
+        ClientTrajectoryTransport, TrajectorySelection,
+    };
+    let (store, flow, node) = setup().await;
+    let a = Uuid::now_v7();
+    let b = Uuid::now_v7();
+    let make_call = |key: &str, request: Uuid, purpose: &str, attempt: i64| {
+        let mut value=step(key,"{\"system\":[\"actual-system\"],\"messages\":[{\"role\":\"user\",\"content\":\"actual-context\"}],\"tools\":[],\"model\":\"actual-model\"}");
+        value["kind"] = json!("model_call");
+        value["trigger_request_id"] = json!(request);
+        value["purpose"] = json!(purpose);
+        value["provider_attempt_index"] = json!(attempt);
+        value
+    };
+    let first = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        make_call("a", a, "prewarm", 0),
+    )
+    .await;
+    let mut second = make_call("b", b, "tool_resume", 0);
+    second["invocation_id"] = json!("native-b");
+    second["context_flow_run_id"] = json!(flow);
+    second["context_response_id"] = json!("resp-a");
+    let target = append(&store, flow, node, "provider_semantic_step", second.clone()).await;
+    second["step_key"] = json!("b-retry");
+    second["provider_attempt_index"] = json!(1);
+    let retry = append(&store, flow, node, "provider_semantic_step", second).await;
+    let early = store
+        .provider_run_trajectory_page(flow, None, 100)
+        .await
+        .unwrap();
+    assert!(
+        early.items.iter().all(|s| s.links.is_empty()),
+        "client may be observed later"
+    );
+    for request in [a, b] {
+        let append_fact = |fact| AppendClientTrajectoryInput {
+            flow_run_id: flow,
+            node_run_id: None,
+            request_id: request,
+            observed_at: "2026-09-22T00:00:00Z".into(),
+            fact,
+        };
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::Integrity {
+                status: "complete".into(),
+                dropped_count: 0,
+                persist_failed_count: 0,
+            }))
+            .await
+            .unwrap();
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::NodeLink {
+                node_run_id: node,
+            }))
+            .await
+            .unwrap();
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::ResponseLink {
+                response_id: if request == a { "resp-a" } else { "resp-b" }.into(),
+            }))
+            .await
+            .unwrap();
+        for output in [false] {
+            let step = ClientTrajectoryStep {
+                id: if output { Uuid::now_v7() } else { request },
+                request_id: request,
+                sequence: 0,
+                created_at: "2026-09-22T00:00:00Z".into(),
+                category: if output { "assistant" } else { "request" }.into(),
+                name: "request".into(),
+                namespace: None,
+                preview: "client-input".into(),
+                parameters_preview: None,
+                result_preview: None,
+                status: "recorded".into(),
+                origin: if output { "emitted" } else { "submitted" }.into(),
+                protocol: "openai-responses-v1".into(),
+                transport: ClientTrajectoryTransport::Http,
+                flow_run_id: flow,
+                node_run_id: None,
+                parent_id: if output { Some(request) } else { None },
+                call_id: None,
+                item_id: None,
+                response_id: if output {
+                    Some(if request == a { "resp-a" } else { "resp-b" }.into())
+                } else {
+                    None
+                },
+                turn_id: None,
+                related_step_id: None,
+                available_sections: vec![],
+            };
+            store
+                .append_client_trajectory(&append_fact(ClientTrajectoryFact::Step {
+                    step: Box::new(step),
+                }))
+                .await
+                .unwrap();
+        }
+    }
+    let page = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: Some(target),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.items[0].event_id, target);
+    assert_eq!(page.items[0].metadata["purpose"], "tool_resume");
+    let links = &page.items[0].links;
+    assert!(links
+        .iter()
+        .any(|l| l.relation == "trigger" && l.request_id == b));
+    assert!(links
+        .iter()
+        .any(|l| l.relation == "context" && l.request_id == a));
+    assert!(!links
+        .iter()
+        .any(|l| l.relation == "trigger" && l.request_id == a));
+    let next = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            page.next_cursor,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(next.items[0].event_id, retry);
+    assert!(next.next_cursor.is_none());
+    assert_eq!(next.items[0].metadata["provider_attempt_index"], 1);
+    assert!(store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(a),
+                target_id: Some(target)
+            }
+        )
+        .await
+        .is_err());
+    assert!(store
+        .provider_trajectory_filtered_page(
+            flow,
+            Some(Uuid::now_v7()),
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(target)
+            }
+        )
+        .await
+        .is_err());
+    let client = store
+        .client_trajectory_filtered_page(
+            flow,
+            Some(node),
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: Some(b),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(client.items[0].id, b);
+    assert!(store
+        .client_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(a),
+                target_id: Some(b)
+            }
+        )
+        .await
+        .is_err());
+    assert!(store
+        .client_trajectory_filtered_page(
+            Uuid::now_v7(),
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(b)
+            }
+        )
+        .await
+        .is_err());
+    let body = store
+        .provider_trajectory_body(flow, node, first, None, 8, ProviderTrajectoryView::Semantic)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(body
+        .sections
+        .iter()
+        .any(|s| s.kind == "system" && s.value["system"][0] == "actual-system"));
+    assert!(body
+        .sections
+        .iter()
+        .any(|s| s.kind == "context" && s.value["messages"][0]["content"] == "actual-context"));
+    // Wrong application context is not promoted into a navigable link.
+    let wrong = Uuid::now_v7();
+    let mut forged = make_call("no-parent", b, "generate", 2);
+    forged["context_flow_run_id"] = json!(wrong);
+    forged["context_response_id"] = json!("resp-a");
+    let wrong_id = append(&store, flow, node, "provider_semantic_step", forged).await;
+    let isolated = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(wrong_id),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!isolated.items[0]
+        .links
+        .iter()
+        .any(|l| l.relation == "context"));
+    // Poison bodies: list/focus/link queries must still operate only on indexes.
+    sqlx::query("update runtime_events set raw_json_payloads=jsonb_build_object('payload','invalid JSON') where flow_run_id=$1").bind(flow).execute(store.pool()).await.unwrap();
+    assert_eq!(
+        store
+            .provider_trajectory_filtered_page(
+                flow,
+                None,
+                None,
+                1,
+                TrajectorySelection {
+                    request_id: Some(b),
+                    target_id: Some(target)
+                }
+            )
+            .await
+            .unwrap()
+            .items[0]
+            .event_id,
+        target
+    );
+    assert_eq!(
+        store
+            .client_trajectory_filtered_page(
+                flow,
+                None,
+                None,
+                1,
+                TrajectorySelection {
+                    request_id: Some(b),
+                    target_id: Some(b)
+                }
+            )
+            .await
+            .unwrap()
+            .items[0]
+            .id,
+        b
+    );
+}

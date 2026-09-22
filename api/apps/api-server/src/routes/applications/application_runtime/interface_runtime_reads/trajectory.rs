@@ -1,6 +1,7 @@
 use super::*;
 use control_plane::ports::{
     ProviderTrajectoryBody, ProviderTrajectoryPage, ProviderTrajectoryRepository,
+    TrajectorySelection,
 };
 
 impl ApplicationRuntimeReadsAdapter {
@@ -15,13 +16,24 @@ impl ApplicationRuntimeReadsAdapter {
             .await?;
         Ok(self
             .store
-            .client_trajectory_page(
+            .client_trajectory_filtered_page(
                 run_id,
                 query.node_run_id,
                 query.cursor,
                 query.limit.unwrap_or(50),
+                TrajectorySelection {
+                    request_id: query.request_id,
+                    target_id: query.focus_step_id,
+                },
             )
-            .await?)
+            .await
+            .map_err(|error| {
+                if error.is::<control_plane::ports::TrajectoryTargetNotFound>() {
+                    ApiError::from(ControlPlaneError::NotFound("trajectory_target"))
+                } else {
+                    ApiError::from(error)
+                }
+            })?)
     }
     pub(super) async fn client_trajectory_section(
         &self,
@@ -56,8 +68,24 @@ impl ApplicationRuntimeReadsAdapter {
             .await?;
         Ok(self
             .store
-            .provider_run_trajectory_page(run_id, query.cursor, query.limit.unwrap_or(50))
-            .await?)
+            .provider_trajectory_filtered_page(
+                run_id,
+                None,
+                query.cursor,
+                query.limit.unwrap_or(50),
+                TrajectorySelection {
+                    request_id: query.request_id,
+                    target_id: query.focus_event_id,
+                },
+            )
+            .await
+            .map_err(|error| {
+                if error.is::<control_plane::ports::TrajectoryTargetNotFound>() {
+                    ApiError::from(ControlPlaneError::NotFound("trajectory_target"))
+                } else {
+                    ApiError::from(error)
+                }
+            })?)
     }
     pub(super) async fn run_payload(
         &self,
@@ -113,8 +141,24 @@ impl ApplicationRuntimeReadsAdapter {
             .await?;
         Ok(self
             .store
-            .provider_trajectory_page(run_id, node_run_id, query.cursor, query.limit.unwrap_or(50))
-            .await?)
+            .provider_trajectory_filtered_page(
+                run_id,
+                Some(node_run_id),
+                query.cursor,
+                query.limit.unwrap_or(50),
+                TrajectorySelection {
+                    request_id: query.request_id,
+                    target_id: query.focus_event_id,
+                },
+            )
+            .await
+            .map_err(|error| {
+                if error.is::<control_plane::ports::TrajectoryTargetNotFound>() {
+                    ApiError::from(ControlPlaneError::NotFound("trajectory_target"))
+                } else {
+                    ApiError::from(error)
+                }
+            })?)
     }
 
     pub(super) async fn trajectory_body(

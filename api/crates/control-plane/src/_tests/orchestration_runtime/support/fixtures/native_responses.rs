@@ -12,7 +12,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         payload: crate::ports::ProviderTransportPayload,
     ) -> anyhow::Result<domain::ApplicationRunDetail> {
         crate::orchestration_runtime::live_debug_run::continue_flow_debug_run_with_provider_transport(
-            self, command, Some(payload), None,
+            self, command, Some(payload), None, None,
         ).await
     }
 

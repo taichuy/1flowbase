@@ -361,7 +361,26 @@ where
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
-        self.runtime.compact(&installation, input).await
+        let active_node = self
+            .flow_execution_context
+            .as_ref()
+            .and_then(|context| context.active_node.lock().ok()?.clone())
+            .or_else(|| {
+                Some(RuntimeActiveNode {
+                    node_id: self.active_node_id.clone()?,
+                    node_run_id: self.active_node_run_id?,
+                })
+            });
+        let capture = native_trajectory::start(
+            self.repository.clone(),
+            self.flow_run_id,
+            active_node.map(|node| (node.node_id, node.node_run_id)),
+            &input,
+            self.observation_context.as_ref(),
+        );
+        let result = self.runtime.compact(&installation, input).await;
+        capture.finish_compact(result.as_ref().ok(), result.is_err());
+        result
     }
 
     async fn count_tokens(
@@ -621,6 +640,7 @@ where
                 .as_ref()
                 .map(|node| (node.node_id.clone(), node.node_run_id)),
             &input,
+            self.observation_context.as_ref(),
         );
         let native_observer = native_capture.observer();
         let (protocol_observation, protocol_completion) =
@@ -1768,6 +1788,7 @@ where
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
             transport_connection_scope_override: self.transport_connection_scope_override.clone(),
+            observation_context: self.observation_context.clone(),
             provider_transport_payload: self.provider_transport_payload.clone(),
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: self.provider_continuation.clone(),
@@ -1793,6 +1814,15 @@ where
     ) -> Self {
         let mut invoker = self.clone();
         invoker.answer_presentation = Some(answer_presentation);
+        invoker
+    }
+
+    pub(super) fn with_observation_context(
+        &self,
+        context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.observation_context = context;
         invoker
     }
 

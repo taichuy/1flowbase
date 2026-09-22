@@ -5,7 +5,10 @@ import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
-import type { ClientTrajectoryStep } from '@1flowbase/api-client';
+import type {
+  ClientTrajectoryStep,
+  ClientTrajectoryOptions
+} from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../../shared/i18n/format';
@@ -17,14 +20,20 @@ import './client-trajectory.css';
 export function ClientTrajectoryWorkspace({
   runId,
   nodeRunId,
-  loader
+  loader,
+  options,
+  onInternal
 }: {
   runId: string;
   nodeRunId?: string;
   loader: ConversationLogTraceLoader;
+  options?: ClientTrajectoryOptions;
+  onInternal?: (step: ClientTrajectoryStep, nodeRunId?: string) => void;
 }) {
   const [scope, setScope] = useState(nodeRunId);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    options?.focus_step_id ?? null
+  );
   const [search, setSearch] = useState('');
   const [groupCategories, setGroupCategories] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -34,11 +43,11 @@ export function ClientTrajectoryWorkspace({
   const drag = useRef<{ x: number; width: number } | null>(null);
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const pages = useInfiniteQuery({
-    queryKey: ['client-trajectory', runId, scope ?? 'run'],
+    queryKey: ['client-trajectory', runId, scope ?? 'run', options],
     enabled: Boolean(loader.loadClientTrajectory),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
-      loader.loadClientTrajectory!(runId, scope, pageParam),
+      loader.loadClientTrajectory!(runId, scope, pageParam, options),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchOnWindowFocus: false
   });
@@ -328,6 +337,10 @@ export function ClientTrajectoryWorkspace({
                   <button
                     type="button"
                     className="client-trajectory__request-select"
+                    aria-pressed={selected === root?.id}
+                    ref={(element) => {
+                      if (root && element) rows.current.set(root.id, element);
+                    }}
                     onClick={() => root && setSelected(root.id)}
                   >
                     <strong>{categoryLabel('request')}</strong>
@@ -446,6 +459,14 @@ export function ClientTrajectoryWorkspace({
                 }}
               />
             </div>
+            {onInternal ? (
+              <Button
+                type="link"
+                onClick={() => onInternal(selectedStep, scope)}
+              >
+                {i18nText('agentFlow', 'trajectory.open_internal_calls')}
+              </Button>
+            ) : null}
             <ClientTrajectoryDetail
               key={selectedStep.id}
               step={selectedStep}

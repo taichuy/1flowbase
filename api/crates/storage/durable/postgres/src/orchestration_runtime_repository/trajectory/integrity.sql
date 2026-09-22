@@ -2,14 +2,14 @@ with observations as (
     select node_run_id,metadata->>'invocation_id' as invocation_id,
         (metadata->>'provider_attempt_index')::bigint as attempt,count(*) as observed
     from provider_protocol_trajectory_events
-    where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_type='provider_protocol_observation'
+    where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or exists(select 1 from native_trajectory_integrity ni where ni.flow_run_id=$1 and ni.node_run_id=provider_protocol_trajectory_events.node_run_id and ni.invocation_id=provider_protocol_trajectory_events.metadata->>'invocation_id' and ni.provider_attempt_index=(provider_protocol_trajectory_events.metadata->>'provider_attempt_index')::bigint and ni.metadata->>'trigger_request_id'=$3)) and event_type='provider_protocol_observation'
     group by 1,2,3
 ), latest_protocol as (
     select distinct on (node_run_id,metadata->>'invocation_id',metadata->>'provider_attempt_index')
         node_run_id,metadata->>'invocation_id' as invocation_id,
         (metadata->>'provider_attempt_index')::bigint as attempt,metadata
     from provider_protocol_trajectory_events
-    where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and event_type='provider_protocol_integrity'
+    where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or exists(select 1 from native_trajectory_integrity ni where ni.flow_run_id=$1 and ni.node_run_id=provider_protocol_trajectory_events.node_run_id and ni.invocation_id=provider_protocol_trajectory_events.metadata->>'invocation_id' and ni.provider_attempt_index=(provider_protocol_trajectory_events.metadata->>'provider_attempt_index')::bigint and ni.metadata->>'trigger_request_id'=$3)) and event_type='provider_protocol_integrity'
     order by node_run_id,metadata->>'invocation_id',metadata->>'provider_attempt_index',event_sequence desc
 ), protocol as (
     select coalesce(o.node_run_id,i.node_run_id) as node_run_id,coalesce(o.invocation_id,i.invocation_id) as invocation_id,
@@ -28,7 +28,7 @@ with observations as (
         coalesce(metadata->>'source','supplier_protocol') as source,
         sum(snapshot_count) as observed,
         bool_or(metadata->>'status' in ('incomplete','unavailable','pending')) as incomplete
-    from provider_semantic_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)
+    from provider_semantic_trajectory_steps where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or metadata->>'trigger_request_id'=$3)
     group by 1,2,3,4
 ), native as (
     select coalesce(s.node_run_id,i.node_run_id) as node_run_id,coalesce(s.invocation_id,i.invocation_id) as invocation_id,
@@ -40,7 +40,7 @@ with observations as (
             and coalesce((i.metadata->>'dropped_count')::bigint,0)=0
             and not coalesce(s.incomplete,false),false) as complete
     from (select * from steps where source='ai_native') s
-    full join (select * from native_trajectory_integrity where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2)) i
+    full join (select * from native_trajectory_integrity where flow_run_id=$1 and ($2::uuid is null or node_run_id=$2) and ($3::text is null or metadata->>'trigger_request_id'=$3)) i
         on s.node_run_id=i.node_run_id and s.invocation_id=i.invocation_id and s.attempt=i.provider_attempt_index
 ), semantic as (
     select failed,complete from native

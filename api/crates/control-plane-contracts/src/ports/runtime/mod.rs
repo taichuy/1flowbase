@@ -34,3 +34,6 @@ pub use trajectory::*;
 
 pub mod client_trajectory;
 pub use client_trajectory::*;
+
+pub mod workflow_observation;
+pub use workflow_observation::*;

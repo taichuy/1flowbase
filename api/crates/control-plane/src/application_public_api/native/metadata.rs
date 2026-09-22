@@ -17,6 +17,7 @@ pub struct NativeRequestMetadata {
     trace_id: Option<String>,
     recovery: Option<crate::application_public_api::callback_resume::NativeInferenceRecoveryGrant>,
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     application_run_log_context: Option<control_plane_contracts::ports::ApplicationRunLogContext>,
     responses_transport_requirement: ResponsesTransportRequirement,
     provider_transport_payload: Option<ProviderTransportPayload>,
@@ -63,6 +64,7 @@ impl NativeRequestMetadata {
             trace_id,
             recovery: None,
             transport_connection_scope: None,
+            observation_context: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
@@ -75,6 +77,7 @@ impl NativeRequestMetadata {
             trace_id,
             recovery: None,
             transport_connection_scope: None,
+            observation_context: None,
             responses_transport_requirement: ResponsesTransportRequirement::default(),
             provider_transport_payload: None,
             provider_transport_summary: None,
@@ -120,6 +123,20 @@ impl NativeRequestMetadata {
 
     pub fn take_transport_connection_scope(&mut self) -> Option<String> {
         self.transport_connection_scope.take()
+    }
+
+    /// This attachment is minted by the host for this request and consumed before persistence.
+    pub fn set_observation_context(
+        &mut self,
+        context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
+    ) {
+        self.observation_context = context;
+    }
+
+    pub fn take_observation_context(
+        &mut self,
+    ) -> Option<control_plane_contracts::ports::WorkflowObservationContext> {
+        self.observation_context.take()
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -240,6 +257,34 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn workflow_observation_is_host_only_consumed_once_and_not_inherited_from_wire() {
+        let previous = uuid::Uuid::now_v7();
+        let current = uuid::Uuid::now_v7();
+        let mut metadata = NativeRequestMetadata::default();
+        metadata.set_observation_context(Some(
+            control_plane_contracts::ports::WorkflowObservationContext {
+                client_request_id: current,
+                context_flow_run_id: Some(previous),
+                context_response_id: Some("resp-A".into()),
+                is_resume: true,
+            },
+        ));
+        let wire = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(wire, json!({}));
+        assert_eq!(metadata.as_value(), json!({}));
+        let mut replay: NativeRequestMetadata = serde_json::from_value(wire).unwrap();
+        assert!(replay.take_observation_context().is_none());
+        let context = metadata.take_observation_context().unwrap();
+        assert_eq!(context.client_request_id, current);
+        assert_eq!(context.context_flow_run_id, Some(previous));
+        assert!(metadata.take_observation_context().is_none());
+        assert!(serde_json::from_value::<NativeRequestMetadata>(json!({
+            "observation_context": {"client_request_id": current, "is_resume": true}
+        }))
+        .is_err());
+    }
 
     #[test]
     fn qf6_connection_scope_is_host_only_and_never_serialized_or_deserialized() {

@@ -233,6 +233,7 @@ async fn fixture_with_protocol_context(
     }
     let command = ResumePublishedCallbackCommand {
         transport_connection_scope: None,
+        observation_context: None,
         reserved_attempt_id: None,
         native_transport: Some(ProviderTransportPayload::openai_responses(body).unwrap()),
         bearer_token: token,

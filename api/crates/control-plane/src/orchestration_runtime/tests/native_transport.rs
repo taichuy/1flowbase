@@ -24,6 +24,7 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         provider_transport_payload: Some(
             crate::ports::ProviderTransportPayload::openai_responses(json!({
                 "model": "gpt-5.4-mini",
@@ -109,6 +110,7 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         provider_transport_payload: Some(
             crate::ports::ProviderTransportPayload::openai_responses(json!({
                 "model": "gpt-5.4-mini",
@@ -194,6 +196,7 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         provider_transport_payload: Some(payload),
         provider_transport_store: None,
         provider_continuation: None,
@@ -260,6 +263,15 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
     request
         .metadata
         .set_transport_connection_scope(Some("host-initial-socket".into()));
+    let initial_observation = control_plane_contracts::ports::WorkflowObservationContext {
+        client_request_id: Uuid::now_v7(),
+        context_flow_run_id: Some(Uuid::now_v7()),
+        context_response_id: Some("resp-prior-context".into()),
+        is_resume: false,
+    };
+    request
+        .metadata
+        .set_observation_context(Some(initial_observation.clone()));
     validate_protocol_context_envelope(request.client_protocol_envelope.as_ref().unwrap())
         .expect("host execution metadata must not contaminate canonical protocol validation");
     let serialized = serde_json::to_value(&request).unwrap();
@@ -269,6 +281,7 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
         flow_run_id: Uuid::nil(),
         provider_transport_slot: None,
         transport_connection_scope: request.metadata.take_transport_connection_scope(),
+        observation_context: request.metadata.take_observation_context(),
     };
     assert!(request.metadata.take_transport_connection_scope().is_none());
     let invoker = RuntimeProviderInvoker {
@@ -289,12 +302,33 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
         flow_execution_context: None,
         answer_presentation: None,
         transport_connection_scope_override: None,
+        observation_context: None,
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
         model_pricing_cache_store: None,
     }
-    .with_transport_connection_scope_override(command.transport_connection_scope);
+    .with_transport_connection_scope_override(command.transport_connection_scope)
+    .with_observation_context(command.observation_context);
+    assert_eq!(
+        invoker.observation_context.as_ref(),
+        Some(&initial_observation)
+    );
+    // A new execution segment replaces the trigger instead of inheriting the previous round.
+    let current_observation = control_plane_contracts::ports::WorkflowObservationContext {
+        client_request_id: Uuid::now_v7(),
+        is_resume: true,
+        ..initial_observation.clone()
+    };
+    let invoker = invoker.with_observation_context(Some(current_observation.clone()));
+    assert_eq!(
+        invoker.observation_context.as_ref(),
+        Some(&current_observation)
+    );
+    assert!(invoker
+        .with_observation_context(None)
+        .observation_context
+        .is_none());
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let mut input = provider_user_input(provider_instance_id);
     input.client_protocol_envelope = request.client_protocol_envelope;
@@ -303,6 +337,9 @@ async fn qf6_initial_scope_keeps_canonical_context_valid_until_actual_invoker_bo
         .expect("initial execution scope must reach the real Provider invoker");
     let captured = captured_inputs.lock().unwrap();
     assert_eq!(captured.len(), 1);
+    let provider_json = serde_json::to_value(&captured[0]).unwrap().to_string();
+    assert!(!provider_json.contains(&initial_observation.client_request_id.to_string()));
+    assert!(!provider_json.contains(&current_observation.client_request_id.to_string()));
     let mut late_context = captured[0].client_protocol_envelope.clone().unwrap();
     assert_eq!(
         late_context

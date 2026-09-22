@@ -37,7 +37,25 @@
     "loaded_steps": "已加载 {{count}} 步",
     "no_matches": "已加载步骤中没有匹配结果",
     "node_scope": "当前 LLM 节点",
-    "run_scope": "当前运行 · 全部 LLM 节点"
+    "run_scope": "当前运行 · 全部 LLM 节点",
+    "return_view": "返回上一视图",
+    "no_internal_calls": "此请求没有关联的内部调用",
+    "open_internal_calls": "查看关联内部调用",
+    "attempt": "尝试 {{count}}",
+    "purpose_prewarm": "预热",
+    "purpose_generate": "生成",
+    "purpose_tool_resume": "工具续跑",
+    "purpose_compact": "压缩上下文",
+    "purpose_unknown": "用途未知",
+    "section_system": "实际系统输入",
+    "section_context": "实际上下文",
+    "section_tools": "实际工具定义",
+    "section_configuration": "实际调用配置",
+    "section_output": "实际输出",
+    "trigger_request": "来源请求",
+    "context_request": "上下文来源请求",
+    "source_not_recorded": "请求来源未记录",
+    "semantic_raw": "内部事件原文"
   },
   "auto": {
     "llm_tools": "LLM 工具",
@@ -766,8 +784,8 @@
     "retry": "重试"
   },
   "client_trajectory": {
-    "client": "客户端原始协议",
-    "native": "AI Native 内部诊断",
+    "client": "客户端请求",
+    "native": "工作流内部事件",
     "request": "请求",
     "system": "系统提示词",
     "assistant": "助手消息",

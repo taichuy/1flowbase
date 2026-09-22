@@ -634,6 +634,7 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
     let mut command = ResumePublishedCallbackCommand {
         transport_connection_scope: None,
+        observation_context: None,
         reserved_attempt_id: None,
         native_transport: Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap()),
         bearer_token: String::new(),

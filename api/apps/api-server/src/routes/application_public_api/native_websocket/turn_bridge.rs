@@ -199,6 +199,7 @@ impl NativeTurnBridge {
     ) -> Result<(), NativeTurnBridgeError> {
         let command = ResumePublishedCallbackCommand {
             transport_connection_scope: None,
+            observation_context: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: String::new(),
