@@ -207,12 +207,27 @@ pub fn export_selected_template(
             break;
         }
     }
-    all.pages.retain(|p| pages.contains(&p.id));
-    for page in &mut all.pages {
-        if page.parent_id.is_some_and(|id| !pages.contains(&id)) {
-            page.parent_id = None;
+    // Keep the selected pages' navigation ancestry without selecting unrelated siblings.
+    // Detaching a child would discard its root route and can make its placement invalid.
+    loop {
+        let parents: Vec<_> = all
+            .pages
+            .iter()
+            .filter(|page| pages.contains(&page.id))
+            .filter_map(|page| page.parent_id)
+            .collect();
+        let before = pages.len();
+        for parent in parents {
+            if !all.pages.iter().any(|page| page.id == parent) {
+                bail!("portable_template_unresolved_page_parent:{parent}");
+            }
+            pages.insert(parent);
+        }
+        if pages.len() == before {
+            break;
         }
     }
+    all.pages.retain(|p| pages.contains(&p.id));
     all.applications.retain(|a| apps.contains(&a.id));
     all.data_models.retain(|m| models.contains(&m.id));
     all.plugins = collect_portable_plugin_dependencies(&all, &all.plugins);

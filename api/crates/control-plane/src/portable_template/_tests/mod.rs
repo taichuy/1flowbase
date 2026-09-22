@@ -45,7 +45,8 @@ fn snapshot() -> PortableTemplatePackage {
     }
 }
 #[test]
-fn selecting_nested_tree_does_not_export_ancestors_siblings_or_unrelated_definitions() {
+fn selecting_nested_tree_preserves_route_ancestors_but_excludes_siblings_and_unrelated_definitions()
+{
     let mut all = snapshot();
     all.pages = vec![
         group(1, None),
@@ -53,6 +54,8 @@ fn selecting_nested_tree_does_not_export_ancestors_siblings_or_unrelated_definit
         group(3, Some(2)),
         group(4, Some(1)),
     ];
+    all.pages[0].placement = domain::frontstage::FrontstageNavigationPlacement::Topbar;
+    all.pages[0].slug = Some("template-root".into());
     all.data_models = vec![model(20, "unselected")];
     let out = export_selected_template(
         all,
@@ -64,9 +67,10 @@ fn selecting_nested_tree_does_not_export_ancestors_siblings_or_unrelated_definit
     .unwrap();
     assert_eq!(
         out.pages.iter().map(|p| p.id.as_u128()).collect::<Vec<_>>(),
-        vec![2, 3]
+        vec![1, 2, 3]
     );
-    assert_eq!(out.pages[0].parent_id, None);
+    assert_eq!(out.pages[0].slug.as_deref(), Some("template-root"));
+    assert_eq!(out.pages[1].parent_id, Some(Uuid::from_u128(1)));
     assert!(out.data_models.is_empty());
 }
 #[test]

@@ -120,7 +120,8 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                     tooltip: None,
                     is_hidden: Some(page.is_hidden),
                     placement: None,
-                    content_presentation: Some(page.content_presentation),
+                    content_presentation: (page.kind == domain::FrontstagePageKind::Page)
+                        .then_some(page.content_presentation),
                     slug: None,
                 })
                 .await?;
