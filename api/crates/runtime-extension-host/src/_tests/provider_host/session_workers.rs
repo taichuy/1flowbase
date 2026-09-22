@@ -557,8 +557,8 @@ async fn logical_child_keeps_provider_history_across_physical_generations_and_fe
         .await
         .unwrap();
     assert_eq!(
-        resumed.result.final_content,
-        "provider-private-history:logical-one"
+        resumed.result.final_content.as_deref(),
+        Some("provider-private-history:logical-one")
     );
     assert!(host
         .invoke_stream(&id, task_input("logical-one", 7, "recall"))
@@ -583,7 +583,7 @@ async fn logical_child_keeps_provider_history_across_physical_generations_and_fe
         .invoke_stream(&id, task_input("logical-two", 8, "recall"))
         .await
         .unwrap();
-    assert_eq!(other.result.final_content, "missing");
+    assert_eq!(other.result.final_content.as_deref(), Some("missing"));
     let calls = dispatches(&package);
     assert_eq!(calls[0]["pid"], calls[1]["pid"]);
     assert_eq!(calls[0]["pid"], calls[2]["pid"]);
@@ -620,8 +620,8 @@ async fn dormant_child_expires_at_binding_deadline_and_reactivation_cancels_old_
         .await
         .unwrap();
     assert_eq!(
-        resumed.result.final_content,
-        "provider-private-history:reactivated"
+        resumed.result.final_content.as_deref(),
+        Some("provider-private-history:reactivated")
     );
     let old_pid = dispatches(&package)[0]["pid"].as_u64().unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -638,8 +638,8 @@ async fn dormant_child_expires_at_binding_deadline_and_reactivation_cancels_old_
         .await
         .unwrap();
     assert_eq!(
-        resumed.result.final_content,
-        "provider-private-history:reactivated"
+        resumed.result.final_content.as_deref(),
+        Some("provider-private-history:reactivated")
     );
     assert!(!lock_provider_worker_registry(&host.provider_workers)
         .unwrap()
@@ -686,8 +686,8 @@ async fn capacity_evicts_oldest_dormant_child_and_reload_reaps_remaining_history
         .await
         .unwrap();
     assert_eq!(
-        resumed.result.final_content,
-        "provider-private-history:newer"
+        resumed.result.final_content.as_deref(),
+        Some("provider-private-history:newer")
     );
     let mut close_newer = close("newer");
     close_newer.generation = 8;
@@ -708,7 +708,7 @@ async fn capacity_evicts_oldest_dormant_child_and_reload_reaps_remaining_history
         .invoke_stream(&id, task_input("newer", 9, "recall"))
         .await
         .unwrap();
-    assert_eq!(fresh.result.final_content, "missing");
+    assert_eq!(fresh.result.final_content.as_deref(), Some("missing"));
     host.stop_all().await.unwrap();
 }
 
