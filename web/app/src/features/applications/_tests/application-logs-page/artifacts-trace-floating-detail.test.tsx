@@ -161,12 +161,12 @@ const runtimeApi = vi.hoisted(() => ({
 
 vi.mock('../../api/runtime', () => runtimeApi);
 vi.mock('../../api/trajectory', () => ({
-  fetchProviderTrajectory: vi.fn().mockResolvedValue({
+  fetchWorkflowTrajectory: vi.fn().mockResolvedValue({
     items: [],
     next_cursor: null,
-    observation_count: 0,
-    persist_failed_count: 0,
-    integrity: 'unavailable'
+    nodes: [],
+    time_start: null,
+    time_end: null
   }),
   fetchProviderTrajectoryBody: vi.fn()
 }));

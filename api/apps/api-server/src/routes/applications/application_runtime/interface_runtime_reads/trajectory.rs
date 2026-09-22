@@ -185,3 +185,41 @@ impl ApplicationRuntimeReadsAdapter {
             .ok_or_else(|| ControlPlaneError::NotFound("provider_protocol_observation").into())
     }
 }
+
+impl ApplicationRuntimeReadsAdapter {
+    pub(super) async fn workflow_trajectory_page(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        run_id: Uuid,
+        query: control_plane::ports::WorkflowTrajectoryQuery,
+    ) -> Result<control_plane::ports::WorkflowTrajectoryPage, ApiError> {
+        self.visible_trajectory_run(actor, application_id, run_id)
+            .await?;
+        self.store
+            .workflow_trajectory_page(application_id, run_id, query)
+            .await
+            .map_err(|error| {
+                if error.is::<control_plane::ports::InvalidWorkflowTrajectoryQuery>() {
+                    ControlPlaneError::InvalidInput("workflow_trajectory_query").into()
+                } else {
+                    ApiError::from(error)
+                }
+            })
+    }
+
+    pub(super) async fn workflow_trajectory_body(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        run_id: Uuid,
+        event_id: &str,
+    ) -> Result<control_plane::ports::WorkflowTrajectoryBody, ApiError> {
+        self.visible_trajectory_run(actor, application_id, run_id)
+            .await?;
+        self.store
+            .workflow_trajectory_body(application_id, run_id, event_id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("workflow_event").into())
+    }
+}

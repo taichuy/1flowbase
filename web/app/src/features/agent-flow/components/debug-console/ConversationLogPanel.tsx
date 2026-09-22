@@ -1,7 +1,4 @@
-import {
-  activityCategory,
-  TraceActivityDetailContext
-} from './trajectory/activities/activity-model';
+import { TraceActivityDetailContext } from './trajectory/activities/activity-model';
 import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import {
   useCallback,
@@ -533,17 +530,12 @@ function LazyTraceNodeList({
   runId: string;
   traceLoader: ConversationLogTraceLoader;
 }) {
-  const activityDetail = useContext(TraceActivityDetailContext);
-  const displayedNodes =
-    activityDetail || !traceLoader.loadRunTrajectory
-      ? nodes
-      : nodes.filter((node) => activityCategory(node) === null);
   return (
     <div
       aria-label={i18nText('agentFlow', 'auto.tracking_nodes')}
       className="agent-flow-editor__conversation-log-node-list"
     >
-      {displayedNodes.map((node) => (
+      {nodes.map((node) => (
         <LazyTraceNodeItem
           key={`${runId}:${node.trace_node_id}`}
           defaultToolsExpanded={defaultToolsExpanded}
@@ -657,6 +649,7 @@ function FlattenedToolModeTraceNodeChild({
 }
 
 export function LazyTraceNodeItem({
+  detailOnly = false,
   initiallyExpanded = false,
   defaultToolsExpanded,
   node,
@@ -667,6 +660,7 @@ export function LazyTraceNodeItem({
 }: {
   defaultToolsExpanded: boolean;
   initiallyExpanded?: boolean;
+  detailOnly?: boolean;
   node: ConversationLogTraceNodeSummary;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
@@ -715,7 +709,7 @@ export function LazyTraceNodeItem({
         }
       : undefined;
   const childrenQuery = useQuery({
-    enabled: expanded && node.has_children,
+    enabled: expanded && node.has_children && !detailOnly,
     queryKey: [
       'conversation-log-trace-node-children',
       runId,
@@ -788,7 +782,8 @@ export function LazyTraceNodeItem({
   const contentLoading = contentQuery.isLoading;
   const loadToolCallbackDetail = traceLoader.loadToolCallbackDetail;
   const childNodesBeforePayload =
-    visibleChildNodes.length > 0 || toolModeNodes.length > 0 ? (
+    !detailOnly &&
+    (visibleChildNodes.length > 0 || toolModeNodes.length > 0) ? (
       <>
         <FlattenedToolModeTraceNodeChildren
           defaultToolsExpanded={defaultToolsExpanded}

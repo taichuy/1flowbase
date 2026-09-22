@@ -1,10 +1,10 @@
 import type { ConversationLogTraceLoader } from '../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
+  fetchWorkflowTrajectory,
+  fetchWorkflowTrajectoryBody,
   fetchClientTrajectory,
   fetchClientTrajectorySection,
-  fetchProviderTrajectory,
   fetchProviderTrajectoryBody,
-  fetchRunTrajectory,
   fetchRunPayload
 } from '../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
@@ -1010,6 +1010,10 @@ export function ApplicationLogsPage({
       fetchRuntimeDebugArtifact(applicationId, artifactRef),
     loadArtifacts: (artifactRefs) =>
       fetchRuntimeDebugArtifacts(applicationId, artifactRefs),
+    loadWorkflowTrajectory: (runId, cursor, options) =>
+      fetchWorkflowTrajectory(applicationId, runId, cursor, options),
+    loadWorkflowTrajectoryBody: (runId, eventId) =>
+      fetchWorkflowTrajectoryBody(applicationId, runId, eventId),
     loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
       fetchClientTrajectory(applicationId, runId, nodeRunId, cursor, options),
     loadClientTrajectorySection: (runId, stepId, section, nodeRunId, cursor) =>
@@ -1021,10 +1025,6 @@ export function ApplicationLogsPage({
         nodeRunId,
         cursor
       ),
-    loadRunTrajectory: (runId, cursor, options) =>
-      fetchRunTrajectory(applicationId, runId, cursor, options),
-    loadTrajectory: (runId, nodeRunId, cursor, options) =>
-      fetchProviderTrajectory(applicationId, runId, nodeRunId, cursor, options),
     loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
       fetchProviderTrajectoryBody(
         applicationId,

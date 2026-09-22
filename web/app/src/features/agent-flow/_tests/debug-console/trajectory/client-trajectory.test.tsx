@@ -104,7 +104,7 @@ function fixture(namespace: string | null = null) {
         next_cursor: null
       })
     );
-  const loadRunTrajectory = vi
+  const loadWorkflowTrajectory = vi
     .fn()
     .mockResolvedValue({ items: [], next_cursor: null });
   const loader: ConversationLogTraceLoader = {
@@ -113,7 +113,7 @@ function fixture(namespace: string | null = null) {
     loadContent: vi.fn(),
     loadClientTrajectory,
     loadClientTrajectorySection,
-    loadRunTrajectory
+    loadWorkflowTrajectory
   };
   render(
     <QueryClientProvider
@@ -127,21 +127,21 @@ function fixture(namespace: string | null = null) {
   return {
     loadClientTrajectory,
     loadClientTrajectorySection,
-    loadRunTrajectory
+    loadWorkflowTrajectory
   };
 }
 test('defaults to original client classification and lazily loads only selected sections', async () => {
   const {
     loadClientTrajectory,
     loadClientTrajectorySection,
-    loadRunTrajectory
+    loadWorkflowTrajectory
   } = fixture();
   expect(loadClientTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   const call = await screen.findByRole('button', {
     name: '工具调用 · exec_command'
   });
-  expect(loadRunTrajectory).not.toHaveBeenCalled();
+  expect(loadWorkflowTrajectory).not.toHaveBeenCalled();
   expect(loadClientTrajectorySection).not.toHaveBeenCalled();
   fireEvent.click(call);
   await waitFor(() =>

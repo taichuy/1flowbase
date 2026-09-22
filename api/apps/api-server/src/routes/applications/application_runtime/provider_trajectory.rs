@@ -1,3 +1,4 @@
+pub(crate) mod workflow;
 use super::*;
 use control_plane::ports::{
     ProviderTrajectoryBody, ProviderTrajectoryPage, ProviderTrajectoryView,

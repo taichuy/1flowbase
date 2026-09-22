@@ -21,6 +21,8 @@ export function TrajectoryTimeline({
   onChange,
   onSelect,
   selected,
+  extent,
+  laneLabels,
   timeScale = true
 }: {
   points: TimelinePoint[];
@@ -29,6 +31,8 @@ export function TrajectoryTimeline({
   onSelect: (id: string) => void;
   selected: string | null;
   timeScale?: boolean;
+  extent?: readonly [number, number];
+  laneLabels?: readonly [string, string, string];
 }) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<{
@@ -39,12 +43,13 @@ export function TrajectoryTimeline({
     moved: boolean;
   } | null>(null);
   const domain = useMemo(() => {
+    if (extent) return extent;
     const values = points.map((p) => p.value).filter(Number.isFinite);
     return values.reduce(
       ([min, max], value) => [Math.min(min, value), Math.max(max, value)],
       [values[0] ?? 0, values[0] ?? 0]
     );
-  }, [points]);
+  }, [points, extent]);
   const [min, max] = domain;
   const span = Math.max(1, max - min);
   const position = (value: number) =>
@@ -92,9 +97,9 @@ export function TrajectoryTimeline({
     >
       <div className="provider-trajectory__timeline">
         <div className="provider-trajectory__lane-labels">
-          <span>{i18nText('agentFlow', 'auto.input')}</span>
-          <span>{i18nText('agentFlow', 'auto.model')}</span>
-          <span>{i18nText('agentFlow', 'auto.tools')}</span>
+          <span>{laneLabels?.[0] ?? i18nText('agentFlow', 'auto.input')}</span>
+          <span>{laneLabels?.[1] ?? i18nText('agentFlow', 'auto.model')}</span>
+          <span>{laneLabels?.[2] ?? i18nText('agentFlow', 'auto.tools')}</span>
         </div>
         <div
           ref={track}

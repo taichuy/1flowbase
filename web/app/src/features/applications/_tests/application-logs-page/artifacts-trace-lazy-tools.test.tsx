@@ -1,4 +1,4 @@
-import { fetchProviderTrajectory } from '../../api/trajectory';
+import { fetchWorkflowTrajectory } from '../../api/trajectory';
 import { configureExecutionProjection } from './trajectory/projection';
 import { openPayloadSection } from '../../../agent-flow/_tests/debug-console/trajectory/navigation';
 import { App as AntdApp } from 'antd';
@@ -162,12 +162,12 @@ const runtimeApi = vi.hoisted(() => ({
 
 vi.mock('../../api/runtime', () => runtimeApi);
 vi.mock('../../api/trajectory', () => ({
-  fetchProviderTrajectory: vi.fn().mockResolvedValue({
+  fetchWorkflowTrajectory: vi.fn().mockResolvedValue({
     items: [],
     next_cursor: null,
-    observation_count: 0,
-    persist_failed_count: 0,
-    integrity: 'unavailable'
+    nodes: [],
+    time_start: null,
+    time_end: null
   }),
   fetchProviderTrajectoryBody: vi.fn()
 }));
@@ -434,17 +434,17 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
     const execution = await openLazyLlmNodeDetail(panel);
     const { tool } = await openTool(execution);
     expect(tool).toHaveTextContent('智能路由');
-    expect(fetchProviderTrajectory).not.toHaveBeenCalled();
+    expect(fetchWorkflowTrajectory).not.toHaveBeenCalled();
     fireEvent.click(
       within(execution).getByRole('button', { name: '调用轨迹' })
     );
     const trajectory = await screen.findByRole('dialog', { name: '调用轨迹' });
     await waitFor(() =>
-      expect(fetchProviderTrajectory).toHaveBeenCalledWith(
+      expect(fetchWorkflowTrajectory).toHaveBeenCalledWith(
         'app-1',
         'run-prior-route',
-        'execution-1',
-        undefined
+        undefined,
+        expect.objectContaining({ node_run_id: 'execution-1', category: 'all' })
       )
     );
     fireEvent.click(

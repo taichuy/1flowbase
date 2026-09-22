@@ -89,6 +89,19 @@ pub enum ApplicationRunPayloadSection {
 
 #[async_trait]
 pub trait ProviderTrajectoryRepository: Send + Sync {
+    async fn workflow_trajectory_page(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        query: super::workflow_trajectory::WorkflowTrajectoryQuery,
+    ) -> anyhow::Result<super::workflow_trajectory::WorkflowTrajectoryPage>;
+    async fn workflow_trajectory_body(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        event_id: &str,
+    ) -> anyhow::Result<Option<super::workflow_trajectory::WorkflowTrajectoryBody>>;
+
     async fn provider_trajectory_filtered_page(
         &self,
         flow_run_id: Uuid,

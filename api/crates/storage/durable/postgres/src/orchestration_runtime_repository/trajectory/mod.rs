@@ -1,6 +1,7 @@
 use super::*;
 mod native_body;
 mod sections;
+mod workflow;
 use control_plane_contracts::ports::{
     ApplicationRunPayloadSection, ProviderTrajectoryBody, ProviderTrajectoryEvidence,
     ProviderTrajectoryPage, ProviderTrajectoryRepository, ProviderTrajectoryStep,
@@ -9,6 +10,25 @@ use control_plane_contracts::ports::{
 
 #[async_trait]
 impl ProviderTrajectoryRepository for PgControlPlaneStore {
+    async fn workflow_trajectory_page(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        query: control_plane_contracts::ports::WorkflowTrajectoryQuery,
+    ) -> Result<control_plane_contracts::ports::WorkflowTrajectoryPage> {
+        self.read_workflow_trajectory(application_id, flow_run_id, query)
+            .await
+    }
+    async fn workflow_trajectory_body(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        event_id: &str,
+    ) -> Result<Option<control_plane_contracts::ports::WorkflowTrajectoryBody>> {
+        self.read_workflow_trajectory_body(application_id, flow_run_id, event_id)
+            .await
+    }
+
     async fn provider_trajectory_filtered_page(
         &self,
         flow_run_id: Uuid,

@@ -1,0 +1,52 @@
+.workflow-trajectory__categories {
+  max-width: 100%;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.workflow-trajectory__node-filter {
+  min-width: 200px;
+  max-width: 360px;
+}
+.workflow-trajectory__identity {
+  flex: none;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.workflow-trajectory__identity small {
+  color: var(--text-secondary);
+}
+.workflow-trajectory .provider-trajectory__preview > strong {
+  display: block;
+}
+.workflow-trajectory .provider-trajectory__preview > span {
+  display: block;
+}
+.workflow-trajectory .provider-trajectory__row-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .workflow-trajectory__node-filter {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (min-width: 641px) {
+  .workflow-trajectory .provider-trajectory__row {
+    grid-template-columns: 20px 112px minmax(0, 1fr) 135px;
+  }
+}
+
+.workflow-trajectory .provider-trajectory__lane-labels {
+  width: 112px;
+  white-space: nowrap;
+}
+.workflow-trajectory .trajectory-timeline__caption {
+  padding-inline-start: 112px;
+}

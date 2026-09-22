@@ -1,4 +1,5 @@
 import './navigation';
+import { workflowNative, workflowPage } from './workflow-fixture';
 import {
   fireEvent,
   render,
@@ -100,15 +101,14 @@ function fixture(nodeRunId?: string) {
         integrity: 'complete'
       })
     );
-  const loadRunTrajectory = vi.fn().mockResolvedValue({
-    items: [
-      invocation('first-call', 0, 'prewarm'),
-      invocation('retry-call', 1, 'generate')
-    ],
-    next_cursor: null,
-    integrity: 'complete',
-    protocol_integrity: 'not_recorded'
-  });
+  const loadWorkflowTrajectory = vi
+    .fn()
+    .mockResolvedValue(
+      workflowPage([
+        workflowNative(invocation('first-call', 0, 'prewarm')),
+        workflowNative(invocation('retry-call', 1, 'generate'))
+      ])
+    );
   const loadTrajectoryBody = vi.fn().mockResolvedValue({
     source: 'ai_native',
     evidence_scope: 'step',
@@ -132,8 +132,7 @@ function fixture(nodeRunId?: string) {
     loadChildren: vi.fn(),
     loadContent: vi.fn(),
     loadClientTrajectory,
-    loadRunTrajectory,
-    loadTrajectory: loadRunTrajectory,
+    loadWorkflowTrajectory,
     loadTrajectoryBody
   };
   render(
@@ -149,10 +148,10 @@ function fixture(nodeRunId?: string) {
       />
     </QueryClientProvider>
   );
-  return { loadClientTrajectory, loadRunTrajectory, loadTrajectoryBody };
+  return { loadClientTrajectory, loadWorkflowTrajectory, loadTrajectoryBody };
 }
 test('opens request-linked invocation choices, resolves cross-run source by focus, and restores the original view', async () => {
-  const { loadClientTrajectory, loadRunTrajectory } = fixture();
+  const { loadClientTrajectory, loadWorkflowTrajectory } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /Current request/ })
@@ -165,12 +164,21 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   ledger.scrollTop = 123;
   fireEvent.click(screen.getByRole('button', { name: '查看关联内部调用' }));
   await waitFor(() =>
-    expect(loadRunTrajectory).toHaveBeenCalledWith('run-current', undefined, {
-      request_id: 'request-current',
-      focus_event_id: undefined
-    })
+    expect(loadWorkflowTrajectory).toHaveBeenCalledWith(
+      'run-current',
+      undefined,
+      {
+        category: 'all',
+        node_run_id: undefined,
+        from: undefined,
+        to: undefined,
+        request_id: 'request-current'
+      }
+    )
   );
-  const calls = await screen.findAllByRole('button', { name: '模型调用准备' });
+  const calls = await screen.findAllByRole('button', {
+    name: /^模型调用准备 ·/
+  });
   expect(calls).toHaveLength(2);
   expect(screen.getByText('预热')).toBeInTheDocument();
   expect(screen.getByText('生成')).toBeInTheDocument();
@@ -194,7 +202,7 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
     await screen.findByRole('button', { name: /Previous request/ })
   ).toHaveAttribute('aria-pressed', 'true');
   expect(loadClientTrajectory).toHaveBeenCalledTimes(2);
-  expect(loadRunTrajectory).toHaveBeenCalledTimes(1);
+  expect(loadWorkflowTrajectory).toHaveBeenCalledTimes(1);
   expect(
     screen.queryByRole('button', { name: '返回上一视图' })
   ).not.toBeInTheDocument();
@@ -211,15 +219,17 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   expect(ledger.scrollTop).toBe(123);
 });
 test('node entry defaults to grouped internal events and historical missing metadata stays unknown', async () => {
-  const { loadClientTrajectory, loadRunTrajectory } = fixture('node-current');
+  const { loadClientTrajectory, loadWorkflowTrajectory } =
+    fixture('node-current');
   const historical = invocation('historical-call', 0, 'unknown');
   historical.links = [];
-  loadRunTrajectory.mockResolvedValue({
-    items: [historical],
-    next_cursor: null
-  });
+  loadWorkflowTrajectory.mockResolvedValue(
+    workflowPage([workflowNative(historical)])
+  );
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
-  fireEvent.click(await screen.findByRole('button', { name: '模型调用准备' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /^模型调用准备 ·/ })
+  );
   expect(loadClientTrajectory).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: '调用分组' })).toHaveAttribute(
     'aria-pressed',
@@ -232,8 +242,8 @@ test('node entry defaults to grouped internal events and historical missing meta
   expect(await within(detail).findByText(/retained/)).toBeInTheDocument();
 });
 test('request without linked invocations shows an empty state without inventing calls', async () => {
-  const { loadRunTrajectory } = fixture();
-  loadRunTrajectory.mockResolvedValue({ items: [], next_cursor: null });
+  const { loadWorkflowTrajectory } = fixture();
+  loadWorkflowTrajectory.mockResolvedValue(workflowPage([]));
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   fireEvent.click(
     await screen.findByRole('button', { name: /Current request/ })
@@ -252,11 +262,13 @@ test.each([
 ] as const)(
   'shows recorded %s duration %s without inventing missing timing',
   async (kind, duration_ms, text) => {
-    const { loadRunTrajectory } = fixture('node-current');
+    const { loadWorkflowTrajectory } = fixture('node-current');
     const event = invocation('timed-event', 0, 'generate');
     event.metadata.kind = kind;
     event.metadata.duration_ms = duration_ms;
-    loadRunTrajectory.mockResolvedValue({ items: [event], next_cursor: null });
+    loadWorkflowTrajectory.mockResolvedValue(
+      workflowPage([workflowNative(event)])
+    );
     fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
     const label =
       kind === 'model_reply'
@@ -264,7 +276,7 @@ test.each([
         : kind === 'error'
           ? '调用错误'
           : '模型调用准备';
-    fireEvent.click(await screen.findByRole('button', { name: label }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label} ·`) }));
     const detail = within(screen.getByRole('complementary'));
     if (text) expect(detail.getByText(text)).toBeInTheDocument();
     else expect(detail.queryByText(/^耗时:/)).not.toBeInTheDocument();

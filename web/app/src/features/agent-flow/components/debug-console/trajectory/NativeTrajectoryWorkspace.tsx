@@ -1,16 +1,14 @@
-import { WorkflowActivityWorkspace } from './activities/WorkflowActivityWorkspace';
-import type { ActivityCategory } from './activities/activity-model';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Input, Spin, Tooltip, Segmented } from 'antd';
+import { Alert, Button, Empty, Spin, Segmented, Select } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
-import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
-import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
-import UnorderedListOutlined from '@ant-design/icons/es/icons/UnorderedListOutlined';
 import type {
+  WorkflowTrajectoryPage,
+  WorkflowTrajectoryEvent,
+  WorkflowTrajectoryCategory,
   ProviderTrajectoryStep,
   ProviderTrajectoryOptions
 } from '@1flowbase/api-client';
@@ -18,22 +16,20 @@ import type { ConversationLogTraceLoader } from '../conversation-log-trace-model
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
 import { TrajectoryStepDetail } from './TrajectoryStepDetail';
+import { purposeLabel } from './trajectory-presentation';
 import {
-  integrityLabel,
-  purposeLabel,
-  invocationKey,
-  stepLabel,
-  stepLane
-} from './trajectory-presentation';
-import {
-  TrajectoryTimeline,
-  inTrajectoryRange,
-  type TrajectoryRange
-} from './TrajectoryTimeline';
+  workflowEventLabel,
+  workflowEventLane,
+  workflowGroupKey,
+  workflowNodeName
+} from './workflow/presentation';
+import { WorkflowEventDetail } from './workflow/WorkflowEventDetail';
+import { TrajectoryTimeline, type TrajectoryRange } from './TrajectoryTimeline';
 import { useProgressiveTrajectory } from './use-progressive-trajectory';
 import './provider-trajectory.css';
+import './workflow/workflow-trajectory.css';
 
-function NativeInvocationWorkspace({
+export function NativeTrajectoryWorkspace({
   runId,
   nodeRunId,
   loader,
@@ -57,26 +53,33 @@ function NativeInvocationWorkspace({
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
-  const [search, setSearch] = useState('');
-  const [timeScale, setTimeScale] = useState(true);
+  const [category, setCategory] = useState<WorkflowTrajectoryCategory>('all');
+  const [nodeFilter, setNodeFilter] = useState<string | undefined>(nodeRunId);
   const [groupCalls, setGroupCalls] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const rows = useRef(new Map<string, HTMLButtonElement>());
+  const filters = {
+    category,
+    node_run_id: nodeFilter,
+    request_id: options?.request_id,
+    from: timeRange ? new Date(timeRange[0]).toISOString() : undefined,
+    to: timeRange ? new Date(timeRange[1]).toISOString() : undefined
+  };
   const pages = useInfiniteQuery({
-    queryKey: ['provider-trajectory', runId, nodeRunId ?? 'run', options],
-    enabled:
-      active &&
-      Boolean(nodeRunId ? loader.loadTrajectory : loader.loadRunTrajectory),
-    initialPageParam: undefined as number | undefined,
+    queryKey: ['workflow-trajectory', runId, filters],
+    enabled: active && Boolean(loader.loadWorkflowTrajectory),
+    initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
-      nodeRunId
-        ? loader.loadTrajectory!(runId, nodeRunId, pageParam, options)
-        : loader.loadRunTrajectory!(runId, pageParam, options),
-    getNextPageParam: (page, _pages, cursor) =>
-      page.next_cursor != null &&
-      (cursor === undefined || page.next_cursor > cursor)
+      loader.loadWorkflowTrajectory!(runId, pageParam, filters),
+    getNextPageParam: (page, all, cursor) =>
+      page.next_cursor &&
+      page.next_cursor !== cursor &&
+      !all
+        .slice(0, -1)
+        .some((previous) => previous.next_cursor === page.next_cursor)
         ? page.next_cursor
         : undefined,
+    staleTime: 60_000,
     refetchOnWindowFocus: false
   });
   useProgressiveTrajectory(active, pages);
@@ -84,47 +87,35 @@ function NativeInvocationWorkspace({
     () => pages.data?.pages.flatMap((page) => page.items) ?? [],
     [pages.data]
   );
-  const overview = pages.data?.pages[0];
-  const selectedStep = items.find((step) => step.event_id === selected);
+  const [scopeOverview, setScopeOverview] = useState<WorkflowTrajectoryPage>();
+  const overview = pages.data?.pages[0] ?? scopeOverview;
+  useEffect(() => {
+    if (pages.data?.pages[0]) setScopeOverview(pages.data.pages[0]);
+  }, [pages.data]);
+  const selectedStep = items.find(
+    (step) =>
+      step.event_id === selected || step.native_step?.event_id === selected
+  );
   function resizeDetail(width: number) {
     const available = split.current?.clientWidth ?? 1000;
     setDetailWidth(Math.max(320, Math.min(720, available - 280, width)));
   }
-  const query = search.trim().toLocaleLowerCase();
-  const matches = items.filter(
-    (step, index) =>
-      inTrajectoryRange(
-        timeScale ? Date.parse(step.created_at) : index,
-        timeRange
-      ) &&
-      (!query ||
-        [
-          stepLabel(step),
-          step.metadata.preview,
-          step.metadata.node_id,
-          step.metadata.tool_call_id,
-          step.metadata.invocation_id
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase()
-          .includes(query))
-  );
+  const matches = items;
   const groups = useMemo(() => {
-    const result = new Map<string, ProviderTrajectoryStep[]>();
+    const result: Array<[string, WorkflowTrajectoryEvent[]]> = [];
     for (const step of matches) {
-      const key = invocationKey(step);
-      const group = result.get(key) ?? [];
-      group.push(step);
-      result.set(key, group);
+      const key = workflowGroupKey(step);
+      const last = result.at(-1);
+      if (last?.[0] === key) last[1].push(step);
+      else result.push([key, [step]]);
     }
-    return [...result.entries()];
+    return result;
   }, [matches]);
-  function focusStep(step: ProviderTrajectoryStep) {
+  function focusStep(step: WorkflowTrajectoryEvent) {
     setSelected(step.event_id);
     setCollapsed((current) => {
       const next = new Set(current);
-      next.delete(invocationKey(step));
+      next.delete(workflowGroupKey(step));
       return next;
     });
     requestAnimationFrame(() =>
@@ -133,7 +124,7 @@ function NativeInvocationWorkspace({
         ?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
     );
   }
-  function renderStep(step: ProviderTrajectoryStep) {
+  function renderStep(step: WorkflowTrajectoryEvent) {
     const isSelected = selected === step.event_id;
     return (
       <button
@@ -144,53 +135,76 @@ function NativeInvocationWorkspace({
         }}
         type="button"
         className="provider-trajectory__row"
-        data-lane={stepLane(step)}
+        data-lane={workflowEventLane(step)}
         data-selected={isSelected || undefined}
-        aria-label={stepLabel(step)}
+        aria-label={`${workflowEventLabel(step)} · ${workflowNodeName(step)} · ${step.node_run_id ?? step.flow_run_id}`}
         aria-pressed={isSelected}
         onClick={() => setSelected(step.event_id)}
       >
         <span className="provider-trajectory__marker" aria-hidden="true" />
-        <span className="provider-trajectory__kind">{stepLabel(step)}</span>
+        <span className="provider-trajectory__kind">
+          {workflowEventLabel(step)}
+        </span>
         <span className="provider-trajectory__preview">
-          {step.metadata.preview ||
-            step.metadata.tool_call_id ||
-            step.metadata.node_id ||
-            '—'}
+          <strong>{workflowNodeName(step)}</strong>
+          <span>
+            {step.preview === step.event_type
+              ? workflowEventLabel(step)
+              : step.preview || '—'}
+          </span>
+          {step.parent_task_run_id ? (
+            <small>
+              {i18nText('agentFlow', 'trajectory.parent_task')}:{' '}
+              {step.parent_task_run_id}
+            </small>
+          ) : null}
         </span>
         <span
           className="provider-trajectory__row-time"
           title={formatDateTime(step.created_at)}
         >
-          #{step.event_sequence}
+          {formatDateTime(step.created_at)}
         </span>
       </button>
     );
   }
   return (
-    <div className="provider-trajectory">
+    <div className="provider-trajectory workflow-trajectory">
+      <Segmented
+        className="workflow-trajectory__categories"
+        aria-label={i18nText('agentFlow', 'trajectory.activity_category')}
+        value={category}
+        onChange={(value) => setCategory(value as WorkflowTrajectoryCategory)}
+        options={[
+          {
+            value: 'all',
+            label: i18nText('agentFlow', 'trajectory.all_events')
+          },
+          {
+            value: 'nodes',
+            label: i18nText('agentFlow', 'trajectory.node_events')
+          },
+          {
+            value: 'requests',
+            label: i18nText('agentFlow', 'client_trajectory.request')
+          },
+          { value: 'tools', label: i18nText('agentFlow', 'auto.tools') },
+          {
+            value: 'rounds',
+            label: i18nText('agentFlow', 'trajectory.round_activities')
+          },
+          {
+            value: 'agents',
+            label: i18nText('agentFlow', 'trajectory.agent_activities')
+          }
+        ]}
+      />
       <div
         className="provider-trajectory__toolbar"
         role="toolbar"
         aria-label={i18nText('agentFlow', 'trajectory.overview')}
       >
         <div className="provider-trajectory__controls">
-          <Button
-            size="small"
-            type="text"
-            icon={
-              timeScale ? <ClockCircleOutlined /> : <UnorderedListOutlined />
-            }
-            aria-pressed={timeScale}
-            onClick={() => {
-              setTimeScale(!timeScale);
-              setTimeRange(null);
-            }}
-          >
-            {timeScale
-              ? i18nText('agentFlow', 'trajectory.time_axis')
-              : i18nText('agentFlow', 'trajectory.sequence_axis')}
-          </Button>
           <Button
             size="small"
             type="text"
@@ -201,47 +215,44 @@ function NativeInvocationWorkspace({
           >
             {i18nText('agentFlow', 'trajectory.group_calls')}
           </Button>
-          <Tooltip
-            title={i18nText('agentFlow', 'trajectory.semantic_integrity')}
-          >
-            <span
-              className="provider-trajectory__integrity"
-              data-status={overview?.integrity}
-            >
-              {i18nText('agentFlow', 'trajectory.semantic_integrity')}:{' '}
-              {integrityLabel(overview?.integrity)}
-            </span>
-          </Tooltip>
         </div>
-        <Input
-          size="small"
-          className="provider-trajectory__search"
-          prefix={<SearchOutlined />}
-          allowClear
-          value={search}
-          aria-label={i18nText('agentFlow', 'trajectory.search')}
-          placeholder={i18nText('agentFlow', 'trajectory.search')}
-          onChange={(event) => setSearch(event.target.value)}
+        <Select
+          allowClear={!nodeRunId}
+          value={nodeFilter}
+          disabled={Boolean(nodeRunId)}
+          className="workflow-trajectory__node-filter"
+          aria-label={i18nText('agentFlow', 'trajectory.node_filter')}
+          placeholder={i18nText('agentFlow', 'trajectory.all_nodes')}
+          options={(overview?.nodes ?? []).map((node) => ({
+            value: node.node_run_id,
+            label: `${workflowNodeName(node)} · ${node.node_id}`
+          }))}
+          onChange={setNodeFilter}
         />
       </div>
       <TrajectoryTimeline
-        points={items.map((step, index) => ({
+        laneLabels={[
+          i18nText('agentFlow', 'trajectory.node_input_lane'),
+          i18nText('agentFlow', 'trajectory.task_request_lane'),
+          i18nText('agentFlow', 'auto.tools')
+        ]}
+        points={items.map((step) => ({
           id: step.event_id,
-          value: timeScale ? Date.parse(step.created_at) : index,
-          lane: stepLane(step),
-          label: i18nText('agentFlow', 'trajectory.locate_step', {
-            sequence: step.event_sequence,
-            kind: stepLabel(step)
-          })
+          value: Date.parse(step.created_at),
+          lane: workflowEventLane(step),
+          label: `${workflowNodeName(step)} · ${workflowEventLabel(step)} · ${formatDateTime(step.created_at)}`
         }))}
         range={timeRange}
         onChange={setTimeRange}
         selected={selected}
-        timeScale={timeScale}
+        extent={
+          overview?.time_start && overview.time_end
+            ? [Date.parse(overview.time_start), Date.parse(overview.time_end)]
+            : undefined
+        }
         onSelect={(id) => {
           const step = items.find((item) => item.event_id === id);
           if (step) {
-            setSearch('');
             focusStep(step);
           }
         }}
@@ -289,7 +300,7 @@ function NativeInvocationWorkspace({
           ) : null}
           {groupCalls
             ? groups.map(([key, steps]) => (
-                <section key={key}>
+                <section key={`${key}:${steps[0].event_id}`}>
                   <button
                     type="button"
                     className="provider-trajectory__group"
@@ -304,17 +315,23 @@ function NativeInvocationWorkspace({
                     }
                   >
                     {collapsed.has(key) ? <RightOutlined /> : <DownOutlined />}
-                    <span>
-                      {steps[0].metadata.node_id ||
-                        steps[0].metadata.node_run_id}
-                    </span>
+                    <strong>{workflowNodeName(steps[0])}</strong>
+                    {steps[0].native_step ? (
+                      <span>
+                        {purposeLabel(steps[0].native_step.metadata.purpose)}
+                      </span>
+                    ) : null}
                     <span className="provider-trajectory__group-id">
-                      {steps[0].metadata.invocation_id} ·{' '}
-                      {i18nText('agentFlow', 'trajectory.attempt', {
-                        count: steps[0].metadata.provider_attempt_index
-                      })}
+                      {steps[0].native_step?.metadata.invocation_id ??
+                        steps[0].node_id ??
+                        steps[0].task_run_id}
                     </span>
-                    <span>{purposeLabel(steps[0].metadata.purpose)}</span>
+                    {steps[0].parent_task_run_id ? (
+                      <span>
+                        {i18nText('agentFlow', 'trajectory.parent_task')}:{' '}
+                        {steps[0].parent_task_run_id}
+                      </span>
+                    ) : null}
                     <span>
                       {i18nText('agentFlow', 'trajectory.loaded_steps', {
                         count: steps.length
@@ -337,7 +354,7 @@ function NativeInvocationWorkspace({
             className="provider-trajectory__inspector"
             style={detailWidth === null ? undefined : { width: detailWidth }}
             aria-label={i18nText('agentFlow', 'trajectory.inspector')}
-            data-lane={stepLane(selectedStep)}
+            data-lane={workflowEventLane(selectedStep)}
           >
             <div
               className="provider-trajectory__resize"
@@ -381,10 +398,10 @@ function NativeInvocationWorkspace({
             />
             <div className="provider-trajectory__inspector-header">
               <span className="provider-trajectory__kind">
-                {stepLabel(selectedStep)}
+                {workflowEventLabel(selectedStep)}
               </span>
               <span className="provider-trajectory__row-time">
-                #{selectedStep.event_sequence}
+                {formatDateTime(selectedStep.created_at)}
               </span>
               <Button
                 size="small"
@@ -400,16 +417,25 @@ function NativeInvocationWorkspace({
                 }}
               />
             </div>
-            <TrajectoryStepDetail
+            <WorkflowEventDetail
               key={selectedStep.event_id}
-              step={selectedStep}
+              event={selectedStep}
+              runId={runId}
               loader={loader}
-              onClient={onClient}
-            />
+            >
+              {selectedStep.native_step ? (
+                <TrajectoryStepDetail
+                  step={selectedStep.native_step}
+                  loader={loader}
+                  onClient={onClient}
+                />
+              ) : null}
+            </WorkflowEventDetail>
           </aside>
         ) : null}
       </div>
       <footer className="provider-trajectory__footer">
+        <span>{i18nText('agentFlow', 'trajectory.chronology_note')}</span>
         <span>
           {i18nText('agentFlow', 'trajectory.loaded_steps', {
             count: items.length
@@ -420,62 +446,7 @@ function NativeInvocationWorkspace({
             ? i18nText('agentFlow', 'trajectory.node_scope')
             : i18nText('agentFlow', 'trajectory.run_scope')}
         </span>
-        {overview?.persist_failed_count ? (
-          <span>
-            {i18nText('agentFlow', 'trajectory.failed_records', {
-              count: overview.persist_failed_count
-            })}
-          </span>
-        ) : null}
       </footer>
-    </div>
-  );
-}
-
-export function NativeTrajectoryWorkspace(
-  props: Parameters<typeof NativeInvocationWorkspace>[0]
-) {
-  const [category, setCategory] = useState<'model' | ActivityCategory>('model');
-  return (
-    <div className="provider-trajectory">
-      {!props.options?.request_id ? (
-        <Segmented
-          aria-label={i18nText('agentFlow', 'trajectory.activity_category')}
-          value={category}
-          onChange={(value) => setCategory(value as 'model' | ActivityCategory)}
-          options={[
-            {
-              value: 'model',
-              label: i18nText('agentFlow', 'trajectory.model_events')
-            },
-            {
-              value: 'tools',
-              label: i18nText('agentFlow', 'auto.tools')
-            },
-            {
-              value: 'rounds',
-              label: i18nText('agentFlow', 'trajectory.round_activities')
-            },
-            {
-              value: 'agents',
-              label: i18nText('agentFlow', 'trajectory.agent_activities')
-            }
-          ]}
-        />
-      ) : null}
-      {category === 'model' || props.options?.request_id ? (
-        <NativeInvocationWorkspace {...props} />
-      ) : (
-        <WorkflowActivityWorkspace
-          key={`${props.runId}:${props.nodeRunId ?? ''}:${category}`}
-          runId={props.runId}
-          nodeRunId={props.nodeRunId}
-          loader={props.loader}
-          active={props.active ?? true}
-          category={category}
-          onClient={props.onClient}
-        />
-      )}
     </div>
   );
 }

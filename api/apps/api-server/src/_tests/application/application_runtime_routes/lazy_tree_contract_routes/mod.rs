@@ -237,3 +237,4 @@ mod route_provider_events;
 mod tool_detail_loading;
 
 mod run_trajectory;
+mod workflow_trajectory;

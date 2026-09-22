@@ -1,32 +1,16 @@
 import {
+  getConsoleWorkflowTrajectory,
+  getConsoleWorkflowTrajectoryBody,
+  type WorkflowTrajectoryOptions,
   getConsoleClientTrajectory,
   getConsoleClientTrajectorySection,
-  getConsoleProviderTrajectory,
-  getConsoleRunTrajectory,
   getConsoleRunPayload,
   getConsoleProviderTrajectoryBody,
-  type ProviderTrajectoryOptions,
   type ClientTrajectoryOptions,
   type ProviderTrajectoryView
 } from '@1flowbase/api-client';
 import { getApplicationsApiBaseUrl } from './applications';
 
-export function fetchProviderTrajectory(
-  applicationId: string,
-  runId: string,
-  nodeRunId: string,
-  cursor?: number,
-  options?: ProviderTrajectoryOptions
-) {
-  return getConsoleProviderTrajectory(
-    applicationId,
-    runId,
-    nodeRunId,
-    cursor,
-    getApplicationsApiBaseUrl(),
-    options
-  );
-}
 export function fetchProviderTrajectoryBody(
   applicationId: string,
   runId: string,
@@ -43,21 +27,6 @@ export function fetchProviderTrajectoryBody(
     cursor,
     view,
     getApplicationsApiBaseUrl()
-  );
-}
-
-export function fetchRunTrajectory(
-  applicationId: string,
-  runId: string,
-  cursor?: number,
-  options?: ProviderTrajectoryOptions
-) {
-  return getConsoleRunTrajectory(
-    applicationId,
-    runId,
-    cursor,
-    getApplicationsApiBaseUrl(),
-    options
   );
 }
 
@@ -105,6 +74,33 @@ export function fetchClientTrajectorySection(
     section,
     nodeRunId,
     cursor,
+    getApplicationsApiBaseUrl()
+  );
+}
+
+export function fetchWorkflowTrajectory(
+  applicationId: string,
+  runId: string,
+  cursor?: string,
+  options?: WorkflowTrajectoryOptions
+) {
+  return getConsoleWorkflowTrajectory(
+    applicationId,
+    runId,
+    cursor,
+    options,
+    getApplicationsApiBaseUrl()
+  );
+}
+export function fetchWorkflowTrajectoryBody(
+  applicationId: string,
+  runId: string,
+  eventId: string
+) {
+  return getConsoleWorkflowTrajectoryBody(
+    applicationId,
+    runId,
+    eventId,
     getApplicationsApiBaseUrl()
   );
 }

@@ -575,7 +575,7 @@ function RunConversation({
         closeLabel={i18nText('applications', 'auto.close_run_details')}
         assistantMessageActions={(message) => (
           <>
-            {traceLoader?.loadRunTrajectory &&
+            {traceLoader?.loadWorkflowTrajectory &&
             message.canOpenDetail !== false &&
             (message.detailRunId ?? message.runId) ? (
               <ProviderTrajectory

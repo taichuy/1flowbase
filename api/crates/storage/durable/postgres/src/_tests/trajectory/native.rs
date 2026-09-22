@@ -1,6 +1,6 @@
 use super::*;
 
-async fn append(
+pub(super) async fn append(
     store: &PgControlPlaneStore,
     flow: Uuid,
     node: Uuid,

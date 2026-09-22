@@ -223,7 +223,7 @@ describe('debug conversation log panel', () => {
       }
     });
     const traceLoader = {
-      loadRunTrajectory: vi.fn(),
+      loadWorkflowTrajectory: vi.fn(),
       loadTree: vi.fn().mockResolvedValue({ nodes: [] }),
       loadChildren: vi.fn(),
       loadContent: vi.fn()
@@ -253,10 +253,8 @@ describe('debug conversation log panel', () => {
     expect(
       screen.queryByText('数据处理', { exact: true })
     ).not.toBeInTheDocument();
-    expect(
-      within(screen.getByRole('region', { name: '元数据' })).getByRole('button')
-    ).toBeInTheDocument();
-    expect(traceLoader.loadRunTrajectory).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: '元数据' })).toBeInTheDocument();
+    expect(traceLoader.loadWorkflowTrajectory).not.toHaveBeenCalled();
     expect(loadPayload).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('输入', { exact: true }));
     await waitFor(() =>

@@ -1,6 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { apiFetch } from '../../../transport';
 import {
+  getConsoleWorkflowTrajectory,
+  getConsoleWorkflowTrajectoryBody,
   getConsoleProviderTrajectory,
   getConsoleRunTrajectory
 } from '../trajectory';
@@ -59,4 +61,33 @@ test('client focus uses the supplied request identity without fetching preceding
     baseUrl: undefined
   });
   expect(apiFetch).toHaveBeenCalledTimes(2);
+});
+
+test('workflow summary sends exact server filters and opaque cursors; body escapes event locators', async () => {
+  await getConsoleWorkflowTrajectory('app', 'root', 'opaque/+cursor', {
+    category: 'agents',
+    node_run_id: 'node-execution',
+    request_id: 'request-exact',
+    from: '2026-09-22T00:00:00Z',
+    to: '2026-09-22T01:00:00Z'
+  });
+  const call = vi.mocked(apiFetch).mock.calls[0][0];
+  const url = new URL(call.path, 'https://example.test');
+  expect(url.pathname).toBe(
+    '/api/console/applications/app/logs/runs/root/workflow-trajectory'
+  );
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    limit: '100',
+    category: 'agents',
+    node_run_id: 'node-execution',
+    request_id: 'request-exact',
+    from: '2026-09-22T00:00:00Z',
+    to: '2026-09-22T01:00:00Z',
+    cursor: 'opaque/+cursor'
+  });
+  await getConsoleWorkflowTrajectoryBody('app', 'root', 'workflow:a/b');
+  expect(apiFetch).toHaveBeenLastCalledWith({
+    path: '/api/console/applications/app/logs/runs/root/workflow-trajectory/workflow%3Aa%2Fb',
+    baseUrl: undefined
+  });
 });

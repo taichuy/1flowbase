@@ -1,9 +1,10 @@
 import type {
+  WorkflowTrajectoryPage,
+  WorkflowTrajectoryBody,
+  WorkflowTrajectoryOptions,
   ClientTrajectoryPage,
   ClientTrajectoryOptions,
-  ProviderTrajectoryOptions,
   ClientTrajectorySection,
-  ProviderTrajectoryPage,
   ProviderTrajectoryBody
 } from '@1flowbase/api-client';
 import type { AgentFlowTraceItem } from '../../api/runtime';
@@ -116,6 +117,15 @@ export interface ConversationLogRunOverview {
 }
 
 export interface ConversationLogTraceLoader {
+  loadWorkflowTrajectory?: (
+    runId: string,
+    cursor?: string,
+    options?: WorkflowTrajectoryOptions
+  ) => Promise<WorkflowTrajectoryPage>;
+  loadWorkflowTrajectoryBody?: (
+    runId: string,
+    eventId: string
+  ) => Promise<WorkflowTrajectoryBody>;
   loadArtifact?: (artifactRef: string) => Promise<unknown>;
   loadArtifacts?: import('../detail/last-run/runtime-debug-payload').RuntimeDebugArtifactBatchLoader;
   loadClientTrajectory?: (
@@ -131,17 +141,6 @@ export interface ConversationLogTraceLoader {
     nodeRunId?: string,
     cursor?: number
   ) => Promise<ClientTrajectorySection>;
-  loadRunTrajectory?: (
-    runId: string,
-    cursor?: number,
-    options?: ProviderTrajectoryOptions
-  ) => Promise<ProviderTrajectoryPage>;
-  loadTrajectory?: (
-    runId: string,
-    nodeRunId: string,
-    cursor?: number,
-    options?: ProviderTrajectoryOptions
-  ) => Promise<ProviderTrajectoryPage>;
   loadTrajectoryBody?: (
     runId: string,
     nodeRunId: string,

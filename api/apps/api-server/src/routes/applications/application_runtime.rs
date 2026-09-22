@@ -38,6 +38,7 @@ use crate::{
 
 use super::debug_run_stream;
 pub(crate) mod provider_trajectory;
+use provider_trajectory::workflow::{get_workflow_trajectory_body, list_workflow_trajectory};
 use provider_trajectory::{
     get_client_trajectory_section, get_provider_trajectory_body, get_run_payload,
     list_client_trajectory, list_provider_trajectory, list_run_trajectory,
@@ -92,6 +93,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route("/applications/:id/logs/runs/:run_id/client-trajectory", console_get(list_client_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/runs/:run_id/client-trajectory/:step_id", console_get(get_client_trajectory_section, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/workflow-trajectory", console_get(list_workflow_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/workflow-trajectory/:event_id", console_get(get_workflow_trajectory_body, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/runs/:run_id/trajectory", console_get(list_run_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/runs/:run_id/payloads/:section", console_get(get_run_payload, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route("/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", console_get(list_provider_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))

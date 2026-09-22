@@ -30,7 +30,9 @@ mod application_run_log_context;
 pub use application_run_log_context::*;
 
 pub mod trajectory;
+pub mod workflow_trajectory;
 pub use trajectory::*;
+pub use workflow_trajectory::*;
 
 pub mod client_trajectory;
 pub use client_trajectory::*;

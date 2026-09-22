@@ -145,3 +145,84 @@ export function getConsoleRunPayload(
     baseUrl
   });
 }
+
+export type WorkflowTrajectoryCategory =
+  | 'all'
+  | 'nodes'
+  | 'requests'
+  | 'tools'
+  | 'rounds'
+  | 'agents';
+export interface WorkflowTrajectoryOptions {
+  category?: WorkflowTrajectoryCategory;
+  node_run_id?: string;
+  request_id?: string;
+  from?: string;
+  to?: string;
+}
+export interface WorkflowTrajectoryNode {
+  flow_run_id: string;
+  node_run_id: string;
+  node_id: string;
+  node_alias: string;
+  node_type: string;
+}
+export interface WorkflowTrajectoryEvent {
+  event_id: string;
+  event_sequence: number | null;
+  event_type: string;
+  created_at: string;
+  category: Exclude<WorkflowTrajectoryCategory, 'all'>;
+  flow_run_id: string;
+  task_run_id: string | null;
+  parent_task_run_id: string | null;
+  node_run_id: string | null;
+  node_id: string | null;
+  node_alias: string | null;
+  node_type: string | null;
+  status: string | null;
+  preview: string;
+  native_step: ProviderTrajectoryStep | null;
+}
+export interface WorkflowTrajectoryPage {
+  items: WorkflowTrajectoryEvent[];
+  next_cursor: string | null;
+  nodes: WorkflowTrajectoryNode[];
+  time_start: string | null;
+  time_end: string | null;
+}
+export interface WorkflowEventSection {
+  kind: string;
+  value: unknown;
+}
+export interface WorkflowTrajectoryBody {
+  event_id: string;
+  sections: WorkflowEventSection[];
+}
+export function getConsoleWorkflowTrajectory(
+  applicationId: string,
+  runId: string,
+  cursor?: string,
+  options?: WorkflowTrajectoryOptions,
+  baseUrl?: string
+) {
+  const query = new URLSearchParams({ limit: '100' });
+  for (const [key, value] of Object.entries(options ?? {}))
+    if (value !== undefined) query.set(key, value);
+  if (cursor) query.set('cursor', cursor);
+  return apiFetch<WorkflowTrajectoryPage>({
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/workflow-trajectory?${query}`,
+    baseUrl
+  });
+}
+export function getConsoleWorkflowTrajectoryBody(
+  applicationId: string,
+  runId: string,
+  eventId: string,
+  baseUrl?: string
+) {
+  return apiFetch<WorkflowTrajectoryBody>({
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/workflow-trajectory/${encodeURIComponent(eventId)}`,
+    baseUrl
+  });
+}
