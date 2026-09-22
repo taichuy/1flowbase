@@ -20,6 +20,7 @@ pub(crate) mod role_access_interface;
 pub mod roles;
 pub mod system;
 pub mod system_backups;
+pub mod system_templates;
 pub mod ui_management;
 pub(crate) mod ui_management_interface;
 pub mod workspace;

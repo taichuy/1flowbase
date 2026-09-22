@@ -56,3 +56,6 @@ pub use ui_management::*;
 
 pub mod plugin_contribution_authority;
 pub use plugin_contribution_authority::*;
+
+pub mod portable_template;
+pub use portable_template::*;

@@ -313,6 +313,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::auth_center::route_assembly())
         .merge(super::system::route_assembly())
         .merge(super::system_backups::route_assembly())
+        .merge(super::system_templates::route_assembly())
         .merge(super::ui_management::route_assembly())
         .merge(super::workspaces::route_assembly())
 }
@@ -692,6 +693,11 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "system_templates.catalog" => Some("List portable template resources"),
+        "system_templates.export" => Some("Export selected portable definitions"),
+        "system_templates.preview" => Some("Preview portable template installation"),
+        "system_templates.install" => Some("Install portable template resources"),
+
         "network_egress_proxies.get" => Some("Read proxy configuration for editing"),
         "network_egress_proxies.update" => Some("Update proxy configuration"),
         "billing.pricing_catalog.sync" => Some("Synchronize all official model prices"),
@@ -1206,6 +1212,7 @@ mod tests {
             .merge(crate::routes::billing::route_assembly())
             .merge(crate::routes::system::route_assembly())
             .merge(crate::routes::system_backups::route_assembly())
+            .merge(crate::routes::system_templates::route_assembly())
             .merge(crate::routes::workspaces::route_assembly());
 
         assert_eq!(

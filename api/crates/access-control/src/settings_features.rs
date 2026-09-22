@@ -133,6 +133,11 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/system-backups"),
                 ("GET", "/api/console/settings/system-backups/catalog"),
+                ("GET", "/api/console/settings/system-templates/catalog"),
+                ("POST", "/api/console/settings/system-templates/export"),
+                ("POST", "/api/console/settings/system-templates/preview"),
+                ("POST", "/api/console/settings/system-templates/install"),
+
                 ("POST", "/api/console/settings/system-backups"),
                 ("POST", "/api/console/settings/system-backups/import"),
                 ("POST", "/api/console/settings/system-backups/recovery/reauth"),
