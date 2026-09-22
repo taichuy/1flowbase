@@ -85,7 +85,9 @@ export function getConsoleProviderTrajectory(
   baseUrl?: string,
   options?: ProviderTrajectoryOptions
 ) {
-  const query = new URLSearchParams({ limit: '50' });
+  const query = new URLSearchParams({
+    limit: cursor === undefined ? '50' : '100'
+  });
   if (options?.request_id) query.set('request_id', options.request_id);
   if (options?.focus_event_id && cursor === undefined)
     query.set('focus_event_id', options.focus_event_id);
@@ -119,7 +121,9 @@ export function getConsoleRunTrajectory(
   baseUrl?: string,
   options?: ProviderTrajectoryOptions
 ) {
-  const query = new URLSearchParams({ limit: '50' });
+  const query = new URLSearchParams({
+    limit: cursor === undefined ? '50' : '100'
+  });
   if (options?.request_id) query.set('request_id', options.request_id);
   if (options?.focus_event_id && cursor === undefined)
     query.set('focus_event_id', options.focus_event_id);

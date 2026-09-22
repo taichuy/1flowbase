@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Input, Spin, Tooltip } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
@@ -23,6 +23,12 @@ import {
   stepLabel,
   stepLane
 } from './trajectory-presentation';
+import {
+  TrajectoryTimeline,
+  inTrajectoryRange,
+  type TrajectoryRange
+} from './TrajectoryTimeline';
+import { useProgressiveTrajectory } from './use-progressive-trajectory';
 import './provider-trajectory.css';
 
 export function NativeTrajectoryWorkspace({
@@ -30,8 +36,10 @@ export function NativeTrajectoryWorkspace({
   nodeRunId,
   loader,
   options,
+  active = true,
   onClient
 }: {
+  active?: boolean;
   runId: string;
   nodeRunId?: string;
   loader: ConversationLogTraceLoader;
@@ -46,24 +54,30 @@ export function NativeTrajectoryWorkspace({
   const [detailWidth, setDetailWidth] = useState<number | null>(null);
   const split = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
+  const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
   const [search, setSearch] = useState('');
-  const [timeScale, setTimeScale] = useState(false);
+  const [timeScale, setTimeScale] = useState(true);
   const [groupCalls, setGroupCalls] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const pages = useInfiniteQuery({
     queryKey: ['provider-trajectory', runId, nodeRunId ?? 'run', options],
-    enabled: Boolean(
-      nodeRunId ? loader.loadTrajectory : loader.loadRunTrajectory
-    ),
+    enabled:
+      active &&
+      Boolean(nodeRunId ? loader.loadTrajectory : loader.loadRunTrajectory),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       nodeRunId
         ? loader.loadTrajectory!(runId, nodeRunId, pageParam, options)
         : loader.loadRunTrajectory!(runId, pageParam, options),
-    getNextPageParam: (page) => page.next_cursor ?? undefined,
+    getNextPageParam: (page, _pages, cursor) =>
+      page.next_cursor != null &&
+      (cursor === undefined || page.next_cursor > cursor)
+        ? page.next_cursor
+        : undefined,
     refetchOnWindowFocus: false
   });
+  useProgressiveTrajectory(active, pages);
   const items = useMemo(
     () => pages.data?.pages.flatMap((page) => page.items) ?? [],
     [pages.data]
@@ -76,19 +90,23 @@ export function NativeTrajectoryWorkspace({
   }
   const query = search.trim().toLocaleLowerCase();
   const matches = items.filter(
-    (step) =>
-      !query ||
-      [
-        stepLabel(step),
-        step.metadata.preview,
-        step.metadata.node_id,
-        step.metadata.tool_call_id,
-        step.metadata.invocation_id
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(query)
+    (step, index) =>
+      inTrajectoryRange(
+        timeScale ? Date.parse(step.created_at) : index,
+        timeRange
+      ) &&
+      (!query ||
+        [
+          stepLabel(step),
+          step.metadata.preview,
+          step.metadata.node_id,
+          step.metadata.tool_call_id,
+          step.metadata.invocation_id
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLocaleLowerCase()
+          .includes(query))
   );
   const groups = useMemo(() => {
     const result = new Map<string, ProviderTrajectoryStep[]>();
@@ -100,10 +118,6 @@ export function NativeTrajectoryWorkspace({
     }
     return [...result.entries()];
   }, [matches]);
-  const timestamps = items.map((step) => Date.parse(step.created_at));
-  const validTimes = timestamps.filter(Number.isFinite);
-  const start = validTimes.length ? Math.min(...validTimes) : 0;
-  const range = validTimes.length ? Math.max(...validTimes) - start : 0;
   function focusStep(step: ProviderTrajectoryStep) {
     setSelected(step.event_id);
     setCollapsed((current) => {
@@ -166,7 +180,10 @@ export function NativeTrajectoryWorkspace({
               timeScale ? <ClockCircleOutlined /> : <UnorderedListOutlined />
             }
             aria-pressed={timeScale}
-            onClick={() => setTimeScale(!timeScale)}
+            onClick={() => {
+              setTimeScale(!timeScale);
+              setTimeRange(null);
+            }}
           >
             {timeScale
               ? i18nText('agentFlow', 'trajectory.time_axis')
@@ -205,56 +222,28 @@ export function NativeTrajectoryWorkspace({
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
-      <div
-        className="provider-trajectory__timeline"
-        role="navigation"
-        aria-label={i18nText('agentFlow', 'trajectory.timeline')}
-      >
-        <div className="provider-trajectory__lane-labels">
-          <span>{i18nText('agentFlow', 'auto.input')}</span>
-          <span>{i18nText('agentFlow', 'auto.model')}</span>
-          <span>{i18nText('agentFlow', 'auto.tools')}</span>
-        </div>
-        <div className="provider-trajectory__lanes">
-          {items.map((step, index) => {
-            const time = Date.parse(step.created_at);
-            const position =
-              timeScale && range > 0 && Number.isFinite(time)
-                ? ((time - start) / range) * 97
-                : (index / Math.max(items.length, 1)) * 100;
-            return (
-              <Tooltip
-                key={step.event_id}
-                title={`${stepLabel(step)} · ${formatDateTime(step.created_at)}`}
-              >
-                <button
-                  type="button"
-                  className="provider-trajectory__block"
-                  data-lane={stepLane(step)}
-                  data-selected={selected === step.event_id || undefined}
-                  data-dimmed={
-                    Boolean(query && !matches.includes(step)) || undefined
-                  }
-                  aria-label={i18nText('agentFlow', 'trajectory.locate_step', {
-                    sequence: step.event_sequence,
-                    kind: stepLabel(step)
-                  })}
-                  style={
-                    {
-                      '--trajectory-x': `${position}%`,
-                      '--trajectory-width': `${Math.min(3, 72 / Math.max(items.length, 1))}%`
-                    } as CSSProperties
-                  }
-                  onClick={() => {
-                    setSearch('');
-                    focusStep(step);
-                  }}
-                />
-              </Tooltip>
-            );
-          })}
-        </div>
-      </div>
+      <TrajectoryTimeline
+        points={items.map((step, index) => ({
+          id: step.event_id,
+          value: timeScale ? Date.parse(step.created_at) : index,
+          lane: stepLane(step),
+          label: i18nText('agentFlow', 'trajectory.locate_step', {
+            sequence: step.event_sequence,
+            kind: stepLabel(step)
+          })
+        }))}
+        range={timeRange}
+        onChange={setTimeRange}
+        selected={selected}
+        timeScale={timeScale}
+        onSelect={(id) => {
+          const step = items.find((item) => item.event_id === id);
+          if (step) {
+            setSearch('');
+            focusStep(step);
+          }
+        }}
+      />
       <div className="provider-trajectory__split" ref={split}>
         <div
           className="provider-trajectory__ledger"
@@ -272,7 +261,13 @@ export function NativeTrajectoryWorkspace({
               showIcon
               title={i18nText('agentFlow', 'auto.loading_failed')}
               action={
-                <Button onClick={() => void pages.refetch()}>
+                <Button
+                  onClick={() =>
+                    void (pages.isFetchNextPageError
+                      ? pages.fetchNextPage()
+                      : pages.refetch())
+                  }
+                >
                   {i18nText('agentFlow', 'auto.retry')}
                 </Button>
               }
@@ -328,15 +323,10 @@ export function NativeTrajectoryWorkspace({
                 </section>
               ))
             : matches.map(renderStep)}
-          {pages.hasNextPage ? (
-            <div className="provider-trajectory__more">
-              <Button
-                type="text"
-                loading={pages.isFetchingNextPage}
-                onClick={() => void pages.fetchNextPage()}
-              >
-                {i18nText('agentFlow', 'trajectory.more')}
-              </Button>
+          {pages.hasNextPage && !pages.isError ? (
+            <div className="provider-trajectory__more" role="status">
+              <Spin size="small" />{' '}
+              {i18nText('agentFlow', 'trajectory.loading_pages')}
             </div>
           ) : null}
         </div>

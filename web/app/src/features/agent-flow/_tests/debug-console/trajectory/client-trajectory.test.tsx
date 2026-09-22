@@ -191,7 +191,6 @@ test('paginates summaries, keeps original categories and follows actual call rel
   const { loadClientTrajectory } = fixture();
   fireEvent.click(screen.getByRole('button', { name: '总轨迹' }));
   await screen.findByRole('button', { name: '工具调用 · exec_command' });
-  fireEvent.click(screen.getByRole('button', { name: '加载更多步骤' }));
   const result = await screen.findByRole('button', {
     name: '工具结果 · exec_command'
   });

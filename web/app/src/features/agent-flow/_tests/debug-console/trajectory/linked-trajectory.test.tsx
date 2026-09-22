@@ -96,7 +96,7 @@ function fixture(nodeRunId?: string) {
               run === 'run-previous' ? 'Previous request' : request.preview
           }
         ],
-        next_cursor: 999,
+        next_cursor: null,
         integrity: 'complete'
       })
     );
@@ -105,7 +105,7 @@ function fixture(nodeRunId?: string) {
       invocation('first-call', 0, 'prewarm'),
       invocation('retry-call', 1, 'generate')
     ],
-    next_cursor: 999,
+    next_cursor: null,
     integrity: 'complete',
     protocol_integrity: 'not_recorded'
   });

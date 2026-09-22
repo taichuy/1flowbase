@@ -1,5 +1,11 @@
 {
   "trajectory": {
+    "range_start": "Range start",
+    "range_end": "Range end",
+    "range_all": "Full time range",
+    "loading_pages": "Loading more records…",
+    "close_window": "Close trajectory window",
+    "resize_window": "Resize trajectory window {{edge}} edge",
     "duration": "Duration",
     "title": "Invocation trajectory",
     "overview": "Overview",

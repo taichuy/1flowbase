@@ -1,5 +1,11 @@
 {
   "trajectory": {
+    "range_start": "范围起点",
+    "range_end": "范围终点",
+    "range_all": "全部时间范围",
+    "loading_pages": "正在加载更多记录…",
+    "close_window": "关闭轨迹窗口",
+    "resize_window": "调整轨迹窗口 {{edge}} 边界",
     "duration": "耗时",
     "title": "调用轨迹",
     "overview": "概览",

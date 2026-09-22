@@ -1,10 +1,15 @@
 import { useState } from 'react';
-import { Button, Modal, Tooltip, Segmented } from 'antd';
+import { createPortal } from 'react-dom';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import { Button, Tooltip, Segmented } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
-import { useWindowWorkspaceOverlayZIndex } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
+import {
+  WindowWorkspaceWindow,
+  useWindowWorkspaceOverlayZIndex
+} from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { NativeTrajectoryWorkspace } from './NativeTrajectoryWorkspace';
 import { ClientTrajectoryWorkspace } from './client/ClientTrajectoryWorkspace';
 import './provider-trajectory.css';
@@ -78,90 +83,129 @@ export function ProviderTrajectory({
           }}
         />
       </Tooltip>
-      <Modal
-        zIndex={zIndex}
-        open={open}
-        onCancel={() => {
-          setOpen(false);
-          setViews([{ source: initialSource, runId, nodeRunId }]);
-          setHistory([0]);
-        }}
-        footer={null}
-        width="min(1440px, calc(100vw - 32px))"
-        title={compatibility_mode ? `${title} · ${compatibility_mode}` : title}
-        destroyOnHidden
-        styles={{ body: { padding: 0, minHeight: 0 } }}
-      >
-        {open ? (
-          <>
-            <Segmented
-              className="client-trajectory__source"
-              value={source}
-              onChange={(value) => switchSource(value as 'client' | 'native')}
-              options={[
-                {
-                  value: 'client',
-                  label: i18nText('agentFlow', 'client_trajectory.client')
-                },
-                {
-                  value: 'native',
-                  label: i18nText('agentFlow', 'client_trajectory.native')
-                }
-              ]}
-            />
-            {history.length > 1 ? (
-              <Button
-                type="link"
-                onClick={() => setHistory((current) => current.slice(0, -1))}
-              >
-                {i18nText('agentFlow', 'trajectory.return_view')}
-              </Button>
-            ) : null}
-            {views.map((view, index) => (
-              <div key={index} hidden={index !== active}>
-                {view.source === 'client' ? (
-                  <ClientTrajectoryWorkspace
-                    runId={view.runId}
-                    nodeRunId={view.nodeRunId}
-                    options={
-                      view.request_id
-                        ? {
-                            request_id: view.request_id,
-                            focus_step_id: view.focus_step_id
-                          }
-                        : undefined
+      {open
+        ? createPortal(
+            <WindowWorkspaceWindow
+              active
+              zIndex={zIndex ?? 1052}
+              title={title}
+              testId="trajectory-window"
+              className="trajectory-window"
+              bodyClassName="trajectory-window__body"
+              dragHandleSelector=".trajectory-window__header"
+              initialRect={() => ({
+                left: Math.max(8, (window.innerWidth - 1440) / 2),
+                top: 40,
+                width: Math.min(1440, window.innerWidth - 16),
+                height: Math.min(900, window.innerHeight - 64)
+              })}
+              minWidth={340}
+              minHeight={320}
+              onActivate={() => {}}
+              resizeLabel={(edge) =>
+                i18nText('agentFlow', 'trajectory.resize_window', { edge })
+              }
+            >
+              <header className="trajectory-window__header">
+                <strong>
+                  {compatibility_mode
+                    ? `${title} · ${compatibility_mode}`
+                    : title}
+                </strong>
+                <Button
+                  type="text"
+                  icon={<CloseOutlined />}
+                  aria-label={i18nText('agentFlow', 'trajectory.close_window')}
+                  onClick={() => {
+                    setOpen(false);
+                    setViews([{ source: initialSource, runId, nodeRunId }]);
+                    setHistory([0]);
+                  }}
+                />
+              </header>
+              {open ? (
+                <>
+                  <Segmented
+                    className="client-trajectory__source"
+                    value={source}
+                    onChange={(value) =>
+                      switchSource(value as 'client' | 'native')
                     }
-                    loader={loader}
-                    onInternal={(step, scope) =>
-                      navigate({
-                        source: 'native',
-                        runId: step.flow_run_id,
-                        nodeRunId: scope,
-                        request_id: step.request_id
-                      })
-                    }
+                    options={[
+                      {
+                        value: 'client',
+                        label: i18nText('agentFlow', 'client_trajectory.client')
+                      },
+                      {
+                        value: 'native',
+                        label: i18nText('agentFlow', 'client_trajectory.native')
+                      }
+                    ]}
                   />
-                ) : (
-                  <NativeTrajectoryWorkspace
-                    runId={view.runId}
-                    nodeRunId={view.nodeRunId}
-                    options={
-                      view.request_id
-                        ? {
-                            request_id: view.request_id,
-                            focus_event_id: view.focus_event_id
+                  {history.length > 1 ? (
+                    <Button
+                      type="link"
+                      onClick={() =>
+                        setHistory((current) => current.slice(0, -1))
+                      }
+                    >
+                      {i18nText('agentFlow', 'trajectory.return_view')}
+                    </Button>
+                  ) : null}
+                  {views.map((view, index) => (
+                    <div
+                      className="trajectory-window__view"
+                      key={index}
+                      hidden={index !== active}
+                    >
+                      {view.source === 'client' ? (
+                        <ClientTrajectoryWorkspace
+                          active={index === active}
+                          runId={view.runId}
+                          nodeRunId={view.nodeRunId}
+                          options={
+                            view.request_id
+                              ? {
+                                  request_id: view.request_id,
+                                  focus_step_id: view.focus_step_id
+                                }
+                              : undefined
                           }
-                        : undefined
-                    }
-                    loader={loader}
-                    onClient={openClient}
-                  />
-                )}
-              </div>
-            ))}
-          </>
-        ) : null}
-      </Modal>
+                          loader={loader}
+                          onInternal={(step, scope) =>
+                            navigate({
+                              source: 'native',
+                              runId: step.flow_run_id,
+                              nodeRunId: scope,
+                              request_id: step.request_id
+                            })
+                          }
+                        />
+                      ) : (
+                        <NativeTrajectoryWorkspace
+                          active={index === active}
+                          runId={view.runId}
+                          nodeRunId={view.nodeRunId}
+                          options={
+                            view.request_id
+                              ? {
+                                  request_id: view.request_id,
+                                  focus_event_id: view.focus_event_id
+                                }
+                              : undefined
+                          }
+                          loader={loader}
+                          onClient={openClient}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </>
+              ) : null}
+            </WindowWorkspaceWindow>,
+            document.body
+          )
+        : null}
     </>
   );
 }

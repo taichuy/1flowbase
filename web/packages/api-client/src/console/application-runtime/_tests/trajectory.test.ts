@@ -28,7 +28,7 @@ test('native focus and trigger filter remain scoped and focus is only sent on th
   });
   await getConsoleRunTrajectory('app', 'run', 950, undefined, options);
   expect(apiFetch).toHaveBeenLastCalledWith({
-    path: '/api/console/applications/app/logs/runs/run/trajectory?limit=50&request_id=request-B&cursor=950',
+    path: '/api/console/applications/app/logs/runs/run/trajectory?limit=100&request_id=request-B&cursor=950',
     baseUrl: undefined
   });
 });
@@ -55,7 +55,7 @@ test('client focus uses the supplied request identity without fetching preceding
     options
   );
   expect(apiFetch).toHaveBeenLastCalledWith({
-    path: '/api/console/applications/app/logs/runs/old-run/client-trajectory?limit=50&request_id=request-A&cursor=42',
+    path: '/api/console/applications/app/logs/runs/old-run/client-trajectory?limit=100&request_id=request-A&cursor=42',
     baseUrl: undefined
   });
   expect(apiFetch).toHaveBeenCalledTimes(2);
