@@ -54,8 +54,6 @@ write_limited_profile() {
   local required
   for required in \
     SESSION_MEMORY_LOW \
-    APP_OOM_PRESSURE_LIMIT \
-    APP_OOM_PRESSURE_DURATION \
     DEV_OOM_PRESSURE_LIMIT \
     DEV_OOM_PRESSURE_DURATION \
     DEV_MEMORY_HIGH \
@@ -95,9 +93,8 @@ EOF
   cat >"$app_config" <<EOF
 [Slice]
 MemoryAccounting=yes
-ManagedOOMMemoryPressure=kill
-ManagedOOMMemoryPressureLimit=$APP_OOM_PRESSURE_LIMIT
-ManagedOOMMemoryPressureDurationSec=$APP_OOM_PRESSURE_DURATION
+ManagedOOMSwap=auto
+ManagedOOMMemoryPressure=auto
 EOF
 
   cat >"$dev_config" <<EOF
@@ -110,6 +107,7 @@ MemoryHigh=$DEV_MEMORY_HIGH
 MemoryMax=$DEV_MEMORY_MAX
 MemorySwapMax=$DEV_MEMORY_SWAP_MAX
 CPUQuota=$DEV_CPU_QUOTA
+ManagedOOMSwap=kill
 ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressureLimit=$DEV_OOM_PRESSURE_LIMIT
 ManagedOOMMemoryPressureDurationSec=$DEV_OOM_PRESSURE_DURATION
@@ -137,6 +135,7 @@ EOF
 
   install -m 0755 "$script_dir/resource-dev-run.sh" "$dev_wrapper"
   install -m 0755 "$script_dir/resource-pnpm.sh" "$pnpm_wrapper"
+  install -m 0755 "$script_dir/resource-heavy-run.py" "$user_bin_dir/dev-heavy-run"
 
   cat >"$cargo_wrapper" <<EOF
 #!/usr/bin/env bash
@@ -195,11 +194,20 @@ export CARGO_MEMORY_BUDGET_ACTIVE=1
 # platform launcher moves the compiler into another process group.
 readonly cargo_scope="rust-cargo-\$\$-\$RANDOM.scope"
 cleanup_cargo_scope() {
+  [[ -z \${cargo_launcher_pid:-} ]] || kill -TERM "\$cargo_launcher_pid" 2>/dev/null || true
   systemctl --user --no-block stop "\$cargo_scope" >/dev/null 2>&1 || true
 }
 trap 'cleanup_cargo_scope; exit 130' INT
 trap 'cleanup_cargo_scope; exit 143' TERM HUP
-systemd-run --user --scope --quiet --collect \
+gate_command=()
+for arg in "\$@"; do
+  case \$arg in
+    build|b|check|c|test|t|bench|clippy|doc|rustc|rustdoc)
+      gate_command=("$user_bin_dir/dev-heavy-run")
+      break ;;
+  esac
+done
+"\${gate_command[@]}" systemd-run --user --scope --quiet --collect \
   --unit="\$cargo_scope" --property=TimeoutStopSec=2s \
   --slice=dev-rust.slice \
   -- "\$real_cargo" "\$@" <&0 &
@@ -238,7 +246,7 @@ EOF
 
 write_unlimited_profile() {
   rm -f -- "$session_config" "$app_config" "$dev_config" "$rust_config" \
-    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper"
+    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper" "$user_bin_dir/dev-heavy-run"
   rmdir --ignore-fail-on-non-empty -- "$(dirname -- "$session_config")" \
     "$(dirname -- "$app_config")" 2>/dev/null || true
 
