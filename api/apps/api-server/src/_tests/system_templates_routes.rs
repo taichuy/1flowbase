@@ -156,3 +156,66 @@ async fn portable_template_routes_enforce_independent_grants_and_reject_invalid_
         .unwrap();
     assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn portable_template_install_registers_models_without_restart() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let models = ["published", "draft"].map(|status| {
+        json!({
+            "id": uuid::Uuid::new_v4(), "code": format!("template_{status}"),
+            "title": status, "description": null, "scope_kind": "workspace",
+            "template_provider": "core", "template_code": "general", "template_version": "v1",
+            "status": status, "builtin": false, "fields": []
+        })
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-templates/install")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "schema_version": "1flowbase.portable-template/v1", "pages": [],
+                        "applications": [], "data_models": models, "plugins": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["data"]["complete"], true, "{body}");
+    for (code, expected) in [
+        ("template_published", StatusCode::OK),
+        ("template_draft", StatusCode::CONFLICT),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/runtime/models/{code}/list"))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(status, expected, "{body}");
+        if code == "template_draft" {
+            assert_eq!(body["code"], "model_not_published");
+        }
+    }
+}

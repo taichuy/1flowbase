@@ -1598,6 +1598,9 @@ pub(crate) fn production_interface_contributions(
             crate::routes::system_templates::interface::compile_registry(
                 crate::routes::system_templates::plugins::TemplateDependencies {
                     store: state.store.clone(), provider_runtime: state.provider_runtime.clone(),
+                    runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+                        state.store.clone(), state.runtime_engine.registry().clone(),
+                    ),
                     official_plugin_source: state.official_plugin_source.clone(),
                     official_catalog_source: state.official_extension_catalog_source.clone(),
                     cache_store: state.infrastructure.cache_store(),
