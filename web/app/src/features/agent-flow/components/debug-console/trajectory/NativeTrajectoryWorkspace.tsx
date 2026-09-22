@@ -473,6 +473,7 @@ export function NativeTrajectoryWorkspace(
           loader={props.loader}
           active={props.active ?? true}
           category={category}
+          onClient={props.onClient}
         />
       )}
     </div>

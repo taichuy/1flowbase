@@ -65,6 +65,7 @@
     "activity_category": "活动分类",
     "model_events": "模型调用",
     "round_activities": "轮次 / 压缩",
+    "agent_request": "请求 #{{count}}",
     "agent_activities": "子任务",
     "no_activities": "没有这类活动记录"
   },

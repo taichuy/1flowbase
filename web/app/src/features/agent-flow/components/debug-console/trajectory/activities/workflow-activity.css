@@ -49,3 +49,67 @@
 .workflow-activity__body {
   padding: 12px;
 }
+
+.agent-requests__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--ant-color-fill-quaternary);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+.agent-requests__heading > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ant-color-text-secondary);
+}
+.agent-requests__request {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.agent-requests__request:hover,
+.agent-requests__request[aria-pressed='true'] {
+  background: var(--ant-color-primary-bg);
+}
+.agent-requests__summary {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.agent-requests__summary > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-requests__summary small,
+.agent-requests__request time,
+.agent-requests__integrity {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+}
+.agent-requests__integrity,
+.agent-requests__actions,
+.agent-requests__events {
+  padding: 8px 12px;
+}
+@media (max-width: 600px) {
+  .agent-requests__request {
+    flex-wrap: wrap;
+  }
+  .agent-requests__request time {
+    width: 100%;
+  }
+}

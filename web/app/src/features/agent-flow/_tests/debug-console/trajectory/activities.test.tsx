@@ -94,8 +94,7 @@ function surface(content: React.ReactNode) {
 
 test.each([
   ['tools', 'Tools'],
-  ['rounds', 'Rounds'],
-  ['agents', 'Agents']
+  ['rounds', 'Rounds']
 ] as const)(
   'moves %s into a paged activity tree without reading bodies',
   async (category, label) => {
@@ -135,42 +134,6 @@ test.each([
     );
   }
 );
-test('keeps exact subagent source identity and original node input/output in its inspector', async () => {
-  const { loader } = fixture();
-  render(
-    surface(
-      <WorkflowActivityWorkspace
-        runId="run-1"
-        loader={loader}
-        active
-        category="agents"
-      />
-    )
-  );
-  const ledger = screen.getByLabelText('工作流内部活动');
-  fireEvent.click(
-    await within(ledger).findByRole('button', { name: 'Agents' })
-  );
-  fireEvent.click(
-    await within(ledger).findByRole('button', {
-      name: /child-llm node_run|child-llm llm/
-    })
-  );
-  await screen.findByText(/child-run/);
-  await waitFor(() =>
-    expect(loader.loadContent).toHaveBeenCalledWith('run-1', 'child-llm')
-  );
-  expect(screen.getByText(/关联工作流节点 · child-llm/)).toBeInTheDocument();
-  expect(
-    screen.queryByRole('button', { name: '调用轨迹' })
-  ).not.toBeInTheDocument();
-  await screen.findByRole('button', { name: '输入' });
-  expect(screen.getByRole('button', { name: '输出' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /关闭.*child-llm/ }));
-  expect(
-    screen.queryByText(/关联工作流节点 · child-llm/)
-  ).not.toBeInTheDocument();
-});
 test.each([true, false])(
   'workflow keeps its LLM and migrates groups only when trajectory is available: %s',
   async (enabled) => {

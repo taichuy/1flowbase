@@ -1,14 +1,22 @@
+import { PageStatus } from './ActivityPageStatus';
+import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
+import {
+  AgentRequestGroup,
+  AgentRequestInspector,
+  type AgentRequestSelection
+} from './AgentRequests';
+import {
+  useChildren,
+  unfinishedProjection,
+  type Scope
+} from './activity-query';
 import { lazy, Suspense, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Spin } from 'antd';
+import { Button, Empty, Spin } from 'antd';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
-import type {
-  ConversationLogTraceLoader,
-  ConversationLogTraceNodeSummary,
-  ConversationLogTraceProjectionStatus
-} from '../../conversation-log-trace-model';
+import type { ConversationLogTraceNodeSummary } from '../../conversation-log-trace-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../../shared/i18n/format';
 import { useProgressiveTrajectory } from '../use-progressive-trajectory';
@@ -25,95 +33,7 @@ const NodeDetail = lazy(() =>
   }))
 );
 
-const ProjectionNotice = lazy(() =>
-  import('../../ConversationLogPanel').then((module) => ({
-    default: module.TraceProjectionStatusNotice
-  }))
-);
-type ActivityPages = {
-  data?: {
-    pages: { projection_status?: ConversationLogTraceProjectionStatus }[];
-  };
-};
-function unfinishedProjection(pages: ActivityPages) {
-  return pages.data?.pages
-    .map((page) => page.projection_status)
-    .find((status) => status && status.projection_status !== 'succeeded');
-}
-
-type Scope = {
-  runId: string;
-  loader: ConversationLogTraceLoader;
-  active: boolean;
-};
 type Selection = { node: ConversationLogTraceNodeSummary; path: string[] };
-
-function useChildren(scope: Scope, parent: string, enabled: boolean) {
-  const pages = useInfiniteQuery({
-    queryKey: ['trajectory-activity-children', scope.runId, parent],
-    enabled: scope.active && enabled,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      scope.loader.loadChildren(scope.runId, parent, pageParam),
-    getNextPageParam: (page, all, cursor) => {
-      const next = page.page_info.next_cursor;
-      return page.page_info.has_more &&
-        next &&
-        next !== cursor &&
-        !all.slice(0, -1).some((p) => p.page_info.next_cursor === next)
-        ? next
-        : undefined;
-    },
-    refetchInterval: (query) =>
-      scope.active &&
-      ['pending', 'running'].includes(
-        query.state.data?.pages.at(-1)?.projection_status?.projection_status ??
-          ''
-      )
-        ? 1000
-        : false,
-    refetchOnWindowFocus: false
-  });
-  useProgressiveTrajectory(scope.active && enabled, pages);
-  return pages;
-}
-function PageStatus({
-  pages
-}: {
-  pages: {
-    isError: boolean;
-    isFetching: boolean;
-    refetch: () => Promise<unknown>;
-  } & ActivityPages;
-}) {
-  const projection = unfinishedProjection(pages);
-  if (projection)
-    return (
-      <>
-        <Suspense fallback={<Spin size="small" />}>
-          <ProjectionNotice status={projection} />
-        </Suspense>
-        {projection.retriable ? (
-          <Button onClick={() => void pages.refetch()}>
-            {i18nText('agentFlow', 'auto.retry')}
-          </Button>
-        ) : null}
-      </>
-    );
-  return pages.isError ? (
-    <Alert
-      type="error"
-      title={i18nText('agentFlow', 'auto.loading_failed')}
-      action={
-        <Button onClick={() => void pages.refetch()}>
-          {i18nText('agentFlow', 'auto.retry')}
-        </Button>
-      }
-    />
-  ) : pages.isFetching ? (
-    <Spin size="small" />
-  ) : null;
-}
 function ActivityRow({
   scope,
   node,
@@ -188,13 +108,17 @@ function NodeActivities({
   node,
   category,
   onSelect,
-  selected
+  selected,
+  onRequest,
+  selectedRequest
 }: {
   scope: Scope;
   node: ConversationLogTraceNodeSummary;
   category: ActivityCategory;
   onSelect: (selection: Selection) => void;
   selected?: string;
+  onRequest: (selection: AgentRequestSelection) => void;
+  selectedRequest?: AgentRequestSelection | null;
 }) {
   const direct = activityCategory(node);
   const pages = useChildren(
@@ -206,6 +130,34 @@ function NodeActivities({
     pages.data?.pages
       .flatMap((page) => page.items)
       .filter((child) => activityCategory(child) === category) ?? [];
+  function renderAgent(node: ConversationLogTraceNodeSummary) {
+    return (
+      <AgentRequestGroup
+        key={node.trace_node_id}
+        scope={scope}
+        node={node}
+        onSelect={onRequest}
+        selected={selectedRequest}
+      />
+    );
+  }
+  if (category === 'agents')
+    return (
+      <>
+        {direct === 'agents' ? renderAgent(node) : children.map(renderAgent)}
+        <PageStatus pages={pages} />
+        {!direct &&
+        !pages.isPending &&
+        !pages.isError &&
+        !unfinishedProjection(pages) &&
+        !children.length ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={i18nText('agentFlow', 'trajectory.no_activities')}
+          />
+        ) : null}
+      </>
+    );
   if (direct)
     return direct === category ? (
       <ActivityRow
@@ -250,9 +202,15 @@ export function WorkflowActivityWorkspace({
   nodeRunId,
   loader,
   active,
-  category
-}: Scope & { nodeRunId?: string; category: ActivityCategory }) {
+  category,
+  onClient
+}: Scope & {
+  nodeRunId?: string;
+  category: ActivityCategory;
+  onClient?: (link: ProviderTrajectoryStep['links'][number]) => void;
+}) {
   const scope = { runId, loader, active };
+  const [request, setRequest] = useState<AgentRequestSelection | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const roots = useInfiniteQuery({
     queryKey: ['trajectory-activity-roots', runId],
@@ -319,9 +277,20 @@ export function WorkflowActivityWorkspace({
             category={category}
             selected={selection?.node.trace_node_id}
             onSelect={setSelection}
+            onRequest={setRequest}
+            selectedRequest={request}
           />
         ))}
       </div>
+      {category === 'agents' && request ? (
+        <AgentRequestInspector
+          key={`${request.node.trace_node_id}:${request.invocation}`}
+          scope={scope}
+          selection={request}
+          onClose={() => setRequest(null)}
+          onClient={onClient}
+        />
+      ) : null}
       {selection ? (
         <aside className="provider-trajectory__inspector workflow-activity__inspector">
           <div className="provider-trajectory__inspector-header">

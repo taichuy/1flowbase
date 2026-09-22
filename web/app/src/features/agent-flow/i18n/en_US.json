@@ -65,6 +65,7 @@
     "activity_category": "Activity category",
     "model_events": "Model calls",
     "round_activities": "Rounds / compaction",
+    "agent_request": "Request #{{count}}",
     "agent_activities": "Subagents",
     "no_activities": "No activities in this category"
   },
