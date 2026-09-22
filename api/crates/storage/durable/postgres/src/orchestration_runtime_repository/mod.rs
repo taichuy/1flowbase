@@ -1595,6 +1595,10 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
               and f.run_mode = 'published_api_run'
               and c.callback_kind = 'llm_tool_calls'
               and jsonb_typeof(c.request_payload #> '{provider_metadata,native_response}') = 'object'
+              and (
+                  jsonb_path_query_array(c.request_payload, '$.tool_calls[*].call_id')
+                  || jsonb_path_query_array(c.request_payload, '$.tool_calls[*].id')
+              ) ?| $5::text[]
               and exists (
                   select 1 from jsonb_array_elements(
                       case when jsonb_typeof(c.request_payload->'tool_calls') = 'array'
