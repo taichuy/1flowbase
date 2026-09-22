@@ -1193,7 +1193,7 @@ mod tests {
         assert!(matches!(
             error.downcast_ref::<ControlPlaneError>(),
             Some(ControlPlaneError::Conflict(
-                "native_recovery_history_missing"
+                "native_recovery_not_failed_inference"
             ))
         ));
         let actor = ApplicationApiKeyService::new(repository.clone())
