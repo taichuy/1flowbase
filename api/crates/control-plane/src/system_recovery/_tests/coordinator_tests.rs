@@ -392,6 +392,7 @@ fn plan_digest_ignores_capacity_drift_while_the_space_decision_is_unchanged() {
             active_work: Vec::new(),
         },
         failures,
+        selective: None,
     };
 
     let sufficient = plan(200, Vec::new());
@@ -494,4 +495,44 @@ async fn safety_backup_failure_releases_fence_without_a_ready_handoff() {
     assert!(result.is_err());
     assert!(coordinator.active_handoff().is_none());
     assert_eq!(maintenance.snapshot().phase, SystemMaintenancePhase::Online);
+}
+
+#[test]
+fn selective_plan_digest_binds_missing_plugin_confirmation_and_table_scope() {
+    let mut plan = RecoveryPlan {
+        backup_set_id: BackupSetId::new(),
+        required_space_bytes: 100,
+        available_space_bytes: 1000,
+        impact: RecoveryImpactPreview {
+            database_replaced: false,
+            business_object_count: 0,
+            extension_artifact_count: 0,
+            mcp_artifact_count: 0,
+            active_work: vec![],
+        },
+        failures: vec![],
+        selective: Some(
+            control_plane_contracts::system_backup::selective::SelectiveBackupPreview {
+                selected_tables: vec!["applications".into()],
+                ..Default::default()
+            },
+        ),
+    };
+    let before = recovery_plan_digest(&plan).unwrap();
+    plan.selective
+        .as_mut()
+        .unwrap()
+        .missing_plugins
+        .push("runtime-extensions/example/provider".into());
+    assert_ne!(before, recovery_plan_digest(&plan).unwrap());
+    assert!(
+        plan.is_compatible(),
+        "missing plugins require confirmation, not rejection"
+    );
+    plan.selective
+        .as_mut()
+        .unwrap()
+        .failures
+        .push("missing_table:applications".into());
+    assert!(!plan.is_compatible());
 }

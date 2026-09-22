@@ -1594,6 +1594,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-system-backups",
             &[
+                "system_backups.catalog",
                 "system_backups.list",
                 "system_backups.create",
                 "system_backups.import",

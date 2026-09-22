@@ -184,6 +184,29 @@ where
         &self,
     ) -> Result<Vec<Arc<dyn BackupComponentSource>>, BackupObjectExportError> {
         let inventory = self.inventory().await?;
+        self.sources_from_inventory(inventory)
+    }
+
+    pub async fn sources_selected(
+        &self,
+        file_table_ids: &BTreeSet<Uuid>,
+        include_runtime_debug_artifacts: bool,
+    ) -> Result<Vec<Arc<dyn BackupComponentSource>>, BackupObjectExportError> {
+        let records = self
+            .repository
+            .list_selected_backup_object_inventory(
+                &file_table_ids.iter().copied().collect::<Vec<_>>(),
+                include_runtime_debug_artifacts,
+            )
+            .await
+            .map_err(|_| BackupObjectExportError::InventoryUnavailable)?;
+        self.sources_from_inventory(BusinessObjectBackupInventory::try_from_records(records)?)
+    }
+
+    fn sources_from_inventory(
+        &self,
+        inventory: BusinessObjectBackupInventory,
+    ) -> Result<Vec<Arc<dyn BackupComponentSource>>, BackupObjectExportError> {
         inventory
             .objects
             .into_iter()

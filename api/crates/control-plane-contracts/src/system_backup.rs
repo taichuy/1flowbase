@@ -1,3 +1,5 @@
+pub mod selective;
+
 use async_trait::async_trait;
 use domain::{
     ArtifactRebuildability, BackupComponentDisposition, BackupComponentId, BackupComponentKind,

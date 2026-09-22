@@ -1,3 +1,6 @@
+#[path = "selective_runtime.rs"]
+mod selective_runtime;
+
 use std::{path::PathBuf, sync::Arc};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -44,6 +47,10 @@ use crate::{
 /// only invoke complete backup operations rather than assembling partial manifests themselves.
 pub struct SystemBackupRuntime {
     service: Arc<SystemBackupService>,
+    selective:
+        Arc<dyn control_plane_contracts::system_backup::selective::SelectiveBackupRepository>,
+    selective_service: control_plane::system_backup::SelectiveSystemBackupService,
+    target_master_key: String,
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     database_url: String,
@@ -51,9 +58,9 @@ pub struct SystemBackupRuntime {
     application_build: ApplicationBuild,
     master_key_fingerprint: KeyFingerprint,
     portable_source_master_key_base64: String,
-    postgres_toolchain: PostgreSqlToolchain,
-    preflight: Arc<RecoveryPreflightService>,
-    recovery: Arc<RecoveryCoordinator>,
+    postgres_toolchain: Option<PostgreSqlToolchain>,
+    preflight: Option<Arc<RecoveryPreflightService>>,
+    recovery: Option<Arc<RecoveryCoordinator>>,
     maintenance: Arc<SystemMaintenance>,
     repository: Arc<LocalBackupRepository>,
 }
@@ -83,6 +90,8 @@ pub struct SystemBackupJobStatus {
 
 #[derive(Debug, Error)]
 pub enum SystemBackupRuntimeError {
+    #[error("selective backup operation failed")]
+    Selective(#[from] anyhow::Error),
     #[error("system backup host configuration is invalid")]
     Configuration,
     #[error("system backup repository is unavailable")]
@@ -114,10 +123,8 @@ impl SystemBackupRuntime {
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
     ) -> Result<Self, SystemBackupRuntimeError> {
-        let postgres_toolchain = discover_postgres_toolchain()
-            .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?;
-        Self::open_with_postgres_toolchain(
+        let postgres_toolchain = discover_postgres_toolchain().await.ok();
+        Self::open_internal(
             store,
             file_storage_registry,
             maintenance,
@@ -133,6 +140,23 @@ impl SystemBackupRuntime {
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
         postgres_toolchain: PostgreSqlToolchain,
+    ) -> Result<Self, SystemBackupRuntimeError> {
+        Self::open_internal(
+            store,
+            file_storage_registry,
+            maintenance,
+            config,
+            Some(postgres_toolchain),
+        )
+        .await
+    }
+
+    async fn open_internal(
+        store: MainDurableStore,
+        file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+        maintenance: Arc<SystemMaintenance>,
+        config: &ApiConfig,
+        postgres_toolchain: Option<PostgreSqlToolchain>,
     ) -> Result<Self, SystemBackupRuntimeError> {
         let protected_roots = protected_data_roots(config);
         let target_roots_separated = protected_roots.iter().enumerate().all(|(index, root)| {
@@ -158,10 +182,17 @@ impl SystemBackupRuntime {
             )
             .map_err(|_| SystemBackupRuntimeError::Key)?,
         );
-        postgres_toolchain
-            .verify_server_compatibility(store.pool())
-            .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let postgres_toolchain = match postgres_toolchain {
+            Some(toolchain)
+                if toolchain
+                    .verify_server_compatibility(store.pool())
+                    .await
+                    .is_ok() =>
+            {
+                Some(toolchain)
+            }
+            _ => None,
+        };
         let application_build = config.application_build.clone();
         let master_key_fingerprint = KeyFingerprint::try_from(format!(
             "{:x}",
@@ -170,27 +201,43 @@ impl SystemBackupRuntime {
         .map_err(|_| SystemBackupRuntimeError::Configuration)?;
 
         let service = Arc::new(SystemBackupService::new(repository.clone(), key_provider));
-        let target_probe = Arc::new(
-            ApiRecoveryTargetProbe::new(
-                store.pool().clone(),
-                application_build.clone(),
-                &config.provider_secret_master_key,
-                &config.system_backup_repository_root,
-                target_roots_separated,
+        let (preflight, recovery) = if let Some(toolchain) = postgres_toolchain.as_ref() {
+            let target_probe = Arc::new(
+                ApiRecoveryTargetProbe::new(
+                    store.pool().clone(),
+                    application_build.clone(),
+                    &config.provider_secret_master_key,
+                    &config.system_backup_repository_root,
+                    target_roots_separated,
+                    maintenance.clone(),
+                    toolchain.clone(),
+                )
+                .map_err(|_| SystemBackupRuntimeError::Configuration)?,
+            );
+            let preflight = Arc::new(RecoveryPreflightService::new(service.clone(), target_probe));
+            let recovery = Arc::new(RecoveryCoordinator::new(
+                preflight.clone(),
+                service.clone(),
+                repository.clone(),
                 maintenance.clone(),
-                postgres_toolchain.clone(),
-            )
-            .map_err(|_| SystemBackupRuntimeError::Configuration)?,
-        );
-        let preflight = Arc::new(RecoveryPreflightService::new(service.clone(), target_probe));
-        let recovery = Arc::new(RecoveryCoordinator::new(
-            preflight.clone(),
-            service.clone(),
-            repository.clone(),
-            maintenance.clone(),
-        ));
+            ));
+            (Some(preflight), Some(recovery))
+        } else {
+            (None, None)
+        };
 
+        let selective = Arc::new(storage_durable_postgres::PgSelectiveBackupRepository::new(
+            store.pool().clone(),
+        ));
+        let selective_service = control_plane::system_backup::SelectiveSystemBackupService::new(
+            selective.clone(),
+            service.clone(),
+            file_storage_registry.clone(),
+        );
         Ok(Self {
+            selective,
+            selective_service,
+            target_master_key: config.provider_secret_master_key.clone(),
             service,
             store,
             file_storage_registry,
@@ -339,9 +386,15 @@ impl SystemBackupRuntime {
             supported_source_migration_heads,
             master_key_fingerprint: self.master_key_fingerprint.clone(),
         };
-        let compatibility_failures = strict_backup_compatibility(sealed.manifest(), &target)
+        let mut compatibility_failures = strict_backup_compatibility(sealed.manifest(), &target)
             .err()
             .unwrap_or_default();
+        if Self::is_selective(&sealed) {
+            // The selected-table preflight owns schema compatibility; the complete database's
+            // migration lineage is relevant only to legacy PostgreSQL replacement.
+            compatibility_failures
+                .retain(|failure| *failure != BackupIncompatibility::MigrationHead);
+        }
         let verification = self
             .repository
             .read_verification(backup_set_id)
@@ -435,7 +488,7 @@ impl SystemBackupRuntime {
     }
 
     pub async fn preflight(&self, backup_set_id: BackupSetId) -> RecoveryPlan {
-        self.preflight.plan(backup_set_id).await
+        self.preflight_with_password(backup_set_id, None).await
     }
 
     pub async fn preflight_with_password(
@@ -443,9 +496,30 @@ impl SystemBackupRuntime {
         backup_set_id: BackupSetId,
         password: Option<&str>,
     ) -> RecoveryPlan {
-        self.preflight
-            .plan_with_password(backup_set_id, password)
-            .await
+        if let Ok(sealed) = self.service.get(backup_set_id).await {
+            if Self::is_selective(&sealed) {
+                return self.selective_preflight(sealed, password).await;
+            }
+        }
+        match &self.preflight {
+            Some(preflight) => preflight.plan_with_password(backup_set_id, password).await,
+            None => RecoveryPlan {
+                backup_set_id,
+                required_space_bytes: 0,
+                available_space_bytes: 0,
+                impact: control_plane::system_recovery::RecoveryImpactPreview {
+                    database_replaced: true,
+                    business_object_count: 0,
+                    extension_artifact_count: 0,
+                    mcp_artifact_count: 0,
+                    active_work: Vec::new(),
+                },
+                failures: vec![
+                    control_plane::system_recovery::RecoveryPreflightFailure::PostgreSqlToolchain,
+                ],
+                selective: None,
+            },
+        }
     }
 
     pub async fn prepare_recovery(
@@ -481,6 +555,8 @@ impl SystemBackupRuntime {
         let (safety_backup_command, safety_backup_sources) =
             self.backup_inputs(actor_user_id, None).await?;
         self.recovery
+            .as_ref()
+            .ok_or(SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?
             .prepare_offline_handoff_with_lease(
                 PrepareRecoveryCommand {
                     intent,
@@ -496,7 +572,9 @@ impl SystemBackupRuntime {
     }
 
     pub fn active_recovery(&self) -> Option<OfflineRecoveryHandoffReady> {
-        self.recovery.active_handoff()
+        self.recovery
+            .as_ref()
+            .and_then(|recovery| recovery.active_handoff())
     }
 
     pub fn maintenance_status(&self) -> SystemMaintenanceSnapshot {
@@ -524,7 +602,11 @@ impl SystemBackupRuntime {
         ),
         SystemBackupRuntimeError,
     > {
-        self.postgres_toolchain
+        let postgres_toolchain = self
+            .postgres_toolchain
+            .as_ref()
+            .ok_or(SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?;
+        postgres_toolchain
             .verify_server_compatibility(self.store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
@@ -537,7 +619,7 @@ impl SystemBackupRuntime {
         let mut sources: Vec<Arc<dyn BackupComponentSource>> = vec![Arc::new(
             storage_durable_postgres::PostgreSqlLogicalBackup::new(
                 self.database_url.clone(),
-                self.postgres_toolchain.clone(),
+                postgres_toolchain.clone(),
             ),
         )];
         sources.extend(

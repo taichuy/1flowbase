@@ -68,11 +68,18 @@ pub struct RecoveryPlan {
     pub available_space_bytes: u64,
     pub impact: RecoveryImpactPreview,
     pub failures: Vec<RecoveryPreflightFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selective:
+        Option<control_plane_contracts::system_backup::selective::SelectiveBackupPreview>,
 }
 
 impl RecoveryPlan {
     pub fn is_compatible(&self) -> bool {
         self.failures.is_empty()
+            && self
+                .selective
+                .as_ref()
+                .is_none_or(|preview| preview.failures.is_empty())
     }
 }
 
@@ -163,6 +170,7 @@ impl RecoveryPreflightService {
             available_space_bytes: target.available_space_bytes,
             impact: impact_preview(&sealed, target.active_work),
             failures,
+            selective: None,
         }
     }
 }
@@ -174,12 +182,14 @@ fn valid_component_inventory(sealed: &SealedBackupManifest) -> bool {
         .iter()
         .filter(|component| component.kind == BackupComponentKind::PostgreSql)
         .count();
-    postgres == 1
-        && sealed.manifest().components().iter().all(|component| {
-            component.disposition != BackupComponentDisposition::Embedded
-                || component.kind == BackupComponentKind::BusinessObject
-                || component.size_bytes > 0
-        })
+    postgres == 1 && !sealed.manifest().components().iter().any(|component| {
+        component.content_type
+            == control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
+    }) && sealed.manifest().components().iter().all(|component| {
+        component.disposition != BackupComponentDisposition::Embedded
+            || component.kind == BackupComponentKind::BusinessObject
+            || component.size_bytes > 0
+    })
 }
 
 fn required_space(backup_size: u64) -> u64 {
@@ -236,6 +246,7 @@ fn failed_plan(
             active_work: target.active_work.clone(),
         },
         failures: vec![failure],
+        selective: None,
     }
 }
 
@@ -252,6 +263,7 @@ fn unavailable_plan(backup_set_id: BackupSetId) -> RecoveryPlan {
             active_work: Vec::new(),
         },
         failures: vec![RecoveryPreflightFailure::TargetProbe],
+        selective: None,
     }
 }
 

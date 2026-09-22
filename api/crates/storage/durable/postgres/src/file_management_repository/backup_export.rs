@@ -24,27 +24,47 @@ struct RegisteredFileTable {
 #[async_trait]
 impl BackupObjectInventoryRepository for PgControlPlaneStore {
     async fn list_backup_object_inventory(&self) -> Result<Vec<BackupObjectInventoryRecord>> {
-        let mut transaction = self.pool().begin().await?;
-        sqlx::query("set transaction isolation level repeatable read read only")
-            .execute(&mut *transaction)
-            .await?;
-        let storages = load_object_storages(&mut transaction).await?;
-        let file_tables = load_registered_file_tables(&mut transaction).await?;
-        let mut records = Vec::new();
-        for file_table in file_tables {
-            records
-                .extend(load_file_table_records(&mut transaction, &storages, &file_table).await?);
-        }
-        records.extend(load_runtime_debug_artifacts(&mut transaction, &storages).await?);
-        transaction.commit().await?;
-        records.sort_by(|left, right| {
-            left.storage_id
-                .cmp(&right.storage_id)
-                .then_with(|| left.object_path.cmp(&right.object_path))
-                .then_with(|| left.reference.cmp(&right.reference))
-        });
-        Ok(records)
+        load_inventory(self, None, true).await
     }
+
+    async fn list_selected_backup_object_inventory(
+        &self,
+        file_table_ids: &[Uuid],
+        include_runtime_debug_artifacts: bool,
+    ) -> Result<Vec<BackupObjectInventoryRecord>> {
+        load_inventory(self, Some(file_table_ids), include_runtime_debug_artifacts).await
+    }
+}
+
+async fn load_inventory(
+    store: &PgControlPlaneStore,
+    selected: Option<&[Uuid]>,
+    include_runtime_debug_artifacts: bool,
+) -> Result<Vec<BackupObjectInventoryRecord>> {
+    let mut transaction = store.pool().begin().await?;
+    sqlx::query("set transaction isolation level repeatable read read only")
+        .execute(&mut *transaction)
+        .await?;
+    let storages = load_object_storages(&mut transaction).await?;
+    let file_tables = load_registered_file_tables(&mut transaction).await?;
+    let mut records = Vec::new();
+    for file_table in file_tables {
+        if selected.is_some_and(|ids| !ids.contains(&file_table.id)) {
+            continue;
+        }
+        records.extend(load_file_table_records(&mut transaction, &storages, &file_table).await?);
+    }
+    if include_runtime_debug_artifacts {
+        records.extend(load_runtime_debug_artifacts(&mut transaction, &storages).await?);
+    }
+    transaction.commit().await?;
+    records.sort_by(|left, right| {
+        left.storage_id
+            .cmp(&right.storage_id)
+            .then_with(|| left.object_path.cmp(&right.object_path))
+            .then_with(|| left.reference.cmp(&right.reference))
+    });
+    Ok(records)
 }
 
 async fn load_object_storages(

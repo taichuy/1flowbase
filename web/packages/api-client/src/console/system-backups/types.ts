@@ -5,6 +5,7 @@ export interface BackupSetSummaryResponse {
   exact_backup_name: string;
   created_at: string;
   availability: BackupSetAvailability;
+  backup_kind: 'selective' | 'legacy';
   total_size_bytes: number;
   envelope_digest: string | null;
 }
@@ -105,7 +106,26 @@ export interface BackupJobStatusResponse {
   sealed_components: number;
 }
 
+export interface BackupCatalogItemResponse {
+  feature_id: string;
+  label_key: string;
+  structure_bytes: number;
+  data_bytes: number;
+  structure_tables: string[];
+  data_tables: string[];
+}
+
+export interface BackupCatalogResponse {
+  items: BackupCatalogItemResponse[];
+}
+
+export interface BackupSelection {
+  features: Array<{ feature_id: string; structure: boolean; data: boolean }>;
+  include_file_bytes: boolean;
+}
+
 export interface CreateBackupRequest {
+  selection: BackupSelection;
   backup_password?: string;
 }
 
@@ -127,6 +147,12 @@ export interface RecoveryImpactPreview {
 }
 
 export interface RecoveryPreflightResponse {
+  selective?: {
+    failures: string[];
+    missing_plugins: string[];
+    table_count: number;
+    row_count: number;
+  };
   backup_set_id: string;
   plan_digest: string;
   compatible: boolean;
@@ -150,6 +176,7 @@ export interface RecoveryReauthResponse {
 }
 
 export interface CreateRecoveryIntentRequest {
+  confirm_missing_plugins?: boolean;
   challenge_token: string;
   exact_backup_name: string;
   plan_digest: string;
@@ -157,6 +184,7 @@ export interface CreateRecoveryIntentRequest {
 }
 
 export interface RecoveryIntentResponse {
+  restart_required: boolean;
   intent_id: string;
   recovery_job_id: string;
   backup_set_id: string;

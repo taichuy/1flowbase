@@ -147,3 +147,66 @@ async fn missing_db_referenced_object_is_reported_by_the_backup_source() {
         Err(crate::system_backup::BackupSourceError::Unavailable)
     ));
 }
+
+#[tokio::test]
+async fn selected_objects_do_not_include_unselected_files_or_debug_payloads() {
+    let storage_id = Uuid::now_v7();
+    let selected_table = Uuid::now_v7();
+    let records = vec![
+        record(
+            storage_id,
+            "selected.bin",
+            "application/octet-stream",
+            1,
+            BackupObjectDatabaseReference::FileRecord {
+                file_table_id: selected_table,
+                record_id: Uuid::now_v7(),
+            },
+        ),
+        record(
+            storage_id,
+            "unselected.bin",
+            "application/octet-stream",
+            2,
+            BackupObjectDatabaseReference::FileRecord {
+                file_table_id: Uuid::now_v7(),
+                record_id: Uuid::now_v7(),
+            },
+        ),
+        record(
+            storage_id,
+            "debug.bin",
+            "application/octet-stream",
+            3,
+            BackupObjectDatabaseReference::RuntimeDebugArtifact {
+                artifact_id: Uuid::now_v7(),
+            },
+        ),
+    ];
+    let exporter = BusinessObjectBackupExporter::new(
+        FixtureRepository { records },
+        Arc::new(
+            storage_object::FileStorageDriverRegistry::default()
+                .register(Arc::new(storage_object::LocalFileStorageDriver)),
+        ),
+    );
+    let selection = [selected_table].into_iter().collect();
+    let sources = exporter.sources_selected(&selection, false).await.unwrap();
+    assert_eq!(sources.len(), 1);
+    assert!(matches!(sources[0].descriptor().restore_target,
+        domain::BackupComponentRestoreTarget::BusinessObject { ref object_path, .. }
+            if object_path == "selected.bin"));
+    assert_eq!(
+        exporter
+            .sources_selected(&selection, true)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(exporter
+        .sources_selected(&Default::default(), false)
+        .await
+        .unwrap()
+        .is_empty());
+}

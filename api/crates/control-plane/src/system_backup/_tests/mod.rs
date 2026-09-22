@@ -1,3 +1,5 @@
+mod selective_tests;
+
 use std::sync::{Arc, Mutex};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
