@@ -34,7 +34,7 @@ pub use plugins_and_models_group::{
 pub use settings_group::{
     application_management, auth_center, billing, data_models, docs, file_storages, file_tables,
     host_infrastructure, i18n_catalog, mcp_management, members, navigation, permissions, roles,
-    system, system_backups, ui_management, workspace, workspaces,
+    system, system_backups, system_templates, ui_management, workspace, workspaces,
 };
 pub(crate) use settings_group::{
     auth_center_interface, billing_interface, membership_interface, navigation_interface,

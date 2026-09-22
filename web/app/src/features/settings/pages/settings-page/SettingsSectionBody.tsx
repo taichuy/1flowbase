@@ -79,6 +79,11 @@ const ApplicationManagementPanel = lazy(() =>
     })
   )
 );
+const SystemTemplatesPanel = lazy(() =>
+  import('../../components/system-templates/SystemTemplatesPanel').then(
+    (module) => ({ default: module.SystemTemplatesPanel })
+  )
+);
 const SystemBackupsPanel = lazy(() =>
   import('../../components/system-backups/SystemBackupsPanel').then(
     (module) => ({
@@ -153,6 +158,7 @@ export function SettingsSectionBody({
     case 'backups':
       return (
         <SettingsSectionBoundary>
+          <SystemTemplatesPanel />
           <SystemBackupsPanel />
         </SettingsSectionBoundary>
       );

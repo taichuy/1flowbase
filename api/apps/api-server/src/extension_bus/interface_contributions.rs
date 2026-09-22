@@ -1592,6 +1592,20 @@ pub(crate) fn production_interface_contributions(
             })?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-system-templates",
+            &["system_templates.catalog", "system_templates.export", "system_templates.preview", "system_templates.install"],
+            &["api-server.console-system-templates"],
+            crate::routes::system_templates::interface::compile_registry(
+                crate::routes::system_templates::plugins::TemplateDependencies {
+                    store: state.store.clone(), provider_runtime: state.provider_runtime.clone(),
+                    official_plugin_source: state.official_plugin_source.clone(),
+                    official_catalog_source: state.official_extension_catalog_source.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                    provider_install_root: state.provider_install_root.clone(), api_node_id: state.api_node_id.clone(),
+                }
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-system-backups",
             &[
                 "system_backups.catalog",
