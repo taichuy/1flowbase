@@ -1047,6 +1047,7 @@ dependencies = [
  "interface-runtime",
  "plugin-framework",
  "postgres-test-support",
+ "runtime-core",
  "serde_json",
  "sqlx",
  "storage-durable",

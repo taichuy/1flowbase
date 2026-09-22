@@ -1911,10 +1911,22 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         attempt_id: Uuid,
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>> {
+        let mut tx = self.pool().begin().await?;
+        // Compare restored JSON while holding the attempt lock: PostgreSQL json has
+        // no equality operator, and casting to jsonb rejects lossless U+0000 data.
+        let stored: Option<Value> = sqlx::query_scalar(
+            "select runtime_original_json(response_payload, raw_json_payloads, 'response_payload') from flow_run_callback_resume_attempts where id = $1 for update",
+        )
+        .bind(attempt_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if stored.as_ref() != Some(&response_payload) {
+            tx.rollback().await?;
+            return Ok(None);
+        }
         let row = sqlx::query(r#"
             update flow_run_callback_resume_attempts a set status = 'processing', updated_at = now(), completed_at = null
             where a.id = $1
-              and runtime_original_json(a.response_payload, a.raw_json_payloads, 'response_payload') = $2
               and a.source = 'openai_responses'
               and a.response_payload ? 'responses_continuation'
               and (a.status = 'received' or (a.status = 'processing' and a.updated_at <= now() - interval '5 minutes'))
@@ -1924,7 +1936,8 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
               runtime_original_json(a.response_payload, a.raw_json_payloads, 'response_payload') as response_payload,
               a.idempotency_key, runtime_original_json(a.error_payload, a.raw_json_payloads, 'error_payload') as error_payload,
               a.created_at, a.updated_at, a.completed_at
-        "#).bind(attempt_id).bind(response_payload).fetch_optional(self.pool()).await?;
+        "#).bind(attempt_id).fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         row.as_ref()
             .map(map_flow_run_callback_resume_attempt_record)
             .transpose()

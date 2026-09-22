@@ -707,23 +707,11 @@ async fn callback_resume_context_keeps_200_large_snapshots_out_of_process_histor
     );
 }
 
-#[derive(Clone)]
-struct AdmissionOnlyConsumer;
-#[async_trait::async_trait]
-impl control_plane::application_public_api::callback_resume::ApplicationPublishedCallbackConsumer
-    for AdmissionOnlyConsumer
-{
-    async fn complete_published_callback(
-        &self,
-        _: control_plane::application_public_api::callback_resume::CompletePublishedCallbackInput,
-    ) -> anyhow::Result<domain::FlowRunRecord> {
-        panic!("admission must not invoke execution")
-    }
-}
+#[path = "callback_resume/semantic_runtime.rs"]
+mod semantic_runtime;
 
-// Real durable transaction + public service admission. The interruption is after
-// receipt/claim commit and before execution; the execution engine order fixture
-// independently asserts how the recovered receipt is appended to checkpoint state.
+// Interrupt the real public consumer at the provider execution port after durable
+// receipt commit, then retry through that same consumer with an expired lease.
 #[tokio::test]
 async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_claim_owner() {
     use control_plane::application_public_api::{
@@ -758,7 +746,7 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
     let waiting = persist_callback_wait(&store, &seeded, &run, &node, 1, None, None).await;
     let callback = waiting.callback_task.unwrap();
     let request = json!({"model":"fixture","previous_response_id":format!("resp_{}",run.id),"input":[
-        {"role":"user","content":"before"},{"type":"function_call_output","call_id":"call-1-0","output":"ok"},{"role":"user","content":"after"}]});
+        {"role":"user","content":"before\0context"},{"type":"function_call_output","call_id":"call-1-0","output":"ok"},{"role":"user","content":"after"}]});
     let digest =
         control_plane_contracts::ports::ProviderTransportPayload::openai_responses(request.clone())
             .unwrap()
@@ -831,16 +819,38 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         response_payload: grant.payload().clone(),
         response_mode: Some("streaming".into()),
     };
-    let service =
-        ApplicationPublishedCallbackResumeService::new(store.clone(), AdmissionOnlyConsumer);
-    service
-        .prepare_callback_resume_for_actor(actor.clone(), &command)
+    let (runtime, provider, _package) =
+        semantic_runtime::seed_runtime_consumer(&store, &seeded, &compiled, &waiting.checkpoint)
+            .await;
+    let service = Arc::new(ApplicationPublishedCallbackResumeService::new(
+        store.clone(),
+        runtime,
+    ));
+    let mut first = {
+        let service = service.clone();
+        let actor = actor.clone();
+        let command = command.clone();
+        tokio::spawn(async move { service.resume_callback_for_actor(actor, command).await })
+    };
+    tokio::select! {
+        _ = provider.wait_until_entered() => {},
+        result = &mut first => panic!("consumer exited before execution boundary: {result:?}"),
+    }
+    // Task cancellation models process loss, without completing the consumer or lease.
+    first.abort();
+    assert!(first.await.unwrap_err().is_cancelled());
+    assert_eq!(
+        provider
+            .executions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    let attempt_id = store
+        .get_published_callback_resume_attempt(callback.id)
         .await
-        .unwrap();
-    let attempt_id = service
-        .reserve_native_callback_for_actor(actor.clone(), &command)
-        .await
-        .unwrap();
+        .unwrap()
+        .unwrap()
+        .id;
     let input = CommitToolCallbackResultsInput {
         responses_continuation: Some(
             serde_json::from_value(grant.payload()["responses_continuation"].clone()).unwrap(),
@@ -855,7 +865,7 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
     let committed = store.commit_tool_callback_results(&input).await.unwrap();
     assert_eq!(
         committed.disposition,
-        ToolCallbackRoundDisposition::Acquired
+        ToolCallbackRoundDisposition::Completed
     );
     let first_claim = committed.claim.unwrap();
     let receipt = committed.callback_task.response_payload.unwrap();
@@ -874,6 +884,17 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         .commit_tool_callback_results(&conflicting)
         .await
         .is_err());
+    let mut reordered = input.clone();
+    reordered
+        .responses_continuation
+        .as_mut()
+        .unwrap()
+        .ordered_input
+        .swap(0, 2);
+    assert!(store
+        .commit_tool_callback_results(&reordered)
+        .await
+        .is_err());
     assert!(service
         .reserve_native_callback_for_actor(actor.clone(), &command)
         .await
@@ -887,45 +908,82 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
     .await
     .unwrap();
     sqlx::query("update flow_run_callback_resume_attempts set updated_at=now()-interval '6 minutes' where id=$1").bind(attempt_id).execute(store.pool()).await.unwrap();
-    service
-        .prepare_callback_resume_for_actor(actor.clone(), &command)
-        .await
-        .unwrap();
-    let (left, right) = tokio::join!(
-        service.reserve_native_callback_for_actor(actor.clone(), &command),
-        service.reserve_native_callback_for_actor(actor.clone(), &command)
-    );
-    assert_ne!(left.is_ok(), right.is_ok());
-    let stored = store.commit_tool_callback_results(&input).await.unwrap();
-    let acquire = AcquireResumeClaimInput {
-        scope_id: seeded.workspace_id,
-        application_id: seeded.application_id,
-        flow_run_id: run.id,
-        checkpoint_id: waiting.checkpoint.id,
-        callback_task_id: Some(callback.id),
-        kind: ResumeClaimKind::Callback,
-        request_payload: stored.callback_task.response_payload.unwrap(),
+    // Both contenders traverse public admission and the actual runtime consumer.
+    let mut left = {
+        let service = service.clone();
+        let actor = actor.clone();
+        let command = command.clone();
+        tokio::spawn(async move { service.resume_callback_for_actor(actor, command).await })
     };
-    let (left, right) = tokio::join!(
-        store.acquire_resume_claim(&acquire),
-        store.acquire_resume_claim(&acquire)
-    );
-    let results = [left.unwrap(), right.unwrap()];
+    let mut right = {
+        let service = service.clone();
+        let actor = actor.clone();
+        let command = command.clone();
+        tokio::spawn(async move { service.resume_callback_for_actor(actor, command).await })
+    };
+    provider.wait_until_entered().await;
+    // Keep the winner inside the external port so the competing admission sees an active lease.
+    let left_lost = tokio::select! {
+        result = &mut left => { assert!(result.unwrap().is_err()); true },
+        result = &mut right => { assert!(result.unwrap().is_err()); false },
+    };
+    let restored = store
+        .commit_tool_callback_results(&input)
+        .await
+        .unwrap()
+        .claim
+        .unwrap();
+    assert_eq!(restored.id, first_claim.id);
+    assert_eq!(restored.generation, first_claim.generation + 1);
+    assert_eq!(restored.request_payload, receipt);
+    assert_ne!(restored.claim_token, first_claim.claim_token);
+    assert!(store
+        .finish_resume_claim(&FinishResumeClaimInput {
+            claim_id: first_claim.id,
+            claim_token: first_claim.claim_token,
+            expected_generation: first_claim.generation,
+            status: ResumeClaimStatus::Succeeded,
+            error_payload: None,
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .is_err());
+    {
+        let inputs = provider.inputs.lock().unwrap();
+        assert_eq!(inputs.len(), 2);
+        assert_eq!(inputs[0].messages, inputs[1].messages);
+        let messages = &inputs[1].messages;
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0].content, "original");
+        assert_eq!(messages[2].content, "before\0context");
+        assert_eq!(messages[3].tool_call_id.as_deref(), Some("call-1-0"));
+        assert_eq!(messages[3].content, "ok");
+        assert_eq!(messages[4].content, "after");
+    }
+    provider.release.add_permits(1);
+    let completed = if left_lost {
+        right.await.unwrap()
+    } else {
+        left.await.unwrap()
+    }
+    .unwrap();
     assert_eq!(
-        results
-            .iter()
-            .filter(|result| result.disposition == ResumeClaimDisposition::Acquired)
-            .count(),
+        completed.run.status,
+        control_plane::application_public_api::native::NativeRunStatus::Succeeded
+    );
+    assert_eq!(
+        provider
+            .executions
+            .load(std::sync::atomic::Ordering::SeqCst),
         1
     );
-    let restored = results
-        .iter()
-        .find(|result| result.disposition == ResumeClaimDisposition::Acquired)
+    let final_claim = store
+        .commit_tool_callback_results(&input)
+        .await
+        .unwrap()
+        .claim
         .unwrap();
-    assert_eq!(restored.claim.id, first_claim.id);
-    assert_eq!(restored.claim.generation, first_claim.generation + 1);
-    assert_eq!(restored.claim.request_payload, receipt);
-    assert_ne!(restored.claim.claim_token, first_claim.claim_token);
+    assert_eq!(final_claim.status, ResumeClaimStatus::Succeeded);
     let mut forged = command.clone();
     forged.responses_continuation = None;
     assert!(service

@@ -346,3 +346,23 @@ fn d_004_plugin_runner_is_absent_from_the_workspace_and_production_dependencies(
     assert!(!package_names.iter().any(|name| name == "plugin-runner"));
     assert!(!api.join("apps/plugin-runner").exists());
 }
+
+#[test]
+fn runtime_consumer_fixture_uses_runtime_core_only_as_a_dev_dependency() {
+    let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let metadata = cargo_metadata(&api);
+    let package = metadata["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|package| package["name"] == "control-plane-postgres-tests")
+        .unwrap();
+    let dependencies: Vec<_> = package["dependencies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|dependency| dependency["name"] == "runtime-core")
+        .collect();
+    assert_eq!(dependencies.len(), 1);
+    assert_eq!(dependencies[0]["kind"], "dev");
+}

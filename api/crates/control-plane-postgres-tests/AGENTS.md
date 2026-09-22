@@ -4,6 +4,7 @@
 - 不承载生产代码，不建立 fake repository 来绕过真实 adapter contract。
 - repository-only 测试留在 adapter；需要 service 语义的夹具放本目录。
 - 测试必须使用隔离 PostgreSQL schema，复用正式 migrations，并保留原业务断言。
+- `runtime-core` 仅作 dev-dependency，用于真实 OrchestrationRuntimeService consumer 夹具的 RuntimeEngine 装配；不改变生产依赖边。
 - 本 crate 同时执行跨层依赖禁止规则；新增例外必须先重构边界，不能加入 allowlist。
 
 ## Evidence
