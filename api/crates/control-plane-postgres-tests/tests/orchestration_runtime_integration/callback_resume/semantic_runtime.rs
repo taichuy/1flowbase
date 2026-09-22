@@ -2,8 +2,9 @@ use super::*;
 use control_plane::capability_plugin_runtime::*;
 use control_plane::ports::{ProviderRuntimeInvocationOutput, ProviderRuntimePort};
 use control_plane_contracts::ports::{
-    CreateModelProviderInstanceInput, CreatePluginAssignmentInput, ModelProviderRepository,
-    PluginRepository, UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+    BillingRepository, CreateModelProviderInstanceInput, CreatePluginAssignmentInput,
+    CreditCommandInput, ModelProviderRepository, PluginRepository, UpsertPluginArtifactInstanceInput,
+    UpsertPluginInstallationInput,
 };
 use plugin_framework::provider_contract::{
     ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
@@ -138,6 +139,36 @@ pub(super) async fn seed_runtime_consumer(
         .execute(store.pool())
         .await
         .unwrap();
+    // The membership fixture creates a charge-enabled account before this actor
+    // becomes root. Root authorization does not rewrite that persisted policy.
+    // Use the real credit command in this test's isolated schema: reservations
+    // and settlement still run, but this root fixture requires no funded balance.
+    store
+        .execute_credit_command(&CreditCommandInput {
+            workspace_id: seeded.workspace_id,
+            user_id: seeded.actor_user_id,
+            amount: "0".into(),
+            credit_unit: "USD".into(),
+            command: "disable_charge".into(),
+            reason: "semantic recovery root fixture".into(),
+            source_type: Some("test".into()),
+            source_id: Some(compiled.id.to_string()),
+            idempotency_key: format!("semantic-recovery-root:{}", compiled.id),
+            actor_user_id: Some(seeded.actor_user_id),
+            actor_plugin_id: None,
+            metadata: json!({}),
+        })
+        .await
+        .unwrap();
+    let account = store
+        .get_credit_account(seeded.workspace_id, seeded.actor_user_id)
+        .await
+        .unwrap()
+        .expect("isolated recovery actor has a credit account");
+    assert!(
+        !account.charge_enabled,
+        "root fixture billing policy is seeded"
+    );
     let root = ProviderPackage(
         std::env::temp_dir().join(format!("semantic-resume-provider-{}", Uuid::now_v7())),
     );
