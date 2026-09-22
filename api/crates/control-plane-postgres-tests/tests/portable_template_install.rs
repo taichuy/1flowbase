@@ -20,7 +20,15 @@ fn fixture() -> PortableTemplatePackage {
 #[tokio::test]
 async fn installs_main_source_table_and_rewrites_page_without_duplicate_default_tab() {
     let (store, workspace, actor) = support::seed_store().await;
-    let package = fixture();
+    let mut package = fixture();
+    let mut group = package.pages[0].clone();
+    group.id = Uuid::new_v4();
+    group.kind = domain::FrontstagePageKind::Group;
+    group.slug = Some("portable-group".into());
+    group.tabs.clear();
+    package.pages[0].parent_id = Some(group.id);
+    package.pages[0].slug = None;
+    package.pages.push(group.clone());
     let source_model = package.data_models[0].id;
     let source_page = package.pages[0].id;
     let result = PortableTemplateInstallService::new(store.clone())
@@ -28,6 +36,27 @@ async fn installs_main_source_table_and_rewrites_page_without_duplicate_default_
         .await
         .unwrap();
     assert!(result.complete, "{:?}", result.failures);
+    let group_id = result.id_map[&group.id.to_string()]
+        .parse::<Uuid>()
+        .unwrap();
+    let restored_group =
+        FrontstagePageRepository::get_frontstage_page(&store, workspace.id, group_id)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(restored_group.kind, domain::FrontstagePageKind::Group);
+    assert_eq!(restored_group.slug, group.slug);
+    let restored_page = FrontstagePageRepository::get_frontstage_page(
+        &store,
+        workspace.id,
+        result.id_map[&source_page.to_string()]
+            .parse::<Uuid>()
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(restored_page.parent_id, Some(group_id));
     let model_id: Uuid = result.id_map[&source_model.to_string()].parse().unwrap();
     let model = ModelDefinitionRepository::get_model_definition(&store, workspace.id, model_id)
         .await
@@ -84,6 +113,17 @@ async fn installs_main_source_table_and_rewrites_page_without_duplicate_default_
         )
         .await
         .unwrap();
+    assert_eq!(exported.pages.len(), 2);
+    assert!(exported.pages.iter().any(|page| page.id == group_id));
+    assert_eq!(
+        exported
+            .pages
+            .iter()
+            .find(|page| page.id == page_id)
+            .unwrap()
+            .parent_id,
+        Some(group_id)
+    );
     let serialized = serde_json::to_value(&exported).unwrap();
     // Field names such as "created_by" are schema definitions, not ownership values.
     for resources in ["pages", "applications", "data_models"] {
