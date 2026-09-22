@@ -707,6 +707,9 @@ async fn callback_resume_context_keeps_200_large_snapshots_out_of_process_histor
     );
 }
 
+#[path = "callback_resume/semantic_round_lookup.rs"]
+mod semantic_round_lookup;
+
 #[path = "callback_resume/semantic_runtime.rs"]
 mod semantic_runtime;
 

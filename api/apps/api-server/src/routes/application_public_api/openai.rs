@@ -1428,9 +1428,12 @@ async fn load_previous_response_context_for_actor(
         .await
         .map_err(native::service_error)?;
     if semantic.len() > 1 {
-        return Err(native::service_error(anyhow::anyhow!(
-            "responses_tool_output_ambiguous_round"
-        ))
+        return Err(native::service_error(
+            control_plane::errors::ControlPlaneError::Conflict(
+                "responses_tool_output_ambiguous_round",
+            )
+            .into(),
+        )
         .into());
     }
     let run = if let Some(callback) = semantic.first() {

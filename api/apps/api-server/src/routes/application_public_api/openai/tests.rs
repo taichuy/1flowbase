@@ -857,3 +857,23 @@ fn external_protocol_context_cannot_claim_host_transport_connection_scope() {
         vec!["legitimate-client-session"]
     );
 }
+
+#[tokio::test]
+async fn semantic_ambiguous_round_maps_to_openai_conflict() {
+    let error: OpenAiRouteError = native::service_error(
+        control_plane::errors::ControlPlaneError::Conflict("responses_tool_output_ambiguous_round")
+            .into(),
+    )
+    .into();
+    let response = error.into_response();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        body["error"]["code"],
+        "responses_tool_output_ambiguous_round"
+    );
+    assert_eq!(body["error"]["type"], "invalid_request_error");
+}

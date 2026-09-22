@@ -1718,8 +1718,7 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
               and f.api_key_id = $3 and f.created_by = $4
               and f.run_mode = 'published_api_run'
               and c.callback_kind = 'llm_tool_calls'
-              and (c.request_payload #>> '{responses_round,response_id}' = $5
-                   or (c.id = $6 and f.output_payload #>> '{responses_round,response_id}' = $5))
+              and c.request_payload #>> '{responses_round,response_id}' = $5
             order by c.created_at, c.id
             "#,
         )
@@ -1728,7 +1727,6 @@ impl ApplicationPublishedRunControlRepository for PgControlPlaneStore {
         .bind(api_key_id)
         .bind(actor_user_id)
         .bind(provider_response_id)
-        .bind(provider_response_id.strip_prefix("resp_").and_then(|id| Uuid::parse_str(id).ok()))
         .fetch_all(self.pool())
         .await?;
         rows.into_iter().map(map_callback_task_record).collect()
