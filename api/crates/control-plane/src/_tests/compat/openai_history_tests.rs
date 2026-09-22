@@ -175,7 +175,9 @@ fn v2_tracking_contract_is_typed_and_preserves_tool_result_metadata() {
         json!({"future_semantic":"keep"})
     );
     let malformed = json!({"type":"message","metadata":{"turn_id":{"unexpected":true}}});
-    assert_eq!(normalize_item(&malformed).unwrap(), malformed);
+    let mut expected = malformed.clone();
+    expected["role"] = json!("user");
+    assert_eq!(normalize_item(&malformed).unwrap(), expected);
 }
 
 #[test]

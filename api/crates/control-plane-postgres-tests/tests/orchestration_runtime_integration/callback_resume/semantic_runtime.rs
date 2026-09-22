@@ -125,8 +125,19 @@ pub(super) async fn seed_runtime_consumer(
 ) {
     // Authorize the fixture owner through the real actor repository.
     let role = Uuid::now_v7();
-    sqlx::query("insert into roles (id, scope_kind, code, name) values ($1, 'system', 'root', 'Root') on conflict do nothing").bind(role).execute(store.pool()).await.unwrap();
-    sqlx::query("insert into user_role_bindings (id, user_id, role_id) select $1, $2, id from roles where code='root' and scope_kind='system'").bind(Uuid::now_v7()).bind(seeded.actor_user_id).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into roles (id, scope_kind, scope_id, code, name) values ($1, 'system', $2, 'root', 'Root') on conflict do nothing")
+        .bind(role)
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("insert into user_role_bindings (id, user_id, role_id, scope_id) select $1, $2, id, $3 from roles where code='root' and scope_kind='system' and scope_id=$3")
+        .bind(Uuid::now_v7())
+        .bind(seeded.actor_user_id)
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .execute(store.pool())
+        .await
+        .unwrap();
     let root = ProviderPackage(
         std::env::temp_dir().join(format!("semantic-resume-provider-{}", Uuid::now_v7())),
     );
