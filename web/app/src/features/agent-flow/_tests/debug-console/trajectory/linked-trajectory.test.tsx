@@ -195,11 +195,13 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   ).toHaveAttribute('aria-pressed', 'true');
   expect(loadClientTrajectory).toHaveBeenCalledTimes(2);
   expect(loadRunTrajectory).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: '返回上一视图' }));
   expect(
-    screen.getAllByRole('button', { name: '模型调用准备' })[0]
-  ).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(screen.getByRole('button', { name: '返回上一视图' }));
+    screen.queryByRole('button', { name: '返回上一视图' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('工作流内部事件'));
+  fireEvent.click(
+    screen.getByText('客户端请求', { selector: '.ant-segmented-item-label' })
+  );
   expect(screen.getByRole('textbox', { name: '搜索已加载步骤' })).toHaveValue(
     'Current request'
   );

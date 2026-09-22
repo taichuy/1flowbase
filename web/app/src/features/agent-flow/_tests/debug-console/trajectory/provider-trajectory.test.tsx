@@ -125,7 +125,7 @@ function fixture(inFloatingWindow = false, runScope = false) {
   );
   return { loadTrajectory, loadRunTrajectory, loadTrajectoryBody };
 }
-test('loads Native details on selection and raw protocol only after explicit opening', async () => {
+test('loads Native detail and internal original without a supplier protocol tab', async () => {
   const { loadTrajectory, loadTrajectoryBody } = fixture();
   expect(loadTrajectory).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
@@ -144,33 +144,14 @@ test('loads Native details on selection and raw protocol only after explicit ope
   expect(
     loadTrajectoryBody.mock.calls.every((call) => call[4] === 'semantic')
   ).toBe(true);
-  fireEvent.click(screen.getByRole('tab', { name: '原始协议证据' }));
-  await screen.findByText(
-    '以下是本次调用的协议证据，可能包含多个步骤及插件内部重试。'
-  );
-  const body = await screen.findByText(/"provider": "original"/);
-  expect(body.textContent).toBe('  { "provider": "original" }\n');
-  loadTrajectoryBody.mockResolvedValueOnce({
-    event_id: 'event-1',
-    items: [
-      {
-        event_id: 'raw-2',
-        sequence: 2,
-        body: 'next evidence',
-        encoding: 'utf8'
-      }
-    ],
-    next_cursor: null
-  });
-  fireEvent.click(screen.getByRole('button', { name: '加载更多原始证据' }));
-  await screen.findByText('next evidence');
-  expect(loadTrajectoryBody).toHaveBeenLastCalledWith(
-    'run-1',
-    'node-run-2',
-    'event-1',
-    1,
-    'protocol'
-  );
+  expect(
+    screen.queryByRole('tab', { name: '原始协议证据' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: '内部事件原文' }));
+  await screen.findByText(/unknown_extension/);
+  expect(
+    loadTrajectoryBody.mock.calls.every((call) => call[4] === 'semantic')
+  ).toBe(true);
   expect(loadTrajectory).toHaveBeenCalledWith(
     'run-1',
     'node-run-2',
@@ -269,7 +250,7 @@ test('keeps complete semantic records when raw evidence was not captured', async
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
   fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByText('语义记录: 记录完整');
-  expect(screen.getByText('原始协议: 未记录')).toBeTruthy();
+  expect(screen.queryByText('原始协议: 未记录')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
   await screen.findByText(/native-model/);
   expect(screen.getByText('AI Native 调用')).toBeTruthy();
@@ -287,7 +268,7 @@ test('labels historical supplier projections and keeps raw failure separate', as
   fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
   fireEvent.click(screen.getByText('工作流内部事件'));
   await screen.findByText('语义记录: 记录完整');
-  expect(screen.getByText('原始协议: 记录不完整')).toBeTruthy();
+  expect(screen.queryByText('原始协议: 记录不完整')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '模型调用准备' }));
   await screen.findByText('供应商协议投影');
   expect(

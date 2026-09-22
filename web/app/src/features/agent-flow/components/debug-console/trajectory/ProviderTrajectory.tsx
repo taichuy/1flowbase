@@ -39,19 +39,18 @@ export function ProviderTrajectory({
   const [views, setViews] = useState<View[]>([
     { source: initialSource, runId, nodeRunId }
   ]);
-  const [history, setHistory] = useState([0]);
-  const active = history[history.length - 1];
+  const [active, setActive] = useState(0);
   const source = views[active].source;
   function navigate(view: View) {
     setViews((current) => [...current, view]);
-    setHistory((current) => [...current, views.length]);
+    setActive(views.length);
   }
   function switchSource(next: 'client' | 'native') {
     if (next === source) return;
     const existing = views.findIndex(
       (view) => view.source === next && !view.request_id
     );
-    if (existing >= 0) setHistory((current) => [...current, existing]);
+    if (existing >= 0) setActive(existing);
     else navigate({ source: next, runId, nodeRunId });
   }
   function openClient(
@@ -119,7 +118,7 @@ export function ProviderTrajectory({
                   onClick={() => {
                     setOpen(false);
                     setViews([{ source: initialSource, runId, nodeRunId }]);
-                    setHistory([0]);
+                    setActive(0);
                   }}
                 />
               </header>
@@ -142,16 +141,6 @@ export function ProviderTrajectory({
                       }
                     ]}
                   />
-                  {history.length > 1 ? (
-                    <Button
-                      type="link"
-                      onClick={() =>
-                        setHistory((current) => current.slice(0, -1))
-                      }
-                    >
-                      {i18nText('agentFlow', 'trajectory.return_view')}
-                    </Button>
-                  ) : null}
                   {views.map((view, index) => (
                     <div
                       className="trajectory-window__view"

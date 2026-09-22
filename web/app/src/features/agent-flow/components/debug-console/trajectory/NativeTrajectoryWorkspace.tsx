@@ -418,10 +418,6 @@ export function NativeTrajectoryWorkspace({
             ? i18nText('agentFlow', 'trajectory.node_scope')
             : i18nText('agentFlow', 'trajectory.run_scope')}
         </span>
-        <span>
-          {i18nText('agentFlow', 'trajectory.protocol_integrity')}:{' '}
-          {integrityLabel(overview?.protocol_integrity)}
-        </span>
         {overview?.persist_failed_count ? (
           <span>
             {i18nText('agentFlow', 'trajectory.failed_records', {
