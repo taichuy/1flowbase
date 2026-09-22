@@ -411,3 +411,22 @@ fn semantic_presented_round_proof_preserves_delta_order_across_rounds() {
     tampered[1]["content"][0]["text"] = json!("changed reasoning");
     assert!(prove_full_context_input(&tampered, &first.history, &["call_a".into()]).is_err());
 }
+
+#[test]
+fn omitted_default_user_role_preserves_full_and_delta_history_equivalence() {
+    let omitted = json!({"input":[{"content":"hello"}]});
+    let explicit = json!({"input":[{"type":"message","role":"user","content":"hello"}]});
+    let history = completed_history(&omitted, None, &[]).unwrap().unwrap();
+    assert_eq!(
+        completed_history(&explicit, None, &[]).unwrap().unwrap(),
+        history
+    );
+    let delta =
+        json!({"previous_response_id":"resp_first","input":[{"type":"message","content":"next"}]});
+    let full =
+        json!({"input":[{"role":"user","content":"hello"},{"role":"user","content":"next"}]});
+    assert_eq!(
+        completed_history(&delta, Some(&history), &[]).unwrap(),
+        completed_history(&full, None, &[]).unwrap()
+    );
+}

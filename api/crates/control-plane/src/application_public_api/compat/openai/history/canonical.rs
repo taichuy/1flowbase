@@ -97,7 +97,9 @@ pub(super) fn normalize_item(item: &Value) -> Result<Value> {
     let object = item
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("native_history_item_invalid"))?;
-    if !object.contains_key("type") && object.contains_key("role") {
+    if !object.contains_key("type")
+        && (object.contains_key("role") || object.contains_key("content"))
+    {
         object.insert("type".into(), json!("message"));
     }
     let kind: ItemKind = serde_json::from_value(Value::Object(object.clone()))
@@ -125,6 +127,8 @@ pub(super) fn normalize_item(item: &Value) -> Result<Value> {
     );
     match kind {
         ItemKind::Message => {
+            // Responses message inputs legally omit the default user role.
+            object.entry("role").or_insert_with(|| json!("user"));
             optional_fields(object, &["phase"]);
             completed_delivery_status(object);
             if let Some(Value::String(text)) = object.get("content") {

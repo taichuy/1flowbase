@@ -395,18 +395,16 @@ where
         );
         let mut input_payload =
             with_public_provider_transport_summary(input_payload, provider_transport_summary);
-        if !input_payload["sys"].is_object() {
+        // Minted by the mapper's sealed metadata, never inherited from mapped public input.
+        if let Some(sys) = input_payload.get_mut("sys").and_then(Value::as_object_mut) {
+            sys.remove("responses_input_history");
+            sys.remove("responses_configuration_digest");
+        }
+        if (responses_configuration_digest.is_some() || responses_input_history.is_some())
+            && !input_payload["sys"].is_object()
+        {
             input_payload["sys"] = json!({});
         }
-        // Minted by the mapper's sealed metadata, never inherited from mapped public input.
-        input_payload["sys"]
-            .as_object_mut()
-            .unwrap()
-            .remove("responses_input_history");
-        input_payload["sys"]
-            .as_object_mut()
-            .unwrap()
-            .remove("responses_configuration_digest");
         if let Some(digest) = responses_configuration_digest {
             input_payload["sys"]["responses_configuration_digest"] = json!(digest);
         }
