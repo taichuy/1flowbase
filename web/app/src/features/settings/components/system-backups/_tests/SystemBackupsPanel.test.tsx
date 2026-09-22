@@ -422,7 +422,7 @@ describe('SystemBackupsPanel', () => {
     ).toBeInTheDocument();
     fireEvent.click(structure);
     expect(data).not.toBeChecked();
-    expect(create).not.toBeDisabled();
+    expect(create).toBeEnabled();
     fireEvent.click(
       within(dialog).getByRole('radio', { name: 'Do not back up' })
     );
