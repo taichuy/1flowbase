@@ -485,7 +485,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     state,
                     TransportSessionState::Faulted | TransportSessionState::IdleReleased
                 ) {
-                    validate_fault_successor(input, recovery_directive.as_ref(), now)?;
+                    validate_fault_successor(recovery_directive.as_ref(), now)?;
                     if self.close_task_exhausted(&fence) {
                         return Err(self.recovery_admission_error(
                             &fence,
@@ -1249,10 +1249,9 @@ fn close_retry_delay(task: &LifecycleCommand) -> Duration {
 }
 
 // This admits a new invocation; it never resubmits the failed invocation or
-// strips a cursor. An opaque/connection-bound cursor without durable proof is
-// unusable on the fresh physical generation.
+// strips a cursor. Explicit connection binding fences a fresh generation; absent
+// provenance leaves cursor validation and complete-context recovery to its provider.
 fn validate_fault_successor(
-    input: &ProviderInvocationInput,
     recovery: Option<&ProviderRecoveryDirective>,
     now: TransportInstant,
 ) -> anyhow::Result<()> {
@@ -1270,16 +1269,7 @@ fn validate_fault_successor(
     let binding = recovery
         .and_then(|directive| directive.cursor_provenance)
         .map(|cursor| cursor.binding);
-    let has_cursor = input.previous_response_id.is_some()
-        || input.native_transport.as_ref().is_some_and(|native| {
-            native
-                .wire_body
-                .get("previous_response_id")
-                .is_some_and(|value| !value.is_null())
-        });
-    if matches!(binding, Some(CursorBinding::ConnectionBound { .. }))
-        || (has_cursor && binding != Some(CursorBinding::Durable))
-    {
+    if matches!(binding, Some(CursorBinding::ConnectionBound { .. })) {
         return Err(transport_error(
             "provider_transport_cursor_unreconstructible",
         ));

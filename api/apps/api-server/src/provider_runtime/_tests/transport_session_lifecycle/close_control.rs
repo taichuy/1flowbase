@@ -28,6 +28,13 @@ async fn local_release_without_peer_ack_allows_only_safe_successor() {
         Some(false)
     );
     input.previous_response_id = Some("bound-cursor".into());
+    let epoch = TransportEpoch::new(17).unwrap();
+    let mut directive = recovery_directive(epoch);
+    directive.cursor_provenance = Some(CursorProvenance::connection_bound(
+        epoch,
+        plugin_framework::provider_contract::SocketIncarnation::new(1).unwrap(),
+    ));
+    input.set_recovery_directive(directive.clone()).unwrap();
     assert!(reason(
         coordinator
             .prepare("runtime-a", &mut input, &context(2_010_000))
@@ -36,7 +43,8 @@ async fn local_release_without_peer_ack_allows_only_safe_successor() {
             .unwrap()
     )
     .contains("cursor_unreconstructible"));
-    input.previous_response_id = None;
+    directive.cursor_provenance = None;
+    input.set_recovery_directive(directive).unwrap();
     let next = coordinator
         .prepare("runtime-a", &mut input, &context(2_010_000))
         .await

@@ -646,7 +646,7 @@ async fn physical_fault_successor_keeps_logical_deadline_and_fences_failed_invoc
 }
 
 #[tokio::test]
-async fn physical_fault_successor_rejects_unproven_cursor_and_committed_replay_without_mutation() {
+async fn physical_fault_successor_rejects_bound_cursor_and_committed_replay_without_mutation() {
     let clock = FakeClock::new(2_000_000);
     let coordinator = TransportSessionCoordinator::new_with_clock(
         Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)])),
@@ -666,14 +666,6 @@ async fn physical_fault_successor_rejects_unproven_cursor_and_committed_replay_w
         .unwrap();
     let before = coordinator.safe_snapshot().await;
     input.previous_response_id = Some("opaque-cursor-fixture".into());
-    let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_010_000))
-        .await
-        .err()
-        .unwrap();
-    assert!(reason(error).contains("provider_transport_cursor_unreconstructible"));
-    assert_eq!(coordinator.safe_snapshot().await, before);
-
     let epoch = TransportEpoch::new(17).unwrap();
     let mut directive = recovery_directive(epoch);
     directive.cursor_provenance = Some(CursorProvenance::connection_bound(
@@ -783,9 +775,10 @@ fn physical_fault_successor_checks_native_cursor_without_rewriting_payload_or_bu
     );
     let original = input.native_transport.clone();
     let now = TransportInstant::from_millis(2_000_000);
-    assert!(validate_fault_successor(&input, None, now).is_err());
+    assert!(validate_fault_successor(None, now).is_ok());
     let mut directive = recovery_directive(TransportEpoch::new(9).unwrap());
-    assert!(validate_fault_successor(&input, Some(&directive), now).is_ok());
+    directive.cursor_provenance = None;
+    assert!(validate_fault_successor(Some(&directive), now).is_ok());
     directive.policy = RecoveryPolicy::NativeOpaque {
         budget: RecoveryBudget {
             max_inner_attempts: 2,
@@ -793,7 +786,7 @@ fn physical_fault_successor_checks_native_cursor_without_rewriting_payload_or_bu
         },
     };
     assert!(
-        reason(validate_fault_successor(&input, Some(&directive), now).unwrap_err())
+        reason(validate_fault_successor(Some(&directive), now).unwrap_err())
             .contains("transport_invocation_deadline_exceeded")
     );
     assert_eq!(input.native_transport, original);
@@ -956,26 +949,19 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
             .err()
             .unwrap();
         assert!(reason(error).contains("transport_invocation_deadline_exceeded"));
-        if elapsed >= 90 {
-            input.previous_response_id = Some("unproven-cursor".into());
-            let error = coordinator
-                .prepare("runtime-a", &mut input, &context(2_150_000))
-                .await
-                .err()
-                .unwrap();
-            assert!(reason(error).contains("provider_transport_cursor_unreconstructible"));
-            assert_eq!(
-                input.previous_response_id.as_deref(),
-                Some("unproven-cursor")
-            );
-            input.previous_response_id = None;
-        }
+        // The provider owns the opaque cursor. The host must preserve it across
+        // idle rotation instead of guessing that missing provenance is invalid.
+        input.previous_response_id = Some("provider-owned-cursor".into());
         let second = coordinator
             .prepare("runtime-a", &mut input, &context(2_150_000))
             .await
             .unwrap()
             .unwrap();
         assert!(second.lease.sequence() > old.sequence());
+        assert_eq!(
+            input.previous_response_id.as_deref(),
+            Some("provider-owned-cursor")
+        );
         assert_eq!(
             second.lease.fence.generation > old.fence.generation,
             elapsed >= 90
