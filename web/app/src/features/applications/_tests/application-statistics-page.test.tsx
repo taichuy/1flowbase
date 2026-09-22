@@ -164,6 +164,7 @@ function monitoringReport() {
         total_tokens: 1200,
         input_tokens: 900,
         output_tokens: 300,
+        input_cache_hit_rate: 0.1176470588,
         input_cache_hit_tokens: 120
       },
       {
@@ -175,6 +176,7 @@ function monitoringReport() {
         total_tokens: 4400,
         input_tokens: 3300,
         output_tokens: 1100,
+        input_cache_hit_rate: 0.1911764706,
         input_cache_hit_tokens: 780
       }
     ],
@@ -296,6 +298,7 @@ function hourlyMonitoringReport() {
         total_tokens: 1200,
         input_tokens: 900,
         output_tokens: 300,
+        input_cache_hit_rate: 0.1176470588,
         input_cache_hit_tokens: 120
       },
       {
@@ -307,6 +310,7 @@ function hourlyMonitoringReport() {
         total_tokens: 4400,
         input_tokens: 3300,
         output_tokens: 1100,
+        input_cache_hit_rate: 0.1911764706,
         input_cache_hit_tokens: 780
       }
     ]
@@ -461,7 +465,63 @@ describe('ApplicationStatisticsPage', () => {
     const trend = echartsMock.chart.setOption.mock.calls
       .map((call) => call[0])
       .find((option) => option.xAxis);
-    expect(trend.series[0].data).toEqual([4, 8]);
+    expect(
+      trend.series.map((series: { data: unknown }) => series.data)
+    ).toEqual([
+      [900, 3300],
+      [300, 1100],
+      [120, 780],
+      [11.76, 19.12]
+    ]);
+    expect(trend.series[3]).toMatchObject({
+      name: 'Cache hit rate',
+      yAxisIndex: 1,
+      connectNulls: false
+    });
+    expect(trend.yAxis[1]).toMatchObject({ min: 0, max: 100 });
+  });
+
+  test('leaves undefined cache rates as gaps rather than zero percent', async () => {
+    const report = monitoringReport();
+    runtimeApi.fetchApplicationRunMonitoringReport.mockResolvedValue({
+      ...report,
+      tokens_trend: [
+        {
+          ...report.tokens_trend[0],
+          input_tokens: 0,
+          input_cache_hit_tokens: 0,
+          input_cache_hit_rate: null
+        }
+      ]
+    });
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    await screen.findByRole('link', { name: 'Alice' });
+    const trend = echartsMock.chart.setOption.mock.calls
+      .map((call) => call[0])
+      .find((option) => option.xAxis);
+    expect(trend.series[3].data).toEqual([null]);
+    expect(trend.series[3].connectNulls).toBe(false);
+  });
+
+  test('changes model distribution without changing user distribution', async () => {
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    await screen.findByRole('link', { name: 'Alice' });
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Recorded cost' })[0]);
+    const rings = echartsMock.chart.setOption.mock.calls
+      .map((call) => call[0])
+      .filter((option) => option.series[0]?.type === 'pie')
+      .slice(-2);
+    expect(rings.map((option) => option.series[0].data[0].value)).toEqual([
+      1.25, 5600
+    ]);
   });
 
   test('keeps missing cost distinct from zero and missing identities drillable', async () => {
@@ -514,7 +574,7 @@ describe('ApplicationStatisticsPage', () => {
     await screen.findByText('Succeeded 9 · Failed 2 · Cancelled 1 · Running 0');
     const costOptions = screen.getAllByRole('radio', { name: 'Recorded cost' });
     fireEvent.click(costOptions[0]);
-    fireEvent.click(costOptions[1]);
+    fireEvent.click(costOptions[2]);
     await waitFor(() => {
       const options = echartsMock.chart.setOption.mock.calls.map(
         (call) => call[0]
@@ -574,6 +634,7 @@ describe('ApplicationStatisticsPage', () => {
       ).toBeInTheDocument();
     }
     fireEvent.click(screen.getAllByRole('radio', { name: 'Recorded cost' })[0]);
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Recorded cost' })[1]);
     expect(
       screen.getAllByText('No recorded positive values for this metric')
     ).toHaveLength(2);

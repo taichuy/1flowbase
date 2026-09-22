@@ -1,7 +1,12 @@
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import DollarOutlined from '@ant-design/icons/es/icons/DollarOutlined';
+import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useQuery } from '@tanstack/react-query';
 import {
   Button,
+  Card,
   DatePicker,
   Empty,
   Radio,
@@ -67,10 +72,11 @@ export function ApplicationTaskStatistics({
       : timeRangeDays;
   const resolvedBucket =
     bucket === 'auto' ? getMonitoringBucket(rangeDays) : bucket;
-  const [distributionMetric, setDistributionMetric] =
-    useState<Metric>('task_count');
+  const [distributionMetrics, setDistributionMetrics] = useState<
+    Record<'models' | 'users', Metric>
+  >({ models: 'total_tokens', users: 'total_tokens' });
   const [trendMetric, setTrendMetric] = useState<Metric | 'avg_duration_ms'>(
-    'task_count'
+    'total_tokens'
   );
   const input = {
     timeRangeDays,
@@ -103,15 +109,43 @@ export function ApplicationTaskStatistics({
     window.location.assign(href);
   };
   function distribution<T extends Usage>(
+    dimension: 'models' | 'users',
     title: string,
     rows: T[],
     identity: (row: T) => string,
     label: (row: T) => string,
     href: (row: T) => string
   ) {
+    const distributionMetric = distributionMetrics[dimension];
     return (
-      <section className="application-statistics__section" aria-label={title}>
-        <Typography.Title level={5}>{title}</Typography.Title>
+      <Card
+        className="application-statistics__section"
+        aria-label={title}
+        title={
+          <div className="application-statistics__card-heading">
+            <span>{title}</span>
+            <Radio.Group
+              className="application-statistics__metric-controls"
+              aria-label={`${title} ${t('statistics.distribution_metric')}`}
+              optionType="button"
+              buttonStyle="solid"
+              size="small"
+              options={metricOptions}
+              value={distributionMetric}
+              onChange={(event) =>
+                setDistributionMetrics((previous) => ({
+                  ...previous,
+                  [dimension]: event.target.value
+                }))
+              }
+            />
+          </div>
+        }
+        styles={{
+          header: { paddingBlock: 16 },
+          title: { whiteSpace: 'normal' }
+        }}
+      >
         {rows.length ? (
           <div className="application-statistics__distribution-body">
             <div className="application-statistics__distribution-chart">
@@ -178,16 +212,14 @@ export function ApplicationTaskStatistics({
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
-      </section>
+      </Card>
     );
   }
-  return (
-    <div
-      className="application-statistics"
-      data-testid="application-statistics-page"
-    >
+  const filters = (
+    <Card className="application-statistics__filters">
       <Space wrap className="application-statistics__toolbar">
         <Radio.Group
+          className="application-statistics__metric-controls"
           optionType="button"
           options={[
             ...monitoringTimeRangeOptions(),
@@ -204,6 +236,7 @@ export function ApplicationTaskStatistics({
         />
         {custom && (
           <DatePicker.RangePicker
+            style={{ maxWidth: '100%' }}
             value={
               range.from && range.to
                 ? [dayjs(range.from), dayjs(range.to)]
@@ -214,7 +247,10 @@ export function ApplicationTaskStatistics({
             onChange={(dates) =>
               setRange(
                 dates?.[0] && dates[1]
-                  ? { from: dates[0].toISOString(), to: dates[1].toISOString() }
+                  ? {
+                      from: dates[0].toISOString(),
+                      to: dates[1].toISOString()
+                    }
                   : {}
               )
             }
@@ -240,6 +276,14 @@ export function ApplicationTaskStatistics({
         />
         {report && <a href={logsHref()}>{t('statistics.view_logs')}</a>}
       </Space>
+    </Card>
+  );
+  return (
+    <div
+      className="application-statistics"
+      data-testid="application-statistics-page"
+    >
+      {(!report || query.isError) && filters}
       {query.isPending ? (
         <LoadingState compact />
       ) : query.isError || !report ? (
@@ -253,66 +297,81 @@ export function ApplicationTaskStatistics({
             {t('statistics.scope')}
           </Typography.Text>
           <div className="application-statistics__metrics">
-            <section>
-              <span>{t('statistics.tasks')}</span>
-              <strong>{formatInteger(report.overview.total_count)}</strong>
-              <small>
-                {t('statistics.status_summary', {
-                  success: report.overview.success_count,
-                  failed: report.overview.failed_count,
-                  cancelled: report.overview.cancelled_count,
-                  running: report.overview.running_count
-                })}
-              </small>
-            </section>
-            <section>
-              <span>{t('auto.total_tokens_amount')}</span>
-              <strong>
-                {formatTokenCount(report.tokens.total_tokens_sum)}
-              </strong>
-              <small>
-                {t('auto.input_tokens')}:{' '}
-                {formatTokenCount(report.tokens.input_tokens_sum)} ·{' '}
-                {t('auto.output_tokens')}:{' '}
-                {formatTokenCount(report.tokens.output_tokens_sum)} ·{' '}
-                {t('auto.input_cache_hit_tokens')}:{' '}
-                {formatTokenCount(report.tokens.input_cache_hit_tokens_sum)}
-              </small>
-            </section>
-            <section>
-              <span>{t('statistics.cost')}</span>
-              <strong>{formatCost(report.costs.total_cost)}</strong>
-              <small>
-                {t('statistics.cost_coverage', {
-                  recorded: report.costs.cost_recorded_count,
-                  missing: report.costs.cost_missing_count
-                })}
-              </small>
-            </section>
-            <section>
-              <span>{t('auto.average_duration')}</span>
-              <strong>
-                {report.duration.duration_recorded_count
-                  ? formatDuration(report.duration.avg_duration_ms)
-                  : '—'}
-              </strong>
-              <small>
-                P95:{' '}
-                {report.duration.duration_recorded_count
-                  ? formatDuration(report.duration.p95_duration_ms)
-                  : '—'}
-              </small>
-            </section>
+            <Card className="application-statistics__metric application-statistics__metric--tasks">
+              <div className="application-statistics__metric-content">
+                <FileTextOutlined className="application-statistics__metric-icon" />
+                <div className="application-statistics__metric-value">
+                  <span>{t('statistics.tasks')}</span>
+                  <strong>{formatInteger(report.overview.total_count)}</strong>
+                  <small>
+                    {t('statistics.status_summary', {
+                      success: report.overview.success_count,
+                      failed: report.overview.failed_count,
+                      cancelled: report.overview.cancelled_count,
+                      running: report.overview.running_count
+                    })}
+                  </small>
+                </div>
+              </div>
+            </Card>
+            <Card className="application-statistics__metric application-statistics__metric--tokens">
+              <div className="application-statistics__metric-content">
+                <DatabaseOutlined className="application-statistics__metric-icon" />
+                <div className="application-statistics__metric-value">
+                  <span>{t('auto.total_tokens_amount')}</span>
+                  <strong>
+                    {formatTokenCount(report.tokens.total_tokens_sum)}
+                  </strong>
+                  <small>
+                    {t('auto.input_tokens')}:{' '}
+                    {formatTokenCount(report.tokens.input_tokens_sum)} ·{' '}
+                    {t('auto.output_tokens')}:{' '}
+                    {formatTokenCount(report.tokens.output_tokens_sum)} ·{' '}
+                    {t('auto.input_cache_hit_tokens')}:{' '}
+                    {formatTokenCount(report.tokens.input_cache_hit_tokens_sum)}
+                  </small>
+                </div>
+              </div>
+            </Card>
+            <Card className="application-statistics__metric application-statistics__metric--cost">
+              <div className="application-statistics__metric-content">
+                <DollarOutlined className="application-statistics__metric-icon" />
+                <div className="application-statistics__metric-value">
+                  <span>{t('statistics.cost')}</span>
+                  <strong>{formatCost(report.costs.total_cost)}</strong>
+                  <small>
+                    {t('statistics.cost_coverage', {
+                      recorded: report.costs.cost_recorded_count,
+                      missing: report.costs.cost_missing_count
+                    })}
+                  </small>
+                </div>
+              </div>
+            </Card>
+            <Card className="application-statistics__metric application-statistics__metric--duration">
+              <div className="application-statistics__metric-content">
+                <ClockCircleOutlined className="application-statistics__metric-icon" />
+                <div className="application-statistics__metric-value">
+                  <span>{t('auto.average_duration')}</span>
+                  <strong>
+                    {report.duration.duration_recorded_count
+                      ? formatDuration(report.duration.avg_duration_ms)
+                      : '—'}
+                  </strong>
+                  <small>
+                    P95:{' '}
+                    {report.duration.duration_recorded_count
+                      ? formatDuration(report.duration.p95_duration_ms)
+                      : '—'}
+                  </small>
+                </div>
+              </div>
+            </Card>
           </div>
-          <Radio.Group
-            aria-label={t('statistics.distribution_metric')}
-            optionType="button"
-            options={metricOptions}
-            value={distributionMetric}
-            onChange={(event) => setDistributionMetric(event.target.value)}
-          />
+          {filters}
           <div className="application-statistics__distributions">
             {distribution(
+              'models',
               t('statistics.models'),
               report.models,
               (row) => row.requested_model_id ?? '__missing_model',
@@ -325,6 +384,7 @@ export function ApplicationTaskStatistics({
                 )
             )}
             {distribution(
+              'users',
               t('statistics.users'),
               report.users,
               (row) => row.user_id ?? '__missing_user',
@@ -337,28 +397,41 @@ export function ApplicationTaskStatistics({
                 )
             )}
           </div>
-          <section className="application-statistics__section">
-            <Space wrap>
-              <Typography.Title level={5}>
-                {t('statistics.trend')}
-              </Typography.Title>
-              <Radio.Group
-                aria-label={t('statistics.trend_metric')}
-                optionType="button"
-                options={[
-                  ...metricOptions,
-                  {
-                    value: 'avg_duration_ms',
-                    label: t('auto.average_duration')
-                  }
-                ]}
-                value={trendMetric}
-                onChange={(event) => setTrendMetric(event.target.value)}
-              />
-            </Space>
+          <Card
+            className="application-statistics__section application-statistics__trend"
+            title={
+              <div className="application-statistics__card-heading">
+                <span>
+                  {trendMetric === 'total_tokens'
+                    ? t('statistics.token_trend')
+                    : t('statistics.trend')}
+                </span>
+                <Radio.Group
+                  className="application-statistics__metric-controls"
+                  aria-label={t('statistics.trend_metric')}
+                  optionType="button"
+                  buttonStyle="solid"
+                  size="small"
+                  options={[
+                    ...metricOptions,
+                    {
+                      value: 'avg_duration_ms',
+                      label: t('auto.average_duration')
+                    }
+                  ]}
+                  value={trendMetric}
+                  onChange={(event) => setTrendMetric(event.target.value)}
+                />
+              </div>
+            }
+            styles={{
+              header: { paddingBlock: 16 },
+              title: { whiteSpace: 'normal' }
+            }}
+          >
             {report.tokens_trend.length ? (
               <ApplicationMonitoringChart
-                ariaLabel={t('statistics.trend')}
+                ariaLabel={t('statistics.token_trend')}
                 onDataClick={(index) => {
                   const point = report.tokens_trend[index];
                   if (point)
@@ -367,42 +440,136 @@ export function ApplicationTaskStatistics({
                     );
                 }}
                 option={{
-                  color: [token.colorPrimary],
+                  color: [
+                    token.blue,
+                    token.colorSuccess,
+                    token.cyan,
+                    token.purple
+                  ],
                   tooltip: { trigger: 'axis' },
-                  grid: { left: 64, right: 24, top: 32, bottom: 40 },
+                  legend: { type: 'scroll', top: 0 },
+                  grid: {
+                    left: 64,
+                    right: trendMetric === 'total_tokens' ? 64 : 24,
+                    top: 56,
+                    bottom: 48
+                  },
                   xAxis: {
                     type: 'category',
                     data: report.tokens_trend.map((point) =>
                       formatTrendBucket(point.bucket_start, report.meta.bucket)
                     )
                   },
-                  yAxis: {
-                    type: 'value',
-                    name:
-                      trendMetric === 'avg_duration_ms'
-                        ? 'ms'
-                        : trendMetric === 'total_cost'
-                          ? '$'
-                          : ''
-                  },
-                  series: [
-                    {
-                      type: 'line',
-                      showSymbol: true,
-                      connectNulls: false,
-                      data: report.tokens_trend.map((point) =>
-                        trendMetric === 'task_count'
-                          ? point.run_count
-                          : point[trendMetric]
-                      )
-                    }
-                  ]
+                  yAxis:
+                    trendMetric === 'total_tokens'
+                      ? [
+                          {
+                            type: 'value',
+                            name: 'Token'
+                          },
+                          {
+                            type: 'value',
+                            name: '%',
+                            min: 0,
+                            max: 100,
+                            splitLine: { show: false }
+                          }
+                        ]
+                      : {
+                          type: 'value',
+                          name:
+                            trendMetric === 'avg_duration_ms'
+                              ? 'ms'
+                              : trendMetric === 'total_cost'
+                                ? '$'
+                                : ''
+                        },
+                  series:
+                    trendMetric === 'total_tokens'
+                      ? [
+                          ...[
+                            {
+                              name: t('auto.input_tokens'),
+                              field: 'input_tokens',
+                              color: token.blue
+                            },
+                            {
+                              name: t('auto.output_tokens'),
+                              field: 'output_tokens',
+                              color: token.colorSuccess
+                            },
+                            {
+                              name: t('auto.input_cache_hit_tokens'),
+                              field: 'input_cache_hit_tokens',
+                              color: token.cyan
+                            }
+                          ].map(({ name, field, color }) => ({
+                            name,
+                            type: 'line',
+                            showSymbol: report.tokens_trend.length < 32,
+                            symbolSize: 6,
+                            connectNulls: false,
+                            lineStyle: { width: 2, color },
+                            itemStyle: { color },
+                            areaStyle: { opacity: 0.08, color },
+                            data: report.tokens_trend.map(
+                              (point) =>
+                                point[
+                                  field as
+                                    | 'input_tokens'
+                                    | 'output_tokens'
+                                    | 'input_cache_hit_tokens'
+                                ]
+                            )
+                          })),
+                          {
+                            name: t('auto.input_cache_hit_rate'),
+                            type: 'line',
+                            yAxisIndex: 1,
+                            showSymbol: report.tokens_trend.length < 32,
+                            symbolSize: 6,
+                            connectNulls: false,
+                            lineStyle: {
+                              width: 2,
+                              color: token.purple,
+                              type: 'dashed'
+                            },
+                            itemStyle: { color: token.purple },
+                            data: report.tokens_trend.map((point) =>
+                              point.input_cache_hit_rate === null
+                                ? null
+                                : Number(
+                                    (point.input_cache_hit_rate * 100).toFixed(
+                                      2
+                                    )
+                                  )
+                            )
+                          }
+                        ]
+                      : [
+                          {
+                            name:
+                              trendMetric === 'avg_duration_ms'
+                                ? t('auto.average_duration')
+                                : metricOptions.find(
+                                    (metric) => metric.value === trendMetric
+                                  )?.label,
+                            type: 'line',
+                            showSymbol: true,
+                            connectNulls: false,
+                            data: report.tokens_trend.map((point) =>
+                              trendMetric === 'task_count'
+                                ? point.run_count
+                                : point[trendMetric]
+                            )
+                          }
+                        ]
                 }}
               />
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
-          </section>
+          </Card>
         </>
       )}
     </div>

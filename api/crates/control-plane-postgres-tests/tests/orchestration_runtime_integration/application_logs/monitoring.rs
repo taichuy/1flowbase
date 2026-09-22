@@ -878,6 +878,8 @@ async fn application_run_monitoring_report_aggregates_root_tasks_by_started_at()
     assert_eq!(report.tokens_trend[0].input_tokens, 380);
     assert_eq!(report.tokens_trend[0].output_tokens, 120);
     assert_eq!(report.tokens_trend[0].input_cache_hit_tokens, 60);
+    // Ratio of summed input usage, not the mean of per-task ratios (10/90 and 50/350).
+    assert!((report.tokens_trend[0].input_cache_hit_rate.unwrap() - 60.0 / 440.0).abs() < 1e-9);
     assert_eq!(report.protocols[0].protocol, "default");
     assert_eq!(report.protocols[1].protocol, "openai-responses-v1");
     assert_eq!(report.sources[0].invocation_source, "agent_flow_api");
@@ -895,6 +897,33 @@ async fn application_run_monitoring_report_aggregates_root_tasks_by_started_at()
     );
     assert_eq!(report.slowest_runs[0].flow_run_id, public_run.id);
     assert_eq!(report.high_token_runs[0].flow_run_id, public_run.id);
+    // No input has no rate; a recorded cache miss is 0%, missing cache usage is unknown.
+    for (input_tokens, cached_tokens, expected_rate) in [
+        (0_i64, Some(0_i64), None),
+        (100, Some(0), Some(0.0)),
+        (100, None, None),
+    ] {
+        sqlx::query("update application_run_log_tasks set input_tokens=$2, input_cache_hit_tokens=$3 where application_id=$1")
+            .bind(seeded.application_id)
+            .bind(input_tokens)
+            .bind(cached_tokens)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        let updated = store
+            .get_application_run_monitoring_report(
+                seeded.application_id,
+                GetApplicationRunMonitoringReportInput {
+                    started_from: Some(started_at - Duration::minutes(1)),
+                    started_to: Some(started_at + Duration::minutes(10)),
+                    bucket: "hour".to_string(),
+                    slow_run_threshold_ms: 30_000,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.tokens_trend[0].input_cache_hit_rate, expected_rate);
+    }
 }
 
 // Report read semantics are tested against persisted task facts. No runtime

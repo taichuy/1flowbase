@@ -321,6 +321,7 @@
     "invalid_archive": "无法读取应用归档，请检查文件格式。"
   },
   "statistics": {
+    "token_trend": "Token 使用趋势",
     "tasks": "根任务数",
     "cost": "已记录费用",
     "custom": "自定义时间",

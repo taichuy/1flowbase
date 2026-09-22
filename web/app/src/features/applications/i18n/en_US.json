@@ -321,6 +321,7 @@
     "invalid_archive": "Unable to read the application archive. Check the file format."
   },
   "statistics": {
+    "token_trend": "Token usage trend",
     "tasks": "Root tasks",
     "cost": "Recorded cost",
     "custom": "Custom range",

@@ -189,6 +189,7 @@ export interface ConsoleApplicationRunMonitoringTokenTrendPoint {
   input_tokens: number;
   output_tokens: number;
   input_cache_hit_tokens: number;
+  input_cache_hit_rate: number | null;
 }
 
 export interface ConsoleApplicationRunMonitoringProtocolBreakdown {

@@ -451,7 +451,10 @@ impl PgControlPlaneStore {
                 count(*)::bigint as run_count, coalesce(sum(coalesce(total_tokens, 0)), 0)::bigint as total_tokens,
                 coalesce(sum(coalesce(input_tokens, 0)), 0)::bigint as input_tokens,
                 coalesce(sum(coalesce(output_tokens, 0)), 0)::bigint as output_tokens,
-                coalesce(sum(coalesce(input_cache_hit_tokens, 0)), 0)::bigint as input_cache_hit_tokens
+                coalesce(sum(coalesce(input_cache_hit_tokens, 0)), 0)::bigint as input_cache_hit_tokens,
+                sum(input_cache_hit_tokens)::double precision
+                    / nullif(sum(coalesce(input_tokens, 0) + coalesce(input_cache_hit_tokens, 0)), 0)::double precision
+                    as input_cache_hit_rate
             from monitoring_logs
             group by bucket_start, bucket_end
             order by bucket_start asc
@@ -476,6 +479,7 @@ impl PgControlPlaneStore {
                     input_tokens: row.get("input_tokens"),
                     output_tokens: row.get("output_tokens"),
                     input_cache_hit_tokens: row.get("input_cache_hit_tokens"),
+                    input_cache_hit_rate: row.get("input_cache_hit_rate"),
                 },
             )
             .collect())

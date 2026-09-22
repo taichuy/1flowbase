@@ -101,6 +101,8 @@ pub struct ApplicationRunMonitoringTokenTrendPoint {
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub input_cache_hit_tokens: i64,
+    /// Cached input / (uncached input + cached input); absent without a denominator.
+    pub input_cache_hit_rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

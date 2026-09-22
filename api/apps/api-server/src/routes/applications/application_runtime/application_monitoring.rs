@@ -133,6 +133,7 @@ pub struct ApplicationRunMonitoringTokenTrendPointResponse {
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub input_cache_hit_tokens: i64,
+    pub input_cache_hit_rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -401,6 +402,7 @@ pub(super) fn to_report_response(
                 input_tokens: point.input_tokens,
                 output_tokens: point.output_tokens,
                 input_cache_hit_tokens: point.input_cache_hit_tokens,
+                input_cache_hit_rate: point.input_cache_hit_rate,
             })
             .collect(),
         protocols: report
