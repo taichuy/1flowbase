@@ -66,7 +66,7 @@ const PROVIDER_WORKER_QUIESCE_DEADLINE: std::time::Duration = std::time::Duratio
 #[derive(Debug, Default)]
 struct ProviderWorkerRegistryState {
     workers: HashMap<String, ProviderWorkerHandle>,
-    session_workers: HashMap<(String, String, u64), ProviderWorkerHandle>,
+    session_workers: HashMap<(String, String), session_workers::LogicalSessionWorker>,
     session_capacity: SessionWorkerCapacity,
     epochs: HashMap<String, u64>,
     next_generation: HashMap<String, u64>,

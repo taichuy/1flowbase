@@ -248,9 +248,14 @@ const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
 pub(super) fn prune_transport_bindings(registry: &mut ProviderWorkerRegistryState) {
     let active = &registry.session_workers;
     let now = std::time::Instant::now();
-    registry
-        .transport_bindings
-        .retain(|key, binding| binding.expires_at > now || active.contains_key(key));
+    registry.transport_bindings.retain(|key, binding| {
+        binding.expires_at > now
+            || active
+                .get(&(key.0.clone(), key.1.clone()))
+                .is_some_and(|session| {
+                    session.generation == key.2 && binding.released_receipt.is_none()
+                })
+    });
 }
 pub(super) fn transport_binding_error(message: &str) -> PluginFrameworkError {
     PluginFrameworkError::runtime(ProviderRuntimeError::new(

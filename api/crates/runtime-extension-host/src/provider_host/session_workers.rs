@@ -1,20 +1,52 @@
-//! Physical sessions own independent serial stdio carriers. Capacity waits never
-//! hold the registry lock; only confirmed child cleanup returns an owned slot.
-//! At most 64 physical-session children share the Host's bulkhead; unbound
-//! operations retain the legacy per-plugin carrier. Bindings retain the existing
-//! physical-deadline receipt window, while live workers are never evicted.
-//! Reload epochs invalidate queued old-package admission, and cleanup batches
-//! quiesce children concurrently under the existing per-worker 5s budget.
+//! A trusted logical session owns its serial child across physical generations.
+//! Closed physical bindings stay fenced; dormant children retain provider-owned
+//! context until the existing binding deadline, reload, or capacity eviction.
+//! Only confirmed child exit returns one of the 64 Host-wide slots.
 use super::operations::{
     bind_transport_worker_locked, lock_provider_worker_registry, transport_binding_error,
 };
 use super::*;
 
-#[derive(Debug)]
-pub(super) struct SessionWorkerCapacity(Arc<Semaphore>);
+#[derive(Debug, Clone)]
+pub(super) struct SessionWorkerCapacity {
+    slots: Arc<Semaphore>,
+    changed: Arc<tokio::sync::Notify>,
+}
 impl Default for SessionWorkerCapacity {
     fn default() -> Self {
-        Self(Arc::new(Semaphore::new(64)))
+        Self {
+            slots: Arc::new(Semaphore::new(64)),
+            changed: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct LogicalSessionWorker {
+    pub(super) worker: ProviderWorkerHandle,
+    pub(super) generation: u64,
+    dormant_since: Option<std::time::Instant>,
+    dormant_until: Option<std::time::Instant>,
+    expiry_task: Option<tokio::task::AbortHandle>,
+}
+impl LogicalSessionWorker {
+    fn cancel_expiry(&mut self) {
+        if let Some(task) = self.expiry_task.take() {
+            task.abort();
+        }
+        self.dormant_since = None;
+        self.dormant_until = None;
+    }
+    fn retire(&mut self) -> FrameworkResult<ProviderWorkerHandle> {
+        self.worker.begin_quiesce()?;
+        self.cancel_expiry();
+        Ok(self.worker.clone())
+    }
+}
+
+impl Drop for LogicalSessionWorker {
+    fn drop(&mut self) {
+        self.cancel_expiry();
     }
 }
 
@@ -49,86 +81,170 @@ pub(super) async fn select_worker(
             loaded,
         );
     };
-    let unix_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(i64::MAX as u128) as i64;
-    if directive.physical_deadline_unix_ms <= unix_ms {
-        return Err(transport_binding_error(
-            "transport binding physical deadline has expired",
-        ));
-    }
-    let key = (
-        plugin.to_owned(),
-        directive.logical_session_id,
-        directive.generation,
-    );
-    let capacity = {
-        let mut registry = lock_provider_worker_registry(workers)?;
-        check_epoch(&registry, plugin, expected_epoch)?;
-        super::operations::prune_transport_bindings(&mut registry);
-        if let Some(worker) = existing(&registry, &key)? {
-            bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
-            return Ok(worker);
+    let key = (plugin.to_owned(), directive.logical_session_id.clone());
+    let physical_key = (key.0.clone(), key.1.clone(), directive.generation);
+    let capacity = lock_provider_worker_registry(workers)?
+        .session_capacity
+        .clone();
+    let mut slot = None;
+    loop {
+        // Register before checking registry state: a concurrent Close must wake
+        // admissions already waiting behind the all-active capacity boundary.
+        let changed = capacity.changed.notified();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        let retiring;
+        {
+            let mut registry = lock_provider_worker_registry(workers)?;
+            check_epoch(&registry, plugin, expected_epoch)?;
+            let unix_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                .min(i64::MAX as u128) as i64;
+            if directive.physical_deadline_unix_ms <= unix_ms {
+                return Err(transport_binding_error(
+                    "transport binding physical deadline has expired",
+                ));
+            }
+            super::operations::prune_transport_bindings(&mut registry);
+            if let Some(worker) = existing(&registry, &physical_key)? {
+                bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
+                return Ok(worker);
+            }
+            if let Some(session) = registry.session_workers.get_mut(&key) {
+                if session
+                    .dormant_until
+                    .is_some_and(|until| until <= std::time::Instant::now())
+                {
+                    let worker = session.retire()?;
+                    tokio::spawn(cleanup_batch(
+                        workers.clone(),
+                        plugin.to_owned(),
+                        vec![worker],
+                    ));
+                }
+            }
+            retiring = registry
+                .session_workers
+                .get(&key)
+                .map(|session| {
+                    session
+                        .worker
+                        .snapshot()
+                        .map(|snapshot| snapshot.state != ProviderWorkerLifecycleState::Active)
+                })
+                .transpose()?
+                .unwrap_or(false);
+            if !retiring {
+                if let Some(session) = registry.session_workers.get(&key) {
+                    if directive.generation <= session.generation {
+                        return Err(transport_binding_error(
+                            "transport generation is already closed",
+                        ));
+                    }
+                    if session.dormant_since.is_none() {
+                        return Err(transport_binding_error(
+                            "previous transport generation is still active",
+                        ));
+                    }
+                    let worker = session.worker.clone();
+                    bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
+                    let session = registry
+                        .session_workers
+                        .get_mut(&key)
+                        .expect("locked logical session");
+                    session.cancel_expiry();
+                    session.generation = directive.generation;
+                    return Ok(worker);
+                }
+                if slot.is_none() {
+                    slot = capacity.slots.clone().try_acquire_owned().ok();
+                }
+                if let Some(slot) = slot.take() {
+                    if registry.transport_bindings.len()
+                        >= super::operations::TRANSPORT_BINDING_CAPACITY
+                    {
+                        return Err(transport_binding_error(
+                            "transport worker binding capacity exhausted",
+                        ));
+                    }
+                    let incarnation = *registry
+                        .next_generation
+                        .entry(plugin.to_owned())
+                        .or_insert(1);
+                    let worker = ProviderWorkerSupervisor::activate(
+                        loaded.runtime_executable.clone(),
+                        loaded.package.manifest.runtime.limits.clone(),
+                        incarnation,
+                    )?;
+                    worker.retain_capacity(slot);
+                    registry
+                        .next_generation
+                        .insert(plugin.to_owned(), incarnation.saturating_add(1));
+                    registry.session_workers.insert(
+                        key.clone(),
+                        LogicalSessionWorker {
+                            worker: worker.clone(),
+                            generation: directive.generation,
+                            dormant_since: None,
+                            dormant_until: None,
+                            expiry_task: None,
+                        },
+                    );
+                    if let Err(error) =
+                        bind_transport_worker_locked(&mut registry, plugin, &worker, input)
+                    {
+                        worker.begin_quiesce()?;
+                        tokio::spawn(cleanup_batch(
+                            workers.clone(),
+                            plugin.to_owned(),
+                            vec![worker],
+                        ));
+                        return Err(error);
+                    }
+                    return Ok(worker);
+                }
+                // Never evict an active physical generation. A retirement stays
+                // in the registry and keeps its permit until confirmed child exit.
+                let oldest = registry
+                    .session_workers
+                    .iter()
+                    .filter_map(|(key, session)| {
+                        session.dormant_since.map(|since| (key.clone(), since))
+                    })
+                    .min_by_key(|(_, since)| *since)
+                    .map(|(key, _)| key);
+                if let Some(oldest) = oldest {
+                    let worker = registry
+                        .session_workers
+                        .get_mut(&oldest)
+                        .expect("locked dormant session")
+                        .retire()?;
+                    tokio::spawn(cleanup_batch(workers.clone(), oldest.0, vec![worker]));
+                }
+            } else {
+                // Cleanup may return its permit just before removing the registry
+                // entry; wait for that removal instead of replacing it prematurely.
+                slot.take();
+            }
         }
-        registry.session_capacity.0.clone()
-    };
-    let slot = tokio::time::timeout_at(deadline, capacity.acquire_owned())
-        .await
-        .map_err(|_| admission_timeout())?
-        .map_err(|_| transport_binding_error("session worker capacity closed"))?;
-    let mut registry = lock_provider_worker_registry(workers)?;
-    check_epoch(&registry, plugin, expected_epoch)?;
-    super::operations::prune_transport_bindings(&mut registry);
-    if let Some(worker) = existing(&registry, &key)? {
-        bind_transport_worker_locked(&mut registry, plugin, &worker, input)?;
-        return Ok(worker);
+        let wait = async {
+            if retiring {
+                changed.await;
+                Ok(None)
+            } else {
+                tokio::select! {
+                    _ = &mut changed => Ok(None),
+                    permit = capacity.slots.clone().acquire_owned() => permit.map(Some)
+                        .map_err(|_| transport_binding_error("session worker capacity closed")),
+                }
+            }
+        };
+        slot = tokio::time::timeout_at(deadline, wait)
+            .await
+            .map_err(|_| admission_timeout())??;
     }
-    // Validate admission before spawning a child. Binding capacity is also bounded;
-    // closed bindings retain their existing physical-deadline retention window.
-    if registry.transport_bindings.len() >= super::operations::TRANSPORT_BINDING_CAPACITY {
-        return Err(transport_binding_error(
-            "transport worker binding capacity exhausted",
-        ));
-    }
-    let directive = input.transport_session_directive().unwrap().unwrap();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(i64::MAX as u128) as i64;
-    if directive.physical_deadline_unix_ms <= now {
-        return Err(transport_binding_error(
-            "transport binding physical deadline has expired",
-        ));
-    }
-    let incarnation = *registry
-        .next_generation
-        .entry(plugin.to_owned())
-        .or_insert(1);
-    let worker = ProviderWorkerSupervisor::activate(
-        loaded.runtime_executable.clone(),
-        loaded.package.manifest.runtime.limits.clone(),
-        incarnation,
-    )?;
-    worker.retain_capacity(slot);
-    registry
-        .next_generation
-        .insert(plugin.to_owned(), incarnation.saturating_add(1));
-    registry.session_workers.insert(key, worker.clone());
-    if let Err(error) = bind_transport_worker_locked(&mut registry, plugin, &worker, input) {
-        // Even a deadline crossing during synchronous process activation owns a
-        // child: retain its slot until a detached cleanup owner proves exit.
-        worker.begin_quiesce()?;
-        tokio::spawn(cleanup_batch(
-            workers.clone(),
-            plugin.to_owned(),
-            vec![worker],
-        ));
-        return Err(error);
-    }
-    Ok(worker)
 }
 
 fn check_epoch(
@@ -173,50 +289,79 @@ pub(super) fn release_worker(
     let key = (
         plugin.to_owned(),
         binding.identity.logical_session_id.clone(),
-        binding.identity.generation,
     );
-    let worker = {
-        let mut registry = lock_provider_worker_registry(workers)?;
-        let current = registry
-            .transport_bindings
-            .get_mut(&key)
-            .ok_or_else(|| transport_binding_error("transport release binding disappeared"))?;
-        if current.identity != binding.identity || !Arc::ptr_eq(&current.worker, &binding.worker) {
-            return Err(transport_binding_error("transport release binding changed"));
-        }
-        current.released_receipt.get_or_insert(receipt);
-        let Some(worker) = registry.session_workers.get(&key) else {
-            return Ok(());
-        };
-        if worker.snapshot()?.state == ProviderWorkerLifecycleState::Quiescing {
-            return Ok(());
-        }
-        worker.begin_quiesce()?;
-        worker.clone()
+    let physical_key = (key.0.clone(), key.1.clone(), binding.identity.generation);
+    let mut registry = lock_provider_worker_registry(workers)?;
+    let current = registry
+        .transport_bindings
+        .get_mut(&physical_key)
+        .ok_or_else(|| transport_binding_error("transport release binding disappeared"))?;
+    if current.identity != binding.identity || !Arc::ptr_eq(&current.worker, &binding.worker) {
+        return Err(transport_binding_error("transport release binding changed"));
+    }
+    current.released_receipt.get_or_insert(receipt);
+    let expires_at = current.expires_at;
+    let Some(session) = registry.session_workers.get_mut(&key) else {
+        return Ok(());
     };
-    let workers = workers.clone();
-    let plugin = plugin.to_owned();
-    tokio::spawn(async move {
-        if let Ok(receipt) = worker
-            .finish_quiesce(
-                PROVIDER_WORKER_QUIESCE_DEADLINE,
-                ProviderWorkerCleanupReason::Restarted,
-            )
-            .await
-        {
-            if let Ok(mut registry) = lock_provider_worker_registry(&workers) {
-                registry.cleanup_receipts.insert(plugin, receipt.clone());
-                if receipt.exited
-                    && registry
-                        .session_workers
-                        .get(&key)
-                        .is_some_and(|current| Arc::ptr_eq(current, &worker))
-                {
-                    registry.session_workers.remove(&key);
-                }
-            }
+    // A repeated late release belongs only to its physical generation. It cannot
+    // make a reactivated successor dormant or schedule that successor's death.
+    if session.generation != binding.identity.generation
+        || !Arc::ptr_eq(&session.worker, &binding.worker)
+    {
+        return Ok(());
+    }
+    let state = session.worker.snapshot()?.state;
+    if state != ProviderWorkerLifecycleState::Active {
+        if state != ProviderWorkerLifecycleState::Quiescing {
+            let worker = session.retire()?;
+            tokio::spawn(cleanup_batch(
+                workers.clone(),
+                plugin.to_owned(),
+                vec![worker],
+            ));
         }
+        return Ok(());
+    }
+    if session.dormant_since.is_some() {
+        return Ok(());
+    }
+    session.dormant_since = Some(std::time::Instant::now());
+    session.dormant_until = Some(expires_at);
+    let expected_worker = Arc::downgrade(&session.worker);
+    let expected_generation = session.generation;
+    let weak_registry = Arc::downgrade(workers);
+    let task = tokio::spawn(async move {
+        tokio::time::sleep_until(tokio::time::Instant::from_std(expires_at)).await;
+        let (Some(workers), Some(expected_worker)) =
+            (weak_registry.upgrade(), expected_worker.upgrade())
+        else {
+            return;
+        };
+        let worker = {
+            let Ok(mut registry) = lock_provider_worker_registry(&workers) else {
+                return;
+            };
+            let Some(session) = registry.session_workers.get_mut(&key) else {
+                return;
+            };
+            if session.generation != expected_generation
+                || session.dormant_since.is_none()
+                || !Arc::ptr_eq(&session.worker, &expected_worker)
+            {
+                return;
+            }
+            // Do not abort this timer after it becomes the cleanup owner.
+            session.expiry_task.take();
+            let Ok(worker) = session.retire() else {
+                return;
+            };
+            worker
+        };
+        let _ = cleanup_batch(workers, key.0, vec![worker]).await;
     });
+    session.expiry_task = Some(task.abort_handle());
+    registry.session_capacity.changed.notify_waiters();
     Ok(())
 }
 
@@ -243,12 +388,19 @@ fn take_all(
                 .session_workers
                 .get(&key)
                 .expect("collected worker")
+                .worker
                 .clone(),
         );
+    }
+    for (key, session) in &mut registry.session_workers {
+        if key.0 == plugin {
+            session.cancel_expiry();
+        }
     }
     for worker in &all {
         worker.begin_quiesce()?;
     }
+    registry.session_capacity.changed.notify_waiters();
     Ok(all)
 }
 
@@ -351,13 +503,10 @@ impl ProviderHost {
             .transport_session_directive()
             .map_err(PluginFrameworkError::invalid_provider_contract)?
         {
-            Some(directive) => serde_json::to_string(&(
-                "physical",
-                plugin_id,
-                directive.logical_session_id,
-                directive.generation,
-            ))
-            .expect("string tuple"),
+            Some(directive) => {
+                serde_json::to_string(&("logical", plugin_id, directive.logical_session_id))
+                    .expect("string tuple")
+            }
             None => provider_pool_key(input),
         };
         let semaphore = {
@@ -405,9 +554,11 @@ fn remove_exited(
     receipt: &ProviderWorkerCleanupReceipt,
 ) -> FrameworkResult<()> {
     if receipt.exited {
-        lock_provider_worker_registry(workers)?
+        let mut registry = lock_provider_worker_registry(workers)?;
+        registry
             .session_workers
-            .retain(|_, current| !Arc::ptr_eq(current, worker));
+            .retain(|_, current| !Arc::ptr_eq(&current.worker, worker));
+        registry.session_capacity.changed.notify_waiters();
     }
     Ok(())
 }
@@ -458,6 +609,9 @@ async fn cleanup_batch(
 #[cfg(test)]
 impl SessionWorkerCapacity {
     pub(super) fn for_test(capacity: usize) -> Self {
-        Self(Arc::new(Semaphore::new(capacity)))
+        Self {
+            slots: Arc::new(Semaphore::new(capacity)),
+            changed: Default::default(),
+        }
     }
 }

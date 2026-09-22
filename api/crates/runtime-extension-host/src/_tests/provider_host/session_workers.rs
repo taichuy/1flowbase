@@ -13,17 +13,23 @@ import json, os, sys, time
 root = os.path.dirname(__file__)
 def emit(value):
     print(json.dumps(value), flush=True)
+native_history = None
 for line in sys.stdin:
     request = json.loads(line)
     if request['method'] == 'invoke':
         d = (request['input'].get('run_context') or {}).get('physical_transport_session', {'task_id':'idle'})
         with open(root + '/dispatches', 'a') as log:
             log.write(json.dumps({'pid': os.getpid(), 'identity': d}) + '\n')
+        if d['task_id'] == 'crash':
+            sys.exit(9)
         if d['task_id'] == 'blocked':
             emit({'type':'text_delta','delta':'entered'})
             while not os.path.exists(root + '/release'):
                 time.sleep(.01)
-        emit({'type':'result','result':{'final_content':str(os.getpid()),'finish_reason':'stop'}})
+        if d['task_id'] == 'remember':
+            native_history = 'provider-private-history:' + d['logical_session_id']
+        content = native_history or 'missing' if d['task_id'] == 'recall' else str(os.getpid())
+        emit({'type':'result','result':{'final_content':content,'finish_reason':'stop'}})
     elif request['method'] == 'transport_session':
         d = request['input']
         with open(root + '/controls', 'a') as log:
@@ -361,7 +367,6 @@ async fn expired_closed_binding_is_pruned_without_evicting_active_worker() {
         .unwrap()
         .await
         .unwrap();
-    empty_workers(&host).await;
     host.invoke_stream(&id, input("active", false))
         .await
         .unwrap();
@@ -509,5 +514,237 @@ async fn stop_all_retires_busy_workers_across_plugins_with_one_host_budget() {
             .unwrap()
             .unwrap();
     }
+    host.stop_all().await.unwrap();
+}
+
+fn task_input(session: &str, generation: u64, task: &str) -> ProviderInvocationInput {
+    let mut input = input(session, false);
+    let mut directive = input.transport_session_directive().unwrap().unwrap();
+    directive.generation = generation;
+    directive.task_id = task.into();
+    input.set_transport_session_directive(directive).unwrap();
+    input
+}
+
+#[tokio::test]
+async fn logical_child_keeps_provider_history_across_physical_generations_and_fences_old_release() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    host.invoke_stream(&id, task_input("logical-one", 7, "remember"))
+        .await
+        .unwrap();
+    assert!(host
+        .invoke_stream(&id, task_input("logical-one", 8, "recall"))
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("still active"));
+    let binding = lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .transport_bindings[&(id.clone(), "logical-one".into(), 7)]
+        .clone();
+    let receipt = host
+        .transport_session_operation(&id, close("logical-one"))
+        .unwrap()
+        .await
+        .unwrap();
+    let resumed = host
+        .invoke_stream(&id, task_input("logical-one", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(
+        resumed.result.final_content,
+        "provider-private-history:logical-one"
+    );
+    assert!(host
+        .invoke_stream(&id, task_input("logical-one", 7, "recall"))
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("already closed"));
+    // A late duplicate receipt cannot retire the now active generation 8 child.
+    crate::provider_host::session_workers::release_worker(
+        &host.provider_workers,
+        &id,
+        &binding,
+        receipt,
+    )
+    .unwrap();
+    let repeated = host
+        .invoke_stream(&id, task_input("logical-one", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(repeated.result.final_content, resumed.result.final_content);
+    let other = host
+        .invoke_stream(&id, task_input("logical-two", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(other.result.final_content, "missing");
+    let calls = dispatches(&package);
+    assert_eq!(calls[0]["pid"], calls[1]["pid"]);
+    assert_eq!(calls[0]["pid"], calls[2]["pid"]);
+    assert_ne!(calls[0]["pid"], calls[3]["pid"]);
+    host.stop_all().await.unwrap();
+    empty_workers(&host).await;
+}
+
+#[tokio::test]
+async fn dormant_child_expires_at_binding_deadline_and_reactivation_cancels_old_timer() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    for name in ["expired", "reactivated"] {
+        host.invoke_stream(&id, task_input(name, 7, "remember"))
+            .await
+            .unwrap();
+        lock_provider_worker_registry(&host.provider_workers)
+            .unwrap()
+            .transport_bindings
+            .get_mut(&(id.clone(), name.into(), 7))
+            .unwrap()
+            .expires_at = std::time::Instant::now() + Duration::from_millis(150);
+        host.transport_session_operation(&id, close(name))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    let resumed = host
+        .invoke_stream(&id, task_input("reactivated", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(
+        resumed.result.final_content,
+        "provider-private-history:reactivated"
+    );
+    let old_pid = dispatches(&package)[0]["pid"].as_u64().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while pid_alive(old_pid) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Both expiry instants have elapsed; only the genuinely dormant child exits.
+    tokio::time::sleep(Duration::from_millis(180)).await;
+    let resumed = host
+        .invoke_stream(&id, task_input("reactivated", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(
+        resumed.result.final_content,
+        "provider-private-history:reactivated"
+    );
+    assert!(!lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .session_workers
+        .contains_key(&(id.clone(), "expired".into())));
+    host.stop_all().await.unwrap();
+    empty_workers(&host).await;
+}
+
+#[tokio::test]
+async fn capacity_evicts_oldest_dormant_child_and_reload_reaps_remaining_history() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .session_capacity = SessionWorkerCapacity::for_test(2);
+    for name in ["oldest", "newer"] {
+        host.invoke_stream(&id, task_input(name, 7, "remember"))
+            .await
+            .unwrap();
+        host.transport_session_operation(&id, close(name))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    host.invoke_stream(&id, task_input("new", 7, "recall"))
+        .await
+        .unwrap();
+    let calls = dispatches(&package);
+    assert!(
+        !pid_alive(calls[0]["pid"].as_u64().unwrap()),
+        "eviction requires proven child exit before slot reuse"
+    );
+    assert!(
+        pid_alive(calls[1]["pid"].as_u64().unwrap()),
+        "newer dormant child must remain reusable"
+    );
+    let resumed = host
+        .invoke_stream(&id, task_input("newer", 8, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(
+        resumed.result.final_content,
+        "provider-private-history:newer"
+    );
+    let mut close_newer = close("newer");
+    close_newer.generation = 8;
+    host.transport_session_operation(&id, close_newer)
+        .unwrap()
+        .await
+        .unwrap();
+    host.reload(&id).await.unwrap();
+    empty_workers(&host).await;
+    for call in dispatches(&package) {
+        assert!(!pid_alive(call["pid"].as_u64().unwrap()));
+    }
+    assert!(host
+        .invoke_stream(&id, task_input("newer", 8, "recall"))
+        .await
+        .is_err());
+    let fresh = host
+        .invoke_stream(&id, task_input("newer", 9, "recall"))
+        .await
+        .unwrap();
+    assert_eq!(fresh.result.final_content, "missing");
+    host.stop_all().await.unwrap();
+}
+
+#[tokio::test]
+async fn confirmed_child_exit_releases_capacity_instead_of_retaining_dormant_state() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .session_capacity = SessionWorkerCapacity::for_test(1);
+    assert!(host
+        .invoke_stream(&id, task_input("crashed", 7, "crash"))
+        .await
+        .is_err());
+    let receipt = host
+        .transport_session_operation(&id, close("crashed"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        receipt.closure_evidence.unwrap().source,
+        ProviderTransportClosureSource::ConfirmedWorkerExit
+    );
+    empty_workers(&host).await;
+    let pid = dispatches(&package)[0]["pid"].as_u64().unwrap();
+    assert!(!pid_alive(pid));
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        host.invoke_stream(&id, input("replacement", false)),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     host.stop_all().await.unwrap();
 }
