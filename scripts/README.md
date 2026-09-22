@@ -54,7 +54,11 @@ CPU 1200%；`dev-rust.slice` 为 9/11 GiB、swap 1 GiB；
 已有进程不会自动迁移；直接使用绝对路径工具或 NVM 把自身 bin 提到包装器前面会绕过入口，
 请用 `type -a cargo pnpm` 及 `/proc/<pid>/cgroup` 核对。
 Docker 数据库不属于用户级开发组，仍需计入组外预算。
-整机 swap 3 GiB 属于管理员配置，此用户脚本不调整交换设备。
+整机 swap 容量保留 4 GiB；管理员通过 `/etc/systemd/oomd.conf.d/60-swap-headroom.conf`
+设置 `SwapUsedLimit=75%`（约 3 GiB 保护线）。只有整机物理内存和 swap
+使用比例同时超过 75% 时，oomd 才会终止受监控组的合格候选进程；这不是 swap 硬上限，
+也不保证始终空出 1 GiB。当前 swap 监控范围为 `user-1000.slice`，以 `oomctl dump` 为准。
+此用户脚本不调整交换设备或管理员 oomd 配置。
 
 配置通过 `systemctl --user` 生效，不需要 `sudo`。当前数值以
 `scripts/shell/resource-limits.conf` 为唯一真值，字段含义如下：
@@ -126,7 +130,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置面向当前 16 GB / 6 vCPU 虚拟机：Rust MemoryHigh=9G、MemoryMax=11G、swap=1G、Cargo jobs=2、CPUQuota=500%。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
+- 仓库资源配置面向当前 24 GiB / 16 vCPU 虚拟机：开发父组 MemoryHigh=16G、MemoryMax=18G、swap=2G、CPUQuota=1200%；Rust 子组 MemoryHigh=9G、MemoryMax=11G、swap=1G、Cargo jobs=2。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
 ### `node scripts/node/reset-account-password.js [options]`
 
