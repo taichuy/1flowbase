@@ -176,8 +176,8 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
       }
     )
   );
-  await screen.findAllByRole('button', {name: /^模型调用准备 ·/});
-  fireEvent.click(screen.getByRole('button', {name: '调用分组'}));
+  await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
+  fireEvent.click(screen.getByRole('button', { name: '调用分组' }));
   const calls = await screen.findAllByRole('button', {
     name: /^模型调用准备 ·/
   });
@@ -188,7 +188,24 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   fireEvent.click(calls[0]);
   await screen.findByRole('region', { name: '实际系统输入' });
   expect(screen.getByText('Actual workflow system')).toBeInTheDocument();
+  const inspector = within(screen.getByRole('complementary'));
+  expect(inspector.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    '详情',
+    '元数据',
+    '节点日志',
+    '原文'
+  ]);
+  expect(
+    inspector.getAllByRole('button', { name: '来源请求' })
+  ).toHaveLength(1);
+  expect(inspector.queryByText('AI Native 调用')).not.toBeInTheDocument();
+
   expect(screen.queryByText(/retained/)).not.toBeInTheDocument();
+  fireEvent.click(
+    within(screen.getByRole('complementary')).getByRole('tab', {
+      name: '元数据'
+    })
+  );
   fireEvent.click(
     screen.getByRole('button', { name: '上下文来源请求 · request-previous' })
   );
@@ -238,9 +255,10 @@ test('node entry defaults to chronological internal events and historical missin
     'false'
   );
   const detail = screen.getByRole('complementary');
+  fireEvent.click(within(detail).getByRole('tab', { name: '元数据' }));
   expect(within(detail).getByText('用途未知')).toBeInTheDocument();
   expect(within(detail).getByText('请求来源未记录')).toBeInTheDocument();
-  fireEvent.click(within(detail).getByRole('tab', { name: '内部事件原文' }));
+  fireEvent.click(within(detail).getByRole('tab', { name: '原文' }));
   expect(await within(detail).findByText(/retained/)).toBeInTheDocument();
 });
 test('request without linked invocations shows an empty state without inventing calls', async () => {
@@ -282,7 +300,31 @@ test.each([
       await screen.findByRole('button', { name: new RegExp(`^${label} ·`) })
     );
     const detail = within(screen.getByRole('complementary'));
+    fireEvent.click(detail.getByRole('tab', { name: '元数据' }));
     if (text) expect(detail.getByText(text)).toBeInTheDocument();
     else expect(detail.queryByText(/^耗时:/)).not.toBeInTheDocument();
   }
 );
+
+test('uses the single compact source shortcut to open its exact client request', async () => {
+  const { loadClientTrajectory } = fixture('node-current');
+  fireEvent.click(screen.getByRole('button', { name: '调用轨迹' }));
+  fireEvent.click(
+    (await screen.findAllByRole('button', { name: /^模型调用准备 ·/ }))[0]
+  );
+  const detail = within(screen.getByRole('complementary'));
+  fireEvent.click(
+    detail.getByRole('button', { name: '来源请求' })
+  );
+  await waitFor(() =>
+    expect(loadClientTrajectory).toHaveBeenCalledWith(
+      'run-current',
+      undefined,
+      undefined,
+      expect.objectContaining({
+        request_id: 'request-current',
+        focus_step_id: 'request-current'
+      })
+    )
+  );
+});

@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Spin, Tabs } from 'antd';
+import { Alert, Button, Empty, Spin } from 'antd';
 import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -12,15 +11,17 @@ import { formatDateTime } from '../../../../../shared/i18n/format';
 export function TrajectoryStepDetail({
   step,
   loader,
-  onClient
+  onClient,
+  view
 }: {
+  view: 'detail' | 'raw' | 'metadata';
   step: ProviderTrajectoryStep;
   loader: ConversationLogTraceLoader;
   onClient?: (
     link: NonNullable<ProviderTrajectoryStep['links']>[number]
   ) => void;
 }) {
-  const [rawSemantic, setRawSemantic] = useState(false);
+  const rawSemantic = view === 'raw';
   const { flow_run_id, node_run_id } = step.metadata;
   const body = useInfiniteQuery({
     queryKey: [
@@ -30,7 +31,7 @@ export function TrajectoryStepDetail({
       step.event_id,
       'semantic'
     ],
-    enabled: Boolean(loader.loadTrajectoryBody),
+    enabled: view !== 'metadata' && Boolean(loader.loadTrajectoryBody),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       loader.loadTrajectoryBody!(
@@ -45,66 +46,58 @@ export function TrajectoryStepDetail({
     staleTime: 60_000,
     refetchOnWindowFocus: false
   });
+  if (view === 'metadata')
+    return (
+      <section className="provider-trajectory__detail">
+        <div className="provider-trajectory__detail-meta">
+          <span>
+            {step.metadata.source === 'ai_native'
+              ? i18nText('agentFlow', 'trajectory.native_source')
+              : i18nText('agentFlow', 'trajectory.supplier_source')}
+          </span>
+          <time>{formatDateTime(step.created_at)}</time>
+          <span>{step.metadata.node_id || node_run_id}</span>
+          <span title={step.metadata.invocation_id}>
+            {i18nText('agentFlow', 'trajectory.invocation')}:{' '}
+            {step.metadata.invocation_id}
+          </span>
+        </div>
+        <div className="provider-trajectory__detail-meta">
+          <span>{purposeLabel(step.metadata.purpose)}</span>
+          {step.metadata.duration_ms != null ? (
+            <span title={`${step.metadata.duration_ms} ms`}>
+              {i18nText('agentFlow', 'trajectory.duration')}:{' '}
+              {formatDurationScaled(step.metadata.duration_ms)}
+            </span>
+          ) : null}
+          {step.metadata.run_mode ? (
+            <span>{step.metadata.run_mode}</span>
+          ) : null}
+          {step.links.length ? (
+            step.links.map((link, index) => (
+              <Button
+                key={`${link.relation}:${link.request_id}:${index}`}
+                type="link"
+                size="small"
+                onClick={() => onClient?.(link)}
+                disabled={!onClient}
+              >
+                {link.relation === 'trigger'
+                  ? i18nText('agentFlow', 'trajectory.trigger_request')
+                  : i18nText('agentFlow', 'trajectory.context_request')}{' '}
+                · {link.request_id}
+              </Button>
+            ))
+          ) : (
+            <span>
+              {i18nText('agentFlow', 'trajectory.source_not_recorded')}
+            </span>
+          )}
+        </div>
+      </section>
+    );
   return (
     <section className="provider-trajectory__detail">
-      <div className="provider-trajectory__detail-meta">
-        <span>
-          {step.metadata.source === 'ai_native'
-            ? i18nText('agentFlow', 'trajectory.native_source')
-            : i18nText('agentFlow', 'trajectory.supplier_source')}
-        </span>
-        <time>{formatDateTime(step.created_at)}</time>
-        <span>{step.metadata.node_id || node_run_id}</span>
-        <span title={step.metadata.invocation_id}>
-          {i18nText('agentFlow', 'trajectory.invocation')}:{' '}
-          {step.metadata.invocation_id}
-        </span>
-      </div>
-      <div className="provider-trajectory__detail-meta">
-        <span>{purposeLabel(step.metadata.purpose)}</span>
-        {step.metadata.duration_ms != null ? (
-          <span title={`${step.metadata.duration_ms} ms`}>
-            {i18nText('agentFlow', 'trajectory.duration')}:{' '}
-            {formatDurationScaled(step.metadata.duration_ms)}
-          </span>
-        ) : null}
-        {step.metadata.run_mode ? <span>{step.metadata.run_mode}</span> : null}
-        {step.links.length ? (
-          step.links.map((link, index) => (
-            <Button
-              key={`${link.relation}:${link.request_id}:${index}`}
-              type="link"
-              size="small"
-              onClick={() => onClient?.(link)}
-              disabled={!onClient}
-            >
-              {link.relation === 'trigger'
-                ? i18nText('agentFlow', 'trajectory.trigger_request')
-                : i18nText('agentFlow', 'trajectory.context_request')}{' '}
-              · {link.request_id}
-            </Button>
-          ))
-        ) : (
-          <span>{i18nText('agentFlow', 'trajectory.source_not_recorded')}</span>
-        )}
-      </div>
-      <Tabs
-        size="small"
-        activeKey={rawSemantic ? 'semantic_raw' : 'semantic'}
-        onChange={(key) => {
-          setRawSemantic(key === 'semantic_raw');
-        }}
-        items={[
-          {
-            key: 'semantic',
-            label: i18nText('agentFlow', 'trajectory.step_detail')
-          },
-          {
-            key: 'semantic_raw',
-            label: i18nText('agentFlow', 'trajectory.semantic_raw')
-          }
-        ]}
-      />
       {body.isLoading ? <Spin /> : null}
       {body.isError ? (
         <Alert

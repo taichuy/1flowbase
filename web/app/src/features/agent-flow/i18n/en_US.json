@@ -55,7 +55,7 @@
     "trigger_request": "Trigger request",
     "context_request": "Context source request",
     "source_not_recorded": "Request source not recorded",
-    "semantic_raw": "Internal event source",
+    "semantic_raw": "Raw",
     "workflow_node": "Related workflow node",
     "activity_category": "Activity category",
     "round_activities": "Rounds / compaction",
@@ -90,8 +90,7 @@
     "event_assistant_tool_call_finished": "Tool call finished",
     "node_input_lane": "Nodes / input",
     "task_request_lane": "Requests / tasks",
-    "view_node_logs": "View node logs",
-    "back_to_event": "Back to event"
+    "view_node_logs": "Node logs"
   },
   "auto": {
     "llm_tools": "LLM Tools",

@@ -15,7 +15,6 @@ import type {
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { formatDateTime } from '../../../../../shared/i18n/format';
-import { TrajectoryStepDetail } from './TrajectoryStepDetail';
 import { purposeLabel } from './trajectory-presentation';
 import {
   workflowEventLabel,
@@ -416,19 +415,11 @@ export function NativeTrajectoryWorkspace({
               key={selectedStep.event_id}
             >
               <WorkflowEventDetail
-                key={selectedStep.event_id}
                 event={selectedStep}
                 runId={runId}
                 loader={loader}
-              >
-                {selectedStep.native_step ? (
-                  <TrajectoryStepDetail
-                    step={selectedStep.native_step}
-                    loader={loader}
-                    onClient={onClient}
-                  />
-                ) : null}
-              </WorkflowEventDetail>
+                onClient={onClient}
+              />
             </div>
           </aside>
         ) : null}

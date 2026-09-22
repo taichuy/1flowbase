@@ -63,19 +63,6 @@
   flex: none;
   overflow: visible;
 }
-.workflow-trajectory__identity details > small,
-.workflow-trajectory__identity details > span {
-  display: block;
-  margin-top: 6px;
-}
-.workflow-trajectory__identity summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-}
-.workflow-trajectory__inspector-scroll
-  > .agent-flow-editor__conversation-log-node-detail {
-  padding: 0 14px 14px;
-}
 .workflow-trajectory__inspector-scroll
   .provider-trajectory__detail-meta
   .ant-btn {
@@ -89,4 +76,30 @@
 }
 .workflow-trajectory .provider-trajectory__row {
   min-height: 40px;
+}
+
+.workflow-trajectory__event-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 0;
+  min-width: 0;
+}
+.workflow-trajectory__event-summary strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-trajectory__event-summary > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.workflow-trajectory__detail-tabs > .ant-tabs-nav {
+  margin: 0 14px;
+}
+.workflow-trajectory__detail-tabs
+  .agent-flow-editor__conversation-log-node-detail {
+  padding: 12px 14px;
 }

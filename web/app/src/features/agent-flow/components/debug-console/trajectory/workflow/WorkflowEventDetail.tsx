@@ -1,11 +1,15 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Spin } from 'antd';
-import type { WorkflowTrajectoryEvent } from '@1flowbase/api-client';
+import { Alert, Button, Empty, Spin, Tabs } from 'antd';
+import type {
+  WorkflowTrajectoryEvent,
+  ProviderTrajectoryStep
+} from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { JsonPreviewBlock } from '../../../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { TraceActivityDetailContext } from '../activities/activity-model';
+import { TrajectoryStepDetail } from '../TrajectoryStepDetail';
 import { workflowNodeName, workflowSectionLabel } from './presentation';
 const NodeDetail = lazy(() =>
   import('../../ConversationLogPanel').then((module) => ({
@@ -89,99 +93,156 @@ export function WorkflowEventDetail({
   event,
   runId,
   loader,
-  children
+  onClient
 }: {
   event: WorkflowTrajectoryEvent;
   runId: string;
   loader: ConversationLogTraceLoader;
-  children?: ReactNode;
+  onClient?: (link: ProviderTrajectoryStep['links'][number]) => void;
 }) {
-  const [nodeLog, setNodeLog] = useState(false);
+  const [tab, setTab] = useState('detail');
+  const native = event.native_step;
+  const trigger = native?.links.find((link) => link.relation === 'trigger');
   const body = useQuery({
     queryKey: ['workflow-trajectory-body', runId, event.event_id],
     enabled:
-      !event.native_step &&
-      event.category !== 'nodes' &&
+      !native &&
+      (tab === 'raw' || (tab === 'detail' && event.category !== 'nodes')) &&
       Boolean(loader.loadWorkflowTrajectoryBody),
     queryFn: () => loader.loadWorkflowTrajectoryBody!(runId, event.event_id),
     staleTime: 60_000,
     refetchOnWindowFocus: false
   });
+  const workflowBody = (
+    <section className="provider-trajectory__detail">
+      {body.isLoading ? <Spin /> : null}
+      {body.isError ? (
+        <Alert
+          type="error"
+          title={i18nText('agentFlow', 'auto.loading_failed')}
+          action={
+            <Button onClick={() => void body.refetch()}>
+              {i18nText('agentFlow', 'auto.retry')}
+            </Button>
+          }
+        />
+      ) : null}
+      {body.data ? (
+        tab === 'raw' ? (
+          <JsonPreviewBlock
+            title={i18nText('agentFlow', 'trajectory.semantic_raw')}
+            value={body.data}
+            collapsible={false}
+          />
+        ) : (
+          body.data.sections.map((section, index) => (
+            <JsonPreviewBlock
+              key={`${section.kind}:${index}`}
+              title={workflowSectionLabel(section.kind)}
+              value={section.value}
+            />
+          ))
+        )
+      ) : null}
+      {body.isSuccess && !body.data.sections.length ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={i18nText('agentFlow', 'trajectory.no_evidence')}
+        />
+      ) : null}
+    </section>
+  );
   return (
     <>
-      <div className="provider-trajectory__detail workflow-trajectory__identity">
+      <div className="workflow-trajectory__event-summary">
         <strong>{workflowNodeName(event)}</strong>
-        <details>
-          <summary>{i18nText('agentFlow', 'auto.metadata')}</summary>
-          <small>
-            {event.node_id} · {event.node_run_id}
-          </small>
-          {event.task_run_id ? (
-            <span>
-              {i18nText('agentFlow', 'trajectory.task')}: {event.task_run_id}
-            </span>
-          ) : null}
-          {event.parent_task_run_id ? (
-            <span>
-              {i18nText('agentFlow', 'trajectory.parent_task')}:{' '}
-              {event.parent_task_run_id}
-            </span>
-          ) : null}
-        </details>
         {event.status ? <span>{event.status}</span> : null}
-        {event.node_run_id ? (
+        {trigger && onClient ? (
           <Button
+            type="link"
             size="small"
-            onClick={() => setNodeLog(!nodeLog)}
-            aria-expanded={nodeLog}
+            title={trigger.request_id}
+            onClick={() => onClient(trigger)}
           >
-            {i18nText(
-              'agentFlow',
-              nodeLog ? 'trajectory.back_to_event' : 'trajectory.view_node_logs'
-            )}
+            {i18nText('agentFlow', 'trajectory.trigger_request')}
           </Button>
         ) : null}
       </div>
-      {nodeLog ? (
-        <NodeIO event={event} loader={loader} />
-      ) : (
-        <>
-          {event.category === 'nodes' ? (
-            <NodeIO event={event} loader={loader} detailOnly />
-          ) : (
-            children
-          )}
-          {!event.native_step && event.category !== 'nodes' ? (
-            <section className="provider-trajectory__detail">
-              {body.isLoading ? <Spin /> : null}
-              {body.isError ? (
-                <Alert
-                  type="error"
-                  title={i18nText('agentFlow', 'auto.loading_failed')}
-                  action={
-                    <Button onClick={() => void body.refetch()}>
-                      {i18nText('agentFlow', 'auto.retry')}
-                    </Button>
-                  }
-                />
-              ) : null}
-              {body.data?.sections.map((section, index) => (
-                <JsonPreviewBlock
-                  key={`${section.kind}:${index}`}
-                  title={workflowSectionLabel(section.kind)}
-                  value={section.value}
-                />
-              ))}
-              {body.isSuccess && !body.data.sections.length ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={i18nText('agentFlow', 'trajectory.no_evidence')}
-                />
-              ) : null}
-            </section>
-          ) : null}
-        </>
-      )}
+      <Tabs
+        className="workflow-trajectory__detail-tabs"
+        size="small"
+        activeKey={tab}
+        onChange={setTab}
+        destroyOnHidden
+        items={[
+          {
+            key: 'detail',
+            label: i18nText('agentFlow', 'auto.details'),
+            children: native ? (
+              <TrajectoryStepDetail
+                step={native}
+                loader={loader}
+                view="detail"
+              />
+            ) : event.category === 'nodes' ? (
+              <NodeIO event={event} loader={loader} detailOnly />
+            ) : (
+              workflowBody
+            )
+          },
+          {
+            key: 'metadata',
+            label: i18nText('agentFlow', 'auto.metadata'),
+            children: (
+              <>
+                <div className="provider-trajectory__detail workflow-trajectory__identity">
+                  <small>
+                    {event.node_id} · {event.node_run_id}
+                  </small>
+                  {event.task_run_id ? (
+                    <span>
+                      {i18nText('agentFlow', 'trajectory.task')}:{' '}
+                      {event.task_run_id}
+                    </span>
+                  ) : null}
+                  {event.parent_task_run_id ? (
+                    <span>
+                      {i18nText('agentFlow', 'trajectory.parent_task')}:{' '}
+                      {event.parent_task_run_id}
+                    </span>
+                  ) : null}
+                </div>
+                {native ? (
+                  <TrajectoryStepDetail
+                    step={native}
+                    loader={loader}
+                    view="metadata"
+                    onClient={onClient}
+                  />
+                ) : null}
+              </>
+            )
+          },
+          ...(event.node_run_id
+            ? [
+                {
+                  key: 'node',
+                  label: i18nText('agentFlow', 'trajectory.view_node_logs'),
+                  children: <NodeIO event={event} loader={loader} />
+                }
+              ]
+            : []),
+          {
+            key: 'raw',
+            label: i18nText('agentFlow', 'trajectory.semantic_raw'),
+            children: native ? (
+              <TrajectoryStepDetail step={native} loader={loader} view="raw" />
+            ) : (
+              workflowBody
+            )
+          }
+        ]}
+      />
     </>
   );
 }

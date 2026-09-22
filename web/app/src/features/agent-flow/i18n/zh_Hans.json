@@ -55,7 +55,7 @@
     "trigger_request": "来源请求",
     "context_request": "上下文来源请求",
     "source_not_recorded": "请求来源未记录",
-    "semantic_raw": "内部事件原文",
+    "semantic_raw": "原文",
     "workflow_node": "关联工作流节点",
     "activity_category": "活动分类",
     "round_activities": "轮次 / 压缩",
@@ -90,8 +90,7 @@
     "event_assistant_tool_call_finished": "工具调用结束",
     "node_input_lane": "节点 / 输入",
     "task_request_lane": "请求 / 任务",
-    "view_node_logs": "查看节点日志",
-    "back_to_event": "返回事件详情"
+    "view_node_logs": "节点日志"
   },
   "auto": {
     "llm_tools": "LLM 工具",
