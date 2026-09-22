@@ -178,7 +178,7 @@ fn required_tab_title(value: Option<String>) -> Result<String> {
     Ok(title)
 }
 
-fn root_slug_for(
+pub(crate) fn root_slug_for(
     parent_id: Option<Uuid>,
     placement: domain::frontstage::FrontstageNavigationPlacement,
     slug: Option<String>,

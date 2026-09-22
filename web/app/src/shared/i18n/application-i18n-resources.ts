@@ -1,3 +1,5 @@
+import settingsSystemTemplatesZhHans from '../../features/settings/components/system-templates/i18n/zh_Hans.json';
+import settingsSystemTemplatesEnUS from '../../features/settings/components/system-templates/i18n/en_US.json';
 import agentFlowZhHans from '../../features/agent-flow/i18n/zh_Hans.json';
 import agentFlowEnUS from '../../features/agent-flow/i18n/en_US.json';
 import appZhHans from '../../app/i18n/zh_Hans.json';
@@ -47,6 +49,7 @@ export const applicationTranslationResources = {
     schemaUi: schemaUiZhHans,
     settingsApplicationManagement: settingsApplicationManagementZhHans,
     settingsSystemBackups: settingsSystemBackupsZhHans,
+    settingsSystemTemplates: settingsSystemTemplatesZhHans,
     settingsMcpManagement: settingsMcpManagementZhHans,
     settingsUiManagement: settingsUiManagementZhHans,
     settingsBilling: settingsBillingZhHans,
@@ -67,6 +70,7 @@ export const applicationTranslationResources = {
     schemaUi: schemaUiEnUS,
     settingsApplicationManagement: settingsApplicationManagementEnUS,
     settingsSystemBackups: settingsSystemBackupsEnUS,
+    settingsSystemTemplates: settingsSystemTemplatesEnUS,
     settingsMcpManagement: settingsMcpManagementEnUS,
     settingsUiManagement: settingsUiManagementEnUS,
     settingsBilling: settingsBillingEnUS,

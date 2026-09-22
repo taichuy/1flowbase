@@ -67,3 +67,5 @@ pub fn crate_name() -> &'static str {
 pub mod _tests;
 
 pub mod managed_event_publication;
+
+pub mod portable_template;
