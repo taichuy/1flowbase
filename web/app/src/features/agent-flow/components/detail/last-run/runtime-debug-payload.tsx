@@ -121,6 +121,7 @@ export function RuntimeDebugPayloadBlock({
   payload,
   defaultCollapsed = false,
   height = '220px',
+  headerActionsTarget,
   onLoadArtifact,
   onLoadArtifacts
 }: {
@@ -128,6 +129,7 @@ export function RuntimeDebugPayloadBlock({
   payload: unknown;
   defaultCollapsed?: boolean;
   height?: string;
+  headerActionsTarget?: HTMLElement | null;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
@@ -213,6 +215,7 @@ export function RuntimeDebugPayloadBlock({
           </Space>
         ) : null
       }
+      headerActionsTarget={headerActionsTarget}
       defaultCollapsed={defaultCollapsed}
       height={height}
       title={title}

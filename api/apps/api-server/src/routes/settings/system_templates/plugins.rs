@@ -17,6 +17,7 @@ use storage_durable_postgres::MainDurableStore;
 
 pub(crate) struct TemplateDependencies {
     pub store: MainDurableStore,
+    pub runtime_registry_sync: crate::runtime_registry_sync::ApiRuntimeRegistrySync,
     pub provider_runtime: Arc<ApiRuntimeServices>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,

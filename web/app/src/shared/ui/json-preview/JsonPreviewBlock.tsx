@@ -4,6 +4,7 @@ import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import FullscreenOutlined from '@ant-design/icons/es/icons/FullscreenOutlined';
 import { App, Button, Modal, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Suspense, lazy, useMemo, useState } from 'react';
 
 import { useClipboardCopy } from '../clipboard/use-clipboard-copy';
@@ -82,7 +83,8 @@ export function JsonPreviewBlock({
   displayTitle = title,
   fullscreenAriaLabel,
   height = '220px',
-  rawText
+  rawText,
+  headerActionsTarget
 }: {
   title: string;
   value: unknown;
@@ -97,6 +99,7 @@ export function JsonPreviewBlock({
   fullscreenAriaLabel?: string;
   height?: string;
   rawText?: string;
+  headerActionsTarget?: HTMLElement | null;
 }) {
   const { message } = App.useApp();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -106,7 +109,8 @@ export function JsonPreviewBlock({
     () => rawText ?? formatJsonPreview(value),
     [rawText, value]
   );
-  const isCollapsed = collapsible ? collapsed : false;
+  const embedded = headerActionsTarget !== undefined;
+  const isCollapsed = !embedded && collapsible ? collapsed : false;
 
   const handleCopy = async () => {
     try {
@@ -117,61 +121,83 @@ export function JsonPreviewBlock({
     }
   };
 
+  const headerActions = (
+    <div
+      className="json-preview-block__actions"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {actions}
+      <Tooltip title={i18nText('sharedUi', 'auto.copy_json')}>
+        <Button
+          aria-label={
+            copyAriaLabel ??
+            i18nText('sharedUi', 'auto.copy_named_json', { value1: title })
+          }
+          icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+          onClick={handleCopy}
+          size="small"
+          type="text"
+        />
+      </Tooltip>
+      <Tooltip title={i18nText('sharedUi', 'auto.enlarge_view')}>
+        <Button
+          aria-label={
+            fullscreenAriaLabel ??
+            i18nText('sharedUi', 'auto.zoom_view_named_json', {
+              value1: title
+            })
+          }
+          disabled={isCollapsed}
+          icon={<FullscreenOutlined />}
+          onClick={() => setExpanded(true)}
+          size="small"
+          type="text"
+        />
+      </Tooltip>
+    </div>
+  );
+
   return (
     <section
-      className={['json-preview-block', className].filter(Boolean).join(' ')}
+      className={[
+        'json-preview-block',
+        embedded && 'json-preview-block--embedded',
+        className
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       <pre aria-label={`${title} JSON`} className="json-preview-block__a11y">
         {formattedValue}
       </pre>
-      <div className="json-preview-block__header">
-        <button
-          aria-label={title}
-          aria-expanded={collapsible ? !isCollapsed : undefined}
-          className="json-preview-block__toggle"
-          onClick={
-            collapsible ? () => setCollapsed((current) => !current) : undefined
-          }
-          type="button"
-        >
-          {collapsible ? (
-            <DownOutlined className="json-preview-block__toggle-icon" />
-          ) : null}
-          {displayTitle ? (
-            <span className="json-preview-block__title">{displayTitle}</span>
-          ) : null}
-        </button>
-        <div className="json-preview-block__actions">
-          {actions}
-          <Tooltip title={i18nText('sharedUi', 'auto.copy_json')}>
-            <Button
-              aria-label={
-                copyAriaLabel ??
-                i18nText('sharedUi', 'auto.copy_named_json', { value1: title })
-              }
-              icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-              onClick={handleCopy}
-              size="small"
-              type="text"
-            />
-          </Tooltip>
-          <Tooltip title={i18nText('sharedUi', 'auto.enlarge_view')}>
-            <Button
-              aria-label={
-                fullscreenAriaLabel ??
-                i18nText('sharedUi', 'auto.zoom_view_named_json', {
-                  value1: title
-                })
-              }
-              disabled={isCollapsed}
-              icon={<FullscreenOutlined />}
-              onClick={() => setExpanded(true)}
-              size="small"
-              type="text"
-            />
-          </Tooltip>
+      {embedded ? (
+        headerActionsTarget ? (
+          createPortal(headerActions, headerActionsTarget)
+        ) : null
+      ) : (
+        <div className="json-preview-block__header">
+          <button
+            aria-label={title}
+            aria-expanded={collapsible ? !isCollapsed : undefined}
+            className="json-preview-block__toggle"
+            onClick={
+              collapsible
+                ? () => setCollapsed((current) => !current)
+                : undefined
+            }
+            type="button"
+          >
+            {collapsible ? (
+              <DownOutlined className="json-preview-block__toggle-icon" />
+            ) : null}
+            {displayTitle ? (
+              <span className="json-preview-block__title">{displayTitle}</span>
+            ) : null}
+          </button>
+          {headerActions}
         </div>
-      </div>
+      )}
       {!isCollapsed ? (
         <div className="json-preview-block__editor">
           <JsonEditor height={height} value={formattedValue} />

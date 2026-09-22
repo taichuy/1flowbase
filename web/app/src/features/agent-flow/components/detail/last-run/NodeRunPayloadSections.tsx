@@ -221,6 +221,8 @@ function LazyNodeRunPayloadSection({
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
   const [open, setOpen] = useState(false);
+  const [headerActionsTarget, setHeaderActionsTarget] =
+    useState<HTMLSpanElement | null>(null);
   const [state, setState] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error';
     value?: unknown;
@@ -262,7 +264,14 @@ function LazyNodeRunPayloadSection({
               }}
             >
               {title}
-              <span onClick={(event) => event.stopPropagation()}>{action}</span>
+              <span
+                style={{ display: 'flex', alignItems: 'center' }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                {action}
+                <span ref={setHeaderActionsTarget} />
+              </span>
             </span>
           ),
           children:
@@ -270,6 +279,7 @@ function LazyNodeRunPayloadSection({
               <RuntimeDebugPayloadBlock
                 title={title}
                 payload={state.value}
+                headerActionsTarget={headerActionsTarget}
                 onLoadArtifact={onLoadArtifact}
                 onLoadArtifacts={onLoadArtifacts}
               />

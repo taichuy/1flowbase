@@ -19,6 +19,18 @@ if { [[ $slice == dev.slice ]] && grep -q '/dev.slice/' /proc/self/cgroup; } ||
    grep -q "/dev.slice/$slice/" /proc/self/cgroup; then
   exec "$@"
 fi
-exec systemd-run --user --scope --collect --quiet --same-dir \
-  --unit="dev-run-$$-$RANDOM.scope" \
-  --slice="$slice" -- "$@"
+scope="dev-run-$$-$RANDOM.scope"
+cleanup() {
+  systemctl --user --no-block stop "$scope" >/dev/null 2>&1 || true
+}
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM HUP
+systemd-run --user --scope --collect --quiet --same-dir \
+  --unit="$scope" --property=TimeoutStopSec=2s \
+  --slice="$slice" -- "$@" <&0 &
+launcher=$!
+set +e
+wait "$launcher"
+status=$?
+set -e
+exit "$status"

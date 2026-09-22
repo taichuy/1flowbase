@@ -54,11 +54,23 @@ CPU 1200%；`dev-rust.slice` 为 9/11 GiB、swap 1 GiB；
 已有进程不会自动迁移；直接使用绝对路径工具或 NVM 把自身 bin 提到包装器前面会绕过入口，
 请用 `type -a cargo pnpm` 及 `/proc/<pid>/cgroup` 核对。
 Docker 数据库不属于用户级开发组，仍需计入组外预算。
-整机 swap 容量保留 4 GiB；管理员通过 `/etc/systemd/oomd.conf.d/60-swap-headroom.conf`
-设置 `SwapUsedLimit=75%`（约 3 GiB 保护线）。只有整机物理内存和 swap
-使用比例同时超过 75% 时，oomd 才会终止受监控组的合格候选进程；这不是 swap 硬上限，
-也不保证始终空出 1 GiB。当前 swap 监控范围为 `user-1000.slice`，以 `oomctl dump` 为准。
-此用户脚本不调整交换设备或管理员 oomd 配置。
+整机 swap 容量保持 4 GiB，3 GiB 仅作为观察线，不触发清理。
+管理员执行 `sudo bash scripts/shell/apply-oomd-policy.sh "$(id -u)"`，
+把 `SwapUsedLimit` 恢复为 90%，关闭 `user-UID.slice` 和 `user@UID.service`
+的上层 oomd 终止策略；用户脚本关闭 app.slice 的 oomd 策略，只在 dev.slice
+启用 swap 和持续 PSI 压力清理。Docker 的独立保护保留。
+90% 要求整机内存和 swap 比例同时超过阈值；不是 swap 硬上限。
+用 `sudo oomctl dump` 验证监控范围；这些设置不豁免内核 OOM 或 cgroup 硬上限。
+
+重任务通过 `dev-heavy-run COMMAND ...` 共用单个运行槽。Cargo 的
+build/check/test/bench/clippy/doc/rustc/rustdoc（含 b/c/t）以及 pnpm 的
+build、test、build:*、test:*、typecheck、type-check、lint、check 自动排队。
+启动前要求 MemAvailable 至少为总内存 25%，且开发父组扣除 inactive_file 缓存后的占用低于 MemoryHigh，避免已结束构建的缓存阻塞队列。
+等待可取消，不终止正在运行的任务；不依据 swap 占用阻断启动。
+嵌套重任务复用祖先进程持有的槽，避免死锁。watch/dev/start 不持有重任务槽；
+Cargo run、直接运行 Node、绝对路径工具和自定义命令不自动加入排队，重型阶段需显式
+使用 `dev-heavy-run dev-run COMMAND ...`。该机制只约束经入口启动的新任务，
+不会暂停已启动任务，也不能保证单个任务不会超出内存上限。
 
 配置通过 `systemctl --user` 生效，不需要 `sudo`。当前数值以
 `scripts/shell/resource-limits.conf` 为唯一真值，字段含义如下：
@@ -67,8 +79,6 @@ Docker 数据库不属于用户级开发组，仍需计入组外预算。
 | --- | --- |
 | `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
 | `SESSION_MEMORY_LOW` | 为 `session.slice` 设置低水位内存保护，不是最大内存限制。 |
-| `APP_OOM_PRESSURE_LIMIT` | `app.slice` 的 PSI 内存压力阈值，不是物理内存使用率。 |
-| `APP_OOM_PRESSURE_DURATION` | `app.slice` 超过压力阈值后必须持续的时间；达到后才允许 `systemd-oomd` 选择其中的进程终止。 |
 | `DEV_OOM_PRESSURE_LIMIT` | `dev.slice` 的 PSI 内存压力阈值，只影响通过 `~/.local/bin/dev-run` 启动的开发进程。 |
 | `DEV_OOM_PRESSURE_DURATION` | `dev.slice` 超过压力阈值后必须持续的时间。`dev.slice` 与普通桌面应用分开统计。 |
 | `RUST_MEMORY_HIGH` | Rust 构建 slice 的软阈值；超过后内核开始加强回收和节流。 |
@@ -90,6 +100,7 @@ Docker 数据库不属于用户级开发组，仍需计入组外预算。
 - `~/.config/systemd/user/dev-frontend.slice`
 - `~/.local/bin/dev-run`
 - `~/.local/bin/pnpm`
+- `~/.local/bin/dev-heavy-run`
 - `~/.local/bin/cargo`
 - 仓库根目录 `.1flowbase.verify.local.json`
 

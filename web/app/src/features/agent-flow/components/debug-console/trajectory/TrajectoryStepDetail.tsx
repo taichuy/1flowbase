@@ -135,11 +135,13 @@ export function TrajectoryStepDetail({
                 key={`${section.kind}:${index}`}
                 aria-label={nativeSectionLabel(section.kind)}
               >
-                <h4>{nativeSectionLabel(section.kind)}</h4>
                 {typeof section.value === 'string' ? (
-                  <pre className="provider-trajectory__body">
-                    {section.value}
-                  </pre>
+                  <>
+                    <h4>{nativeSectionLabel(section.kind)}</h4>
+                    <pre className="provider-trajectory__body">
+                      {section.value}
+                    </pre>
+                  </>
                 ) : (
                   <JsonPreviewBlock
                     title={nativeSectionLabel(section.kind)}

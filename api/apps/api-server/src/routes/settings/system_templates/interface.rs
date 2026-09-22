@@ -8,6 +8,7 @@ use control_plane::portable_template::{
     PortableTemplateInstallService, PortableTemplatePackage, PortableTemplateSelection,
     PortableTemplateService,
 };
+use control_plane::ports::RuntimeRegistrySync;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -85,12 +86,16 @@ impl TemplateAdapter {
                     .preflight_visibility(actor, &package)
                     .await?;
                 self.0.resolve_plugins(actor, &package.plugins).await?;
-                serde_json::to_value(
-                    PortableTemplateInstallService::new(repository)
-                        .with_node_id(self.0.api_node_id.clone())
-                        .install(actor.user_id, package)
-                        .await?,
-                )?
+                let mut installed = PortableTemplateInstallService::new(repository)
+                    .with_node_id(self.0.api_node_id.clone())
+                    .install(actor.user_id, package)
+                    .await?;
+                // Owner writes may partially commit. Synchronize those definitions too.
+                if let Err(error) = self.0.runtime_registry_sync.rebuild().await {
+                    installed.complete = false;
+                    installed.failures.push(format!("runtime model registry synchronization: {error:#}; definitions may already be committed"));
+                }
+                serde_json::to_value(installed)?
             }
         };
         Ok(TemplateOutput(result))
