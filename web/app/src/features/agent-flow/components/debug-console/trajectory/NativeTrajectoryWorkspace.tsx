@@ -1,6 +1,8 @@
+import { WorkflowActivityWorkspace } from './activities/WorkflowActivityWorkspace';
+import type { ActivityCategory } from './activities/activity-model';
 import { useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Input, Spin, Tooltip } from 'antd';
+import { Alert, Button, Empty, Input, Spin, Tooltip, Segmented } from 'antd';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
@@ -31,7 +33,7 @@ import {
 import { useProgressiveTrajectory } from './use-progressive-trajectory';
 import './provider-trajectory.css';
 
-export function NativeTrajectoryWorkspace({
+function NativeInvocationWorkspace({
   runId,
   nodeRunId,
   loader,
@@ -426,6 +428,53 @@ export function NativeTrajectoryWorkspace({
           </span>
         ) : null}
       </footer>
+    </div>
+  );
+}
+
+export function NativeTrajectoryWorkspace(
+  props: Parameters<typeof NativeInvocationWorkspace>[0]
+) {
+  const [category, setCategory] = useState<'model' | ActivityCategory>('model');
+  return (
+    <div className="provider-trajectory">
+      {!props.options?.request_id ? (
+        <Segmented
+          aria-label={i18nText('agentFlow', 'trajectory.activity_category')}
+          value={category}
+          onChange={(value) => setCategory(value as 'model' | ActivityCategory)}
+          options={[
+            {
+              value: 'model',
+              label: i18nText('agentFlow', 'trajectory.model_events')
+            },
+            {
+              value: 'tools',
+              label: i18nText('agentFlow', 'auto.tools')
+            },
+            {
+              value: 'rounds',
+              label: i18nText('agentFlow', 'trajectory.round_activities')
+            },
+            {
+              value: 'agents',
+              label: i18nText('agentFlow', 'trajectory.agent_activities')
+            }
+          ]}
+        />
+      ) : null}
+      {category === 'model' || props.options?.request_id ? (
+        <NativeInvocationWorkspace {...props} />
+      ) : (
+        <WorkflowActivityWorkspace
+          key={`${props.runId}:${props.nodeRunId ?? ''}:${category}`}
+          runId={props.runId}
+          nodeRunId={props.nodeRunId}
+          loader={props.loader}
+          active={props.active ?? true}
+          category={category}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,11 @@
+import {
+  activityCategory,
+  TraceActivityDetailContext
+} from './trajectory/activities/activity-model';
 import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -385,7 +390,7 @@ function traceProjectionStatusMessage(
   }
 }
 
-function TraceProjectionStatusNotice({
+export function TraceProjectionStatusNotice({
   status
 }: {
   status: ConversationLogTraceProjectionStatus;
@@ -528,12 +533,17 @@ function LazyTraceNodeList({
   runId: string;
   traceLoader: ConversationLogTraceLoader;
 }) {
+  const activityDetail = useContext(TraceActivityDetailContext);
+  const displayedNodes =
+    activityDetail || !traceLoader.loadRunTrajectory
+      ? nodes
+      : nodes.filter((node) => activityCategory(node) === null);
   return (
     <div
       aria-label={i18nText('agentFlow', 'auto.tracking_nodes')}
       className="agent-flow-editor__conversation-log-node-list"
     >
-      {nodes.map((node) => (
+      {displayedNodes.map((node) => (
         <LazyTraceNodeItem
           key={`${runId}:${node.trace_node_id}`}
           defaultToolsExpanded={defaultToolsExpanded}
@@ -646,7 +656,8 @@ function FlattenedToolModeTraceNodeChild({
   );
 }
 
-function LazyTraceNodeItem({
+export function LazyTraceNodeItem({
+  initiallyExpanded = false,
   defaultToolsExpanded,
   node,
   onLoadArtifact,
@@ -655,15 +666,17 @@ function LazyTraceNodeItem({
   traceLoader
 }: {
   defaultToolsExpanded: boolean;
+  initiallyExpanded?: boolean;
   node: ConversationLogTraceNodeSummary;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   runId: string;
   traceLoader: ConversationLogTraceLoader;
 }) {
+  const activityDetail = useContext(TraceActivityDetailContext);
   const isGroupNode = isTraceGroupNode(node);
   const hasTrajectory = node.node_type === 'llm' && Boolean(node.node_run_id);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const [childrenState, dispatchChildrenState] = useReducer(
     lazyTraceChildrenReducer,
     initialLazyTraceChildrenState
@@ -857,7 +870,7 @@ function LazyTraceNodeItem({
                 onLoadSection={loadNodeRunSection}
                 beforePayloadContent={childNodesBeforePayload}
                 processAction={
-                  hasTrajectory && node.node_run_id ? (
+                  !activityDetail && hasTrajectory && node.node_run_id ? (
                     <ProviderTrajectory
                       runId={
                         node.source_flow_run_id ?? node.flow_run_id ?? runId

@@ -1006,6 +1006,10 @@ export function ApplicationLogsPage({
   ) : null;
 
   const traceLoader: ConversationLogTraceLoader = {
+    loadArtifact: (artifactRef) =>
+      fetchRuntimeDebugArtifact(applicationId, artifactRef),
+    loadArtifacts: (artifactRefs) =>
+      fetchRuntimeDebugArtifacts(applicationId, artifactRefs),
     loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
       fetchClientTrajectory(applicationId, runId, nodeRunId, cursor, options),
     loadClientTrajectorySection: (runId, stepId, section, nodeRunId, cursor) =>

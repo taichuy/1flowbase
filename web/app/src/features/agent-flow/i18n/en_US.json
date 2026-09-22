@@ -59,7 +59,14 @@
     "trigger_request": "Trigger request",
     "context_request": "Context source request",
     "source_not_recorded": "Request source not recorded",
-    "semantic_raw": "Internal event source"
+    "semantic_raw": "Internal event source",
+    "activities": "Workflow activities",
+    "workflow_node": "Related workflow node",
+    "activity_category": "Activity category",
+    "model_events": "Model calls",
+    "round_activities": "Rounds / compaction",
+    "agent_activities": "Subagents",
+    "no_activities": "No activities in this category"
   },
   "auto": {
     "llm_tools": "LLM Tools",

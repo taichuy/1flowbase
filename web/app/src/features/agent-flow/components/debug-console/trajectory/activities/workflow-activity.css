@@ -1,0 +1,51 @@
+.workflow-activity {
+  flex: 1;
+  min-height: 0;
+}
+.workflow-activity__row {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+.workflow-activity__row[data-selected] {
+  background: var(--ant-color-primary-bg);
+}
+.workflow-activity__select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.workflow-activity__select > span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.workflow-activity__select > small {
+  color: var(--ant-color-text-secondary);
+}
+.workflow-activity__children {
+  margin-left: 16px;
+  border-left: 1px solid var(--ant-color-border-secondary);
+}
+.workflow-activity__leaf {
+  width: 24px;
+  flex-shrink: 0;
+}
+.workflow-activity__inspector {
+  overflow: auto;
+}
+.workflow-activity__inspector p {
+  overflow-wrap: anywhere;
+}
+
+.workflow-activity__body {
+  padding: 12px;
+}
