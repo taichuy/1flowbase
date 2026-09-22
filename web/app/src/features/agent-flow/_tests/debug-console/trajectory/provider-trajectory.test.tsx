@@ -74,13 +74,20 @@ function fixture({
     .mockResolvedValue(workflowPage([first, second, node]));
   const loadWorkflowTrajectoryBody = vi.fn().mockResolvedValue({
     event_id: node.event_id,
-    sections: [{ kind: 'output', value: 'recorded output' }]
+    sections: [
+      { kind: 'input', value: 'event input' },
+      { kind: 'node', value: { status: 'running' } }
+    ]
   });
   const loadTrajectoryBody = vi.fn().mockResolvedValue({
     event_id: native.event_id,
     source: 'ai_native',
     evidence_scope: 'step',
-    sections: [{ kind: 'system', value: 'Actual system input' }],
+    sections: [
+      { kind: 'system', value: 'Actual system input' },
+      { kind: 'configuration', value: 'event configuration' },
+      { kind: 'output', value: 'event output' }
+    ],
     items: [],
     next_cursor: null
   });
@@ -338,31 +345,43 @@ test('node filtering sends the exact execution identity instead of matching a di
   );
 });
 
-test('opens node sections directly and only traverses children in the explicit node log view', async () => {
+test('shows only selected event sections without loading the node tree or borrowing final output', async () => {
   const { loader, loadWorkflowTrajectoryBody } = fixture();
   fireEvent.click(await screen.findByRole('button', { name: /^节点开始 ·/ }));
   const inspector = within(screen.getByRole('complementary'));
-  expect(
-    await inspector.findByText('输入', { exact: true })
-  ).toBeInTheDocument();
-  expect(
-    document.querySelector('.workflow-trajectory__inspector-scroll')
-  ).toBeInTheDocument();
+  expect(await inspector.findByText(/event input/)).toBeInTheDocument();
+  expect(inspector.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    '输入',
+    '数据处理',
+    '输出',
+    '元数据',
+    '原文'
+  ]);
+  fireEvent.click(inspector.getByRole('tab', { name: '输出' }));
+  expect(await inspector.findByText('未记录此项内容')).toBeInTheDocument();
+  expect(inspector.queryByText(/recorded output/)).not.toBeInTheDocument();
+  expect(loader.loadTree).not.toHaveBeenCalled();
   expect(loader.loadChildren).not.toHaveBeenCalled();
-  expect(loadWorkflowTrajectoryBody).not.toHaveBeenCalled();
-  expect(
-    inspector.queryByRole('button', { name: /规划节点/ })
-  ).not.toBeInTheDocument();
-  fireEvent.click(inspector.getByRole('tab', { name: '节点日志' }));
-  await waitFor(() =>
-    expect(loader.loadChildren).toHaveBeenCalledWith(
-      'run-current',
-      'trace-node',
-      undefined
-    )
+  expect(loader.loadContent).not.toHaveBeenCalled();
+  expect(loadWorkflowTrajectoryBody).toHaveBeenCalledExactlyOnceWith(
+    'run-current',
+    'node:started'
   );
-  fireEvent.click(inspector.getByRole('tab', { name: '详情' }));
-  expect(
-    await inspector.findByText('输出', { exact: true })
-  ).toBeInTheDocument();
+});
+
+test('switches native input process and output sections without mixing data or refetching the event', async () => {
+  const { loadTrajectoryBody } = fixture();
+  fireEvent.click(
+    (await screen.findAllByRole('button', { name: /^模型调用准备 ·/ }))[0]
+  );
+  const inspector = within(screen.getByRole('complementary'));
+  expect(await inspector.findByText('Actual system input')).toBeInTheDocument();
+  expect(inspector.queryByText('event configuration')).not.toBeInTheDocument();
+  fireEvent.click(inspector.getByRole('tab', { name: '数据处理' }));
+  expect(await inspector.findByText('event configuration')).toBeInTheDocument();
+  expect(inspector.queryByText('Actual system input')).not.toBeInTheDocument();
+  fireEvent.click(inspector.getByRole('tab', { name: '输出' }));
+  expect(await inspector.findByText('event output')).toBeInTheDocument();
+  expect(inspector.queryByText('event configuration')).not.toBeInTheDocument();
+  expect(loadTrajectoryBody).toHaveBeenCalledTimes(1);
 });

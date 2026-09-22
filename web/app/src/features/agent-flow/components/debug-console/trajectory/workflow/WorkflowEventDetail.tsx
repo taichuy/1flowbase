@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Spin, Tabs } from 'antd';
 import type {
@@ -8,87 +8,9 @@ import type {
 import type { ConversationLogTraceLoader } from '../../conversation-log-trace-model';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import { JsonPreviewBlock } from '../../../../../../shared/ui/json-preview/JsonPreviewBlock';
-import { TraceActivityDetailContext } from '../activities/activity-model';
+import { eventSectionTab } from '../trajectory-presentation';
 import { TrajectoryStepDetail } from '../TrajectoryStepDetail';
 import { workflowNodeName, workflowSectionLabel } from './presentation';
-const NodeDetail = lazy(() =>
-  import('../../ConversationLogPanel').then((module) => ({
-    default: module.LazyTraceNodeItem
-  }))
-);
-
-function NodeIO({
-  event,
-  loader,
-  detailOnly = false
-}: {
-  event: WorkflowTrajectoryEvent;
-  loader: ConversationLogTraceLoader;
-  detailOnly?: boolean;
-}) {
-  const node = useQuery({
-    queryKey: ['workflow-event-node-io', event.flow_run_id, event.node_run_id],
-    queryFn: async () => {
-      const tree = await loader.loadTree(event.flow_run_id);
-      let found = tree.nodes.find(
-        (item) => item.node_run_id === event.node_run_id
-      );
-      let cursor = tree.page_info?.next_cursor;
-      const visited = new Set<string>();
-      while (!found && cursor && !visited.has(cursor)) {
-        visited.add(cursor);
-        const page = await loader.loadChildren(
-          event.flow_run_id,
-          'root',
-          cursor
-        );
-        found = page.items.find(
-          (item) => item.node_run_id === event.node_run_id
-        );
-        cursor = page.page_info.has_more ? page.page_info.next_cursor : null;
-      }
-      return found ?? null;
-    },
-    staleTime: 60_000,
-    refetchOnWindowFocus: false
-  });
-  if (node.isPending) return <Spin />;
-  if (node.isError)
-    return (
-      <Alert
-        type="error"
-        title={i18nText('agentFlow', 'auto.loading_failed')}
-        action={
-          <Button onClick={() => void node.refetch()}>
-            {i18nText('agentFlow', 'auto.retry')}
-          </Button>
-        }
-      />
-    );
-  if (!node.data)
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={i18nText('agentFlow', 'trajectory.no_evidence')}
-      />
-    );
-  return (
-    <TraceActivityDetailContext.Provider value>
-      <Suspense fallback={<Spin />}>
-        <NodeDetail
-          detailOnly={detailOnly}
-          initiallyExpanded
-          defaultToolsExpanded={false}
-          node={node.data}
-          runId={event.flow_run_id}
-          traceLoader={loader}
-          onLoadArtifact={loader.loadArtifact}
-          onLoadArtifacts={loader.loadArtifacts}
-        />
-      </Suspense>
-    </TraceActivityDetailContext.Provider>
-  );
-}
 export function WorkflowEventDetail({
   event,
   runId,
@@ -100,14 +22,24 @@ export function WorkflowEventDetail({
   loader: ConversationLogTraceLoader;
   onClient?: (link: ProviderTrajectoryStep['links'][number]) => void;
 }) {
-  const [tab, setTab] = useState('detail');
+  const [tab, setTab] = useState(() =>
+    event.event_type === 'node_finished' ||
+    ['model_reply', 'tool_result'].includes(
+      String(event.native_step?.metadata.kind)
+    )
+      ? 'output'
+      : event.event_type === 'node_started' ||
+          event.native_step?.metadata.kind === 'model_call'
+        ? 'input'
+        : 'process'
+  );
   const native = event.native_step;
   const trigger = native?.links.find((link) => link.relation === 'trigger');
   const body = useQuery({
     queryKey: ['workflow-trajectory-body', runId, event.event_id],
     enabled:
       !native &&
-      (tab === 'raw' || (tab === 'detail' && event.category !== 'nodes')) &&
+      tab !== 'metadata' &&
       Boolean(loader.loadWorkflowTrajectoryBody),
     queryFn: () => loader.loadWorkflowTrajectoryBody!(runId, event.event_id),
     staleTime: 60_000,
@@ -135,16 +67,23 @@ export function WorkflowEventDetail({
             collapsible={false}
           />
         ) : (
-          body.data.sections.map((section, index) => (
-            <JsonPreviewBlock
-              key={`${section.kind}:${index}`}
-              title={workflowSectionLabel(section.kind)}
-              value={section.value}
-            />
-          ))
+          body.data.sections
+            .filter((section) => eventSectionTab(section.kind) === tab)
+            .map((section, index) => (
+              <JsonPreviewBlock
+                key={`${section.kind}:${index}`}
+                title={workflowSectionLabel(section.kind)}
+                value={section.value}
+                collapsible={false}
+              />
+            ))
         )
       ) : null}
-      {body.isSuccess && !body.data.sections.length ? (
+      {body.isSuccess &&
+      tab !== 'raw' &&
+      !body.data.sections.some(
+        (section) => eventSectionTab(section.kind) === tab
+      ) ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={i18nText('agentFlow', 'trajectory.no_evidence')}
@@ -171,25 +110,35 @@ export function WorkflowEventDetail({
       <Tabs
         className="workflow-trajectory__detail-tabs"
         size="small"
+        tabBarGutter={16}
         activeKey={tab}
         onChange={setTab}
         destroyOnHidden
         items={[
-          {
-            key: 'detail',
-            label: i18nText('agentFlow', 'auto.details'),
+          ...(
+            [
+              { key: 'input', label: i18nText('agentFlow', 'auto.input') },
+              {
+                key: 'process',
+                label: i18nText('agentFlow', 'auto.data_processing')
+              },
+              {
+                key: 'output',
+                label: i18nText('agentFlow', 'auto.outputs')
+              }
+            ] as const
+          ).map((item) => ({
+            ...item,
             children: native ? (
               <TrajectoryStepDetail
                 step={native}
                 loader={loader}
-                view="detail"
+                view={item.key}
               />
-            ) : event.category === 'nodes' ? (
-              <NodeIO event={event} loader={loader} detailOnly />
             ) : (
               workflowBody
             )
-          },
+          })),
           {
             key: 'metadata',
             label: i18nText('agentFlow', 'auto.metadata'),
@@ -223,15 +172,6 @@ export function WorkflowEventDetail({
               </>
             )
           },
-          ...(event.node_run_id
-            ? [
-                {
-                  key: 'node',
-                  label: i18nText('agentFlow', 'trajectory.view_node_logs'),
-                  children: <NodeIO event={event} loader={loader} />
-                }
-              ]
-            : []),
           {
             key: 'raw',
             label: i18nText('agentFlow', 'trajectory.semantic_raw'),

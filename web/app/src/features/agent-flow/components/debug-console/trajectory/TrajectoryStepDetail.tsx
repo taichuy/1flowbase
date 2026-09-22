@@ -3,7 +3,11 @@ import { Alert, Button, Empty, Spin } from 'antd';
 import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
-import { nativeSectionLabel, purposeLabel } from './trajectory-presentation';
+import {
+  nativeSectionLabel,
+  purposeLabel,
+  eventSectionTab
+} from './trajectory-presentation';
 import { JsonPreviewBlock } from '../../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { formatDurationScaled } from '../conversation/metrics-formatter';
 import { formatDateTime } from '../../../../../shared/i18n/format';
@@ -14,7 +18,7 @@ export function TrajectoryStepDetail({
   onClient,
   view
 }: {
-  view: 'detail' | 'raw' | 'metadata';
+  view: 'input' | 'process' | 'output' | 'raw' | 'metadata';
   step: ProviderTrajectoryStep;
   loader: ConversationLogTraceLoader;
   onClient?: (
@@ -112,8 +116,13 @@ export function TrajectoryStepDetail({
         />
       ) : null}
       {body.isSuccess &&
+      !body.hasNextPage &&
       !body.data.pages.some((page) =>
-        !rawSemantic ? page.sections.length : page.items.length
+        !rawSemantic
+          ? page.sections.some(
+              (section) => eventSectionTab(section.kind) === view
+            )
+          : page.items.length
       ) ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -123,6 +132,7 @@ export function TrajectoryStepDetail({
       {!rawSemantic
         ? body.data?.pages
             .flatMap((page) => page.sections)
+            .filter((section) => eventSectionTab(section.kind) === view)
             .map((section, index) => (
               <section
                 key={`${section.kind}:${index}`}

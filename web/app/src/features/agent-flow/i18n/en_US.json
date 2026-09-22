@@ -89,8 +89,7 @@
     "event_assistant_tool_call_started": "Tool call started",
     "event_assistant_tool_call_finished": "Tool call finished",
     "node_input_lane": "Nodes / input",
-    "task_request_lane": "Requests / tasks",
-    "view_node_logs": "Node logs"
+    "task_request_lane": "Requests / tasks"
   },
   "auto": {
     "llm_tools": "LLM Tools",

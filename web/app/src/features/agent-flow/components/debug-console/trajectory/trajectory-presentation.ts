@@ -76,3 +76,21 @@ export function nativeSectionLabel(kind: string) {
       return kind;
   }
 }
+
+// Presentation only: retain the backend section kind and value unchanged.
+export function eventSectionTab(
+  kind: string
+): 'input' | 'process' | 'output' | 'metadata' {
+  switch (kind) {
+    case 'input':
+    case 'system':
+    case 'context':
+      return 'input';
+    case 'output':
+      return 'output';
+    case 'node':
+      return 'metadata';
+    default:
+      return 'process';
+  }
+}

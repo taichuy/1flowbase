@@ -190,14 +190,15 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   expect(screen.getByText('Actual workflow system')).toBeInTheDocument();
   const inspector = within(screen.getByRole('complementary'));
   expect(inspector.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-    '详情',
+    '输入',
+    '数据处理',
+    '输出',
     '元数据',
-    '节点日志',
     '原文'
   ]);
-  expect(
-    inspector.getAllByRole('button', { name: '来源请求' })
-  ).toHaveLength(1);
+  expect(inspector.getAllByRole('button', { name: '来源请求' })).toHaveLength(
+    1
+  );
   expect(inspector.queryByText('AI Native 调用')).not.toBeInTheDocument();
 
   expect(screen.queryByText(/retained/)).not.toBeInTheDocument();
@@ -313,9 +314,7 @@ test('uses the single compact source shortcut to open its exact client request',
     (await screen.findAllByRole('button', { name: /^模型调用准备 ·/ }))[0]
   );
   const detail = within(screen.getByRole('complementary'));
-  fireEvent.click(
-    detail.getByRole('button', { name: '来源请求' })
-  );
+  fireEvent.click(detail.getByRole('button', { name: '来源请求' }));
   await waitFor(() =>
     expect(loadClientTrajectory).toHaveBeenCalledWith(
       'run-current',

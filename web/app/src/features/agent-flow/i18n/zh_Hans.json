@@ -89,8 +89,7 @@
     "event_assistant_tool_call_started": "工具调用开始",
     "event_assistant_tool_call_finished": "工具调用结束",
     "node_input_lane": "节点 / 输入",
-    "task_request_lane": "请求 / 任务",
-    "view_node_logs": "节点日志"
+    "task_request_lane": "请求 / 任务"
   },
   "auto": {
     "llm_tools": "LLM 工具",
