@@ -27,11 +27,13 @@ export function ProviderTrajectory({
   runId,
   nodeRunId,
   loader,
-  compatibility_mode
+  compatibility_mode,
+  buttonType = 'text'
 }: {
   runId: string;
   nodeRunId?: string;
   compatibility_mode?: string;
+  buttonType?: 'text' | 'default';
   loader: ConversationLogTraceLoader;
 }) {
   const zIndex = useWindowWorkspaceOverlayZIndex();
@@ -72,7 +74,7 @@ export function ProviderTrajectory({
       <Tooltip title={title}>
         <Button
           size="small"
-          type="text"
+          type={buttonType}
           icon={<ApartmentOutlined />}
           aria-label={title}
           title={title}

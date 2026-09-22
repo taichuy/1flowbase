@@ -1,3 +1,5 @@
+import { ProviderTrajectory } from '../../../agent-flow/components/debug-console/trajectory/ProviderTrajectory';
+import type { ConversationLogTraceLoader } from '../../../agent-flow/components/debug-console/conversation-log-trace-model';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
@@ -346,9 +348,11 @@ function RunConversation({
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
+  traceLoader,
   runId
 }: {
   applicationId: string;
+  traceLoader?: ConversationLogTraceLoader;
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
   logConversationId?: string | null;
@@ -569,40 +573,46 @@ function RunConversation({
       <AgentFlowDebugConsole
         ariaLabel={i18nText('applications', 'auto.run_details_preview')}
         closeLabel={i18nText('applications', 'auto.close_run_details')}
-        assistantMessageActions={
-          logConversationId
-            ? (message) =>
-                message.id !== lastConversationMessageId ? null : (
-                  // The conversation scope switch lives in the message action
-                  // row of the last turn, next to the call log and resume
-                  // timeline actions.
-                  <Tooltip
-                    title={i18nText(
-                      'applications',
-                      conversationScope
-                        ? 'auto.show_current_task'
-                        : 'auto.show_log_conversation'
-                    )}
-                  >
-                    <Button
-                      aria-label={i18nText(
-                        'applications',
-                        conversationScope
-                          ? 'auto.show_current_task'
-                          : 'auto.show_log_conversation'
-                      )}
-                      icon={<MessageOutlined />}
-                      size="small"
-                      type={conversationScope ? 'default' : 'text'}
-                      onClick={() => {
-                        resetConversationPages();
-                        setConversationScope((current) => !current);
-                      }}
-                    />
-                  </Tooltip>
-                )
-            : undefined
-        }
+        assistantMessageActions={(message) => (
+          <>
+            {traceLoader?.loadRunTrajectory &&
+            message.canOpenDetail !== false &&
+            (message.detailRunId ?? message.runId) ? (
+              <ProviderTrajectory
+                key={message.detailRunId ?? message.runId}
+                runId={(message.detailRunId ?? message.runId)!}
+                loader={traceLoader}
+                buttonType="default"
+              />
+            ) : null}
+            {logConversationId && message.id === lastConversationMessageId ? (
+              <Tooltip
+                title={i18nText(
+                  'applications',
+                  conversationScope
+                    ? 'auto.show_current_task'
+                    : 'auto.show_log_conversation'
+                )}
+              >
+                <Button
+                  aria-label={i18nText(
+                    'applications',
+                    conversationScope
+                      ? 'auto.show_current_task'
+                      : 'auto.show_log_conversation'
+                  )}
+                  icon={<MessageOutlined />}
+                  size="small"
+                  type={conversationScope ? 'default' : 'text'}
+                  onClick={() => {
+                    resetConversationPages();
+                    setConversationScope((current) => !current);
+                  }}
+                />
+              </Tooltip>
+            ) : null}
+          </>
+        )}
         composerUiOnly
         messages={messages}
         runContext={runConversationContext}
@@ -625,25 +635,25 @@ function RunConversation({
         onStopRun={() => {}}
         onSubmitPrompt={() => {}}
       />
-        <div
-          className="application-run-detail__model-summary"
-          style={{
-            borderRadius: token.borderRadius * 2,
-            borderColor: token.colorBorder,
-            boxShadow: token.boxShadowTertiary
-          }}
-        >
-          <Tooltip title={i18nText('applications', 'auto.requested_model')}>
-            <span className="application-run-detail__model-name">
-              {requested_model_id || '—'}
-            </span>
-          </Tooltip>
-          <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
-            <span className="application-run-detail__reasoning-effort">
-              {reasoning_effort || '—'}
-            </span>
-          </Tooltip>
-        </div>
+      <div
+        className="application-run-detail__model-summary"
+        style={{
+          borderRadius: token.borderRadius * 2,
+          borderColor: token.colorBorder,
+          boxShadow: token.boxShadowTertiary
+        }}
+      >
+        <Tooltip title={i18nText('applications', 'auto.requested_model')}>
+          <span className="application-run-detail__model-name">
+            {requested_model_id || '—'}
+          </span>
+        </Tooltip>
+        <Tooltip title={i18nText('applications', 'auto.reasoning_effort')}>
+          <span className="application-run-detail__reasoning-effort">
+            {reasoning_effort || '—'}
+          </span>
+        </Tooltip>
+      </div>
     </div>
   );
 }
@@ -656,9 +666,11 @@ export function ApplicationRunDetailPanel({
   onClose,
   onOpenMessageLog,
   onOpenResumeTimeline,
+  traceLoader,
   runId
 }: {
   applicationId: string;
+  traceLoader?: ConversationLogTraceLoader;
   requested_model_id?: string | null;
   reasoning_effort?: string | null;
   logConversationId?: string | null;
@@ -687,10 +699,10 @@ export function ApplicationRunDetailPanel({
             onClose={onClose}
             onOpenMessageLog={onOpenMessageLog}
             onOpenResumeTimeline={onOpenResumeTimeline}
+            traceLoader={traceLoader}
             runId={runId}
           />
         </div>
-
       </div>
     </aside>
   );

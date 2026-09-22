@@ -48,29 +48,29 @@ common_env=(
 env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
   "$script_dir/resource-limits.conf"
 
-grep -Fxq 'ManagedOOMSwap=kill' "$systemd_dir/dev.slice"
-grep -Fxq 'MemoryHigh=16G' "$systemd_dir/dev.slice"
-grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev.slice"
-grep -Fxq 'MemorySwapMax=2G' "$systemd_dir/dev.slice"
+grep -Fxq 'ManagedOOMSwap=auto' "$systemd_dir/dev.slice"
+grep -Fxq 'ManagedOOMSwap=kill' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev.slice"
+grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev.slice"
+grep -Fxq 'MemorySwapMax=infinity' "$systemd_dir/dev.slice"
 grep -Fxq 'CPUQuota=1200%' "$systemd_dir/dev.slice"
-grep -Fxq 'MemoryHigh=6G' "$systemd_dir/dev-frontend.slice"
-grep -Fxq 'MemoryMax=8G' "$systemd_dir/dev-frontend.slice"
+grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev-frontend.slice"
+grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev-frontend.slice"
 grep -Fxq 'MemoryLow=2G' "$systemd_dir/session.slice.d/50-memory-protection.conf"
 grep -Fxq 'ManagedOOMMemoryPressure=auto' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-grep -Fxq 'MemoryHigh=9G' "$systemd_dir/dev-rust.slice"
-grep -Fxq 'MemoryMax=11G' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryHigh=16G' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'MemoryMax=18G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'CPUQuota=' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
 grep -Fq 'memory_budget_cargo_jobs=2' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": 2' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": 2' "$repo_dir/.1flowbase.verify.local.json"
-grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=9G MemoryMax=11G MemorySwapMax=1G CPUQuota= IOWeight=10' \
+grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=16G MemoryMax=18G MemorySwapMax=1G CPUQuota= IOWeight=10' \
   "$systemctl_log"
 
-# Queue behavior is tested separately with deterministic pressure fixtures.
-# This fixture checks wrapper routing without depending on host pressure.
+# Ordinary Cargo/pnpm commands must not enter the optional heavy-job queue.
 cp "$bin_dir/dev-heavy-run" "$test_root/installed-heavy-run"
 cat >"$bin_dir/dev-heavy-run" <<'EOF'
 #!/bin/sh
@@ -87,7 +87,7 @@ env PATH="$mock_bin:$PATH" \
 grep -Fxq 'CARGO_BUILD_JOBS=2' "$systemd_run_log"
 grep -Fq -- '--slice=dev-rust.slice -- ' "$systemd_run_log"
 grep -Fq -- 'test -j 2' "$systemd_run_log"
-grep -Fq -- 'test -j 2' "$systemd_run_log.gate"
+test ! -e "$systemd_run_log.gate"
 
 # pnpm must enter the frontend child of the common development budget.
 cat >"$mock_bin/pnpm" <<'EOF'
@@ -105,13 +105,12 @@ env PATH="$bin_dir:$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   "$bin_dir/pnpm" -w build
-grep -Fq -- "dev-run --frontend $mock_bin/pnpm -w build" "$systemd_run_log.gate"
-gate_lines=$(wc -l <"$systemd_run_log.gate")
+test ! -e "$systemd_run_log.gate"
 env PATH="$bin_dir:$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
   "$bin_dir/pnpm" test --watch
-test "$(wc -l <"$systemd_run_log.gate")" -eq "$gate_lines"
+test ! -e "$systemd_run_log.gate"
 
 # A missing manager must not silently start an unrestricted build.
 set +e

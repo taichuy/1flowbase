@@ -116,6 +116,8 @@ export interface ConversationLogRunOverview {
 }
 
 export interface ConversationLogTraceLoader {
+  loadArtifact?: (artifactRef: string) => Promise<unknown>;
+  loadArtifacts?: import('../detail/last-run/runtime-debug-payload').RuntimeDebugArtifactBatchLoader;
   loadClientTrajectory?: (
     runId: string,
     nodeRunId?: string,
