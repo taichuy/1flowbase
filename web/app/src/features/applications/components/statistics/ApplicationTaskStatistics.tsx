@@ -13,6 +13,7 @@ import {
   theme
 } from 'antd';
 import { useState } from 'react';
+import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { formatTokenCount } from '../../../../shared/i18n/format';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
@@ -203,6 +204,11 @@ export function ApplicationTaskStatistics({
         />
         {custom && (
           <DatePicker.RangePicker
+            value={
+              range.from && range.to
+                ? [dayjs(range.from), dayjs(range.to)]
+                : null
+            }
             showTime
             aria-label={t('statistics.custom')}
             onChange={(dates) =>

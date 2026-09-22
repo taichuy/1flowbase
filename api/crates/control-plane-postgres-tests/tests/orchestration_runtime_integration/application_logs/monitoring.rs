@@ -920,6 +920,16 @@ async fn task_report_rolls_descendants_into_root_model_user_and_time_once() {
             None,
         )
         .await;
+        store
+            .update_flow_run(&UpdateFlowRunInput {
+                flow_run_id: run.id,
+                status: FlowRunStatus::Succeeded,
+                output_payload: json!({}),
+                error_payload: None,
+                finished_at: Some(run.started_at + Duration::seconds(10)),
+            })
+            .await
+            .unwrap();
         ids.push(run.id);
     }
     for (index, tokens, cost) in [
