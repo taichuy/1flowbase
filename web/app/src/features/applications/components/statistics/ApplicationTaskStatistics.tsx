@@ -5,6 +5,7 @@ import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined'
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -13,6 +14,7 @@ import {
   Result,
   Select,
   Space,
+  Spin,
   Table,
   Typography,
   theme
@@ -85,7 +87,9 @@ export function ApplicationTaskStatistics({
   };
   const query = useQuery({
     queryKey: applicationRunMonitoringReportQueryKey(applicationId, input),
-    queryFn: () => fetchApplicationRunMonitoringReport(applicationId, input)
+    queryFn: () => fetchApplicationRunMonitoringReport(applicationId, input),
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[1] === applicationId ? previousData : undefined
   });
   const report = query.data;
   const metricOptions = [
@@ -274,7 +278,11 @@ export function ApplicationTaskStatistics({
           loading={query.isFetching}
           onClick={() => void query.refetch()}
         />
-        {report && <a href={logsHref()}>{t('statistics.view_logs')}</a>}
+        {report && (
+          <Button type="link" href={logsHref()} disabled={query.isFetching}>
+            {t('statistics.view_logs')}
+          </Button>
+        )}
       </Space>
     </Card>
   );
@@ -283,294 +291,317 @@ export function ApplicationTaskStatistics({
       className="application-statistics"
       data-testid="application-statistics-page"
     >
-      {(!report || query.isError) && filters}
+      <Typography.Text type="secondary">
+        {t('statistics.scope')}
+      </Typography.Text>
+      {filters}
       {query.isPending ? (
         <LoadingState compact />
-      ) : query.isError || !report ? (
+      ) : !report ? (
         <Result
           status="error"
           title={t('auto.monitoring_report_load_failed')}
         />
       ) : (
-        <>
-          <Typography.Text type="secondary">
-            {t('statistics.scope')}
-          </Typography.Text>
-          <div className="application-statistics__metrics">
-            <Card className="application-statistics__metric application-statistics__metric--tasks">
-              <div className="application-statistics__metric-content">
-                <FileTextOutlined className="application-statistics__metric-icon" />
-                <div className="application-statistics__metric-value">
-                  <span>{t('statistics.tasks')}</span>
-                  <strong>{formatInteger(report.overview.total_count)}</strong>
-                  <small>
-                    {t('statistics.status_summary', {
-                      success: report.overview.success_count,
-                      failed: report.overview.failed_count,
-                      cancelled: report.overview.cancelled_count,
-                      running: report.overview.running_count
-                    })}
-                  </small>
-                </div>
-              </div>
-            </Card>
-            <Card className="application-statistics__metric application-statistics__metric--tokens">
-              <div className="application-statistics__metric-content">
-                <DatabaseOutlined className="application-statistics__metric-icon" />
-                <div className="application-statistics__metric-value">
-                  <span>{t('auto.total_tokens_amount')}</span>
-                  <strong>
-                    {formatTokenCount(report.tokens.total_tokens_sum)}
-                  </strong>
-                  <small>
-                    {t('auto.input_tokens')}:{' '}
-                    {formatTokenCount(report.tokens.input_tokens_sum)} ·{' '}
-                    {t('auto.output_tokens')}:{' '}
-                    {formatTokenCount(report.tokens.output_tokens_sum)} ·{' '}
-                    {t('auto.input_cache_hit_tokens')}:{' '}
-                    {formatTokenCount(report.tokens.input_cache_hit_tokens_sum)}
-                  </small>
-                </div>
-              </div>
-            </Card>
-            <Card className="application-statistics__metric application-statistics__metric--cost">
-              <div className="application-statistics__metric-content">
-                <DollarOutlined className="application-statistics__metric-icon" />
-                <div className="application-statistics__metric-value">
-                  <span>{t('statistics.cost')}</span>
-                  <strong>{formatCost(report.costs.total_cost)}</strong>
-                  <small>
-                    {t('statistics.cost_coverage', {
-                      recorded: report.costs.cost_recorded_count,
-                      missing: report.costs.cost_missing_count
-                    })}
-                  </small>
-                </div>
-              </div>
-            </Card>
-            <Card className="application-statistics__metric application-statistics__metric--duration">
-              <div className="application-statistics__metric-content">
-                <ClockCircleOutlined className="application-statistics__metric-icon" />
-                <div className="application-statistics__metric-value">
-                  <span>{t('auto.average_duration')}</span>
-                  <strong>
-                    {report.duration.duration_recorded_count
-                      ? formatDuration(report.duration.avg_duration_ms)
-                      : '—'}
-                  </strong>
-                  <small>
-                    P95:{' '}
-                    {report.duration.duration_recorded_count
-                      ? formatDuration(report.duration.p95_duration_ms)
-                      : '—'}
-                  </small>
-                </div>
-              </div>
-            </Card>
-          </div>
-          {filters}
-          <div className="application-statistics__distributions">
-            {distribution(
-              'models',
-              t('statistics.models'),
-              report.models,
-              (row) => row.requested_model_id ?? '__missing_model',
-              (row) => row.requested_model_id ?? t('statistics.unknown_model'),
-              (row) =>
-                logsHref(
-                  row.requested_model_id === null
-                    ? { missing_model: true }
-                    : { requested_model_id: row.requested_model_id }
-                )
-            )}
-            {distribution(
-              'users',
-              t('statistics.users'),
-              report.users,
-              (row) => row.user_id ?? '__missing_user',
-              (row) => row.name ?? t('statistics.unknown_user'),
-              (row) =>
-                logsHref(
-                  row.user_id === null
-                    ? { missing_user: true }
-                    : { user_id: row.user_id }
-                )
-            )}
-          </div>
-          <Card
-            className="application-statistics__section application-statistics__trend"
-            title={
-              <div className="application-statistics__card-heading">
-                <span>
-                  {trendMetric === 'total_tokens'
-                    ? t('statistics.token_trend')
-                    : t('statistics.trend')}
-                </span>
-                <Radio.Group
-                  className="application-statistics__metric-controls"
-                  aria-label={t('statistics.trend_metric')}
-                  optionType="button"
-                  buttonStyle="solid"
-                  size="small"
-                  options={[
-                    ...metricOptions,
-                    {
-                      value: 'avg_duration_ms',
-                      label: t('auto.average_duration')
-                    }
-                  ]}
-                  value={trendMetric}
-                  onChange={(event) => setTrendMetric(event.target.value)}
-                />
-              </div>
-            }
-            styles={{
-              header: { paddingBlock: 16 },
-              title: { whiteSpace: 'normal' }
-            }}
+        <Spin
+          spinning={query.isFetching}
+          description={t('statistics.refreshing')}
+        >
+          <div
+            className="application-statistics__data"
+            aria-busy={query.isFetching}
+            inert={query.isFetching}
           >
-            {report.tokens_trend.length ? (
-              <ApplicationMonitoringChart
-                ariaLabel={t('statistics.token_trend')}
-                onDataClick={(index) => {
-                  const point = report.tokens_trend[index];
-                  if (point)
-                    navigate(
-                      logsHref(statisticsBucketFilters(report.meta, point))
-                    );
-                }}
-                option={{
-                  color: [
-                    token.blue,
-                    token.colorSuccess,
-                    token.cyan,
-                    token.purple
-                  ],
-                  tooltip: { trigger: 'axis' },
-                  legend: { type: 'scroll', top: 0 },
-                  grid: {
-                    left: 64,
-                    right: trendMetric === 'total_tokens' ? 64 : 24,
-                    top: 56,
-                    bottom: 48
-                  },
-                  xAxis: {
-                    type: 'category',
-                    data: report.tokens_trend.map((point) =>
-                      formatTrendBucket(point.bucket_start, report.meta.bucket)
-                    )
-                  },
-                  yAxis:
-                    trendMetric === 'total_tokens'
-                      ? [
-                          {
-                            type: 'value',
-                            name: 'Token'
-                          },
-                          {
-                            type: 'value',
-                            name: '%',
-                            min: 0,
-                            max: 100,
-                            splitLine: { show: false }
-                          }
-                        ]
-                      : {
-                          type: 'value',
-                          name:
-                            trendMetric === 'avg_duration_ms'
-                              ? 'ms'
-                              : trendMetric === 'total_cost'
-                                ? '$'
-                                : ''
-                        },
-                  series:
-                    trendMetric === 'total_tokens'
-                      ? [
-                          ...[
+            {query.isError && (
+              <Alert
+                type="error"
+                title={t('auto.monitoring_report_load_failed')}
+                showIcon
+              />
+            )}
+            <div className="application-statistics__metrics">
+              <Card className="application-statistics__metric application-statistics__metric--tasks">
+                <div className="application-statistics__metric-content">
+                  <FileTextOutlined className="application-statistics__metric-icon" />
+                  <div className="application-statistics__metric-value">
+                    <span>{t('statistics.tasks')}</span>
+                    <strong>
+                      {formatInteger(report.overview.total_count)}
+                    </strong>
+                    <small>
+                      {t('statistics.status_summary', {
+                        success: report.overview.success_count,
+                        failed: report.overview.failed_count,
+                        cancelled: report.overview.cancelled_count,
+                        running: report.overview.running_count
+                      })}
+                    </small>
+                  </div>
+                </div>
+              </Card>
+              <Card className="application-statistics__metric application-statistics__metric--tokens">
+                <div className="application-statistics__metric-content">
+                  <DatabaseOutlined className="application-statistics__metric-icon" />
+                  <div className="application-statistics__metric-value">
+                    <span>{t('auto.total_tokens_amount')}</span>
+                    <strong>
+                      {formatTokenCount(report.tokens.total_tokens_sum)}
+                    </strong>
+                    <small>
+                      {t('auto.input_tokens')}:{' '}
+                      {formatTokenCount(report.tokens.input_tokens_sum)} ·{' '}
+                      {t('auto.output_tokens')}:{' '}
+                      {formatTokenCount(report.tokens.output_tokens_sum)} ·{' '}
+                      {t('auto.input_cache_hit_tokens')}:{' '}
+                      {formatTokenCount(
+                        report.tokens.input_cache_hit_tokens_sum
+                      )}
+                    </small>
+                  </div>
+                </div>
+              </Card>
+              <Card className="application-statistics__metric application-statistics__metric--cost">
+                <div className="application-statistics__metric-content">
+                  <DollarOutlined className="application-statistics__metric-icon" />
+                  <div className="application-statistics__metric-value">
+                    <span>{t('statistics.cost')}</span>
+                    <strong>{formatCost(report.costs.total_cost)}</strong>
+                    <small>
+                      {t('statistics.cost_coverage', {
+                        recorded: report.costs.cost_recorded_count,
+                        missing: report.costs.cost_missing_count
+                      })}
+                    </small>
+                  </div>
+                </div>
+              </Card>
+              <Card className="application-statistics__metric application-statistics__metric--duration">
+                <div className="application-statistics__metric-content">
+                  <ClockCircleOutlined className="application-statistics__metric-icon" />
+                  <div className="application-statistics__metric-value">
+                    <span>{t('auto.average_duration')}</span>
+                    <strong>
+                      {report.duration.duration_recorded_count
+                        ? formatDuration(report.duration.avg_duration_ms)
+                        : '—'}
+                    </strong>
+                    <small>
+                      P95:{' '}
+                      {report.duration.duration_recorded_count
+                        ? formatDuration(report.duration.p95_duration_ms)
+                        : '—'}
+                    </small>
+                  </div>
+                </div>
+              </Card>
+            </div>
+            <div className="application-statistics__distributions">
+              {distribution(
+                'models',
+                t('statistics.models'),
+                report.models,
+                (row) => row.requested_model_id ?? '__missing_model',
+                (row) =>
+                  row.requested_model_id ?? t('statistics.unknown_model'),
+                (row) =>
+                  logsHref(
+                    row.requested_model_id === null
+                      ? { missing_model: true }
+                      : { requested_model_id: row.requested_model_id }
+                  )
+              )}
+              {distribution(
+                'users',
+                t('statistics.users'),
+                report.users,
+                (row) => row.user_id ?? '__missing_user',
+                (row) => row.name ?? t('statistics.unknown_user'),
+                (row) =>
+                  logsHref(
+                    row.user_id === null
+                      ? { missing_user: true }
+                      : { user_id: row.user_id }
+                  )
+              )}
+            </div>
+            <Card
+              className="application-statistics__section application-statistics__trend"
+              title={
+                <div className="application-statistics__card-heading">
+                  <span>
+                    {trendMetric === 'total_tokens'
+                      ? t('statistics.token_trend')
+                      : t('statistics.trend')}
+                  </span>
+                  <Radio.Group
+                    className="application-statistics__metric-controls"
+                    aria-label={t('statistics.trend_metric')}
+                    optionType="button"
+                    buttonStyle="solid"
+                    size="small"
+                    options={[
+                      ...metricOptions,
+                      {
+                        value: 'avg_duration_ms',
+                        label: t('auto.average_duration')
+                      }
+                    ]}
+                    value={trendMetric}
+                    onChange={(event) => setTrendMetric(event.target.value)}
+                  />
+                </div>
+              }
+              styles={{
+                header: { paddingBlock: 16 },
+                title: { whiteSpace: 'normal' }
+              }}
+            >
+              {report.tokens_trend.length ? (
+                <ApplicationMonitoringChart
+                  ariaLabel={t('statistics.token_trend')}
+                  onDataClick={(index) => {
+                    const point = report.tokens_trend[index];
+                    if (point)
+                      navigate(
+                        logsHref(statisticsBucketFilters(report.meta, point))
+                      );
+                  }}
+                  option={{
+                    color: [
+                      token.blue,
+                      token.colorSuccess,
+                      token.cyan,
+                      token.purple
+                    ],
+                    tooltip: { trigger: 'axis' },
+                    legend: { type: 'scroll', top: 0 },
+                    grid: {
+                      left: 64,
+                      right: trendMetric === 'total_tokens' ? 64 : 24,
+                      top: 56,
+                      bottom: 48
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: report.tokens_trend.map((point) =>
+                        formatTrendBucket(
+                          point.bucket_start,
+                          report.meta.bucket
+                        )
+                      )
+                    },
+                    yAxis:
+                      trendMetric === 'total_tokens'
+                        ? [
                             {
-                              name: t('auto.input_tokens'),
-                              field: 'input_tokens',
-                              color: token.blue
+                              type: 'value',
+                              name: 'Token'
                             },
                             {
-                              name: t('auto.output_tokens'),
-                              field: 'output_tokens',
-                              color: token.colorSuccess
-                            },
-                            {
-                              name: t('auto.input_cache_hit_tokens'),
-                              field: 'input_cache_hit_tokens',
-                              color: token.cyan
+                              type: 'value',
+                              name: '%',
+                              min: 0,
+                              max: 100,
+                              splitLine: { show: false }
                             }
-                          ].map(({ name, field, color }) => ({
-                            name,
-                            type: 'line',
-                            showSymbol: report.tokens_trend.length < 32,
-                            symbolSize: 6,
-                            connectNulls: false,
-                            lineStyle: { width: 2, color },
-                            itemStyle: { color },
-                            areaStyle: { opacity: 0.08, color },
-                            data: report.tokens_trend.map(
-                              (point) =>
-                                point[
-                                  field as
-                                    | 'input_tokens'
-                                    | 'output_tokens'
-                                    | 'input_cache_hit_tokens'
-                                ]
-                            )
-                          })),
-                          {
-                            name: t('auto.input_cache_hit_rate'),
-                            type: 'line',
-                            yAxisIndex: 1,
-                            showSymbol: report.tokens_trend.length < 32,
-                            symbolSize: 6,
-                            connectNulls: false,
-                            lineStyle: {
-                              width: 2,
-                              color: token.purple,
-                              type: 'dashed'
-                            },
-                            itemStyle: { color: token.purple },
-                            data: report.tokens_trend.map((point) =>
-                              point.input_cache_hit_rate === null
-                                ? null
-                                : Number(
-                                    (point.input_cache_hit_rate * 100).toFixed(
-                                      2
-                                    )
-                                  )
-                            )
-                          }
-                        ]
-                      : [
-                          {
+                          ]
+                        : {
+                            type: 'value',
                             name:
                               trendMetric === 'avg_duration_ms'
-                                ? t('auto.average_duration')
-                                : metricOptions.find(
-                                    (metric) => metric.value === trendMetric
-                                  )?.label,
-                            type: 'line',
-                            showSymbol: true,
-                            connectNulls: false,
-                            data: report.tokens_trend.map((point) =>
-                              trendMetric === 'task_count'
-                                ? point.run_count
-                                : point[trendMetric]
-                            )
-                          }
-                        ]
-                }}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            )}
-          </Card>
-        </>
+                                ? 'ms'
+                                : trendMetric === 'total_cost'
+                                  ? '$'
+                                  : ''
+                          },
+                    series:
+                      trendMetric === 'total_tokens'
+                        ? [
+                            ...[
+                              {
+                                name: t('auto.input_tokens'),
+                                field: 'input_tokens',
+                                color: token.blue
+                              },
+                              {
+                                name: t('auto.output_tokens'),
+                                field: 'output_tokens',
+                                color: token.colorSuccess
+                              },
+                              {
+                                name: t('auto.input_cache_hit_tokens'),
+                                field: 'input_cache_hit_tokens',
+                                color: token.cyan
+                              }
+                            ].map(({ name, field, color }) => ({
+                              name,
+                              type: 'line',
+                              showSymbol: report.tokens_trend.length < 32,
+                              symbolSize: 6,
+                              connectNulls: false,
+                              lineStyle: { width: 2, color },
+                              itemStyle: { color },
+                              areaStyle: { opacity: 0.08, color },
+                              data: report.tokens_trend.map(
+                                (point) =>
+                                  point[
+                                    field as
+                                      | 'input_tokens'
+                                      | 'output_tokens'
+                                      | 'input_cache_hit_tokens'
+                                  ]
+                              )
+                            })),
+                            {
+                              name: t('auto.input_cache_hit_rate'),
+                              type: 'line',
+                              yAxisIndex: 1,
+                              showSymbol: report.tokens_trend.length < 32,
+                              symbolSize: 6,
+                              connectNulls: false,
+                              lineStyle: {
+                                width: 2,
+                                color: token.purple,
+                                type: 'dashed'
+                              },
+                              itemStyle: { color: token.purple },
+                              data: report.tokens_trend.map((point) =>
+                                point.input_cache_hit_rate === null
+                                  ? null
+                                  : Number(
+                                      (
+                                        point.input_cache_hit_rate * 100
+                                      ).toFixed(2)
+                                    )
+                              )
+                            }
+                          ]
+                        : [
+                            {
+                              name:
+                                trendMetric === 'avg_duration_ms'
+                                  ? t('auto.average_duration')
+                                  : metricOptions.find(
+                                      (metric) => metric.value === trendMetric
+                                    )?.label,
+                              type: 'line',
+                              showSymbol: true,
+                              connectNulls: false,
+                              data: report.tokens_trend.map((point) =>
+                                trendMetric === 'task_count'
+                                  ? point.run_count
+                                  : point[trendMetric]
+                              )
+                            }
+                          ]
+                  }}
+                />
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </Card>
+          </div>
+        </Spin>
       )}
     </div>
   );

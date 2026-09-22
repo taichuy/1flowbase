@@ -124,3 +124,10 @@
 .application-statistics__toolbar {
   width: 100%;
 }
+
+.application-statistics__data {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}

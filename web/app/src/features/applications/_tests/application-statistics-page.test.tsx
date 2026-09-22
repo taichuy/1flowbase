@@ -692,6 +692,62 @@ describe('ApplicationStatisticsPage', () => {
     expect(screen.queryByText('11,739,169')).not.toBeInTheDocument();
   });
 
+  test('keeps report and charts mounted while a changed time range loads', async () => {
+    let complete!: (value: ReturnType<typeof monitoringReport>) => void;
+    runtimeApi.fetchApplicationRunMonitoringReport
+      .mockResolvedValueOnce(monitoringReport())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve;
+          })
+      );
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    await screen.findByRole('link', { name: 'Alice' });
+    const metrics = document.querySelector('.application-statistics__metrics')!;
+    const filters = document.querySelector('.application-statistics__filters')!;
+    expect(
+      filters.compareDocumentPosition(metrics) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const chartCount = echartsMock.init.mock.calls.length;
+    fireEvent.click(screen.getByRole('radio', { name: 'past 4 weeks' }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('.application-statistics__data')
+      ).toHaveAttribute('aria-busy', 'true')
+    );
+    expect(document.querySelector('.application-statistics__metrics')).toBe(
+      metrics
+    );
+    expect(screen.getByRole('radio', { name: 'past 4 weeks' })).toBeChecked();
+    expect(
+      document.querySelector('.application-statistics__data')
+    ).toHaveAttribute('inert');
+    expect(screen.getByText('Updating report…')).toBeInTheDocument();
+    expect(echartsMock.chart.dispose).not.toHaveBeenCalled();
+    const updated = monitoringReport();
+    updated.overview.total_count = 99;
+    complete(updated);
+    await screen.findByText('99');
+    await waitFor(() =>
+      expect(
+        document.querySelector('.application-statistics__data')
+      ).toHaveAttribute('aria-busy', 'false')
+    );
+    expect(document.querySelector('.application-statistics__metrics')).toBe(
+      metrics
+    );
+    expect(echartsMock.init).toHaveBeenCalledTimes(chartCount);
+    expect(
+      document.querySelector('.application-statistics__data')
+    ).not.toHaveAttribute('inert');
+  });
+
   test('refreshes the report when time range changes', async () => {
     render(
       <AppProviders>
