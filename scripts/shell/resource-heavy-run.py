@@ -30,7 +30,12 @@ def ready(meminfo=Path('/proc/meminfo'), group=None):
     # An inactive slice has no cgroup yet. Active slices must be readable.
     if group.exists():
         high = (group / 'memory.high').read_text().strip()
-        if high != 'max' and int((group / 'memory.current').read_text()) >= int(high):
+        current = int((group / 'memory.current').read_text())
+        # Completed builds may leave reclaimable file cache charged to the slice.
+        # Do not deadlock admission waiting for an idle cache to reclaim itself.
+        stats = dict(line.split() for line in (group / 'memory.stat').read_text().splitlines())
+        working_set = max(0, current - int(stats.get('inactive_file', '0')))
+        if high != 'max' and working_set >= int(high):
             return False
     return True
 

@@ -97,6 +97,7 @@ class AdmissionTests(unittest.TestCase):
         group = self.root / 'group'
         group.mkdir()
         (group / 'memory.high').write_text('100')
+        (group / 'memory.stat').write_text('inactive_file 0\n')
         (group / 'memory.current').write_text('99')
         mem.write_text('MemTotal: 1000 kB\nMemAvailable: 249 kB\nSwapFree: 0 kB\n')
         self.assertFalse(heavy.ready(mem, group))
@@ -104,6 +105,8 @@ class AdmissionTests(unittest.TestCase):
         self.assertTrue(heavy.ready(mem, group))
         (group / 'memory.current').write_text('100')
         self.assertFalse(heavy.ready(mem, group))
+        (group / 'memory.stat').write_text('inactive_file 20\n')
+        self.assertTrue(heavy.ready(mem, group))
 
 
 if __name__ == '__main__':

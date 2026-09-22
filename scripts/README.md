@@ -65,7 +65,7 @@ Docker 数据库不属于用户级开发组，仍需计入组外预算。
 重任务通过 `dev-heavy-run COMMAND ...` 共用单个运行槽。Cargo 的
 build/check/test/bench/clippy/doc/rustc/rustdoc（含 b/c/t）以及 pnpm 的
 build、test、build:*、test:*、typecheck、type-check、lint、check 自动排队。
-启动前要求 MemAvailable 至少为总内存 25%，且开发父组占用低于 MemoryHigh。
+启动前要求 MemAvailable 至少为总内存 25%，且开发父组扣除 inactive_file 缓存后的占用低于 MemoryHigh，避免已结束构建的缓存阻塞队列。
 等待可取消，不终止正在运行的任务；不依据 swap 占用阻断启动。
 嵌套重任务复用祖先进程持有的槽，避免死锁。watch/dev/start 不持有重任务槽；
 Cargo run、直接运行 Node、绝对路径工具和自定义命令不自动加入排队，重型阶段需显式
