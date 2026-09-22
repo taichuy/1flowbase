@@ -307,26 +307,50 @@ fn ordered_full_context_proof_distinguishes_retry_from_extension() {
     items.extend(output);
     items.push(json!({"type":"function_call_output","call_id":"call_1","output":"ok"}));
     let retry = json!(items);
-    assert!(full_context_remainder(&retry, &history, &["call_1".into()])
-        .unwrap()
-        .is_empty());
+    assert!(
+        prove_full_context_input(&retry, &history, &["call_1".into()])
+            .unwrap()
+            .context
+            .is_empty()
+    );
     let suffix = json!({"type":"future_context_boundary","opaque":[1,2,3]});
     items.push(suffix.clone());
     let extended = json!(items);
     assert_eq!(
-        full_context_remainder(&extended, &history, &["call_1".into()]).unwrap(),
-        &[suffix]
+        prove_full_context_input(&extended, &history, &["call_1".into()])
+            .unwrap()
+            .context,
+        vec![&suffix]
     );
     assert!(validate_full_retry_input(&extended, &history, &["call_1".into()]).is_err());
     let mut tampered = extended.clone();
     tampered[1]["encrypted_content"] = json!("changed");
-    assert!(full_context_remainder(&tampered, &history, &["call_1".into()]).is_err());
+    assert!(prove_full_context_input(&tampered, &history, &["call_1".into()]).is_err());
     for extra in [
         json!({"type":"function_call_output","call_id":"call_1","output":"ok"}),
         json!({"type":"custom_tool_call","call_id":"next","name":"exec","input":"go"}),
     ] {
         let mut changed = extended.clone();
         changed.as_array_mut().unwrap().push(extra);
-        assert!(full_context_remainder(&changed, &history, &["call_1".into()]).is_err());
+        assert!(prove_full_context_input(&changed, &history, &["call_1".into()]).is_err());
     }
+}
+
+#[test]
+fn full_context_proof_keeps_interleaved_context_out_of_exact_replay() {
+    let (input, output) = seed();
+    let history = completed_history(&json!({"input":input}), None, &output)
+        .unwrap()
+        .unwrap();
+    let mut items = input.as_array().unwrap().clone();
+    items.extend(output);
+    let context = json!({"role":"user","content":"Additional context"});
+    items.push(context.clone());
+    let tool_output = json!({"type":"function_call_output","call_id":"call_1","output":"ok"});
+    items.push(tool_output.clone());
+    let full = json!(items);
+    let proof = prove_full_context_input(&full, &history, &["call_1".into()]).unwrap();
+    assert_eq!(proof.tool_outputs, vec![&tool_output]);
+    assert_eq!(proof.context, vec![&context]);
+    assert!(validate_full_retry_input(&full, &history, &["call_1".into()]).is_err());
 }

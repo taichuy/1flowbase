@@ -111,18 +111,28 @@ pub(crate) fn validate_full_retry_input(
     trusted_history: &Value,
     owned_call_ids: &[String],
 ) -> Result<()> {
-    let remainder = full_context_remainder(input, trusted_history, owned_call_ids)?;
-    ensure!(remainder.is_empty(), "native_history_item_count_mismatch");
+    let proof = prove_full_context_input(input, trusted_history, owned_call_ids)?;
+    ensure!(
+        proof.context.is_empty(),
+        "native_history_item_count_mismatch"
+    );
     Ok(())
 }
 
-/// Proves the ordered history and complete callback-output segment once, then returns
-/// the appended context. Output contents remain bound to the durable callback receipt.
-pub(crate) fn full_context_remainder<'a>(
+/// References into the unchanged wire body, after the proven predecessor prefix.
+/// Context may occur before, between or after the owned outputs.
+pub(crate) struct FullContextInput<'a> {
+    pub(crate) tool_outputs: Vec<&'a Value>,
+    pub(crate) context: Vec<&'a Value>,
+}
+
+/// Proves ordered predecessor history and the complete callback-output set.
+/// Output contents remain bound to the durable callback receipt.
+pub(crate) fn prove_full_context_input<'a>(
     input: &'a Value,
     trusted_history: &Value,
     owned_call_ids: &[String],
-) -> Result<&'a [Value]> {
+) -> Result<FullContextInput<'a>> {
     let expected = History::parse(trusted_history)?;
     // A v1 hash cannot attest the v2 client equivalence contract. Preserve old
     // continuation proofs as v1, but require a fresh trusted round for recovery.
@@ -133,7 +143,7 @@ pub(crate) fn full_context_remainder<'a>(
     let items = input
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("native_history_item_count_mismatch"))?;
-    let output_end = expected
+    let _minimum_item_count = expected
         .item_count
         .checked_add(owned_call_ids.len())
         .filter(|end| expected.item_count > 0 && *end <= items.len())
@@ -148,40 +158,32 @@ pub(crate) fn full_context_remainder<'a>(
         remaining.len() == owned_call_ids.len() && !remaining.is_empty(),
         "native_history_tool_outputs_invalid"
     );
-    for item in &items[expected.item_count..output_end] {
-        ensure!(
-            matches!(
-                item.get("type").and_then(Value::as_str),
-                Some("function_call_output" | "custom_tool_call_output")
-            ),
-            "native_history_tool_outputs_invalid"
-        );
-        let call_id = item
-            .get("call_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow::anyhow!("native_history_tool_outputs_invalid"))?;
-        ensure!(
-            remaining.remove(call_id) && item.get("output").is_some(),
-            "native_history_tool_outputs_invalid"
-        );
+    let mut proof = FullContextInput {
+        tool_outputs: Vec::with_capacity(owned_call_ids.len()),
+        context: Vec::new(),
+    };
+    for item in &items[expected.item_count..] {
+        match item.get("type").and_then(Value::as_str) {
+            Some("function_call_output" | "custom_tool_call_output") => {
+                let call_id = item
+                    .get("call_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow::anyhow!("native_history_tool_outputs_invalid"))?;
+                ensure!(
+                    remaining.remove(call_id) && item.get("output").is_some(),
+                    "native_history_tool_outputs_invalid"
+                );
+                proof.tool_outputs.push(item);
+            }
+            // A later tool round has its own correlation owner, never this receipt.
+            Some("function_call" | "custom_tool_call") => {
+                anyhow::bail!("native_history_tool_outputs_invalid");
+            }
+            _ => proof.context.push(item),
+        }
     }
     ensure!(remaining.is_empty(), "native_history_tool_outputs_invalid");
-    let remainder = &items[output_end..];
-    // A later tool round has its own correlation owner. It is never merely context
-    // appended to this receipt, including when the public service is called directly.
-    ensure!(
-        remainder.iter().all(|item| !matches!(
-            item.get("type").and_then(Value::as_str),
-            Some(
-                "function_call"
-                    | "custom_tool_call"
-                    | "function_call_output"
-                    | "custom_tool_call_output"
-            )
-        )),
-        "native_history_tool_outputs_invalid"
-    );
-    Ok(remainder)
+    Ok(proof)
 }
 
 fn canonical_json(value: &Value) -> Value {

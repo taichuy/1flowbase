@@ -756,7 +756,7 @@ fn appended_context(command: &ResumePublishedCallbackCommand) -> ResumePublished
     let mut body = command.native_transport.take().unwrap().into_wire_body();
     body["input"].as_array_mut().unwrap().extend([
         json!({"type":"reasoning","summary":[],"encrypted_content":"new-reasoning"}),
-        json!({"role":"assistant","content":"Queued agent context"}),
+        json!({"role":"user","content":"Queued user context"}),
         json!({"type":"future_context_boundary","opaque":{"preserved":true}}),
     ]);
     command.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
@@ -768,13 +768,21 @@ async fn consumed_full_context_extension_starts_new_turn_without_recovery_succes
     for failure in [None, Some(transport_failure())] {
         let f = fixture(failure).await;
         let count = f.repository.flow_run_count();
-        for refresh in [false, true] {
+        for (refresh, context_before_output) in [(false, false), (true, false), (false, true)] {
             let mut command = appended_context(&f.command);
             if refresh {
                 let mut body = command.native_transport.take().unwrap().into_wire_body();
                 body["tools"] =
                     json!([{"type":"function","name":"fresh","parameters":{"type":"object"}}]);
                 body["reasoning"] = json!({"effort":"high"});
+                command.native_transport =
+                    Some(ProviderTransportPayload::openai_responses(body).unwrap());
+            }
+            if context_before_output {
+                let mut body = command.native_transport.take().unwrap().into_wire_body();
+                let items = body["input"].as_array_mut().unwrap();
+                let context = items.remove(7);
+                items.insert(5, context);
                 command.native_transport =
                     Some(ProviderTransportPayload::openai_responses(body).unwrap());
             }

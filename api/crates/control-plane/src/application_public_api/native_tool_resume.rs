@@ -177,15 +177,18 @@ where
             &flow_run.input_payload,
             ProviderTransportPayload::openai_responses(request.clone())?,
         )?;
-    if let Some(expected) = metadata.get("user_messages_digest").and_then(Value::as_str) {
-        if let Some(actual) = transport.user_messages_digest()? {
-            if actual != expected {
-                return Err(
-                    ControlPlaneError::Conflict("native_tool_output_user_turn_mismatch").into(),
-                );
-            }
-        }
-    }
+    // A response cursor proves delta causality. Without one, a request carrying
+    // history/context must prove the predecessor prefix; comparing user messages
+    // conflates a complete history with a delta and rejects valid context updates.
+    // Output-only submissions retain scoped call-id correlation.
+    let full_context_required = previous_response_id.is_none() && input.len() > call_ids.len();
+    let full_context_proven = full_context_required
+        && super::compat::openai::history::prove_full_context_input(
+            input_value,
+            &metadata["history"],
+            &call_id_list,
+        )
+        .is_ok();
     let digest = transport.configuration_digest()?;
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
         // A full next sampling request may refresh tools or generation options. It must
@@ -201,17 +204,15 @@ where
         let full_request_proven = previous_response_id.is_none()
             && frozen_model.is_some()
             && frozen_model == request.get("model").and_then(Value::as_str)
-            && super::compat::openai::history::full_context_remainder(
-                input_value,
-                &metadata["history"],
-                &call_id_list,
-            )
-            .is_ok();
+            && full_context_proven;
         if !full_request_proven {
             return Err(
                 ControlPlaneError::Conflict("native_tool_output_configuration_mismatch").into(),
             );
         }
+    }
+    if full_context_required && !full_context_proven {
+        return Err(ControlPlaneError::Conflict("native_tool_output_history_mismatch").into());
     }
     // State admission belongs to the callback-resume owner. A completed callback can be an
     // exact transport replay after the original terminal was lost; rejecting it here would hide

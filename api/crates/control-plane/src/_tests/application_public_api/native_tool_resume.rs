@@ -261,7 +261,6 @@ async fn native_admission_correlates_current_suffix_and_preserves_output_values(
     let mut body = request();
     body["input"][0]["output"] = json!("actual\0 versus literal \\u0000");
     body["input"][1]["output"][0]["text"] = json!("custom\0output");
-    let callback = seed_round(&repository, run, &body);
     let expected = json!({"tool_results":[
         {"tool_call_id":"function","content":body["input"][0]["output"]},
         {"tool_call_id":"custom","content":body["input"][1]["output"]}
@@ -274,6 +273,23 @@ async fn native_admission_correlates_current_suffix_and_preserves_output_values(
     ];
     history.extend(body["input"].as_array().unwrap().iter().cloned());
     full["input"] = json!(history);
+    let mut original = body.clone();
+    original["input"] = json!(full["input"].as_array().unwrap()[..3].to_vec());
+    let history = crate::application_public_api::compat::openai::history::completed_history(
+        &original,
+        None,
+        &[],
+    )
+    .unwrap()
+    .unwrap();
+    let callback = repository.seed_pending_llm_tool_callback_task(run, json!({
+        "tool_calls":[{"id":"function","name":"read"},{"id":"custom","name":"exec"}],
+        "provider_metadata":{"native_response":{
+            "response_id":"resp_round",
+            "configuration_digest":ProviderTransportPayload::openai_responses(body.clone()).unwrap().configuration_digest().unwrap(),
+            "history":history
+        }}
+    }));
     let mut delta = body.clone();
     delta["previous_response_id"] = json!("resp_round");
     delta["stream"] = json!(true);
@@ -291,39 +307,40 @@ async fn native_admission_correlates_current_suffix_and_preserves_output_values(
     assert!(repository.callback_resume_attempts().is_empty());
 }
 
+// Context is input for the next sampling request, not a callback identity key.
 #[tokio::test]
-async fn native_admission_leaves_history_before_new_user_turn_alone() {
-    let (repository, actor, run) = fixture().await;
-    let mut body = request();
-    seed_round(&repository, run, &body);
-    body["input"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"role":"user","content":"Next task"}));
-    assert!(
-        correlate_native_responses_callback(&repository, &actor, &body)
-            .await
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[tokio::test]
-async fn native_admission_rejects_a_user_boundary_between_expected_outputs() {
-    let (repository, actor, run) = fixture().await;
-    let mut body = request();
-    seed_round(&repository, run, &body);
-    body["input"].as_array_mut().unwrap().insert(
-        1,
-        json!({"role":"user","content":"do not attach this turn to the old callback"}),
-    );
-    assert!(
-        correlate_native_responses_callback(&repository, &actor, &body)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(repository.callback_resume_attempts().is_empty());
+async fn native_admission_accepts_context_before_between_and_after_outputs() {
+    for delta in [false, true] {
+        for position in 0..=2 {
+            let (repository, actor, run) = fixture().await;
+            let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+            let prefix_len = if delta {
+                body["previous_response_id"] = json!("resp_round");
+                body["input"] = request()["input"].clone();
+                0
+            } else {
+                3
+            };
+            body["input"].as_array_mut().unwrap().insert(
+                prefix_len + position,
+                json!({"role":"user","content":"New context while tools ran"}),
+            );
+            let original = body.clone();
+            let (admitted, results) =
+                correlate_native_responses_callback(&repository, &actor, &body)
+                    .await
+                    .unwrap()
+                    .expect("owned outputs must retain their callback");
+            assert_eq!(
+                admitted.id, callback.id,
+                "delta={delta}, position={position}"
+            );
+            assert_eq!(results["tool_results"].as_array().unwrap().len(), 2);
+            assert_eq!(body, original);
+            assert!(repository.callback_resume_attempts().is_empty());
+            assert_eq!(repository.flow_run_count(), 1);
+        }
+    }
 }
 
 #[tokio::test]
@@ -435,53 +452,71 @@ fn configuration_digest_ignores_delivery_history_and_json_key_order_only() {
     assert_ne!(baseline, changed);
 }
 
-// #2036: a new user turn cannot reuse an old pending tool suffix even when its
-// call IDs, previous response and generation configuration are unchanged.
 #[tokio::test]
-async fn native_admission_vetoes_old_outputs_after_a_new_user_message() {
-    let (repository, actor, run) = fixture().await;
-    let mut original = request();
-    original["input"].as_array_mut().unwrap().insert(
-        0,
-        json!({"role":"user","content":[{"type":"input_text","text":"Read the first file"}]}),
-    );
-    let callback = seed_round(&repository, run, &original);
-    assert!(callback
-        .request_payload
-        .pointer("/provider_metadata/native_response/user_messages_digest")
-        .and_then(Value::as_str)
-        .is_some());
-    let (admitted, _) = correlate_native_responses_callback(&repository, &actor, &original)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(admitted.id, callback.id);
+async fn native_admission_proves_full_history_even_when_configuration_is_unchanged() {
+    for mutation in ["equivalent", "user", "tool", "missing", "unknown_extension"] {
+        let (repository, actor, run) = fixture().await;
+        let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+        match mutation {
+            "equivalent" => {
+                body["input"][0] = json!({
+                    "type":"message", "role":"user", "phase":null,
+                    "content":[{"type":"input_text","text":"Read files"}],
+                    "internal_chat_message_metadata_passthrough":{"turn_id":"delivery-turn","create_time":1}
+                })
+            }
+            "user" => body["input"][0]["content"] = json!("A different original task"),
+            "tool" => body["input"][1]["arguments"] = json!("changed"),
+            "missing" => {
+                body["input"].as_array_mut().unwrap().remove(0);
+            }
+            "unknown_extension" => body["input"][0]["opaque"] = json!("changed"),
+            _ => unreachable!(),
+        }
+        let result = correlate_native_responses_callback(&repository, &actor, &body).await;
+        if mutation == "equivalent" {
+            assert_eq!(result.unwrap().unwrap().0.id, callback.id);
+        } else {
+            assert_eq!(
+                result.unwrap_err().downcast_ref::<ControlPlaneError>(),
+                Some(&ControlPlaneError::Conflict(
+                    "native_tool_output_history_mismatch"
+                )),
+                "{mutation}"
+            );
+        }
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            CallbackTaskStatus::Pending
+        );
+        assert!(repository.callback_resume_attempts().is_empty());
+    }
+}
 
-    let mut next_turn = original.clone();
-    next_turn["input"].as_array_mut().unwrap().insert(
-        1,
-        json!({"role":"user","content":[{"type":"input_text","text":"Start a different task"}]}),
-    );
-    let error = correlate_native_responses_callback(&repository, &actor, &next_turn)
-        .await
-        .unwrap_err();
+#[tokio::test]
+async fn native_admission_rejects_unproven_context_without_a_response_cursor() {
+    let (repository, actor, run) = fixture().await;
+    let mut body = request();
+    seed_round(&repository, run, &body);
+    body["input"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, json!({"role":"user","content":"Unproven history"}));
     assert_eq!(
-        error.downcast_ref::<ControlPlaneError>(),
+        correlate_native_responses_callback(&repository, &actor, &body)
+            .await
+            .unwrap_err()
+            .downcast_ref::<ControlPlaneError>(),
         Some(&ControlPlaneError::Conflict(
-            "native_tool_output_user_turn_mismatch"
+            "native_tool_output_history_mismatch"
         ))
     );
-    assert_eq!(
-        repository
-            .get_published_callback_task(callback.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .status,
-        CallbackTaskStatus::Pending
-    );
     assert!(repository.callback_resume_attempts().is_empty());
-    assert_eq!(repository.flow_run_count(), 1);
 }
 
 // #2045 AC-003: asynchronous Codex context items after the expected output are
@@ -492,6 +527,7 @@ async fn native_admission_accepts_expected_outputs_before_agent_context_items() 
     let body = request();
     let callback = seed_round(&repository, run, &body);
     let mut request_with_agent_message = body.clone();
+    request_with_agent_message["previous_response_id"] = json!("resp_round");
     request_with_agent_message["input"]
         .as_array_mut()
         .unwrap()
@@ -594,7 +630,7 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
     let (callback, mut body) = seed_proven_full_round(&repository, run, true);
     body["input"].as_array_mut().unwrap().extend([
         json!({"type":"reasoning","summary":[]}),
-        json!({"role":"assistant","content":"New context"}),
+        json!({"role":"user","content":"New context"}),
         json!({"role":"developer","content":[{"type":"input_text","text":"Apps became available"}]}),
         json!({"type":"future_context_boundary","opaque":true}),
     ]);

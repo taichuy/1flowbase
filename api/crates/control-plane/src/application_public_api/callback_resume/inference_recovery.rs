@@ -207,31 +207,25 @@ pub(super) fn is_full_context_continuation(
     else {
         return Ok(false);
     };
-    let Ok(remainder) = super::super::compat::openai::history::full_context_remainder(
+    let Ok(proof) = super::super::compat::openai::history::prove_full_context_input(
         &body["input"],
         &metadata["history"],
         &ids,
     ) else {
         return Ok(false);
     };
-    if remainder.is_empty() {
+    if proof.context.is_empty() {
         return Ok(false);
     }
-    let items = body["input"].as_array().ok_or(ControlPlaneError::Conflict(
-        "native_recovery_history_invalid",
-    ))?;
-    let output_end = items.len() - remainder.len();
     let accepted = command.response_payload["tool_results"].as_array();
     let outputs_match = accepted.is_some_and(|results| {
         results.len() == ids.len()
-            && items[output_end - ids.len()..output_end]
-                .iter()
-                .all(|output| {
-                    results.iter().any(|result| {
-                        result["tool_call_id"] == output["call_id"]
-                            && result.get("content") == output.get("output")
-                    })
+            && proof.tool_outputs.iter().all(|output| {
+                results.iter().any(|result| {
+                    result["tool_call_id"] == output["call_id"]
+                        && result.get("content") == output.get("output")
                 })
+            })
     });
     if !outputs_match {
         return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());

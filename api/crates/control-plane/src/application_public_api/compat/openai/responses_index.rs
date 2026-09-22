@@ -150,7 +150,6 @@ impl OpenAiResponsesEnvelope {
 pub(crate) struct ResponsesInputIndex {
     item_count: usize,
     item_types: Vec<Option<String>>,
-    user_message_positions: Vec<usize>,
     tool_output_positions: Vec<usize>,
     outputs_by_call_id: BTreeMap<String, Vec<usize>>,
     last_tool_call_position: Option<usize>,
@@ -162,7 +161,6 @@ impl ResponsesInputIndex {
             return Ok(Self {
                 item_count: 0,
                 item_types: Vec::new(),
-                user_message_positions: Vec::new(),
                 tool_output_positions: Vec::new(),
                 outputs_by_call_id: BTreeMap::new(),
                 last_tool_call_position: None,
@@ -178,7 +176,6 @@ impl ResponsesInputIndex {
         let mut index = Self {
             item_count: items.len(),
             item_types: Vec::with_capacity(items.len()),
-            user_message_positions: Vec::new(),
             tool_output_positions: Vec::new(),
             outputs_by_call_id: BTreeMap::new(),
             last_tool_call_position: None,
@@ -192,9 +189,6 @@ impl ResponsesInputIndex {
                 Some(_) => return Err(ResponsesInputIndexError::ItemType { index: position }),
                 None => None,
             };
-            if object.get("role").and_then(Value::as_str) == Some("user") {
-                index.user_message_positions.push(position);
-            }
             match item_type.as_deref() {
                 Some("function_call" | "custom_tool_call") => {
                     index.last_tool_call_position = Some(position);
@@ -232,29 +226,16 @@ impl ResponsesInputIndex {
         &self.outputs_by_call_id
     }
 
-    /// Selects the latest tool-call segment while allowing opaque context items
-    /// after its outputs. A later user message starts a new turn and suppresses
-    /// callback admission.
+    /// Selects outputs after the latest tool-call segment. Message roles do not
+    /// establish response causality: a continuation may include new user context.
     pub(crate) fn current_tool_output_positions(&self) -> Vec<usize> {
         let start = self
             .last_tool_call_position
             .map_or(0, |position| position + 1);
-        let positions = self
-            .tool_output_positions
+        self.tool_output_positions
             .iter()
             .copied()
             .filter(|position| *position >= start)
-            .collect::<Vec<_>>();
-        let Some(first_output) = positions.first().copied() else {
-            return positions;
-        };
-        if self
-            .user_message_positions
-            .iter()
-            .any(|position| *position > first_output)
-        {
-            return Vec::new();
-        }
-        positions
+            .collect()
     }
 }
