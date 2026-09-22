@@ -102,7 +102,7 @@ async fn portable_template_routes_enforce_independent_grants_and_reject_invalid_
             assert!(payload["data"]["data_models"].is_array());
         }
     }
-    let package = json!({"schema_version":"invalid","pages":[],"applications":[],"data_models":[],"plugins":[]});
+    let package = json!({"schema_version":format!("invalid{}", "x".repeat(2 * 1024 * 1024)),"pages":[],"applications":[],"data_models":[],"plugins":[]});
     let denied = app
         .clone()
         .oneshot(

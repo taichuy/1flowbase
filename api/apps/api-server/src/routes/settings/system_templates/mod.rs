@@ -4,7 +4,12 @@ use crate::{
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
-use axum::{extract::State, http::HeaderMap, Json};
+use axum::{
+    extract::{DefaultBodyLimit, State},
+    handler::Handler,
+    http::HeaderMap,
+    Json,
+};
 use control_plane::portable_template::{PortableTemplatePackage, PortableTemplateSelection};
 use serde_json::Value;
 use std::sync::Arc;
@@ -25,11 +30,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/settings/system-templates/preview",
-            console_post(preview, owned("system_templates.preview")),
+            console_post(
+                preview.layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+                owned("system_templates.preview"),
+            ),
         )
         .route(
             "/settings/system-templates/install",
-            console_post(install, owned("system_templates.install")),
+            console_post(
+                install.layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+                owned("system_templates.install"),
+            ),
         )
 }
 
