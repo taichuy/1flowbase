@@ -69,7 +69,6 @@
     "node_finished": "节点结束",
     "task": "任务",
     "parent_task": "父任务",
-    "node_io": "节点输入 / 输出",
     "chronology_note": "按记录时间排列；父任务表示真实归属，不表示串行依赖",
     "event_flow_run_started": "运行开始",
     "event_flow_run_execution_started": "运行执行开始",
@@ -90,7 +89,9 @@
     "event_assistant_tool_call_started": "工具调用开始",
     "event_assistant_tool_call_finished": "工具调用结束",
     "node_input_lane": "节点 / 输入",
-    "task_request_lane": "请求 / 任务"
+    "task_request_lane": "请求 / 任务",
+    "view_node_logs": "查看节点日志",
+    "back_to_event": "返回事件详情"
   },
   "auto": {
     "llm_tools": "LLM 工具",

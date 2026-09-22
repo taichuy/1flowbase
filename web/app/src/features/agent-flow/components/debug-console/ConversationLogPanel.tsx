@@ -835,67 +835,67 @@ export function LazyTraceNodeItem({
     </Button>
   ) : null;
 
+  const detail = isGroupNode ? (
+    <div className="agent-flow-editor__conversation-log-node-group">
+      {childLoadStatusContent}
+      {childNodesBeforePayload}
+      {loadMoreChildrenButton}
+    </div>
+  ) : (
+    <section
+      aria-label={i18nText('agentFlow', 'auto.node_details_alt', {
+        value1: nodeDisplayName(fallbackItem)
+      })}
+      className="agent-flow-editor__conversation-log-node-detail"
+    >
+      {contentLoading ? (
+        <Spin />
+      ) : contentProjectionStatus &&
+        !traceProjectionStatusSucceeded(contentProjectionStatus) ? (
+        <TraceProjectionStatusNotice status={contentProjectionStatus} />
+      ) : (
+        <div className="agent-flow-editor__conversation-log-json-list">
+          <DebugWorkflowNodeDetailContent
+            onLoadSection={loadNodeRunSection}
+            beforePayloadContent={childNodesBeforePayload}
+            processAction={
+              !activityDetail && hasTrajectory && node.node_run_id ? (
+                <ProviderTrajectory
+                  runId={node.source_flow_run_id ?? node.flow_run_id ?? runId}
+                  nodeRunId={node.node_run_id}
+                  loader={traceLoader}
+                />
+              ) : undefined
+            }
+            defaultToolsExpanded={defaultToolsExpanded}
+            item={item}
+            onLoadArtifact={onLoadArtifact}
+            onLoadArtifacts={onLoadArtifacts}
+            onLoadToolCallbackDetail={
+              loadToolCallbackDetail
+                ? (toolCallId) =>
+                    loadToolCallbackDetail(
+                      runId,
+                      node.trace_node_id,
+                      toolCallId
+                    )
+                : undefined
+            }
+          />
+        </div>
+      )}
+      {childLoadStatusContent}
+      {loadMoreChildrenButton}
+    </section>
+  );
+  if (detailOnly) return detail;
   return (
     <DebugWorkflowNodeItem
       expanded={expanded}
       item={item}
       onToggle={() => setExpanded((current) => !current)}
     >
-      {isGroupNode ? (
-        <div className="agent-flow-editor__conversation-log-node-group">
-          {childLoadStatusContent}
-          {childNodesBeforePayload}
-          {loadMoreChildrenButton}
-        </div>
-      ) : (
-        <section
-          aria-label={i18nText('agentFlow', 'auto.node_details_alt', {
-            value1: nodeDisplayName(fallbackItem)
-          })}
-          className="agent-flow-editor__conversation-log-node-detail"
-        >
-          {contentLoading ? (
-            <Spin />
-          ) : contentProjectionStatus &&
-            !traceProjectionStatusSucceeded(contentProjectionStatus) ? (
-            <TraceProjectionStatusNotice status={contentProjectionStatus} />
-          ) : (
-            <div className="agent-flow-editor__conversation-log-json-list">
-              <DebugWorkflowNodeDetailContent
-                onLoadSection={loadNodeRunSection}
-                beforePayloadContent={childNodesBeforePayload}
-                processAction={
-                  !activityDetail && hasTrajectory && node.node_run_id ? (
-                    <ProviderTrajectory
-                      runId={
-                        node.source_flow_run_id ?? node.flow_run_id ?? runId
-                      }
-                      nodeRunId={node.node_run_id}
-                      loader={traceLoader}
-                    />
-                  ) : undefined
-                }
-                defaultToolsExpanded={defaultToolsExpanded}
-                item={item}
-                onLoadArtifact={onLoadArtifact}
-                onLoadArtifacts={onLoadArtifacts}
-                onLoadToolCallbackDetail={
-                  loadToolCallbackDetail
-                    ? (toolCallId) =>
-                        loadToolCallbackDetail(
-                          runId,
-                          node.trace_node_id,
-                          toolCallId
-                        )
-                    : undefined
-                }
-              />
-            </div>
-          )}
-          {childLoadStatusContent}
-          {loadMoreChildrenButton}
-        </section>
-      )}
+      {detail}
     </DebugWorkflowNodeItem>
   );
 }

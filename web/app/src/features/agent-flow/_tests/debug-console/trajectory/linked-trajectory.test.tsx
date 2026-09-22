@@ -176,6 +176,8 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
       }
     )
   );
+  await screen.findAllByRole('button', {name: /^模型调用准备 ·/});
+  fireEvent.click(screen.getByRole('button', {name: '调用分组'}));
   const calls = await screen.findAllByRole('button', {
     name: /^模型调用准备 ·/
   });
@@ -218,7 +220,7 @@ test('opens request-linked invocation choices, resolves cross-run source by focu
   ).toHaveAttribute('aria-pressed', 'true');
   expect(ledger.scrollTop).toBe(123);
 });
-test('node entry defaults to grouped internal events and historical missing metadata stays unknown', async () => {
+test('node entry defaults to chronological internal events and historical missing metadata stays unknown', async () => {
   const { loadClientTrajectory, loadWorkflowTrajectory } =
     fixture('node-current');
   const historical = invocation('historical-call', 0, 'unknown');
@@ -233,7 +235,7 @@ test('node entry defaults to grouped internal events and historical missing meta
   expect(loadClientTrajectory).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: '调用分组' })).toHaveAttribute(
     'aria-pressed',
-    'true'
+    'false'
   );
   const detail = screen.getByRole('complementary');
   expect(within(detail).getByText('用途未知')).toBeInTheDocument();
@@ -276,7 +278,9 @@ test.each([
         : kind === 'error'
           ? '调用错误'
           : '模型调用准备';
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label} ·`) }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(`^${label} ·`) })
+    );
     const detail = within(screen.getByRole('complementary'));
     if (text) expect(detail.getByText(text)).toBeInTheDocument();
     else expect(detail.queryByText(/^耗时:/)).not.toBeInTheDocument();

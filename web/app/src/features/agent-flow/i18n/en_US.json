@@ -69,7 +69,6 @@
     "node_finished": "Node finished",
     "task": "Task",
     "parent_task": "Parent task",
-    "node_io": "Node input / output",
     "chronology_note": "Ordered by recorded time; parent tasks describe ownership, not serial dependencies",
     "event_flow_run_started": "Run started",
     "event_flow_run_execution_started": "Execution started",
@@ -90,7 +89,9 @@
     "event_assistant_tool_call_started": "Tool call started",
     "event_assistant_tool_call_finished": "Tool call finished",
     "node_input_lane": "Nodes / input",
-    "task_request_lane": "Requests / tasks"
+    "task_request_lane": "Requests / tasks",
+    "view_node_logs": "View node logs",
+    "back_to_event": "Back to event"
   },
   "auto": {
     "llm_tools": "LLM Tools",

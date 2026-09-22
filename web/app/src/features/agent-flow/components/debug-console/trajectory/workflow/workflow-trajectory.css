@@ -50,3 +50,43 @@
 .workflow-trajectory .trajectory-timeline__caption {
   padding-inline-start: 112px;
 }
+
+.workflow-trajectory__inspector-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.workflow-trajectory__inspector-scroll .provider-trajectory__detail {
+  flex: none;
+  overflow: visible;
+}
+.workflow-trajectory__identity details > small,
+.workflow-trajectory__identity details > span {
+  display: block;
+  margin-top: 6px;
+}
+.workflow-trajectory__identity summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.workflow-trajectory__inspector-scroll
+  > .agent-flow-editor__conversation-log-node-detail {
+  padding: 0 14px 14px;
+}
+.workflow-trajectory__inspector-scroll
+  .provider-trajectory__detail-meta
+  .ant-btn {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: start;
+}
+.workflow-trajectory .provider-trajectory__marker {
+  position: relative;
+}
+.workflow-trajectory .provider-trajectory__row {
+  min-height: 40px;
+}

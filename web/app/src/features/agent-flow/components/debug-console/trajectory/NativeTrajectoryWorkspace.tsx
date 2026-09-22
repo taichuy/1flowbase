@@ -55,7 +55,7 @@ export function NativeTrajectoryWorkspace({
   const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
   const [category, setCategory] = useState<WorkflowTrajectoryCategory>('all');
   const [nodeFilter, setNodeFilter] = useState<string | undefined>(nodeRunId);
-  const [groupCalls, setGroupCalls] = useState(true);
+  const [groupCalls, setGroupCalls] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const filters = {
@@ -147,16 +147,10 @@ export function NativeTrajectoryWorkspace({
         </span>
         <span className="provider-trajectory__preview">
           <strong>{workflowNodeName(step)}</strong>
-          <span>
-            {step.preview === step.event_type
-              ? workflowEventLabel(step)
-              : step.preview || '—'}
-          </span>
-          {step.parent_task_run_id ? (
-            <small>
-              {i18nText('agentFlow', 'trajectory.parent_task')}:{' '}
-              {step.parent_task_run_id}
-            </small>
+          {step.preview &&
+          step.preview !== step.event_type &&
+          step.preview !== workflowNodeName(step) ? (
+            <span>{step.preview}</span>
           ) : null}
         </span>
         <span
@@ -417,20 +411,25 @@ export function NativeTrajectoryWorkspace({
                 }}
               />
             </div>
-            <WorkflowEventDetail
+            <div
+              className="workflow-trajectory__inspector-scroll"
               key={selectedStep.event_id}
-              event={selectedStep}
-              runId={runId}
-              loader={loader}
             >
-              {selectedStep.native_step ? (
-                <TrajectoryStepDetail
-                  step={selectedStep.native_step}
-                  loader={loader}
-                  onClient={onClient}
-                />
-              ) : null}
-            </WorkflowEventDetail>
+              <WorkflowEventDetail
+                key={selectedStep.event_id}
+                event={selectedStep}
+                runId={runId}
+                loader={loader}
+              >
+                {selectedStep.native_step ? (
+                  <TrajectoryStepDetail
+                    step={selectedStep.native_step}
+                    loader={loader}
+                    onClient={onClient}
+                  />
+                ) : null}
+              </WorkflowEventDetail>
+            </div>
           </aside>
         ) : null}
       </div>

@@ -85,9 +85,40 @@ function fixture({
     next_cursor: null
   });
   const loader: ConversationLogTraceLoader = {
-    loadTree: vi.fn(),
-    loadChildren: vi.fn(),
-    loadContent: vi.fn(),
+    loadTree: vi
+      .fn()
+      .mockResolvedValue({
+        nodes: [
+          {
+            trace_node_id: 'trace-node',
+            node_kind: 'node_run',
+            node_run_id: 'node-current',
+            node_id: 'llm-one',
+            node_alias: '规划节点',
+            node_type: 'llm',
+            status: 'succeeded',
+            started_at: node.created_at,
+            has_children: true,
+            has_content: true
+          }
+        ]
+      }),
+    loadChildren: vi
+      .fn()
+      .mockResolvedValue({
+        items: [],
+        page_info: { has_more: false, page_size: 50 }
+      }),
+    loadContent: vi
+      .fn()
+      .mockResolvedValue({
+        trace_node_id: 'trace-node',
+        node_kind: 'node_run',
+        payload: {
+          input_payload: { prompt: 'recorded input' },
+          output_payload: { text: 'recorded output' }
+        }
+      }),
     loadWorkflowTrajectory,
     loadWorkflowTrajectoryBody,
     loadTrajectoryBody
@@ -129,12 +160,14 @@ test('keeps every node name visible in rows, invocation groups and selected deta
   expect(rows[1]).toHaveAccessibleName(/总结节点/);
   expect(within(rows[0]).getByText('规划节点')).toBeInTheDocument();
   expect(within(rows[1]).getByText('总结节点')).toBeInTheDocument();
+  expect(document.querySelector('.provider-trajectory__group')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '调用分组' }));
   expect(
     screen.getByRole('button', { name: /总结节点.*生成.*call-two/ })
   ).toBeInTheDocument();
   expect(loadTrajectoryBody).not.toHaveBeenCalled();
   expect(loadWorkflowTrajectoryBody).not.toHaveBeenCalled();
-  fireEvent.click(rows[1]);
+  fireEvent.click(screen.getAllByRole('button', {name: /^模型调用准备 ·/})[1]);
   expect(
     within(screen.getByRole('complementary')).getByText('总结节点')
   ).toBeInTheDocument();
@@ -195,7 +228,12 @@ test('paginates summaries only and displays true parent relationships without in
     loadTrajectoryBody
   } = fixture();
   loadWorkflowTrajectory
-    .mockResolvedValueOnce(workflowPage([node], 'opaque-next'))
+    .mockResolvedValueOnce(
+      workflowPage(
+        [{ ...node, category: 'tools', event_type: 'tool_callback_completed' }],
+        'opaque-next'
+      )
+    )
     .mockResolvedValue(workflowPage([second]));
   // The first request starts at render; change categories to exercise this response chain.
   await screen.findAllByRole('button', { name: /^模型调用准备 ·/ });
@@ -210,7 +248,12 @@ test('paginates summaries only and displays true parent relationships without in
     )
   );
   expect(loadWorkflowTrajectoryBody).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: /^节点开始 ·/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^工具回调完成 ·/ }));
+  fireEvent.click(
+    within(screen.getByRole('complementary')).getByText('元数据', {
+      selector: 'summary'
+    })
+  );
   expect(
     within(screen.getByRole('complementary')).getByText('父任务: actual-parent')
   ).toBeInTheDocument();
@@ -297,4 +340,33 @@ test('node filtering sends the exact execution identity instead of matching a di
       expect.objectContaining({ category: 'all', node_run_id: 'node-current' })
     )
   );
+});
+
+test('opens node sections directly and only traverses children in the explicit node log view', async () => {
+  const { loader, loadWorkflowTrajectoryBody } = fixture();
+  fireEvent.click(await screen.findByRole('button', { name: /^节点开始 ·/ }));
+  const inspector = within(screen.getByRole('complementary'));
+  expect(
+    await inspector.findByText('输入', { exact: true })
+  ).toBeInTheDocument();
+  expect(
+    document.querySelector('.workflow-trajectory__inspector-scroll')
+  ).toBeInTheDocument();
+  expect(loader.loadChildren).not.toHaveBeenCalled();
+  expect(loadWorkflowTrajectoryBody).not.toHaveBeenCalled();
+  expect(
+    inspector.queryByRole('button', { name: /规划节点/ })
+  ).not.toBeInTheDocument();
+  fireEvent.click(inspector.getByRole('button', { name: '查看节点日志' }));
+  await waitFor(() =>
+    expect(loader.loadChildren).toHaveBeenCalledWith(
+      'run-current',
+      'trace-node',
+      undefined
+    )
+  );
+  fireEvent.click(inspector.getByRole('button', { name: '返回事件详情' }));
+  expect(
+    await inspector.findByText('输出', { exact: true })
+  ).toBeInTheDocument();
 });

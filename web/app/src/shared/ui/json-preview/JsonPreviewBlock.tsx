@@ -37,6 +37,7 @@ const EDITOR_OPTIONS = {
     bottom: 8
   },
   scrollbar: {
+    alwaysConsumeMouseWheel: false,
     verticalScrollbarSize: 14,
     horizontalScrollbarSize: 12
   }
