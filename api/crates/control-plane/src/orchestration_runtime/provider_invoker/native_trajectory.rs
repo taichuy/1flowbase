@@ -468,10 +468,9 @@ impl Sink {
             && detail["result"].is_object()
             && detail.get("final_content") == detail["result"].get("final_content");
         if compact_reply {
-            detail["result"]
-                .as_object_mut()
-                .unwrap()
-                .remove("final_content");
+            if let Some(result) = detail["result"].as_object_mut() {
+                result.remove("final_content");
+            }
         }
         let body = detail.to_string();
         let mut payload = self.id.event("provider_semantic_step", json!({"step_key":key,"kind":kind,

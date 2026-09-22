@@ -182,14 +182,16 @@ fn valid_component_inventory(sealed: &SealedBackupManifest) -> bool {
         .iter()
         .filter(|component| component.kind == BackupComponentKind::PostgreSql)
         .count();
-    postgres == 1 && !sealed.manifest().components().iter().any(|component| {
-        component.content_type
-            == control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
-    }) && sealed.manifest().components().iter().all(|component| {
-        component.disposition != BackupComponentDisposition::Embedded
-            || component.kind == BackupComponentKind::BusinessObject
-            || component.size_bytes > 0
-    })
+    postgres == 1
+        && !sealed.manifest().components().iter().any(|component| {
+            component.content_type
+                == control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
+        })
+        && sealed.manifest().components().iter().all(|component| {
+            component.disposition != BackupComponentDisposition::Embedded
+                || component.kind == BackupComponentKind::BusinessObject
+                || component.size_bytes > 0
+        })
 }
 
 fn required_space(backup_size: u64) -> u64 {

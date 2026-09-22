@@ -550,10 +550,12 @@ fn validate_restore_inventory(manifest: &BackupManifest) -> Result<(), OfflineRe
                 && component.disposition == BackupComponentDisposition::Embedded
         })
         .count();
-    if postgres != 1 || manifest.components().iter().any(|component| {
-        component.content_type
-            == control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
-    }) {
+    if postgres != 1
+        || manifest.components().iter().any(|component| {
+            component.content_type
+                == control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
+        })
+    {
         return Err(OfflineRecoveryError::Manifest);
     }
     Ok(())

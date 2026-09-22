@@ -421,13 +421,13 @@ describe('DebugConversationPane log access before an assistant answer', () => {
         onOpenMessageLog={onOpenMessageLog}
       />
     );
-    return onOpenMessageLog;
+    return { onOpenMessageLog };
   }
 
   test('opens the backend-enabled detail from a pending user-only turn without inventing an answer', () => {
-    const openLog = renderLogs([user]);
+    const { onOpenMessageLog } = renderLogs([user]);
     fireEvent.click(screen.getByRole('button', { name: '查看对话日志' }));
-    expect(openLog).toHaveBeenCalledWith(user);
+    expect(onOpenMessageLog).toHaveBeenCalledWith(user);
     expect(screen.getByText(user.content)).toBeInTheDocument();
     expect(
       document.querySelector('.agent-flow-editor__debug-message--assistant')
@@ -453,12 +453,12 @@ describe('DebugConversationPane log access before an assistant answer', () => {
       ...assistantMessage('已完成'),
       detailRunId: user.detailRunId
     };
-    const openLog = renderLogs([user, answer]);
+    const { onOpenMessageLog } = renderLogs([user, answer]);
     expect(
       screen.getAllByRole('button', { name: '查看对话日志' })
     ).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '查看对话日志' }));
-    expect(openLog).toHaveBeenCalledWith(answer);
+    expect(onOpenMessageLog).toHaveBeenCalledWith(answer);
   });
 
   test('respects the selected log run scope', () => {

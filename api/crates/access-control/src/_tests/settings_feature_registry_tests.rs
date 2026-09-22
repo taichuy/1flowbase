@@ -125,7 +125,7 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
     );
 
     assert_eq!(routes("system.model-providers").len(), 26);
-    assert_eq!(routes("system.backups").len(), 11);
+    assert_eq!(routes("system.backups").len(), 16);
     assert_eq!(
         routes("system.extension-center"),
         vec![

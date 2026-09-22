@@ -1,10 +1,10 @@
 mod envelope;
-mod service;
 mod selective;
+mod service;
 
 pub use envelope::*;
-pub use service::*;
 pub use selective::*;
+pub use service::*;
 
 #[cfg(test)]
 mod _tests;

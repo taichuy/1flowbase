@@ -30,7 +30,9 @@ pub fn rewrite_template_text(text: &str, ids: &BTreeMap<String, String>) -> Stri
             result.push_str(new);
             start += old.len();
         } else {
-            let c = tail.chars().next().unwrap();
+            let Some(c) = tail.chars().next() else {
+                break;
+            };
             result.push(c);
             start += c.len_utf8();
         }

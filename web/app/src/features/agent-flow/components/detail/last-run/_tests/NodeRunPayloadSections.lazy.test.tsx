@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { App } from 'antd';
 import { expect, test, vi } from 'vitest';
 import { NodeRunPayloadSections } from '../NodeRunPayloadSections';
@@ -28,7 +28,7 @@ test('only reads the selected payload section and retains it when reopened', asy
   );
   expect(load).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText(i18nText('agentFlow', 'auto.input')));
-  await waitFor(() => expect(screen.getByText(/recorded value/)).toBeTruthy());
+  await screen.findByText(/recorded value/);
   expect(load).toHaveBeenCalledExactlyOnceWith('input_payload');
   fireEvent.click(screen.getByText(i18nText('agentFlow', 'auto.input')));
   fireEvent.click(screen.getByText(i18nText('agentFlow', 'auto.input')));
@@ -50,10 +50,10 @@ test('omits the process section when disabled for run payloads', () => {
       />
     </App>
   );
-  expect(screen.getByText(i18nText('agentFlow', 'auto.input'))).toBeTruthy();
-  expect(screen.getByText(i18nText('agentFlow', 'auto.outputs'))).toBeTruthy();
+  expect(screen.getByText(i18nText('agentFlow', 'auto.input'))).toBeInTheDocument();
+  expect(screen.getByText(i18nText('agentFlow', 'auto.outputs'))).toBeInTheDocument();
   expect(
     screen.queryByText(i18nText('agentFlow', 'auto.data_processing'))
-  ).toBeNull();
+  ).not.toBeInTheDocument();
   expect(load).not.toHaveBeenCalled();
 });

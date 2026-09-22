@@ -1,5 +1,4 @@
 import { apiFetch } from './transport';
-import type { ConsolePluginFormFieldSchema } from './console-model-providers';
 
 export interface ConsolePluginCatalogFilter {
   plugin_type?: string;

@@ -185,8 +185,10 @@ impl PortableTemplateReadRepository for PgControlPlaneStore {
                     Ok(PortablePageVisibilityRule {
                         role_code: row.get("role_code"),
                         tab_id: row.get("tab_id"),
-                        visibility: domain::frontstage::FrontstagePageVisibility::from_db(&visibility)
-                            .context("unknown page visibility")?,
+                        visibility: domain::frontstage::FrontstagePageVisibility::from_db(
+                            &visibility,
+                        )
+                        .context("unknown page visibility")?,
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
