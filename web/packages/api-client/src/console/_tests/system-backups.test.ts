@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import * as transport from '../../transport';
 import {
   createSystemBackup,
+  getSystemBackupCatalog,
+  createSystemRecoveryIntent,
   getSystemBackupDownloadUrl,
   getSystemBackupJobStatus
 } from '../system-backups';
@@ -31,19 +33,51 @@ describe('system backup transport contract', () => {
     expect(blobSpy).not.toHaveBeenCalled();
   });
 
+  test('loads the settings catalog and forwards explicit missing-plugin confirmation', async () => {
+    await expect(getSystemBackupCatalog()).resolves.toMatchObject({
+      path: '/api/console/settings/system-backups/catalog'
+    });
+    const request = {
+      challenge_token: 'challenge',
+      exact_backup_name: 'backup',
+      plan_digest: 'digest',
+      confirm_missing_plugins: true
+    };
+    await expect(
+      createSystemRecoveryIntent('backup', request, 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/system-backups/backup/recovery/intents',
+      method: 'POST',
+      body: request,
+      csrfToken: 'csrf'
+    });
+  });
+
   test('uses the queued backup response and job status endpoint', async () => {
     await expect(
       createSystemBackup('csrf-token', undefined, {
-        backup_password: 'backup-password'
+        backup_password: 'backup-password',
+        selection: {
+          features: [{ feature_id: 'logs', structure: false, data: true }],
+          include_file_bytes: false
+        }
       })
     ).resolves.toMatchObject({
       path: '/api/console/settings/system-backups',
       method: 'POST',
       csrfToken: 'csrf-token',
-      body: { backup_password: 'backup-password' }
+      body: {
+        backup_password: 'backup-password',
+        selection: {
+          features: [{ feature_id: 'logs', structure: false, data: true }],
+          include_file_bytes: false
+        }
+      }
     });
 
-    await expect(getSystemBackupJobStatus('backup-job-1')).resolves.toMatchObject({
+    await expect(
+      getSystemBackupJobStatus('backup-job-1')
+    ).resolves.toMatchObject({
       path: '/api/console/settings/system-backups/jobs/status/backup-job-1'
     });
   });

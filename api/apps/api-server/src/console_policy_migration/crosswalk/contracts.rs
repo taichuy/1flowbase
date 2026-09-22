@@ -386,6 +386,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.backups",
         &[
+            "system_backups.catalog",
             "system_backups.create",
             "system_backups.delete",
             "system_backups.detail",
@@ -462,6 +463,7 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    "system_backups.catalog",
     "system_backups.create",
     "system_backups.delete",
     "system_backups.detail",

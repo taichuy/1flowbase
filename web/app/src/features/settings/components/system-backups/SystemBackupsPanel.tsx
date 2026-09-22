@@ -4,6 +4,7 @@ import {
   deleteSystemBackup,
   getSystemBackupDownloadUrl,
   getSystemBackup,
+  getSystemBackupCatalog,
   getSystemBackupJobStatus,
   getSystemRecoveryStatus,
   importSystemBackup,
@@ -12,6 +13,7 @@ import {
   reauthenticateSystemRecovery,
   verifySystemBackup,
   type BackupSetSummaryResponse,
+  type BackupSelection,
   type RecoveryPreflightResponse
 } from '@1flowbase/api-client';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
@@ -27,6 +29,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Descriptions,
   Drawer,
   Dropdown,
@@ -68,6 +71,7 @@ function startDirectDownload(backupSetId: string) {
 
 export function SystemBackupsPanel() {
   const { t } = useTranslation('settingsSystemBackups');
+  const { t: settingsT } = useTranslation('settings');
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
@@ -79,6 +83,13 @@ export function SystemBackupsPanel() {
   const [preflight, setPreflight] = useState<RecoveryPreflightResponse>();
   const [password, setPassword] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [selection, setSelection] = useState<BackupSelection>({
+    features: [],
+    include_file_bytes: false
+  });
+  const [confirmMissingPlugins, setConfirmMissingPlugins] = useState(false);
+  const [recoverySucceeded, setRecoverySucceeded] = useState(false);
+  const [restartRequired, setRestartRequired] = useState(false);
   const [backupPassword, setBackupPassword] = useState('');
   const [pendingImport, setPendingImport] = useState<File>();
   const [importPassword, setImportPassword] = useState('');
@@ -95,6 +106,42 @@ export function SystemBackupsPanel() {
   };
 
   const backups = useQuery({ queryKey, queryFn: () => listSystemBackups() });
+  const catalog = useQuery({
+    queryKey: [...queryKey, 'catalog'],
+    queryFn: () => getSystemBackupCatalog(),
+    enabled: createOpen
+  });
+  const selectedFeatures = selection.features.filter(
+    (item) => item.structure || item.data
+  );
+  const estimatedBytes = (catalog.data?.items ?? []).reduce((total, item) => {
+    const selected = selection.features.find(
+      (entry) => entry.feature_id === item.feature_id
+    );
+    return (
+      total +
+      (selected?.structure ? item.structure_bytes : 0) +
+      (selected?.data ? item.data_bytes : 0)
+    );
+  }, 0);
+  const toggleSelection = (
+    feature_id: string,
+    part: 'structure' | 'data',
+    checked: boolean
+  ) => {
+    setSelection((current) => {
+      const entry = current.features.find(
+        (item) => item.feature_id === feature_id
+      ) ?? { feature_id, structure: false, data: false };
+      return {
+        ...current,
+        features: [
+          ...current.features.filter((item) => item.feature_id !== feature_id),
+          { ...entry, [part]: checked }
+        ]
+      };
+    });
+  };
   const detail = useQuery({
     queryKey: [...queryKey, detailId],
     queryFn: () => getSystemBackup(detailId!),
@@ -113,7 +160,7 @@ export function SystemBackupsPanel() {
   const recoveryStatus = useQuery({
     queryKey: [...queryKey, 'recovery-status', recoveryJobId],
     queryFn: () => getSystemRecoveryStatus(recoveryJobId),
-    enabled: Boolean(recoveryJobId),
+    enabled: Boolean(recoveryJobId) && !recoverySucceeded,
     refetchInterval: 2000
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey });
@@ -125,11 +172,10 @@ export function SystemBackupsPanel() {
   const notifyError = () => message.error(t('operation_failed'));
   const createMutation = useMutation({
     mutationFn: (backupPassword?: string) =>
-      createSystemBackup(
-        csrfToken,
-        undefined,
-        backupPassword ? { backup_password: backupPassword } : undefined
-      ),
+      createSystemBackup(csrfToken, undefined, {
+        backup_password: backupPassword,
+        selection: { ...selection, features: selectedFeatures }
+      }),
     onSuccess: (queued) => {
       setBackupJobId(queued.backup_job_id);
       setCreateOpen(false);
@@ -171,7 +217,10 @@ export function SystemBackupsPanel() {
   const preflightMutation = useMutation({
     mutationFn: ({ id, password }: { id: string; password?: string }) =>
       preflightSystemRecovery(id, csrfToken, undefined, password),
-    onSuccess: setPreflight,
+    onSuccess: (result) => {
+      setPreflight(result);
+      setConfirmMissingPlugins(false);
+    },
     onError: notifyError
   });
   const intentMutation = useMutation({
@@ -191,6 +240,9 @@ export function SystemBackupsPanel() {
       return createSystemRecoveryIntent(
         restoreTarget.backup_set_id,
         {
+          confirm_missing_plugins: preflight.selective
+            ? confirmMissingPlugins
+            : undefined,
           challenge_token: challenge.challenge_token,
           exact_backup_name: exactName,
           plan_digest: preflight.plan_digest,
@@ -199,7 +251,12 @@ export function SystemBackupsPanel() {
         csrfToken
       );
     },
-    onSuccess: (intent) => setRecoveryJobId(intent.recovery_job_id),
+    onSuccess: async (intent) => {
+      setRecoveryJobId(intent.recovery_job_id);
+      setRecoverySucceeded(intent.status === 'succeeded');
+      setRestartRequired(intent.restart_required);
+      if (intent.status === 'succeeded') await refresh();
+    },
     onError: notifyError
   });
 
@@ -224,6 +281,9 @@ export function SystemBackupsPanel() {
   );
 
   const closeRestore = () => {
+    setConfirmMissingPlugins(false);
+    setRecoverySucceeded(false);
+    setRestartRequired(false);
     setRestoreTarget(undefined);
     setPreflight(undefined);
     setPassword('');
@@ -232,6 +292,9 @@ export function SystemBackupsPanel() {
     setRecoveryJobId(undefined);
   };
   const openRestore = (item: BackupSetSummaryResponse) => {
+    setConfirmMissingPlugins(false);
+    setRecoverySucceeded(false);
+    setRestartRequired(false);
     setRestoreTarget(item);
     setExactName('');
     setPreflight(undefined);
@@ -285,7 +348,10 @@ export function SystemBackupsPanel() {
               type="primary"
               icon={<PlusOutlined />}
               loading={createMutation.isPending}
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {
+                setSelection({ features: [], include_file_bytes: false });
+                setCreateOpen(true);
+              }}
             >
               {t('create')}
             </Button>
@@ -465,6 +531,14 @@ export function SystemBackupsPanel() {
                   key: 'id',
                   label: t('name'),
                   children: detail.data.exact_backup_name
+                },
+                {
+                  key: 'backup_kind',
+                  label: t('backup_kind'),
+                  children:
+                    detailSummary?.backup_kind === 'selective'
+                      ? t('selective_kind')
+                      : t('legacy_kind')
                 },
                 {
                   key: 'backup_set_id',
@@ -664,6 +738,11 @@ export function SystemBackupsPanel() {
       <Modal
         destroyOnHidden
         open={createOpen}
+        width={800}
+        okButtonProps={{
+          disabled:
+            !selectedFeatures.length || catalog.isLoading || catalog.isError
+        }}
         title={t('create')}
         okText={t('create')}
         confirmLoading={createMutation.isPending}
@@ -673,6 +752,77 @@ export function SystemBackupsPanel() {
         }}
         onOk={() => createMutation.mutate(backupPassword || undefined)}
       >
+        <Typography.Paragraph>{t('selection_help')}</Typography.Paragraph>
+        {catalog.isError ? (
+          <Alert type="error" showIcon title={t('catalog_failed')} />
+        ) : null}
+        <Table
+          dataSource={catalog.data?.items ?? []}
+          loading={catalog.isLoading}
+          rowKey="feature_id"
+          pagination={false}
+          size="small"
+          scroll={{ x: 580 }}
+          columns={[
+            {
+              title: t('settings_feature'),
+              dataIndex: 'label_key',
+              render: (label_key: string) => settingsT(label_key)
+            },
+            ...(['structure', 'data'] as const).map((part) => ({
+              title: part === 'structure' ? t('structure') : t('data'),
+              key: part,
+              width: 130,
+              render: (
+                _: unknown,
+                item: NonNullable<typeof catalog.data>['items'][number]
+              ) => (
+                <Checkbox
+                  aria-label={`${settingsT(item.label_key)} ${part === 'structure' ? t('structure') : t('data')}`}
+                  checked={
+                    selection.features.find(
+                      (entry) => entry.feature_id === item.feature_id
+                    )?.[part] ?? false
+                  }
+                  onChange={(event) =>
+                    toggleSelection(item.feature_id, part, event.target.checked)
+                  }
+                />
+              )
+            })),
+            {
+              title: t('estimated_size'),
+              key: 'estimate',
+              render: (_, item) => {
+                const selected = selection.features.find(
+                  (entry) => entry.feature_id === item.feature_id
+                );
+                return formatBytes(
+                  (selected?.structure ? item.structure_bytes : 0) +
+                    (selected?.data ? item.data_bytes : 0)
+                );
+              }
+            }
+          ]}
+        />
+        <Typography.Paragraph>
+          {t('estimated_total', { size: formatBytes(estimatedBytes) })}
+        </Typography.Paragraph>
+        <Typography.Paragraph>{t('estimate_help')}</Typography.Paragraph>
+        <Checkbox
+          checked={selection.include_file_bytes}
+          onChange={(event) =>
+            setSelection((current) => ({
+              ...current,
+              include_file_bytes: event.target.checked
+            }))
+          }
+        >
+          {t('include_file_bytes')}
+        </Checkbox>
+        <Typography.Paragraph>
+          {t('plugin_packages_excluded')}
+        </Typography.Paragraph>
         <Typography.Paragraph>{t('backup_password_help')}</Typography.Paragraph>
         <Input.Password
           autoComplete="new-password"
@@ -763,12 +913,21 @@ export function SystemBackupsPanel() {
             <>
               <Alert
                 showIcon
-                type={preflight.compatible ? 'success' : 'error'}
+                type={
+                  preflight.compatible && !preflight.selective?.failures.length
+                    ? 'success'
+                    : 'error'
+                }
                 title={
-                  preflight.compatible ? t('compatible') : t('incompatible')
+                  preflight.compatible && !preflight.selective?.failures.length
+                    ? t('compatible')
+                    : t('incompatible')
                 }
                 description={
-                  preflight.failures.join(', ') || t('preflight_passed')
+                  [
+                    ...preflight.failures,
+                    ...(preflight.selective?.failures ?? [])
+                  ].join(', ') || t('preflight_passed')
                 }
               />
               <Input.Password
@@ -829,7 +988,47 @@ export function SystemBackupsPanel() {
                   }
                 ]}
               />
-              <Alert showIcon type="warning" title={t('danger_notice')} />
+              {preflight.selective ? (
+                <>
+                  <Typography.Paragraph>
+                    {t('selective_counts', {
+                      tables: preflight.selective.table_count,
+                      rows: preflight.selective.row_count
+                    })}
+                  </Typography.Paragraph>
+                  {preflight.selective.missing_plugins.length ? (
+                    <Alert
+                      showIcon
+                      type="warning"
+                      title={t('missing_plugins')}
+                      description={
+                        <>
+                          <Typography.Paragraph>
+                            {preflight.selective.missing_plugins.join(', ')}
+                          </Typography.Paragraph>
+                          <Checkbox
+                            checked={confirmMissingPlugins}
+                            onChange={(event) =>
+                              setConfirmMissingPlugins(event.target.checked)
+                            }
+                          >
+                            {t('confirm_missing_plugins')}
+                          </Checkbox>
+                        </>
+                      }
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              <Alert
+                showIcon
+                type="warning"
+                title={
+                  preflight.selective
+                    ? t('selective_restore_notice')
+                    : t('danger_notice')
+                }
+              />
               <Input.Password
                 autoComplete="current-password"
                 placeholder={t('password')}
@@ -846,14 +1045,20 @@ export function SystemBackupsPanel() {
                   danger
                   type="primary"
                   disabled={
+                    preflightMutation.isPending ||
                     !preflight.compatible ||
+                    Boolean(preflight.selective?.failures.length) ||
+                    (Boolean(preflight.selective?.missing_plugins.length) &&
+                      !confirmMissingPlugins) ||
                     !password ||
                     exactName !== restoreTarget?.exact_backup_name
                   }
                   loading={intentMutation.isPending}
                   onClick={() => intentMutation.mutate()}
                 >
-                  {t('confirm_restore')}
+                  {preflight.selective
+                    ? t('confirm_selective_restore')
+                    : t('confirm_restore')}
                 </Button>
               </Flex>
             </>
@@ -862,37 +1067,46 @@ export function SystemBackupsPanel() {
             <>
               <Alert
                 showIcon
-                type="info"
-                title={t('recovery_started')}
+                type={recoverySucceeded ? 'success' : 'info'}
+                title={
+                  recoverySucceeded
+                    ? t('recovery_succeeded')
+                    : t('recovery_started')
+                }
                 description={recoveryJobId}
               />
-              <Descriptions
-                column={1}
-                bordered
-                size="small"
-                items={[
-                  {
-                    key: 'phase',
-                    label: t('phase'),
-                    children: recoveryStatus.data?.phase ?? '—'
-                  },
-                  {
-                    key: 'journal_state',
-                    label: t('journal_state'),
-                    children: recoveryStatus.data?.journal_state ?? '—'
-                  },
-                  {
-                    key: 'writes',
-                    label: t('active_writes'),
-                    children: recoveryStatus.data?.active_write_count ?? '—'
-                  },
-                  {
-                    key: 'safety',
-                    label: t('safety_backup'),
-                    children: recoveryStatus.data?.safety_backup_set_id ?? '—'
-                  }
-                ]}
-              />
+              {restartRequired ? (
+                <Alert type="warning" showIcon title={t('restart_required')} />
+              ) : null}
+              {!recoverySucceeded ? (
+                <Descriptions
+                  column={1}
+                  bordered
+                  size="small"
+                  items={[
+                    {
+                      key: 'phase',
+                      label: t('phase'),
+                      children: recoveryStatus.data?.phase ?? '—'
+                    },
+                    {
+                      key: 'journal_state',
+                      label: t('journal_state'),
+                      children: recoveryStatus.data?.journal_state ?? '—'
+                    },
+                    {
+                      key: 'writes',
+                      label: t('active_writes'),
+                      children: recoveryStatus.data?.active_write_count ?? '—'
+                    },
+                    {
+                      key: 'safety',
+                      label: t('safety_backup'),
+                      children: recoveryStatus.data?.safety_backup_set_id ?? '—'
+                    }
+                  ]}
+                />
+              ) : null}
             </>
           ) : null}
         </div>

@@ -44,6 +44,26 @@ pub trait BackupObjectInventoryRepository: Send + Sync {
     async fn list_backup_object_inventory(
         &self,
     ) -> anyhow::Result<Vec<BackupObjectInventoryRecord>>;
+
+    async fn list_selected_backup_object_inventory(
+        &self,
+        file_table_ids: &[Uuid],
+        include_runtime_debug_artifacts: bool,
+    ) -> anyhow::Result<Vec<BackupObjectInventoryRecord>> {
+        Ok(self
+            .list_backup_object_inventory()
+            .await?
+            .into_iter()
+            .filter(|record| match &record.reference {
+                BackupObjectDatabaseReference::FileRecord { file_table_id, .. } => {
+                    file_table_ids.contains(file_table_id)
+                }
+                BackupObjectDatabaseReference::RuntimeDebugArtifact { .. } => {
+                    include_runtime_debug_artifacts
+                }
+            })
+            .collect())
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -339,6 +339,8 @@ fn validate_postgres_components(
     components: &[BackupComponent],
 ) -> Result<(), RecoveryStepTargetError> {
     if components.len() == 1
+        && components[0].content_type
+            != control_plane_contracts::system_backup::selective::SELECTIVE_BACKUP_CONTENT_TYPE
         && components[0].kind == BackupComponentKind::PostgreSql
         && components[0].restore_target == BackupComponentRestoreTarget::PostgreSql
     {

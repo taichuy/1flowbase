@@ -20,6 +20,21 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+fn selective_request_body() -> Body {
+    Body::from(json!({"selection": {"features": [{"feature_id":"system.auth-center","structure":true,"data":false}], "include_file_bytes":false}}).to_string())
+}
+
+async fn create_legacy_backup(state: &crate::app_state::ApiState) -> Uuid {
+    let sealed = state
+        .system_backup
+        .as_ref()
+        .unwrap()
+        .create(Uuid::now_v7())
+        .await
+        .unwrap();
+    sealed.manifest().backup_set_id().as_uuid()
+}
+
 async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
     let response = app
         .clone()
@@ -29,7 +44,8 @@ async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
                 .uri("/api/console/settings/system-backups")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selective_request_body())
                 .unwrap(),
         )
         .await
@@ -197,7 +213,8 @@ async fn system_backup_queue_rejects_a_second_maintenance_owner() {
                 .uri("/api/console/settings/system-backups")
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selective_request_body())
                 .unwrap(),
         )
         .await
@@ -285,14 +302,15 @@ async fn system_backups_route_enforces_cookie_csrf_detail_projection_and_chunked
                 .method("POST")
                 .uri("/api/console/settings/system-backups")
                 .header("cookie", &cookie)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selective_request_body())
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
 
-    let backup_set_id = create_backup(&app, &cookie, &csrf).await;
+    let backup_set_id = create_legacy_backup(&state).await;
     let detail = app
         .clone()
         .oneshot(
@@ -483,7 +501,8 @@ async fn system_backup_create_requires_backup_job_status_access_before_queuing()
                 .uri("/api/console/settings/system-backups")
                 .header("cookie", &creator_cookie)
                 .header("x-csrf-token", &creator_csrf)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selective_request_body())
                 .unwrap(),
         )
         .await
@@ -508,7 +527,8 @@ async fn system_backup_create_requires_backup_job_status_access_before_queuing()
                 .uri("/api/console/settings/system-backups")
                 .header("cookie", creator_cookie)
                 .header("x-csrf-token", creator_csrf)
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selective_request_body())
                 .unwrap(),
         )
         .await
@@ -572,6 +592,40 @@ async fn system_backups_operation_grants_revoke_live_and_recovery_remains_root_o
         .unwrap();
     assert_eq!(denied_detail.status(), StatusCode::FORBIDDEN);
 
+    // Listing backups does not grant the independent settings table catalog operation.
+    for granted in [false, true, false] {
+        replace_backup_policy(
+            &app,
+            &root_cookie,
+            &root_csrf,
+            "backup_reader",
+            &[
+                ("system_backups.list", true),
+                ("system_backups.catalog", granted),
+            ],
+        )
+        .await;
+        let catalog = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/console/settings/system-backups/catalog")
+                    .header("cookie", &reader_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            catalog.status(),
+            if granted {
+                StatusCode::OK
+            } else {
+                StatusCode::FORBIDDEN
+            }
+        );
+    }
+
     replace_backup_policy(
         &app,
         &root_cookie,
@@ -623,10 +677,10 @@ async fn system_backups_operation_grants_revoke_live_and_recovery_remains_root_o
 #[tokio::test]
 async fn system_backups_reauth_binds_session_backup_plan_name_expiry_and_single_use() {
     let (state, _) = test_api_state_with_database_url().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let first_backup = create_backup(&app, &cookie, &csrf).await;
-    let second_backup = create_backup(&app, &cookie, &csrf).await;
+    let first_backup = create_legacy_backup(&state).await;
+    let second_backup = create_legacy_backup(&state).await;
     let first_plan = preflight(&app, &cookie, &csrf, first_backup).await;
     let second_plan = preflight(&app, &cookie, &csrf, second_backup).await;
     assert_eq!(first_plan["compatible"], true);
@@ -785,4 +839,99 @@ async fn recovery_intent_request(
         )
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn selective_backup_catalog_and_creation_are_explicit_and_do_not_replace_database() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let catalog = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/system-backups/catalog")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog.status(), StatusCode::OK);
+    let catalog = response_json(catalog).await;
+    assert!(catalog["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["feature_id"] == "system.auth-center"));
+    for selection in [
+        json!({}),
+        json!({"selection":{"features":[],"include_file_bytes":false}}),
+        json!({"selection":{"features":[{"feature_id":"not-registered","structure":true,"data":false}],"include_file_bytes":false}}),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/system-backups")
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(selection.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_client_error());
+    }
+    assert!(state
+        .system_backup
+        .as_ref()
+        .unwrap()
+        .list()
+        .await
+        .unwrap()
+        .is_empty());
+    let backup_set_id = create_backup(&app, &cookie, &csrf).await;
+    let sealed = state
+        .system_backup
+        .as_ref()
+        .unwrap()
+        .get(domain::BackupSetId::from_uuid(backup_set_id))
+        .await
+        .unwrap();
+    assert!(crate::system_backup::SystemBackupRuntime::is_selective(
+        &sealed
+    ));
+    assert_eq!(sealed.manifest().components().len(), 1);
+    let plan = preflight(&app, &cookie, &csrf, backup_set_id).await;
+    assert_eq!(plan["compatible"], true, "{plan}");
+    assert_eq!(plan["impact"]["database_replaced"], false);
+    assert!(plan["selective"]["selected_tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|table| table == "authentication_connections" || table == "login_entries"));
+    let digest = plan["plan_digest"].as_str().unwrap();
+    let challenge = issue_challenge(&app, &cookie, &csrf, backup_set_id, digest).await;
+    let restored =
+        recovery_intent_request(&app, &cookie, &csrf, backup_set_id, digest, challenge).await;
+    let status = restored.status();
+    let restored = response_json(restored).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{restored}");
+    assert_eq!(restored["data"]["status"], "succeeded");
+    assert_eq!(restored["data"]["restart_required"], true);
+    assert_eq!(
+        state
+            .system_backup
+            .as_ref()
+            .unwrap()
+            .list()
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "selective recovery must not create a full safety backup"
+    );
 }
