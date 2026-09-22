@@ -179,6 +179,7 @@ impl RuntimeEventStream for FakeInfrastructure {
         let (_closure_sender, closure) = tokio::sync::watch::channel(None);
 
         Ok(RuntimeEventSubscription {
+            terminal_writer: std::sync::Arc::new(UnusedTerminalWriter),
             replay: vec![],
             live_events: crate::ports::RuntimeEventReceiver::from_unbounded(receiver),
             closure,
@@ -265,4 +266,16 @@ async fn infrastructure_contracts_are_object_safe_and_async() {
         .await
         .unwrap();
     assert_eq!(envelope.sequence, 1);
+}
+
+pub(super) struct UnusedTerminalWriter;
+
+#[async_trait::async_trait]
+impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _event: control_plane::ports::RuntimeEventPayload,
+    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("this fixture does not exercise subscription terminal writes")
+    }
 }

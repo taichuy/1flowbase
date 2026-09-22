@@ -753,6 +753,7 @@ async fn open_compatible_turn_with_invoker(
             service_error(error)
         })?;
 
+    let terminal_writer = subscription.terminal_writer.clone();
     let background_dependencies = dependencies.clone();
     let background_run = initial_run.clone();
     let execution = tokio::spawn(async move {
@@ -811,7 +812,7 @@ async fn open_compatible_turn_with_invoker(
                 {
                     Ok(result) => {
                         append_compatible_resume_terminal_event(
-                            &background_dependencies.native.runtime_event_stream,
+                            terminal_writer.as_ref(),
                             &result.run,
                         )
                         .await
@@ -822,16 +823,11 @@ async fn open_compatible_turn_with_invoker(
                             error = %error,
                             "compatible callback resume failed"
                         );
-                        let _ = background_dependencies
-                            .native
-                            .runtime_event_stream
-                            .append_terminal_if_missing_and_close(
+                        let _ = terminal_writer
+                            .append_terminal_if_missing_and_close(debug_stream_events::flow_failed(
                                 background_run.id,
-                                debug_stream_events::flow_failed(
-                                    background_run.id,
-                                    json!({ "message": error.to_string() }),
-                                ),
-                            )
+                                json!({ "message": error.to_string() }),
+                            ))
                             .await;
                     }
                 }

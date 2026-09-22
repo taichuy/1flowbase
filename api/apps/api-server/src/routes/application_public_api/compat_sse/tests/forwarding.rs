@@ -131,6 +131,7 @@ fn spawn_typed_stream(
             from_sequence: None,
             ignored_waiting_callback_task_id: None,
             subscription: RuntimeEventSubscription {
+                terminal_writer: Arc::new(UnusedTerminalWriter),
                 replay,
                 live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(
                     live_events,
@@ -1804,3 +1805,6 @@ fn openai_chat_projects_answer_presentation_delta_not_provider_raw_delta() {
 
 #[path = "forwarding/_tests/live_delivery_batch.rs"]
 mod live_delivery_batch;
+
+#[path = "forwarding/_tests/terminal_generation.rs"]
+mod terminal_generation;

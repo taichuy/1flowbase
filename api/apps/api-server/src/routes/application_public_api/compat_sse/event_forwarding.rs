@@ -1028,7 +1028,7 @@ async fn send_compatible_sse_events(
 }
 
 pub(super) async fn append_compatible_resume_terminal_event(
-    runtime_event_stream: &Arc<dyn control_plane::ports::RuntimeEventStream>,
+    terminal_writer: &dyn control_plane::ports::RuntimeEventTerminalWriter,
     run: &NativeRunResult,
 ) {
     let Some(event) = terminal_runtime_event_from_native_run(run) else {
@@ -1050,8 +1050,8 @@ pub(super) async fn append_compatible_resume_terminal_event(
         trace_visible: event.trace_visible,
         payload: event.payload,
     };
-    let _ = runtime_event_stream
-        .append_terminal_if_missing_and_close(run.id, payload)
+    let _ = terminal_writer
+        .append_terminal_if_missing_and_close(payload)
         .await;
 }
 

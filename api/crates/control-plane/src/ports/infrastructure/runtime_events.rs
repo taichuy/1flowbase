@@ -165,7 +165,18 @@ pub struct RuntimeEventClosure {
     pub final_sequence: i64,
 }
 
+/// Terminal authority for exactly the stream generation selected by a subscription.
+/// Clones must retain that generation even after the same run ID is reopened.
+#[async_trait]
+pub trait RuntimeEventTerminalWriter: Send + Sync {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        event: RuntimeEventPayload,
+    ) -> anyhow::Result<AppendTerminalIfMissingAndCloseOutcome>;
+}
+
 pub struct RuntimeEventSubscription {
+    pub terminal_writer: Arc<dyn RuntimeEventTerminalWriter>,
     pub replay: Vec<RuntimeEventEnvelope>,
     pub live_events: RuntimeEventReceiver,
     pub closure: watch::Receiver<Option<RuntimeEventClosure>>,

@@ -248,6 +248,7 @@ impl RuntimeEventStream for RecordingRuntimeEventStream {
         let (_sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         let (_closure_sender, closure) = tokio::sync::watch::channel(None);
         Ok(RuntimeEventSubscription {
+            terminal_writer: std::sync::Arc::new(UnusedTerminalWriter),
             replay: self.events(),
             live_events: crate::ports::RuntimeEventReceiver::from_unbounded(receiver),
             closure,
@@ -299,5 +300,17 @@ impl RuntimeEventStream for RecordingRuntimeEventStream {
 
     async fn trim(&self, _run_id: Uuid, _policy: RuntimeEventTrimPolicy) -> Result<()> {
         Ok(())
+    }
+}
+
+pub(super) struct UnusedTerminalWriter;
+
+#[async_trait::async_trait]
+impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _event: control_plane::ports::RuntimeEventPayload,
+    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("this fixture does not exercise subscription terminal writes")
     }
 }

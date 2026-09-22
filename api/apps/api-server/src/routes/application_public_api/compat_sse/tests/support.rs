@@ -112,6 +112,7 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
                 .push(sender);
         }
         Ok(RuntimeEventSubscription {
+            terminal_writer: std::sync::Arc::new(UnusedTerminalWriter),
             replay: self.subscription_replay.clone(),
             live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure,
@@ -284,4 +285,16 @@ pub(super) async fn append_compat_sse_runtime_event(
         })
         .await
         .unwrap();
+}
+
+pub(super) struct UnusedTerminalWriter;
+
+#[async_trait::async_trait]
+impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _event: control_plane::ports::RuntimeEventPayload,
+    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("this fixture does not exercise subscription terminal writes")
+    }
 }

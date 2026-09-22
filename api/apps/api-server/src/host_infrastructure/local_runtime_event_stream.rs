@@ -14,7 +14,7 @@ use control_plane::ports::{
     RuntimeEventClosure, RuntimeEventDiagnosticLane, RuntimeEventDurability, RuntimeEventEnvelope,
     RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventReceiver,
     RuntimeEventRequiredLane, RuntimeEventStream, RuntimeEventStreamPolicy,
-    RuntimeEventSubscription, RuntimeEventTrimPolicy,
+    RuntimeEventSubscription, RuntimeEventTerminalWriter, RuntimeEventTrimPolicy,
 };
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::{broadcast, watch};
@@ -28,6 +28,22 @@ const ORPHAN_RUN_RETENTION: TimeDuration = TimeDuration::hours(72);
 pub struct LocalRuntimeEventStream {
     runs: Arc<Mutex<HashMap<Uuid, Arc<LocalRunEventStream>>>>,
     broadcast_capacity: usize,
+}
+
+struct LocalRuntimeEventTerminalWriter {
+    run_id: Uuid,
+    run: Arc<LocalRunEventStream>,
+}
+
+#[async_trait::async_trait]
+impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        event: RuntimeEventPayload,
+    ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
+        self.run
+            .append_terminal_if_missing_and_close(self.run_id, event)
+    }
 }
 
 struct LocalRunEventStream {
@@ -166,6 +182,78 @@ impl LocalRuntimeEventStream {
 }
 
 impl LocalRunEventStream {
+    fn append_terminal_if_missing_and_close(
+        &self,
+        run_id: Uuid,
+        event: RuntimeEventPayload,
+    ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
+        let incoming_reason = RuntimeEventCloseReason::from_terminal_event_type(&event.event_type)
+            .ok_or_else(|| {
+                anyhow!("runtime event stream terminal append requires a terminal event")
+            })?;
+        ensure_ephemeral_payload_size(&event.payload)?;
+        let run = self;
+
+        let (outcome, appended_event) = {
+            // `ring` is the stream's serialization point for append and close. Holding it for
+            // the terminal scan, optional append, and closure prevents concurrent EOF recovery
+            // retries from observing the same missing terminal.
+            let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
+            let existing_terminal_reason = ring.events.iter().find_map(|retained| {
+                RuntimeEventCloseReason::from_terminal_event_type(&retained.event_type)
+            });
+
+            if run.is_closed() {
+                if existing_terminal_reason.is_some() {
+                    return Ok(AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal);
+                }
+                return Err(anyhow!(
+                    "runtime event stream is closed without a terminal event"
+                ));
+            }
+
+            let (outcome, appended_event, close_reason) =
+                if let Some(existing_reason) = existing_terminal_reason {
+                    (
+                        AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
+                        None,
+                        existing_reason,
+                    )
+                } else {
+                    let sequence = run.next_sequence.load(Ordering::SeqCst);
+                    let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
+                    let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
+                    run.make_room_for(&mut ring, retained_bytes)?;
+                    run.next_sequence.store(sequence + 1, Ordering::SeqCst);
+                    *run.last_event_at
+                        .lock()
+                        .expect("runtime event last event lock poisoned") = envelope.occurred_at;
+                    ring.bytes = ring.bytes.saturating_add(retained_bytes);
+                    ring.events.push_back(envelope.clone());
+                    (
+                        AppendTerminalIfMissingAndCloseOutcome::Appended,
+                        Some(envelope),
+                        incoming_reason,
+                    )
+                };
+
+            let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
+            *run.closed_at
+                .lock()
+                .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
+            run.closed_sender.send_replace(Some(RuntimeEventClosure {
+                reason: close_reason,
+                final_sequence,
+            }));
+            (outcome, appended_event)
+        };
+
+        if let Some(envelope) = appended_event {
+            let _ = run.broadcaster.send(envelope);
+        }
+        Ok(outcome)
+    }
+
     fn new(policy: RuntimeEventStreamPolicy, broadcast_capacity: usize) -> Self {
         let (broadcaster, _) = broadcast::channel(broadcast_capacity);
         let (closed_sender, _) = watch::channel(None);
@@ -417,71 +505,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         run_id: Uuid,
         event: RuntimeEventPayload,
     ) -> Result<AppendTerminalIfMissingAndCloseOutcome> {
-        let incoming_reason = RuntimeEventCloseReason::from_terminal_event_type(&event.event_type)
-            .ok_or_else(|| {
-                anyhow!("runtime event stream terminal append requires a terminal event")
-            })?;
-        ensure_ephemeral_payload_size(&event.payload)?;
-        let run = self.run(run_id)?;
-
-        let (outcome, appended_event) = {
-            // `ring` is the stream's serialization point for append and close. Holding it for
-            // the terminal scan, optional append, and closure prevents concurrent EOF recovery
-            // retries from observing the same missing terminal.
-            let mut ring = run.ring.lock().expect("runtime event ring lock poisoned");
-            let existing_terminal_reason = ring.events.iter().find_map(|retained| {
-                RuntimeEventCloseReason::from_terminal_event_type(&retained.event_type)
-            });
-
-            if run.is_closed() {
-                if existing_terminal_reason.is_some() {
-                    return Ok(AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal);
-                }
-                return Err(anyhow!(
-                    "runtime event stream is closed without a terminal event"
-                ));
-            }
-
-            let (outcome, appended_event, close_reason) =
-                if let Some(existing_reason) = existing_terminal_reason {
-                    (
-                        AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
-                        None,
-                        existing_reason,
-                    )
-                } else {
-                    let sequence = run.next_sequence.load(Ordering::SeqCst);
-                    let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
-                    let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
-                    run.make_room_for(&mut ring, retained_bytes)?;
-                    run.next_sequence.store(sequence + 1, Ordering::SeqCst);
-                    *run.last_event_at
-                        .lock()
-                        .expect("runtime event last event lock poisoned") = envelope.occurred_at;
-                    ring.bytes = ring.bytes.saturating_add(retained_bytes);
-                    ring.events.push_back(envelope.clone());
-                    (
-                        AppendTerminalIfMissingAndCloseOutcome::Appended,
-                        Some(envelope),
-                        incoming_reason,
-                    )
-                };
-
-            let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
-            *run.closed_at
-                .lock()
-                .expect("runtime event closed_at lock poisoned") = Some(OffsetDateTime::now_utc());
-            run.closed_sender.send_replace(Some(RuntimeEventClosure {
-                reason: close_reason,
-                final_sequence,
-            }));
-            (outcome, appended_event)
-        };
-
-        if let Some(envelope) = appended_event {
-            let _ = run.broadcaster.send(envelope);
-        }
-        Ok(outcome)
+        self.run(run_id)?
+            .append_terminal_if_missing_and_close(run_id, event)
     }
 
     async fn subscribe(
@@ -490,6 +515,11 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         from_sequence: Option<i64>,
     ) -> Result<RuntimeEventSubscription> {
         let run = self.run(run_id)?;
+        let terminal_writer: Arc<dyn RuntimeEventTerminalWriter> =
+            Arc::new(LocalRuntimeEventTerminalWriter {
+                run_id,
+                run: Arc::clone(&run),
+            });
         let mut live_receiver = run.broadcaster.subscribe();
         let closure = run.closed_sender.subscribe();
         let replay = run.replay_from_ring(from_sequence, usize::MAX)?;
@@ -504,6 +534,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             drop(required_sender);
             drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
+                terminal_writer,
                 replay,
                 live_events,
                 closure,
@@ -516,6 +547,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             drop(required_sender);
             drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
+                terminal_writer,
                 replay,
                 live_events,
                 closure,
@@ -579,6 +611,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         });
 
         Ok(RuntimeEventSubscription {
+            terminal_writer,
             replay,
             live_events,
             closure,

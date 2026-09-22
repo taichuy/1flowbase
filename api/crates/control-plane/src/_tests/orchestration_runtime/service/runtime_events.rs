@@ -643,6 +643,7 @@ impl RuntimeEventStream for OpenTestRuntimeEventStream {
                 .push(sender);
         }
         Ok(RuntimeEventSubscription {
+            terminal_writer: std::sync::Arc::new(UnusedTerminalWriter),
             replay,
             live_events: crate::ports::RuntimeEventReceiver::from_unbounded(live_events),
             closure: closure_receiver,
@@ -1839,3 +1840,15 @@ async fn successful_live_debug_run_emits_flow_lifecycle_and_closes_runtime_strea
 
 #[path = "runtime_events/resource_budgets.rs"]
 mod resource_budgets;
+
+pub(super) struct UnusedTerminalWriter;
+
+#[async_trait::async_trait]
+impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {
+    async fn append_terminal_if_missing_and_close(
+        &self,
+        _event: control_plane::ports::RuntimeEventPayload,
+    ) -> anyhow::Result<control_plane::ports::AppendTerminalIfMissingAndCloseOutcome> {
+        anyhow::bail!("this fixture does not exercise subscription terminal writes")
+    }
+}
