@@ -178,27 +178,6 @@ export interface InstallConsolePluginResult {
   task: ConsolePluginTask;
 }
 
-export interface ConsoleHostInfrastructureProviderConfig {
-  installation_id: string;
-  extension_id: string;
-  provider_code: string;
-  display_name: string;
-  description: string | null;
-  runtime_status: string;
-  desired_state: string;
-  config_ref: string;
-  contracts: string[];
-  enabled_contracts: string[];
-  config_schema: ConsolePluginFormFieldSchema[];
-  config_json: Record<string, unknown>;
-  restart_required: boolean;
-}
-
-export interface SaveConsoleHostInfrastructureProviderConfigInput {
-  enabled_contracts: string[];
-  config_json: Record<string, unknown>;
-}
-
 export interface ConsoleCacheInspectionCapabilities {
   list_domains: boolean;
   list_entries: boolean;
@@ -582,13 +561,6 @@ export function getConsolePluginTask(taskId: string, baseUrl?: string) {
   });
 }
 
-export function listConsoleHostInfrastructureProviders(baseUrl?: string) {
-  return apiFetch<ConsoleHostInfrastructureProviderConfig[]>({
-    path: '/api/console/settings/host-infrastructure/providers',
-    baseUrl
-  });
-}
-
 export function getConsoleHostInfrastructureCacheOverview(baseUrl?: string) {
   return apiFetch<ConsoleHostInfrastructureCacheOverview>({
     path: '/api/console/settings/host-infrastructure/cache',
@@ -750,26 +722,6 @@ export function revealConsoleHostInfrastructureMemoryEntry(
     )}/entries/reveal`,
     method: 'POST',
     body: { entry_ref: entryRef, reveal_mode: revealMode },
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function saveConsoleHostInfrastructureProviderConfig(
-  installationId: string,
-  providerCode: string,
-  input: SaveConsoleHostInfrastructureProviderConfigInput,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<{
-    restart_required: boolean;
-    installation_desired_state: string;
-    provider_config_status: string;
-  }>({
-    path: `/api/console/settings/host-infrastructure/providers/${installationId}/${providerCode}/config`,
-    method: 'PUT',
-    body: input,
     csrfToken,
     baseUrl
   });

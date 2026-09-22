@@ -27,7 +27,8 @@ describe('frontstage page tree feature api', () => {
     expect(frontstagePageTreeQueryKey('workspace-1')).toEqual([
       'frontstage',
       'workspace-1',
-      'page-tree'
+      'page-tree',
+      '[null,null,null,[]]'
     ]);
   });
 

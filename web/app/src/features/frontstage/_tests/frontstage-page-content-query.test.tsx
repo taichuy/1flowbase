@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { configure, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const pageTreeApi = vi.hoisted(() => ({
@@ -54,6 +54,9 @@ import { AppRouterProvider } from '../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 
 const FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT = 15_000;
+// These assertions cross lazy route imports; the default one-second DOM wait
+// expires before a cold route has finished loading in an isolated worktree.
+configure({ asyncUtilTimeout: 10_000 });
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -197,9 +200,9 @@ describe('frontstage page content query route wiring', () => {
           'tab-page-1'
         );
       });
-      expect((await screen.findAllByText('页面 page-1')).length).toBeGreaterThan(
-        0
-      );
+      expect(
+        (await screen.findAllByText('页面 page-1')).length
+      ).toBeGreaterThan(0);
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
   );
@@ -307,9 +310,7 @@ describe('frontstage page content query route wiring', () => {
 
     renderApp('/frontstage/pages/page-1');
 
-    expect(
-      await screen.findByText('页面标签页配置不可用')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('页面标签页配置不可用')).toBeInTheDocument();
     expect(
       screen.getByText('当前页面必须且只能有一个默认标签页。')
     ).toBeInTheDocument();
@@ -386,15 +387,13 @@ describe('frontstage page content query route wiring', () => {
       renderApp('/frontstage');
 
       await waitFor(() => {
-        expect(window.location.pathname).toBe(
-          '/frontstage/pages/page-1'
-        );
+        expect(window.location.pathname).toBe('/frontstage/pages/page-1');
       });
       expect(window.location.pathname).not.toContain('workspace-1');
       expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'tab-page-1'
+        'workspace-1',
+        'page-1',
+        'tab-page-1'
       );
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT

@@ -32,6 +32,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import '../../../../shared/ui/structured-list/structured-list.css';
 
+import { settingsConsoleNavigationQueryKey } from '../../api/console-navigation';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
@@ -436,6 +437,9 @@ function GenericExtensionCenterSection({
 
   const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: settingsConsoleNavigationQueryKey
+      }),
       queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
       }),

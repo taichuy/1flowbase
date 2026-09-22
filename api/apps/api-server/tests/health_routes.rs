@@ -166,8 +166,6 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         api_server::extension_bus::compile_extension_boot_snapshot(
             std::sync::Arc::clone(&extension_graph),
             &extension_assembly,
-            store.clone(),
-            config.api_node_id.clone(),
         )
         .unwrap(),
     );

@@ -1,3 +1,11 @@
+import type {
+  ClientTrajectoryPage,
+  ClientTrajectoryOptions,
+  ProviderTrajectoryOptions,
+  ClientTrajectorySection,
+  ProviderTrajectoryPage,
+  ProviderTrajectoryBody
+} from '@1flowbase/api-client';
 import type { AgentFlowTraceItem } from '../../api/runtime';
 
 export interface ConversationLogTraceNodeSummary {
@@ -51,6 +59,7 @@ export interface ConversationLogTraceProjectionStatus {
 export interface ConversationLogTraceTree {
   projection_status?: ConversationLogTraceProjectionStatus;
   nodes: ConversationLogTraceNodeSummary[];
+  page_info?: ConversationLogTraceNodeChildrenPageInfo;
 }
 
 export interface ConversationLogTraceNodeChildrenPageInfo {
@@ -101,19 +110,43 @@ export interface ConversationLogRunOverview {
   flow_run: {
     id: string;
     status: string;
-    input_payload: Record<string, unknown>;
-    output_payload: Record<string, unknown>;
-    error_payload?: Record<string, unknown> | null;
     started_at: string;
     finished_at?: string | null;
   };
-  answer_snapshot?: {
-    text: string;
-    output_payload: Record<string, unknown>;
-  } | null;
 }
 
 export interface ConversationLogTraceLoader {
+  loadClientTrajectory?: (
+    runId: string,
+    nodeRunId?: string,
+    cursor?: number,
+    options?: ClientTrajectoryOptions
+  ) => Promise<ClientTrajectoryPage>;
+  loadClientTrajectorySection?: (
+    runId: string,
+    stepId: string,
+    section: string,
+    nodeRunId?: string,
+    cursor?: number
+  ) => Promise<ClientTrajectorySection>;
+  loadRunTrajectory?: (
+    runId: string,
+    cursor?: number,
+    options?: ProviderTrajectoryOptions
+  ) => Promise<ProviderTrajectoryPage>;
+  loadTrajectory?: (
+    runId: string,
+    nodeRunId: string,
+    cursor?: number,
+    options?: ProviderTrajectoryOptions
+  ) => Promise<ProviderTrajectoryPage>;
+  loadTrajectoryBody?: (
+    runId: string,
+    nodeRunId: string,
+    eventId: string,
+    cursor?: number,
+    view?: 'semantic' | 'protocol'
+  ) => Promise<ProviderTrajectoryBody>;
   loadTree: (runId: string) => Promise<ConversationLogTraceTree>;
   loadChildren: (
     runId: string,
@@ -127,7 +160,8 @@ export interface ConversationLogTraceLoader {
   loadDetail?: (
     runId: string,
     traceNodeId: string,
-    detailRefId: string
+    detailRefId: string,
+    section?: 'input_payload' | 'debug_payload' | 'output_payload'
   ) => Promise<ConversationLogTraceNodeDetail>;
   loadToolCallbackDetail?: (
     runId: string,
@@ -137,6 +171,10 @@ export interface ConversationLogTraceLoader {
 }
 
 export interface ConversationLogOverviewLoader {
+  loadPayload?: (
+    runId: string,
+    section: 'input_payload' | 'output_payload'
+  ) => Promise<Record<string, unknown>>;
   loadOverview: (runId: string) => Promise<ConversationLogRunOverview>;
 }
 

@@ -471,6 +471,7 @@ async fn live_debug_run_resumes_if_else_selected_branch_callback_only() {
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
             transport_connection_scope: None,
+            observation_context: None,
             native_transport: None,
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,

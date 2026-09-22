@@ -69,7 +69,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
                 .unwrap();
         assert_eq!(created.flow_run.input_payload, input.input_payload);
         let item = if i < 3 {
-            json!({"type":"custom_tool_call","id":format!("tool-{i}"),"call_id":format!("call-{i}"),"name":"exec","input":format!("console.log({i})")})
+            json!({"type":"custom_tool_call","id":format!("tool-{i}"),"call_id":format!("call-{i}"),"name":"exec","input":if i == 0 {format!("console.log({i})\0")} else {format!("console.log({i})")}})
         } else {
             json!({"type":"message","id":format!("message-{i}"),"role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"done"}]})
         };
@@ -239,7 +239,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     assert_eq!(
         detail_ids,
         std::iter::once(ids[0]).collect(),
-        "run message projection stays single-run; task convergence is served from the task row"
+        "business turn detail opens the owning task anchor"
     );
     let task = store
         .get_application_run_log_task(seeded.application_id, ids[0])
@@ -295,7 +295,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .find(|node| node.content_kind == "tool_callback")
         .unwrap();
     assert_eq!(tool.payload["request_payload"]["type"], "custom_tool_call");
-    assert_eq!(tool.payload["request_payload"]["input"], "console.log(0)");
+    assert_eq!(tool.payload["request_payload"]["input"], "console.log(0)\0");
     assert_eq!(
         tool.payload["callback_payload"]["type"],
         "custom_tool_call_output"
@@ -344,8 +344,12 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         .unwrap();
     assert_eq!(
         history.items.len(),
-        5,
-        "original conversation includes both tasks, excludes other credential"
+        2,
+        "business conversation includes both tasks, excludes other credential"
+    );
+    assert_eq!(
+        history.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+        vec![ids[0], ids[4]]
     );
     assert_eq!(
         store
@@ -414,10 +418,13 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             )
             .await
             .unwrap();
-        assert!(detail
-            .items
-            .iter()
-            .any(|item| item.content.as_deref() == Some("same question")));
+        assert!(
+            detail
+                .items
+                .iter()
+                .any(|item| item.query.as_deref() == Some("same question")),
+            "an ungrouped call still exposes its input as a business turn"
+        );
     }
     let final_page = store
         .list_application_run_logs_page(
@@ -472,6 +479,9 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
     let active = ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
         .await
         .unwrap();
+    let projection_before_read: serde_json::Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(m) order by id),'[]'::jsonb) from application_run_conversation_message_items m where flow_run_id=$1",
+    ).bind(active.flow_run.id).fetch_one(store.pool()).await.unwrap();
     let live_page = store
         .list_application_run_conversation_message_items_page(
             seeded.application_id,
@@ -484,13 +494,21 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    assert!(
-        live_page
-            .items
-            .iter()
-            .all(|item| item.flow_run_id == ids[0]),
-        "run message projection stays single-run"
+    assert_eq!(live_page.items.len(), 1, "one business turn per task");
+    let live_turn = &live_page.items[0];
+    assert_eq!(
+        live_turn.detail_run_id,
+        Some(ids[0]),
+        "detail keeps the task anchor"
     );
+    assert_eq!(
+        live_turn.flow_run_id, ids[3],
+        "retain the actual answer source run"
+    );
+    assert_eq!(live_turn.query.as_deref(), Some("same question"));
+    assert_eq!(live_turn.status, "running");
+    assert_eq!(live_turn.answer, None, "an active task has no final answer");
+    assert_eq!(live_turn.output_source.as_deref(), Some("none"));
     let live_task = store
         .get_application_run_log_task(seeded.application_id, ids[0])
         .await
@@ -502,16 +520,12 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             && live_task.outcome == "in_progress",
         "an active member keeps the task visibly in progress: {live_task:?}"
     );
-    let persisted: i64 = sqlx::query_scalar(
-        "select count(*) from application_run_conversation_message_items where flow_run_id=$1",
-    )
-    .bind(active.flow_run.id)
-    .fetch_one(store.pool())
-    .await
-    .unwrap();
+    let projection_after_read: serde_json::Value = sqlx::query_scalar(
+        "select coalesce(jsonb_agg(to_jsonb(m) order by id),'[]'::jsonb) from application_run_conversation_message_items m where flow_run_id=$1",
+    ).bind(active.flow_run.id).fetch_one(store.pool()).await.unwrap();
     assert_eq!(
-        persisted, 0,
-        "reading a live member must not persist a terminal projection"
+        projection_after_read, projection_before_read,
+        "reading a live task must not mutate its writer-owned projection"
     );
     input.external_user = Some(String::new());
     input.idempotency_key = Some("rework-empty-external-user".into());
@@ -556,8 +570,11 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         )
         .await
         .unwrap();
-    // #2035: the run projection stays single-run; the blank-user call is a task member.
-    assert!(live.items.iter().all(|item| item.flow_run_id == ids[0]));
+    // Empty external user joins the same business task, preserving its detail anchor.
+    assert_eq!(live.items.len(), 1);
+    assert_eq!(live.items[0].detail_run_id, Some(ids[0]));
+    assert_eq!(live.items[0].flow_run_id, ids[3]);
+    assert_eq!(live.items[0].answer, None);
     assert!(store
         .get_application_run_log_task(seeded.application_id, ids[0])
         .await
@@ -578,6 +595,19 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         durability: domain::RuntimeEventDurability::Durable,
         payload: json!({"item":{"type":"custom_tool_call","id":"tool-0","call_id":"call-0","name":"exec","input":"different payload"}}),
     }).await.unwrap();
+    let conflict_before_read: serde_json::Value = sqlx::query_scalar(
+        "select runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 and source_item_key='output:tool:call-0'",
+    ).bind(ids[0]).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        conflict_before_read["_log_conflicting"],
+        json!(true),
+        "the fact writer updates the original owner before any GET"
+    );
+    assert_eq!(
+        conflict_before_read["_source_item"]["input"],
+        json!("console.log(0)\0"),
+        "marking conflict must retain the original protocol evidence"
+    );
     store
         .list_application_run_conversation_message_items_page(
             seeded.application_id,

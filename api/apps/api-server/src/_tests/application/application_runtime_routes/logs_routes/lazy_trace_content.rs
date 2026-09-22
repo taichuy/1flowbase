@@ -62,6 +62,8 @@ async fn application_runtime_routes_log_trace_tree_loads_summary_children_and_co
     .await
     .unwrap();
 
+    flush_trace_fixture(&state).await;
+
     let trace_tree = app
         .clone()
         .oneshot(
@@ -181,12 +183,15 @@ async fn application_runtime_routes_log_trace_tree_loads_summary_children_and_co
 async fn application_runtime_routes_logs_include_public_run_identity_fields() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    fund_log_fixture(&app, &cookie, &csrf).await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
         seed_agent_flow_application(&app, &cookie, &csrf, &provider_instance_id).await;
     publish_application_public_api(&app, &cookie, &csrf, &application_id).await;
     let token = create_application_public_api_key(&app, &cookie, &csrf, &application_id).await;
 
+    // The empty start-node model_list publishes the default public model 1flowbase.
+    // It is distinct from the workflow provider model fixture_chat.
     let create = app
         .clone()
         .oneshot(
@@ -198,7 +203,7 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
                 .body(Body::from(
                     json!({
                         "query": "请总结退款政策",
-                        "model": "gpt-5.6-sol",
+                        "model": "1flowbase",
                         "title": "公开 API 退款总结",
                         "expand_id": "customer-42",
                         "execution": {
@@ -215,8 +220,14 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
         .await
         .unwrap();
 
-    assert_eq!(create.status(), StatusCode::CREATED);
+    let create_status = create.status();
     let create_body = to_bytes(create.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&create_body)
+    );
     let create_payload: Value = serde_json::from_slice(&create_body).unwrap();
     let flow_run_id = create_payload["data"]["id"].as_str().unwrap().to_string();
 
@@ -263,7 +274,7 @@ async fn application_runtime_routes_logs_include_public_run_identity_fields() {
     );
     assert_eq!(
         list_payload["data"]["items"][0]["requested_model_id"].as_str(),
-        Some("gpt-5.6-sol")
+        Some("1flowbase")
     );
     assert_eq!(
         list_payload["data"]["items"][0]["reasoning_effort"].as_str(),

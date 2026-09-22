@@ -494,7 +494,6 @@ fn deletion_conflict_code(reasons: &[String]) -> &'static str {
         Some("model_provider_instance") => "extension_model_provider_instance",
         Some("model_provider_preview") => "extension_model_provider_preview",
         Some("data_source_instance") => "extension_data_source_instance",
-        Some("host_infrastructure_config") => "extension_host_infrastructure_config",
         Some("application_js_selection") => "extension_application_js_selection",
         Some("application_source") => "extension_application_source",
         Some("mcp_import") => "extension_mcp_import",

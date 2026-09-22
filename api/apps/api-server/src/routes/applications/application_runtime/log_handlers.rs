@@ -128,68 +128,19 @@ pub async fn list_application_run_conversation_messages(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-async fn ensure_application_run_trace_projection_status(
+async fn read_application_run_trace_projection_status(
     store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     flow_run_id: Uuid,
 ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
-    let status =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            store,
-            flow_run_id,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        )
-        .await?;
-
-    if let Some(status) = status.as_ref() {
-        match status.status {
-            domain::ApplicationRunTraceProjectionStatus::Pending
-            | domain::ApplicationRunTraceProjectionStatus::Running
-            | domain::ApplicationRunTraceProjectionStatus::Failed => return Ok(status.clone()),
-            domain::ApplicationRunTraceProjectionStatus::Succeeded
-            | domain::ApplicationRunTraceProjectionStatus::Stale
-            | domain::ApplicationRunTraceProjectionStatus::Partial => {}
-        }
-    }
-
-    let source_watermark =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
-            store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    if !projection_status_needs_lazy_rebuild(status.as_ref(), &source_watermark) {
-        return status.ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into());
-    }
-
-    let source =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-            store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events =
-        <_ as OrchestrationRuntimeRepository>::list_runtime_events(store, flow_run_id, 0).await?;
-    let source =
-        enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
-    let projection = build_application_run_trace_projection(&source)?;
-    <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
+    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_read_status(
         store,
-        &projection,
-    )
-    .await?;
-
-    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-        store,
+        application_id,
         flow_run_id,
         APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     )
     .await?
-    .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into())
+    .ok_or_else(|| ControlPlaneError::NotFound("flow_run").into())
 }
 
 fn to_trace_projection_status_response(
@@ -214,6 +165,13 @@ fn to_trace_projection_status_response(
 fn application_run_log_response_for_trace_tree(
     application: &domain::ApplicationRecord,
     flow_run: &domain::FlowRunRecord,
+) -> application_logs::ApplicationRunLogResponse {
+    application_run_log_response_for_metadata(application, &flow_run.into())
+}
+
+fn application_run_log_response_for_metadata(
+    application: &domain::ApplicationRecord,
+    flow_run: &control_plane::ports::FlowRunMetadataReadModel,
 ) -> application_logs::ApplicationRunLogResponse {
     let application_type = application.application_type.as_str().to_string();
 
@@ -263,46 +221,15 @@ fn projection_is_succeeded(status: &domain::ApplicationRunTraceProjectionStatusR
     status.status == domain::ApplicationRunTraceProjectionStatus::Succeeded
 }
 
-fn answer_snapshot_for_log_overview(
-    overview: &ApplicationRunOverviewReadModel,
-) -> Option<AnswerSnapshotResponse> {
-    let (answer_snapshot_node_run, _) = split_answer_snapshot_node_run_records(&overview.node_runs);
-
-    if !flow_run_can_expose_answer_snapshot(&overview.flow_run.status) {
-        return None;
-    }
-
-    let waiting_node = (
-        overview.waiting_node_id.clone(),
-        overview.waiting_node_run_id.map(|value| value.to_string()),
-    );
-
-    answer_snapshot_node_run
-        .as_ref()
-        .and_then(|node_run| {
-            to_answer_snapshot_response_with_waiting_node(node_run, waiting_node.clone())
-        })
-        .or_else(|| {
-            to_flow_run_answer_snapshot_response_with_waiting_node(&overview.flow_run, waiting_node)
-        })
-}
-
 fn to_application_run_overview_response(
     application: &domain::ApplicationRecord,
     overview: ApplicationRunOverviewReadModel,
+    statistics: application_logs::ApplicationRunStatisticsResponse,
 ) -> ApplicationRunOverviewResponse {
-    let (_, current_visible_node_runs) =
-        split_answer_snapshot_node_run_records(&overview.node_runs);
-    let statistics = application_run_statistics_for_records(
-        &current_visible_node_runs,
-        overview.tool_callback_count,
-    );
-
     ApplicationRunOverviewResponse {
-        run: application_run_log_response_for_trace_tree(application, &overview.flow_run),
+        run: application_run_log_response_for_metadata(application, &overview.flow_run),
         statistics,
-        flow_run: to_flow_run_response(overview.flow_run.clone()),
-        answer_snapshot: answer_snapshot_for_log_overview(&overview),
+        flow_run: to_flow_run_metadata_response(overview.flow_run),
     }
 }
 

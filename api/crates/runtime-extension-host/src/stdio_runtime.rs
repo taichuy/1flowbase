@@ -129,6 +129,8 @@ struct ProviderWorkerProcess {
 struct StreamingCallContext {
     required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
     diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    protocol_observation:
+        Option<Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
     event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     host_calls: Option<ProviderHostCallContext>,
 }
@@ -157,7 +159,7 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(&executable_path, &mut process.stdin, request, false).await?;
         let mut timeout_state = ProviderStreamTimeoutState::new();
         let (completion_sender, mut completion_receiver) =
             tokio::sync::mpsc::unbounded_channel::<HostCallCompletion>();
@@ -315,6 +317,7 @@ impl ProviderWorker {
             timeout_limits,
             required_live_events,
             diagnostic_live_events,
+            None,
             event_observer,
             None,
         )
@@ -327,6 +330,9 @@ impl ProviderWorker {
         timeout_limits: &PluginRuntimeLimits,
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        protocol_observation: Option<
+            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+        >,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
         host_calls: Option<ProviderHostCallContext>,
     ) -> FrameworkResult<StreamingProviderOutput> {
@@ -342,6 +348,7 @@ impl ProviderWorker {
                 StreamingCallContext {
                     required_live_events,
                     diagnostic_live_events,
+                    protocol_observation,
                     event_observer,
                     host_calls,
                 },
@@ -434,7 +441,7 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(&executable_path, &mut process.stdin, request, false).await?;
 
         let mut timeout_state = ProviderStreamTimeoutState::new();
         while let Some(line) = next_provider_stdout_line(
@@ -469,7 +476,13 @@ impl ProviderWorker {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
         let process = self.ensure_process().await?;
-        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        write_worker_request(
+            &executable_path,
+            &mut process.stdin,
+            request,
+            context.protocol_observation.is_some(),
+        )
+        .await?;
 
         let mut events = Vec::new();
         let mut result = None;
@@ -529,6 +542,17 @@ impl ProviderWorker {
                 }
                 other => {
                     if let Some(event) = other.into_stream_event() {
+                        // Capture traffic is independent of provider progress and idle timers.
+                        if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            forward_provider_live_event(
+                                None,
+                                None,
+                                context.protocol_observation.as_deref(),
+                                event,
+                            )
+                            .await?;
+                            continue;
+                        }
                         outcome.observe(&event);
                         timeout_state.record_stream_event(&event);
                         if let Some(event_observer) = &context.event_observer {
@@ -537,10 +561,15 @@ impl ProviderWorker {
                         forward_provider_live_event(
                             context.required_live_events.as_ref(),
                             context.diagnostic_live_events.as_ref(),
+                            context.protocol_observation.as_deref(),
                             event.clone(),
                         )
                         .await?;
-                        events.push(event);
+                        // Formal observations are persisted by their independent sidecar owner; keeping
+                        // raw bodies in invocation output would duplicate them in node debug data.
+                        if !matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            events.push(event);
+                        }
                     }
                 }
             }
@@ -798,7 +827,7 @@ pub async fn call_executable(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serde_json::to_vec(request)
+        let mut payload = serialize_provider_stdio_request(request, false)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         payload.push(b'\n');
         stdin
@@ -816,11 +845,45 @@ pub async fn call_executable(
     parse_stdio_response(executable_path, &output.stdout, &output.stderr)
 }
 
+/// Negotiate additive events outside the strict ProviderInvocationInput schema.
+/// Older providers ignore unknown outer request fields; callers cannot supply this field.
+fn serialize_provider_stdio_request(
+    request: &ProviderStdioRequest,
+    capture_protocol: bool,
+) -> serde_json::Result<Vec<u8>> {
+    let mut wire = serde_json::to_value(request)?;
+    if capture_protocol
+        && matches!(
+            request.method,
+            extension_contracts::provider_contract::ProviderStdioMethod::Invoke
+        )
+        && matches!(
+            request.input.get("operation").and_then(Value::as_str),
+            None | Some("generate")
+        )
+    {
+        wire[extension_contracts::provider_contract::PROVIDER_HOST_CAPABILITIES_FIELD] =
+            serde_json::json!([
+                extension_contracts::provider_contract::PROVIDER_PROTOCOL_OBSERVATION_CAPABILITY
+            ]);
+    }
+    serde_json::to_vec(&wire)
+}
+
 async fn forward_provider_live_event(
     required: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
     diagnostic: Option<&tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    protocol_observation: Option<
+        &dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink,
+    >,
     event: ProviderStreamEvent,
 ) -> FrameworkResult<()> {
+    if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+        if let Some(sink) = protocol_observation {
+            sink.observe(event);
+        }
+        return Ok(());
+    }
     if matches!(event, ProviderStreamEvent::NativeEvent { .. }) {
         if let Some(diagnostic) = diagnostic {
             let _ = diagnostic.try_send(event);
@@ -885,8 +948,9 @@ async fn write_worker_request(
     executable_path: &Path,
     stdin: &mut ChildStdin,
     request: &ProviderStdioRequest,
+    capture_protocol: bool,
 ) -> FrameworkResult<()> {
-    let mut payload = serde_json::to_vec(request)
+    let mut payload = serialize_provider_stdio_request(request, capture_protocol)
         .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
     payload.push(b'\n');
     stdin
@@ -1187,7 +1251,7 @@ mod tests {
         let produced = expected.clone();
         let producer = tokio::spawn(async move {
             for event in produced {
-                forward_provider_live_event(Some(&required), Some(&diagnostic), event)
+                forward_provider_live_event(Some(&required), Some(&diagnostic), None, event)
                     .await
                     .unwrap();
             }
@@ -1211,21 +1275,97 @@ mod tests {
             protocol: "fixture".to_string(),
             event: serde_json::json!({"progress":1}),
         };
-        forward_provider_live_event(Some(&required), Some(&diagnostic), native.clone())
+        forward_provider_live_event(Some(&required), Some(&diagnostic), None, native.clone())
             .await
             .unwrap();
-        forward_provider_live_event(Some(&required), Some(&diagnostic), native)
+        forward_provider_live_event(Some(&required), Some(&diagnostic), None, native)
             .await
             .unwrap();
 
         let required_event = ProviderStreamEvent::ReasoningDelta {
             delta: "truth".to_string(),
         };
-        forward_provider_live_event(Some(&required), Some(&diagnostic), required_event.clone())
-            .await
-            .unwrap();
+        forward_provider_live_event(
+            Some(&required),
+            Some(&diagnostic),
+            None,
+            required_event.clone(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(required_receiver.recv().await, Some(required_event));
+    }
+
+    #[test]
+    fn protocol_observation_capability_is_outer_host_owned_and_legacy_compatible() {
+        let request = ProviderStdioRequest {
+            method: extension_contracts::provider_contract::ProviderStdioMethod::Invoke,
+            input: serde_json::json!({"model": "fixture", "run_context": {"host_capabilities": ["untrusted"]}}),
+        };
+        let wire: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&request, true).unwrap())
+                .unwrap();
+        assert_eq!(
+            wire["host_capabilities"],
+            serde_json::json!(["protocol_observation_v1"])
+        );
+        assert_eq!(wire["input"], request.input);
+        let off: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&request, false).unwrap())
+                .unwrap();
+        assert!(off.get("host_capabilities").is_none());
+        // The old stdio envelope ignores new outer metadata without changing strict input.
+        let legacy: ProviderStdioRequest = serde_json::from_value(wire).unwrap();
+        assert_eq!(legacy, request);
+        let unary = ProviderStdioRequest {
+            input: serde_json::json!({"operation":"compact"}),
+            ..request
+        };
+        let wire: Value =
+            serde_json::from_slice(&serialize_provider_stdio_request(&unary, true).unwrap())
+                .unwrap();
+        assert!(wire.get("host_capabilities").is_none());
+    }
+
+    #[tokio::test]
+    async fn protocol_observation_uses_only_independent_sink() {
+        #[derive(Debug, Default)]
+        struct Capture(std::sync::Mutex<Vec<ProviderStreamEvent>>);
+        impl runtime_core::runtime_backend::RuntimeProtocolObservationSink for Capture {
+            fn observe(&self, event: ProviderStreamEvent) {
+                self.0.lock().unwrap().push(event);
+            }
+        }
+        let capture = Capture::default();
+        let (required, mut receiver) = tokio::sync::mpsc::channel(1);
+        let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);
+        diagnostic
+            .try_send(ProviderStreamEvent::NativeEvent {
+                protocol: "fixture".into(),
+                event: serde_json::json!({}),
+            })
+            .unwrap();
+        let line = serde_json::json!({
+            "type": "protocol_observation", "protocol": "openai.responses",
+            "transport": "sse", "direction": "received", "kind": "response_body",
+            "body": "data: [DONE]\n\n", "encoding": "utf8", "status": null,
+        });
+        let event = serde_json::from_value::<ProviderRuntimeLine>(line.clone())
+            .unwrap()
+            .into_stream_event()
+            .unwrap();
+        assert_eq!(serde_json::to_value(&event).unwrap(), line);
+        forward_provider_live_event(
+            Some(&required),
+            Some(&diagnostic),
+            Some(&capture),
+            event.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(*capture.0.lock().unwrap(), vec![event]);
     }
 
     fn assert_expired_timeout_contract(

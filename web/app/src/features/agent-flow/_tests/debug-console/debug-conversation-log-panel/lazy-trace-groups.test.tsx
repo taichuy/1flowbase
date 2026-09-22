@@ -1,3 +1,4 @@
+import { openPayloadSection } from '../trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -28,7 +29,6 @@ function renderWithQueryClient(children: ReactNode) {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
-
 
 describe('debug conversation log panel', () => {
   beforeEach(async () => {
@@ -351,12 +351,14 @@ describe('debug conversation log panel', () => {
     const parentDetail = await screen.findByRole('region', {
       name: 'Parent LLM 节点详情'
     });
-    const agentsButton = await within(parentDetail).findByRole('button', {
+    const parentExecution = parentDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const agentsButton = await within(parentExecution).findByRole('button', {
       name: /Agents/
     });
     expect(agentsButton).toHaveAttribute('aria-expanded', 'false');
     expect(
-      within(parentDetail).queryByRole('region', {
+      within(parentExecution).queryByRole('region', {
         name: 'Agents 节点详情'
       })
     ).not.toBeInTheDocument();
@@ -373,7 +375,7 @@ describe('debug conversation log panel', () => {
         undefined
       )
     );
-    const subagentButton = await within(parentDetail).findByRole('button', {
+    const subagentButton = await within(parentExecution).findByRole('button', {
       name: /Research agent/
     });
     fireEvent.click(subagentButton);
@@ -384,16 +386,16 @@ describe('debug conversation log panel', () => {
         subagentNode.trace_node_id
       )
     );
-    await waitFor(() =>
-      expect(traceLoader.loadDetail).toHaveBeenCalledWith(
-        'run-application-log',
-        subagentNode.trace_node_id,
-        'node_run'
-      )
-    );
-    const subagentDetail = await within(parentDetail).findByRole('region', {
+    expect(traceLoader.loadDetail).not.toHaveBeenCalled();
+    const subagentDetail = await within(parentExecution).findByRole('region', {
       name: 'Research agent 节点详情'
     });
+    await openPayloadSection(subagentDetail, '输入');
+    await openPayloadSection(subagentDetail, '数据处理');
+    await openPayloadSection(subagentDetail, '输出');
+    await within(subagentDetail).findByLabelText('输入 JSON');
+    await within(subagentDetail).findByLabelText('数据处理 JSON');
+    await within(subagentDetail).findByLabelText('输出 JSON');
     expect(
       within(subagentDetail).getByLabelText('输入 JSON')
     ).toHaveTextContent('Investigate agent projection');
@@ -404,17 +406,15 @@ describe('debug conversation log panel', () => {
       within(subagentDetail).getByLabelText('数据处理 JSON')
     ).toHaveTextContent('anthropic');
     expect(
-      within(subagentDetail).getByLabelText('数据处理 JSON')
-    ).toHaveTextContent('Research agent short brief');
-    expect(
       within(subagentDetail).getByLabelText('输出 JSON')
     ).toHaveTextContent('Use a dedicated Agents group');
 
+    const subagentExecution = subagentDetail;
     fireEvent.click(
-      await within(subagentDetail).findByRole('button', { name: /Tools/ })
+      await within(subagentExecution).findByRole('button', { name: /Tools/ })
     );
     expect(
-      await within(subagentDetail).findByRole('button', { name: /Bash/ })
+      await within(subagentExecution).findByRole('button', { name: /Bash/ })
     ).toBeInTheDocument();
   }, 10_000);
 
@@ -624,7 +624,9 @@ describe('debug conversation log panel', () => {
     const nodeDetail = await screen.findByRole('region', {
       name: 'LLM 节点详情'
     });
-    const toolsButton = await within(nodeDetail).findByRole('button', {
+    const execution = nodeDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const toolsButton = await within(execution).findByRole('button', {
       name: /Tools/
     });
     expect(toolsButton).toHaveAttribute('aria-expanded', 'false');
@@ -644,11 +646,11 @@ describe('debug conversation log panel', () => {
       )
     );
     expect(
-      within(nodeDetail).queryByRole('region', {
+      within(execution).queryByRole('region', {
         name: 'Tools 节点详情'
       })
     ).not.toBeInTheDocument();
-    const toolCallback = await within(nodeDetail).findByRole('button', {
+    const toolCallback = await within(execution).findByRole('button', {
       name: /refund_policy_lookup/
     });
     expect(toolCallback).toHaveTextContent('1.23 s');
@@ -659,7 +661,7 @@ describe('debug conversation log panel', () => {
     expect(toolMode).toHaveTextContent('fusion');
     expect(toolMode).not.toHaveClass('ant-tag');
     expect(
-      within(nodeDetail).queryByRole('region', {
+      within(execution).queryByRole('region', {
         name: /refund_policy_lookup 节点详情/
       })
     ).not.toBeInTheDocument();
@@ -672,7 +674,7 @@ describe('debug conversation log panel', () => {
         'tool_callback:call-refund-policy'
       )
     );
-    const toolDetail = await within(nodeDetail).findByRole('region', {
+    const toolDetail = await within(execution).findByRole('region', {
       name: /refund_policy_lookup 节点详情/
     });
     await waitFor(() => expect(toolCallback).toHaveTextContent('fusion'));

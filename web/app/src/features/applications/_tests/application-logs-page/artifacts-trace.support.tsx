@@ -231,8 +231,22 @@ export function runOverviewFromDetail(detail: ApplicationRunDetail) {
       unique_node_count: detail.node_runs.length,
       tool_callback_count: detail.callback_tasks.length
     },
-    flow_run: detail.flow_run,
-    answer_snapshot: detail.answer_snapshot ?? null
+    flow_run: {
+      id: detail.flow_run.id,
+      application_id: detail.flow_run.application_id,
+      flow_id: detail.flow_run.flow_id,
+      draft_id: detail.flow_run.draft_id,
+      compiled_plan_id: detail.flow_run.compiled_plan_id,
+      run_mode: detail.flow_run.run_mode,
+      status: detail.flow_run.status,
+      target_node_id: detail.flow_run.target_node_id,
+      title: detail.flow_run.title,
+      created_by: detail.flow_run.created_by,
+      started_at: detail.flow_run.started_at,
+      finished_at: detail.flow_run.finished_at,
+      created_at: detail.flow_run.created_at,
+      updated_at: detail.flow_run.updated_at
+    }
   };
 }
 

@@ -1,3 +1,7 @@
+use super::client_observer::{self, CaptureGuard};
+use control_plane::client_trajectory::{
+    ClientTrajectoryFrameKind, ClientTrajectoryRecorder, ClientTrajectoryTransport,
+};
 use std::sync::Arc;
 
 use axum::{
@@ -431,7 +435,10 @@ async fn create_response_for_endpoint(
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
 ) -> Result<Response, OpenAiRouteError> {
-    match dispatch_response_for_endpoint(
+    let recorder = client_observer::recorder(&state, ClientTrajectoryTransport::Http);
+    recorder.record(ClientTrajectoryFrameKind::Request, &body);
+    let capture = CaptureGuard::new(recorder.clone());
+    let result = dispatch_response_for_endpoint(
         state,
         headers,
         OpenAiResponseDispatchRequest {
@@ -441,20 +448,24 @@ async fn create_response_for_endpoint(
             endpoint,
             delivery: OpenAiResponseDelivery::Http,
             transport_connection_scope: None,
+            recorder: Some(recorder),
         },
         None,
     )
-    .await?
-    {
-        OpenAiResponseDispatch::Http(response) => Ok(response),
-        OpenAiResponseDispatch::TypedEvents(_) => {
-            Err(OpenAiRouteError::Native(native::NativeApiError::new(
+    .await;
+    let response = match result {
+        Err(error) => error.into_response(),
+        Ok(OpenAiResponseDispatch::Http(response)) => response,
+        Ok(OpenAiResponseDispatch::TypedEvents(_)) => {
+            OpenAiRouteError::Native(native::NativeApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "openai_response_delivery_mismatch",
                 "OpenAI Responses HTTP delivery produced a typed turn",
-            )))
+            ))
+            .into_response()
         }
-    }
+    };
+    Ok(client_observer::observe_response(response, capture))
 }
 
 pub(crate) async fn prepare_typed_response_turn(
@@ -463,6 +474,7 @@ pub(crate) async fn prepare_typed_response_turn(
     headers: HeaderMap,
     body: Bytes,
     transport_connection_scope: String,
+    recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
     match dispatch_response_for_endpoint(
         state,
@@ -474,6 +486,7 @@ pub(crate) async fn prepare_typed_response_turn(
             endpoint: OpenAiResponsesEndpoint::Responses,
             delivery: OpenAiResponseDelivery::TypedEvents,
             transport_connection_scope: Some(transport_connection_scope),
+            recorder,
         },
         Some(principal),
     )
@@ -497,6 +510,7 @@ struct OpenAiResponseDispatchRequest {
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
     transport_connection_scope: Option<String>,
+    recorder: Option<ClientTrajectoryRecorder>,
 }
 
 async fn dispatch_response_for_endpoint(
@@ -512,6 +526,7 @@ async fn dispatch_response_for_endpoint(
         endpoint,
         delivery,
         transport_connection_scope,
+        recorder,
     } = request;
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
@@ -675,6 +690,14 @@ async fn dispatch_response_for_endpoint(
             let uses_native_transport = native_transport.is_some();
             command.native_transport = native_transport;
             command.transport_connection_scope = transport_connection_scope.clone();
+            command.observation_context = recorder.as_ref().map(|recorder| {
+                control_plane_contracts::ports::WorkflowObservationContext {
+                    client_request_id: recorder.capture_id(),
+                    context_flow_run_id: previous_flow_run_id,
+                    context_response_id: previous_response_id.clone(),
+                    is_resume: true,
+                }
+            });
             match compat_sse::prepare_compatible_resume_for_actor(
                 state.clone(),
                 application_actor.clone(),
@@ -703,11 +726,12 @@ async fn dispatch_response_for_endpoint(
                         };
                         return match delivery {
                             OpenAiResponseDelivery::Http => {
-                                compatibility_interface::invoke_stream_with_principal(
+                                compatibility_interface::invoke_client_stream_with_principal(
                                     state,
                                     authentication_binding_id,
                                     principal,
                                     input,
+                                    recorder.clone(),
                                     compat_sse::openai_responses_interface_projection_with_mode(
                                         model,
                                         previous_response_id,
@@ -761,9 +785,13 @@ async fn dispatch_response_for_endpoint(
                         },
                     )
                     .await?;
-                    let response =
-                        collect_blocking_native_response(invocation, model, previous_response_id)
-                            .await?;
+                    let response = collect_blocking_native_response(
+                        invocation,
+                        model,
+                        previous_response_id,
+                        recorder.as_ref(),
+                    )
+                    .await?;
                     return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
                 }
                 Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { recovery }) => {
@@ -818,6 +846,16 @@ async fn dispatch_response_for_endpoint(
     request
         .metadata
         .set_transport_connection_scope(transport_connection_scope);
+    request
+        .metadata
+        .set_observation_context(recorder.as_ref().map(|recorder| {
+            control_plane_contracts::ports::WorkflowObservationContext {
+                client_request_id: recorder.capture_id(),
+                context_flow_run_id: previous_flow_run_id,
+                context_response_id: previous_response_id.clone(),
+                is_resume: false,
+            }
+        }));
     let operation = *request.execution.execution_operation();
     attach_compact_provider_transport_payload(
         &mut request,
@@ -920,9 +958,13 @@ async fn dispatch_response_for_endpoint(
                     },
                 )
                 .await?;
-                let response =
-                    collect_blocking_native_response(invocation, model, previous_response_id)
-                        .await?;
+                let response = collect_blocking_native_response(
+                    invocation,
+                    model,
+                    previous_response_id,
+                    recorder.as_ref(),
+                )
+                .await?;
                 info!(
                     route,
                     auth_source,
@@ -944,7 +986,7 @@ async fn dispatch_response_for_endpoint(
                     previous_response_id,
                     projection_mode,
                 );
-                let response = compatibility_interface::invoke_stream_with_principal(
+                let response = compatibility_interface::invoke_client_stream_with_principal(
                     state,
                     stream_binding_id,
                     principal,
@@ -960,6 +1002,7 @@ async fn dispatch_response_for_endpoint(
                             ),
                         },
                     },
+                    recorder.clone(),
                     projection,
                 )
                 .await?;
@@ -1030,6 +1073,9 @@ async fn dispatch_response_for_endpoint(
                 },
             )
             .await?;
+            if let Some(recorder) = recorder.as_ref() {
+                recorder.bind_run(run.id, None);
+            }
             let result = match run.operation_terminal.as_ref() {
                 Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
                 _ => return Err(native::blocking_run_projection_error(&run).into()),
@@ -1304,6 +1350,7 @@ fn openai_resume_command(
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
         transport_connection_scope: None,
+        observation_context: None,
         reserved_attempt_id: None,
         native_transport: None,
         bearer_token: bearer_token.to_string(),
@@ -1477,6 +1524,7 @@ async fn collect_blocking_native_response(
     invocation: compatibility_interface::CompatibilityTypedStreamInvocation,
     model: String,
     previous_response_id: Option<String>,
+    recorder: Option<&ClientTrajectoryRecorder>,
 ) -> Result<OpenAiResponsesObject, OpenAiRouteError> {
     let (mut events, completion) = invocation.into_parts();
     // The typed turn already applies the resume sequence boundary. Keep the
@@ -1487,7 +1535,15 @@ async fn collect_blocking_native_response(
     // the tool deliveries are projected together with that single body.
     let mut deliveries = Vec::new();
     while let Some(event) = events.recv().await {
-        let (_, envelope, delivery) = event.into_parts();
+        let (run, envelope, delivery) = event.into_parts();
+        if let Some(recorder) = recorder {
+            recorder.bind_run(run.id, None);
+            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                if let Some(node_run_id) = envelope.node_run_id {
+                    recorder.link_llm_node(run.id, node_run_id);
+                }
+            }
+        }
         collect_blocking_response_output_item(&mut items, &envelope.event_type, &envelope.payload);
         deliveries.extend(delivery);
     }
@@ -1536,6 +1592,9 @@ async fn collect_blocking_native_response(
             .into());
         }
     };
+    if let Some(recorder) = recorder {
+        recorder.bind_run(run.id, None);
+    }
     let response =
         to_openai_responses_response_with_native_items(run, model, previous_response_id, items)?;
     let _receipt = receipt.projected();

@@ -33,9 +33,9 @@ fn root_console_navigation_sees_all_builtin_items() {
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
-    assert_eq!(navigation.route_definitions.len(), 21);
-    assert_eq!(navigation.navigation_items.len(), 21);
-    assert_eq!(navigation.permission_bindings.len(), 21);
+    assert_eq!(navigation.route_definitions.len(), 20);
+    assert_eq!(navigation.navigation_items.len(), 20);
+    assert_eq!(navigation.permission_bindings.len(), 20);
     assert!(item_ids.contains(&"home"));
     assert!(!item_ids.contains(&"embedded-apps"));
     assert!(item_ids.contains(&"templates"));
@@ -45,7 +45,7 @@ fn root_console_navigation_sees_all_builtin_items() {
     assert!(item_ids.contains(&"settings.auth-center"));
     assert!(item_ids.contains(&"settings.system-runtime"));
     assert!(item_ids.contains(&"settings.backups"));
-    assert!(item_ids.contains(&"settings.host-infrastructure"));
+    assert!(!item_ids.contains(&"settings.host-infrastructure"));
     assert!(item_ids.contains(&"settings.memory-observation"));
     assert!(item_ids.contains(&"settings.files"));
     assert!(item_ids.contains(&"settings.data-models"));
@@ -81,7 +81,6 @@ fn settings_members_route_actor_sees_only_members_settings_entries() {
 fn explicit_settings_feature_actors_see_their_registered_navigation_item() {
     for feature in [
         "auth-center",
-        "host-infrastructure",
         "memory-observation",
         "applications",
         "files",

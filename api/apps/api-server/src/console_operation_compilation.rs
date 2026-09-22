@@ -11,7 +11,6 @@ pub(crate) const COMPILED_CONSOLE_OPERATION_SNAPSHOT_SCHEMA_V1: &str =
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConsoleBindingOwnerKind {
     Family,
-    HostExtension,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

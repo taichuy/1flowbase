@@ -1,3 +1,11 @@
+import {
+  fetchClientTrajectory,
+  fetchClientTrajectorySection,
+  fetchProviderTrajectory,
+  fetchProviderTrajectoryBody,
+  fetchRunTrajectory,
+  fetchRunPayload
+} from '../api/trajectory';
 import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
@@ -1180,6 +1188,48 @@ export function ApplicationLogsPage({
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
               traceLoader={{
+                loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
+                  fetchClientTrajectory(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    cursor,
+                    options
+                  ),
+                loadClientTrajectorySection: (
+                  runId,
+                  stepId,
+                  section,
+                  nodeRunId,
+                  cursor
+                ) =>
+                  fetchClientTrajectorySection(
+                    applicationId,
+                    runId,
+                    stepId,
+                    section,
+                    nodeRunId,
+                    cursor
+                  ),
+                loadRunTrajectory: (runId, cursor, options) =>
+                  fetchRunTrajectory(applicationId, runId, cursor, options),
+                loadTrajectory: (runId, nodeRunId, cursor, options) =>
+                  fetchProviderTrajectory(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    cursor,
+                    options
+                  ),
+                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
+                  fetchProviderTrajectoryBody(
+                    applicationId,
+                    runId,
+                    nodeRunId,
+                    eventId,
+                    cursor,
+                    view
+                  ),
                 loadTree: (runId) =>
                   fetchApplicationRunTraceTree(applicationId, runId),
                 loadChildren: (runId, traceNodeId, cursor) =>
@@ -1195,12 +1245,13 @@ export function ApplicationLogsPage({
                     runId,
                     traceNodeId
                   ),
-                loadDetail: (runId, traceNodeId, detailRefId) =>
+                loadDetail: (runId, traceNodeId, detailRefId, section) =>
                   fetchApplicationRunTraceNodeDetail(
                     applicationId,
                     runId,
                     traceNodeId,
-                    detailRefId
+                    detailRefId,
+                    section
                   ),
                 loadToolCallbackDetail: (runId, traceNodeId, toolCallId) =>
                   fetchApplicationRunTraceToolCallbackContent(
@@ -1211,6 +1262,8 @@ export function ApplicationLogsPage({
                   )
               }}
               overviewLoader={{
+                loadPayload: (runId, section) =>
+                  fetchRunPayload(applicationId, runId, section),
                 loadOverview: (runId) =>
                   fetchApplicationRunOverview(applicationId, runId)
               }}
@@ -1260,6 +1313,12 @@ export function ApplicationLogsPage({
         >
           <ApplicationRunDetailPanel
             applicationId={applicationId}
+            requested_model_id={
+              runs.find((run) => run.id === selectedRunId)?.requested_model_id
+            }
+            reasoning_effort={
+              runs.find((run) => run.id === selectedRunId)?.reasoning_effort
+            }
             logConversationId={
               runs.find((run) => run.id === selectedRunId)?.log_conversation_id
             }

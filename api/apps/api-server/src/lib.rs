@@ -500,8 +500,6 @@ async fn app_and_runtime_host_from_config(
     let extension_boot_snapshot = Arc::new(extension_bus::compile_extension_boot_snapshot(
         Arc::clone(&extension_graph),
         &extension_assembly,
-        store.clone(),
-        config.api_node_id.clone(),
     )?);
     let managed_base_modules = extension_assembly.module_descriptors().to_vec();
     let active_host_extensions = extension_assembly.into_host_extension_manifests();
@@ -797,10 +795,6 @@ async fn app_and_runtime_host_from_config(
             Some(interface_snapshot.as_ref()),
             config.plugin_upload_max_bytes,
         )?;
-    routes::host_infrastructure::interface_operation::validate_console_registry(
-        interface_snapshot.as_ref(),
-        &compiled_console_plan.console_operation_registry,
-    )?;
     control_plane::role::sync_console_permission_catalog(
         &store,
         compiled_console_plan.console_operation_registry.inventory(),
@@ -909,6 +903,7 @@ async fn app_and_runtime_host_from_config(
         .await?;
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
+    crate::workers::trace_projection::spawn_trace_projection_worker(state.clone());
     crate::workers::billing::spawn_billing_worker(state.clone());
     provider_runtime.start_transport_session_scheduler();
     #[cfg(not(test))]

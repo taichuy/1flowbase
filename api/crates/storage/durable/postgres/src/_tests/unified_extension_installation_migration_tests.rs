@@ -171,7 +171,6 @@ async fn issue_1566_ac_003_all_installation_references_target_the_unified_root()
         "data_source_instances",
         "extension_artifact_instances",
         "frontend_block_catalog",
-        "host_infrastructure_provider_configs",
         "js_dependency_registry",
         "mcp_extension_bundle_imports",
         "model_provider_instances",

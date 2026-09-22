@@ -12,9 +12,9 @@ use control_plane::{
     system_recovery::{recovery_plan_digest, RecoveryPlan},
 };
 use domain::{BackupJobId, BackupSetId, ContentDigest, RecoveryJobId};
-use futures_util::stream;
+use futures_util::{stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -25,6 +25,7 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
+const CATALOG: &str = "system_backups.catalog";
 const CREATE: &str = "system_backups.create";
 const DELETE: &str = "system_backups.delete";
 const DETAIL: &str = "system_backups.detail";
@@ -52,6 +53,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(list_backups, owned(LIST))
                 .post(create_backup, owned(CREATE))
                 .coordinator_control(),
+        )
+        .route(
+            "/settings/system-backups/catalog",
+            console_get(get_catalog, owned(CATALOG)),
         )
         .route(
             "/settings/system-backups/import",
@@ -93,6 +98,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BackupSetSummaryResponse {
+    pub backup_kind: String,
     pub backup_set_id: BackupSetId,
     pub exact_backup_name: String,
     pub created_at: String,
@@ -201,7 +207,16 @@ pub struct BackupJobStatusResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BackupSelectionRequest {
+    #[schema(value_type = Vec<Object>)]
+    pub features: Vec<control_plane_contracts::system_backup::selective::SelectiveBackupSelection>,
+    pub include_file_bytes: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateBackupRequest {
+    pub selection: BackupSelectionRequest,
     /// Optional user-chosen password. Omit it for the default portable, unprotected backup.
     pub backup_password: Option<String>,
 }
@@ -214,6 +229,10 @@ pub struct BackupVerificationResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RecoveryPreflightResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub selective:
+        Option<control_plane_contracts::system_backup::selective::SelectiveBackupPreview>,
     pub backup_set_id: BackupSetId,
     pub plan_digest: String,
     pub compatible: bool,
@@ -241,6 +260,8 @@ pub struct RecoveryReauthResponse {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRecoveryIntentRequest {
+    #[serde(default)]
+    pub confirm_missing_plugins: bool,
     pub challenge_token: Uuid,
     pub exact_backup_name: String,
     pub plan_digest: String,
@@ -249,6 +270,7 @@ pub struct CreateRecoveryIntentRequest {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RecoveryIntentResponse {
+    pub restart_required: bool,
     pub intent_id: Uuid,
     pub recovery_job_id: RecoveryJobId,
     pub backup_set_id: BackupSetId,
@@ -276,6 +298,31 @@ pub struct RecoveryStatusQuery {
     pub recovery_job_id: Option<Uuid>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupCatalogResponse {
+    #[schema(value_type = Vec<Object>)]
+    pub items: Vec<control_plane_contracts::system_backup::selective::SelectiveBackupCategory>,
+}
+
+#[utoipa::path(get, path = "/api/console/settings/system-backups/catalog", responses((status = 200, body = BackupCatalogResponse)))]
+pub async fn get_catalog(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<BackupCatalogResponse>>, ApiError> {
+    let interface::SystemBackupsOutput::Catalog(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.catalog.get.v1",
+        interface::SystemBackupsInput::Catalog,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
 #[utoipa::path(get, path = "/api/console/settings/system-backups", responses((status = 200, body = BackupSetListResponse)))]
 pub async fn list_backups(
     State(state): State<Arc<ApiState>>,
@@ -295,18 +342,19 @@ pub async fn list_backups(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[utoipa::path(post, path = "/api/console/settings/system-backups", responses((status = 202, body = QueuedBackupResponse)))]
+#[utoipa::path(post, path = "/api/console/settings/system-backups", request_body = CreateBackupRequest, responses((status = 202, body = QueuedBackupResponse)))]
 pub async fn create_backup(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    request: Option<Json<CreateBackupRequest>>,
+    Json(request): Json<CreateBackupRequest>,
 ) -> Result<(StatusCode, Json<ApiSuccess<QueuedBackupResponse>>), ApiError> {
     let interface::SystemBackupsOutput::Created(response) = invoke(
         state,
         headers,
         "http.console.settings.system-backups.create.v1",
         interface::SystemBackupsInput::Create {
-            backup_password: request.and_then(|request| request.0.backup_password),
+            backup_password: request.backup_password,
+            selection: request.selection,
         },
         true,
     )
@@ -408,7 +456,7 @@ pub async fn verify_backup(
 pub async fn import_backup(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
     if headers
         .get(header::CONTENT_TYPE)
@@ -421,12 +469,35 @@ pub async fn import_backup(
         .get(BACKUP_PASSWORD_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    let byte_count = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let (reader, mut writer) = tokio::io::duplex(256 * 1024);
+    let (start, started) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        if started.await.is_err() {
+            return;
+        }
+        let mut chunks = body.into_data_stream();
+        while let Some(chunk) = chunks.next().await {
+            let Ok(chunk) = chunk else {
+                return;
+            };
+            if writer.write_all(&chunk).await.is_err() {
+                return;
+            }
+        }
+        let _ = writer.shutdown().await;
+    });
     let interface::SystemBackupsOutput::Imported(response) = invoke(
         state,
         headers,
         "http.console.settings.system-backups.import.v1",
         interface::SystemBackupsInput::Import {
-            bytes: body.to_vec(),
+            reader,
+            start,
+            byte_count,
             backup_password,
         },
         true,
@@ -743,6 +814,7 @@ fn preflight_response(plan: &RecoveryPlan) -> Result<RecoveryPreflightResponse, 
     let digest = recovery_plan_digest(plan)
         .map_err(|_| ControlPlaneError::Conflict("recovery_plan_digest"))?;
     Ok(RecoveryPreflightResponse {
+        selective: plan.selective.clone(),
         backup_set_id: plan.backup_set_id,
         plan_digest: digest.as_str().to_owned(),
         compatible: plan.is_compatible(),

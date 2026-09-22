@@ -387,8 +387,18 @@ async fn application_runtime_routes_logs_archive_import_accepts_zip_format() {
     let (overview_status, overview_payload) =
         get_run_overview(&app, &cookie, &application_id, target_run_id).await;
     assert_eq!(overview_status, StatusCode::OK, "{}", overview_payload);
+    assert!(
+        overview_payload["data"]["flow_run"]
+            .get("input_payload")
+            .is_none(),
+        "overview remains body-free after import"
+    );
+    let (reexport_status, reexport_bytes) =
+        get_run_archive(&app, &cookie, &application_id, &target_run_id, 1).await;
+    assert_eq!(reexport_status, StatusCode::OK);
+    let reexport: Value = serde_json::from_slice(&reexport_bytes).unwrap();
     assert_eq!(
-        overview_payload["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        reexport["entries"][0]["flow_run"]["input_payload"]["node-start"]["query"],
         json!("zip import test")
     );
 }

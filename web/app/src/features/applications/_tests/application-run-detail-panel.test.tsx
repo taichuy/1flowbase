@@ -29,7 +29,20 @@ const runtimeApi = vi.hoisted(() => ({
       'conversation-messages',
       input?.limit ?? 'default'
     ] as const,
-  fetchApplicationRunConversationMessages: vi.fn()
+  fetchApplicationRunConversationMessages: vi.fn(),
+  applicationLogConversationMessagesQueryKey: (
+    applicationId: string,
+    conversationId: string,
+    input?: { limit?: number }
+  ) =>
+    [
+      'applications',
+      applicationId,
+      'log-conversation',
+      conversationId,
+      input?.limit ?? 'default'
+    ] as const,
+  fetchApplicationLogConversationMessages: vi.fn()
 }));
 
 const debugConsoleState = vi.hoisted(() => ({
@@ -91,6 +104,8 @@ type ConversationItemInput = {
   is_current?: boolean;
   output_source?:
     | 'provider_output_item'
+    | 'projection_timeout'
+    | 'waiting_callback'
     | 'persisted_answer'
     | 'error'
     | 'none';
@@ -177,46 +192,112 @@ describe('ApplicationRunDetailPanel', () => {
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
     runtimeApi.fetchApplicationRunConversationMessages.mockReset();
+    runtimeApi.fetchApplicationLogConversationMessages.mockReset();
     debugConsoleState.latestMessages = [];
   });
 
-  test('AC-001/AC-003 renders a UI-only bot message for waiting callback runs with no answer and keeps the detail action', async () => {
-    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
-      conversationPage([
-        {
-          status: 'waiting_callback',
-          query: '> 要我按 A + B1 动手吗？',
-          answer: null,
-          can_open_detail: true
-        }
-      ])
+  test('#2105 opens the complete series at its latest five turns and refetches on reopen', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+    });
+    const page = (prefix: string) =>
+      conversationPage(
+        Array.from({ length: 5 }, (_, index) => ({
+          message_id: `turn-${index}`,
+          run_id: `run-${index}`,
+          detail_run_id: `run-${index}`,
+          status: 'succeeded',
+          query: `${prefix} question ${index}`,
+          answer: `${prefix} answer ${index}`
+        }))
+      );
+    runtimeApi.fetchApplicationLogConversationMessages
+      .mockResolvedValueOnce(page('first'))
+      .mockResolvedValueOnce(page('latest'));
+    const surface = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <App>
+          <ApplicationRunDetailPanel
+            applicationId="app-1"
+            runId={open ? 'old-selected-run' : null}
+            logConversationId="series-1"
+            onClose={() => {}}
+          />
+        </App>
+      </QueryClientProvider>
     );
-    const { onOpenMessageLog } = renderPanel({});
-
+    const view = render(surface(true));
+    expect(await screen.findByText('first answer 4')).toBeInTheDocument();
+    expect(screen.getAllByTestId('message-user')).toHaveLength(5);
+    expect(screen.getAllByTestId('message-assistant')).toHaveLength(5);
     expect(
-      await screen.findByText('等待 Callback 回填中，暂时还没有输出。')
-    ).toBeInTheDocument();
-    expect(screen.getByText('> 要我按 A + B1 动手吗？')).toBeInTheDocument();
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledWith('app-1', 'series-1', { limit: 5 });
+    expect(
+      runtimeApi.fetchApplicationRunConversationMessages
+    ).not.toHaveBeenCalled();
+    view.rerender(surface(false));
+    view.rerender(surface(true));
+    expect(await screen.findByText('latest answer 4')).toBeInTheDocument();
+    expect(
+      runtimeApi.fetchApplicationLogConversationMessages
+    ).toHaveBeenCalledTimes(2);
+  });
 
-    const assistantMessage = screen.getByTestId('message-assistant');
-    expect(assistantMessage).toHaveAttribute('data-can-open-detail', 'true');
-    fireEvent.click(
-      within(assistantMessage).getByRole('button', {
-        name: 'open-assistant-run-1'
-      })
-    );
+  test.each([
+    'waiting_callback',
+    'waiting_human',
+    'running',
+    'failed',
+    'cancelled'
+  ])(
+    '#2105 %s retains the user input without inventing an assistant answer',
+    async (status) => {
+      runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+        conversationPage([
+          { status, query: 'Review this change', answer: null }
+        ])
+      );
+      renderPanel({});
+      expect(await screen.findByText('Review this change')).toBeInTheDocument();
+      expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    }
+  );
 
-    await waitFor(() => {
+  test.each([
+    ['waiting_callback', 'waiting_callback'],
+    ['Timeout', 'projection_timeout'],
+    ['最后一次模型输出', 'projection_timeout']
+  ] as const)(
+    'renders backend projection %s with its log entry',
+    async (answer, output_source) => {
+      runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
+        conversationPage([
+          {
+            status: 'waiting_callback',
+            query: '继续',
+            answer,
+            output_source,
+            can_open_detail: true
+          }
+        ])
+      );
+      const onOpenMessageLog = vi.fn();
+      renderPanel({ onOpenMessageLog });
+      expect(await screen.findByText(answer)).toBeInTheDocument();
+      expect(screen.getAllByTestId('message-assistant')).toHaveLength(1);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'open-assistant-run-1' })
+      );
       expect(onOpenMessageLog).toHaveBeenCalledWith(
         expect.objectContaining({
-          role: 'assistant',
-          content: '等待 Callback 回填中，暂时还没有输出。',
           detailRunId: 'run-1',
-          canOpenDetail: true
+          canOpenDetail: true,
+          content: answer
         })
       );
-    });
-  });
+    }
+  );
 
   test('AC-002 does not synthesize a bot message for succeeded runs without an answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
@@ -303,7 +384,7 @@ describe('ApplicationRunDetailPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('#2090 AC-003 states that a finished call generated no answer', async () => {
+  test('#2105 prewarm remains empty instead of inventing a business answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage(
         [
@@ -329,9 +410,12 @@ describe('ApplicationRunDetailPanel', () => {
     );
     renderPanel({});
 
-    expect(
-      await screen.findByText('本次调用为预热（prewarm），未生成回答。')
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        runtimeApi.fetchApplicationRunConversationMessages
+      ).toHaveBeenCalled()
+    );
+    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
   });
 
   test('#2090 AC-004 keeps refreshing a waiting call whose page has no active item', async () => {
@@ -503,7 +587,7 @@ describe('ApplicationRunDetailPanel', () => {
     }
   });
 
-  test('#2090 AC-003 keeps the fallback bot message closed when can_open_detail is false', async () => {
+  test('#2105 a waiting turn preserves the input detail permission without a placeholder answer', async () => {
     runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
       conversationPage([
         {
@@ -515,17 +599,11 @@ describe('ApplicationRunDetailPanel', () => {
       ])
     );
     renderPanel({});
-
-    expect(
-      await screen.findByText('等待人工输入中，暂时还没有输出。')
-    ).toBeInTheDocument();
-
-    const assistantMessage = screen.getByTestId('message-assistant');
-    expect(assistantMessage).toHaveAttribute('data-can-open-detail', 'false');
-    expect(
-      within(assistantMessage).queryByRole('button', {
-        name: 'open-assistant-run-1'
-      })
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText('请人工审核')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-assistant')).not.toBeInTheDocument();
+    expect(screen.getByTestId('message-user')).toHaveAttribute(
+      'data-can-open-detail',
+      'false'
+    );
   });
 });

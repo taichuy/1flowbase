@@ -101,6 +101,11 @@ impl PgControlPlaneStore {
 
             Self::upsert_application_run_log_summary_projection_for_flow_run(tx, &predecessor)
                 .await?;
+            // Supersession is a terminal writer too: retain the cost before ledger cleanup.
+            sqlx::query(include_str!("cost_snapshot.sql"))
+                .bind(predecessor.id)
+                .execute(&mut **tx)
+                .await?;
             Self::replace_application_run_conversation_message_items_projection(tx, &predecessor)
                 .await?;
             let scope_id = flow_run_scope_id_for_update(tx, predecessor.id).await?;
@@ -230,11 +235,6 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Vec<Value>> {
-        self.ensure_application_run_conversation_message_items_projection_for_read(
-            application_id,
-            flow_run_id,
-        )
-        .await?;
         // Reuse the original persisted native message projection. A result may
         // arrive in a later call, but only within the same authenticated log
         // conversation and with the exact call ID and result type.

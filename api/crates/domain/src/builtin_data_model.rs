@@ -173,6 +173,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "is_default_member_role"
         | "enabled" => crate::ModelFieldKind::Boolean,
         "size"
+        | "total_cost"
         | "total_tokens"
         | "invocation_count"
         | "compaction_count"
@@ -252,7 +253,6 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         "application_run_log_tasks" => !matches!(
             field_code,
             "total_cost"
-                | "currency_code"
                 | "parent_task_run_id"
                 | "log_conversation_id"
                 | "client_thread_id"
@@ -282,7 +282,6 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
         "application_run_log_summaries" => !matches!(
             field_code,
             "total_cost"
-                | "currency_code"
                 | "log_conversation_id"
                 | "log_task_run_id"
                 | "parent_run_id"
@@ -427,7 +426,6 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
 
 const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
     "total_cost",
-    "currency_code",
     "id",
     "application_id",
     "scope_id",
@@ -474,7 +472,6 @@ const APPLICATION_RUN_LOG_TASKS_FIELDS: &[&str] = &[
 
 const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
     "total_cost",
-    "currency_code",
     "log_conversation_id",
     "log_task_run_id",
     "parent_run_id",

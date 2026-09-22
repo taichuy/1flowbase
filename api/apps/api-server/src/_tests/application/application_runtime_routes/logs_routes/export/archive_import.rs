@@ -49,8 +49,18 @@ async fn application_runtime_routes_logs_archive_import_restores_visible_target_
         overview_payload["data"]["flow_run"]["id"],
         json!(first_target_run_id)
     );
+    assert!(
+        overview_payload["data"]["flow_run"]
+            .get("input_payload")
+            .is_none(),
+        "overview remains body-free after import"
+    );
+    let (reexport_status, reexport_bytes) =
+        get_run_archive(&app, &cookie, &application_id, &first_target_run_id, 1).await;
+    assert_eq!(reexport_status, StatusCode::OK);
+    let reexport: Value = serde_json::from_slice(&reexport_bytes).unwrap();
     assert_eq!(
-        overview_payload["data"]["flow_run"]["input_payload"]["node-start"]["query"],
+        reexport["entries"][0]["flow_run"]["input_payload"]["node-start"]["query"],
         json!(query)
     );
 

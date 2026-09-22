@@ -706,7 +706,7 @@ impl PgControlPlaneStore {
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    Some(anchor_run_id),
                 )
                 .await?
             else {
@@ -718,7 +718,7 @@ impl PgControlPlaneStore {
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    Some(anchor_run_id),
                 )
                 .await?
             else {
@@ -726,22 +726,19 @@ impl PgControlPlaneStore {
             };
             (anchor_rn + 1, (anchor_rn + limit).min(total), total)
         } else {
-            let Some(anchor_run_id) = input.around_run_id else {
-                return Ok(empty_application_conversation_runs_page());
-            };
-            let Some((anchor_rn, total)) = self
+            // Opening a series always starts at its newest business turns;
+            // the selected run is detail context, not a paging anchor.
+            let Some((_, total)) = self
                 .application_conversation_run_position(
                     application_id,
                     &input.external_conversation_id,
-                    anchor_run_id,
+                    None,
                 )
                 .await?
             else {
                 return Ok(empty_application_conversation_runs_page());
             };
-            let latest_start = (total - limit + 1).max(1);
-            let centered_start = anchor_rn - (limit / 2);
-            let start_rn = centered_start.max(1).min(latest_start);
+            let start_rn = (total - limit + 1).max(1);
             (start_rn, (start_rn + limit - 1).min(total), total)
         };
 
@@ -785,27 +782,16 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id, runs.status, runs.started_at, runs.finished_at
                 union all
-                select runs.id,runs.status,
-                    case when s.log_task_run_id=runs.id or s.log_task_run_id is null
-                        then (select m.content from application_run_conversation_message_items m where m.flow_run_id=runs.id and m.role='user' order by m.display_sequence limit 1) end as query,
-                    null::text as model,(
-                        -- The card answers with the call's answer only: tool-call
-                        -- items are output items but not the answer, so their
-                        -- names never leak into the summary text.
-                        select string_agg(m.content,E'\n' order by m.display_sequence)
-                        from application_run_conversation_message_items m
-                        where m.flow_run_id=runs.id
-                          and m.role='assistant'
-                          and (m.native_message is null
-                               or m.native_message #>> '{_source_item,type}' = 'message'
-                               or m.output_source = 'persisted_answer')
-                    ) as answer,
-                    runs.started_at,runs.finished_at,
-                    (extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_conversation_runs($1,
-                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
-                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
-                join flow_runs runs on runs.id=s.flow_run_id
+                select t.id,t.status,t.user_input as query,
+                    coalesce((select m.model from application_run_conversation_message_items m
+                        where m.flow_run_id=coalesce(t.final_output_run_id,t.id) and m.model is not null
+                        order by m.is_current desc,m.display_sequence desc limit 1),t.requested_model_id) as model,
+                    case when t.outcome='final_answer_observed' then t.final_output end as answer,
+                    t.started_at,t.finished_at,
+                    (extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_tasks t
+                where t.application_id=$1 and t.is_root
+                  and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
             ordered as (
                 select
@@ -861,7 +847,7 @@ impl PgControlPlaneStore {
         &self,
         application_id: Uuid,
         external_conversation_id: &str,
-        flow_run_id: Uuid,
+        flow_run_id: Option<Uuid>,
     ) -> Result<Option<(i64, i64)>> {
         let row = sqlx::query(
             r#"
@@ -887,11 +873,10 @@ impl PgControlPlaneStore {
                   )
                 group by runs.id
                 union all
-                select runs.id,(extract(epoch from runs.started_at)*1000000)::bigint as order_sequence
-                from application_run_log_conversation_runs($1,
-                        case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end) member
-                join application_run_log_summaries s on s.flow_run_id=member.run_id and s.application_id=$1
-                join flow_runs runs on runs.id=s.flow_run_id
+                select t.id,(extract(epoch from t.started_at)*1000000)::bigint as order_sequence
+                from application_run_log_tasks t
+                where t.application_id=$1 and t.is_root
+                  and t.log_conversation_id=case when $2 ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then $2::uuid end
             ),
             ordered as (
                 select
@@ -902,7 +887,9 @@ impl PgControlPlaneStore {
             )
             select rn, total
             from ordered
-            where id = $3
+            where $3::uuid is null or id = $3
+            order by rn desc
+            limit 1
             "#,
         )
         .bind(application_id)
@@ -961,13 +948,86 @@ impl PgControlPlaneStore {
         }))
     }
 
+    async fn get_flow_run_metadata(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<control_plane_contracts::ports::FlowRunMetadataReadModel>> {
+        let row = sqlx::query(r#"
+            select f.id,
+                f.application_id,
+                f.flow_id,
+                f.flow_draft_id as draft_id,
+                f.compiled_plan_id,
+                f.debug_session_id,
+                f.flow_schema_version,
+                f.document_hash,
+                f.run_mode,
+                f.target_node_id,
+                f.title,
+                f.status,
+                f.created_by,
+                (select account from users where id=f.created_by) as authorized_account,
+                f.api_key_id,
+                f.publication_version_id,
+                f.external_user,
+                f.external_conversation_id,
+                f.external_trace_id,
+                f.compatibility_mode,
+                f.idempotency_key,
+                f.started_at,
+                f.finished_at,
+                f.created_at,
+                f.updated_at
+            from flow_runs f where f.application_id=$1 and f.id=$2
+              and (f.import_job_id is null or exists (
+                  select 1 from run_archive_import_jobs j where j.id=f.import_job_id and j.status='succeeded'
+              ))
+        "#).bind(application_id).bind(flow_run_id).fetch_optional(self.pool()).await?;
+        row.map(|row| {
+            Ok(control_plane_contracts::ports::FlowRunMetadataReadModel {
+                id: row.try_get("id")?,
+                application_id: row.try_get("application_id")?,
+                flow_id: row.try_get("flow_id")?,
+                draft_id: row.try_get("draft_id")?,
+                compiled_plan_id: row.try_get("compiled_plan_id")?,
+                debug_session_id: row.try_get("debug_session_id")?,
+                flow_schema_version: row.try_get("flow_schema_version")?,
+                document_hash: row.try_get("document_hash")?,
+                run_mode: crate::mappers::orchestration_runtime_mapper::parse_flow_run_mode(
+                    &row.try_get::<String, _>("run_mode")?,
+                )?,
+                target_node_id: row.try_get("target_node_id")?,
+                title: row.try_get("title")?,
+                status: crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(
+                    &row.try_get::<String, _>("status")?,
+                )?,
+                created_by: row.try_get("created_by")?,
+                authorized_account: row.try_get("authorized_account")?,
+                api_key_id: row.try_get("api_key_id")?,
+                publication_version_id: row.try_get("publication_version_id")?,
+                external_user: row.try_get("external_user")?,
+                external_conversation_id: row.try_get("external_conversation_id")?,
+                external_trace_id: row.try_get("external_trace_id")?,
+                compatibility_mode: row.try_get("compatibility_mode")?,
+                idempotency_key: row.try_get("idempotency_key")?,
+                started_at: row.try_get("started_at")?,
+                finished_at: row.try_get("finished_at")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            })
+        })
+        .transpose()
+    }
+
     async fn get_application_run_overview(
         &self,
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<Option<ApplicationRunOverviewReadModel>> {
-        let Some(flow_run) =
-            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        let Some(flow_run) = self
+            .get_flow_run_metadata(application_id, flow_run_id)
+            .await?
         else {
             return Ok(None);
         };
@@ -975,7 +1035,6 @@ impl PgControlPlaneStore {
             latest_overview_waiting_node(self, flow_run.id).await?;
 
         Ok(Some(ApplicationRunOverviewReadModel {
-            node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
             tool_callback_count: overview_tool_callback_count(self, flow_run.id).await?,
             waiting_node_id,
             waiting_node_run_id,

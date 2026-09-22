@@ -14,7 +14,6 @@ pub mod frontend_block_catalog_repository;
 pub mod frontstage_block_repository;
 pub mod frontstage_repository;
 pub mod host_extension_migration_repository;
-pub mod host_infrastructure_config_repository;
 pub mod i18n_catalog_repository;
 pub mod js_dependency_repository;
 pub mod lifecycle_outbox_repository;

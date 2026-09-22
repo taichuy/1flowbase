@@ -15,6 +15,10 @@ pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelo
 pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
+/// Host-owned outer stdio request field. Never copied into typed input or supplier bodies.
+pub const PROVIDER_HOST_CAPABILITIES_FIELD: &str = "host_capabilities";
+/// Opt-in to the additive ProtocolObservation event family; absent means legacy events only.
+pub const PROVIDER_PROTOCOL_OBSERVATION_CAPABILITY: &str = "protocol_observation_v1";
 pub const PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY: &str = "config.validate";
 pub const PROVIDER_MODEL_LISTING_CAPABILITY: &str = "models.list";
 pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";

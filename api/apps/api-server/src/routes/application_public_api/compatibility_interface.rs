@@ -1,3 +1,4 @@
+use control_plane::client_trajectory::ClientTrajectoryRecorder;
 mod managed_projection;
 
 use std::{future::Future, pin::Pin, sync::Arc};
@@ -310,6 +311,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 }
             };
             let transport_connection_scope = request.metadata.take_transport_connection_scope();
+            let observation_context = request.metadata.take_observation_context();
             let protocol_context = request.client_protocol_envelope.clone();
             let operation = provider_transport
                 .as_ref()
@@ -345,6 +347,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                 run,
                 provider_transport_slot,
                 transport_connection_scope,
+                observation_context,
             )
             .await
             .map(CompatibilityBlockingOutput)
@@ -381,6 +384,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     provider_transport,
                 } => {
                     let transport_connection_scope = request.metadata.take_transport_connection_scope();
+                    let observation_context = request.metadata.take_observation_context();
                     let protocol_context = request.client_protocol_envelope.clone();
                     let operation = provider_transport
                         .as_ref()
@@ -420,6 +424,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                         run,
                         provider_transport_slot,
                         transport_connection_scope,
+                        observation_context,
                         actor,
                     )
                     .await
@@ -937,7 +942,24 @@ pub(crate) async fn invoke_stream_with_principal(
     let invocation =
         invoke_typed_stream_with_principal(Arc::clone(&state), binding_id, principal, input)
             .await?;
-    project_stream_invocation(state, application_id, invocation, projection)
+    project_stream_invocation(state, application_id, invocation, projection, None)
+}
+
+/// Responses client evidence is correlated here; content is captured at the HTTP body.
+pub(crate) async fn invoke_client_stream_with_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+    recorder: Option<ClientTrajectoryRecorder>,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+) -> Result<Response, NativeApiError> {
+    let principal = principal.into();
+    let application_id = principal.principal().application_id();
+    let invocation =
+        invoke_typed_stream_with_principal(Arc::clone(&state), binding_id, principal, input)
+            .await?;
+    project_stream_invocation(state, application_id, invocation, projection, recorder)
 }
 
 fn project_stream_invocation(
@@ -945,6 +967,7 @@ fn project_stream_invocation(
     application_id: uuid::Uuid,
     invocation: CompatibilityTypedStreamInvocation,
     projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    recorder: Option<ClientTrajectoryRecorder>,
 ) -> Result<Response, NativeApiError> {
     let (sender, receiver) = tokio::sync::mpsc::channel(32);
     let sse_activity = state.runtime_activity.start(
@@ -954,7 +977,8 @@ fn project_stream_invocation(
     tokio::spawn(async move {
         let _sse_activity = sse_activity;
         let (events, completion) = invocation.into_parts();
-        project_compatibility_stream(events, completion, projection, sender).await;
+        project_observed_compatibility_stream(events, completion, projection, sender, recorder)
+            .await;
     });
     Ok(
         Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
@@ -965,7 +989,20 @@ fn project_stream_invocation(
 
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
+#[cfg(test)]
 pub(super) async fn project_compatibility_stream(
+    events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: interface_runtime::InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+) {
+    project_observed_compatibility_stream(events, completion, projection, sender, None).await;
+}
+
+async fn project_observed_compatibility_stream(
     mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -973,11 +1010,20 @@ pub(super) async fn project_compatibility_stream(
     >,
     mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
     sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    recorder: Option<ClientTrajectoryRecorder>,
 ) {
     let completion = tokio::spawn(completion.complete());
     let mut projection_open = true;
     while let Some(event) = events.recv().await {
         let (run, envelope, mut delivery) = event.into_parts();
+        if let Some(recorder) = recorder.as_ref() {
+            recorder.bind_run(run.id, None);
+            if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                if let Some(node_run_id) = envelope.node_run_id {
+                    recorder.link_llm_node(run.id, node_run_id);
+                }
+            }
+        }
         let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
         let frames = projection.runtime_event_to_sse(&run, envelope);
         if projection_open {

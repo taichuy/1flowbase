@@ -202,8 +202,6 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
             "host_infrastructure.cache.entry.clear",
             "host_infrastructure.cache.reveal",
             "host_infrastructure.cache.view",
-            "host_infrastructure.providers.configure",
-            "host_infrastructure.providers.view",
         ],
         &[],
         &[],

@@ -33,8 +33,12 @@ async fn application_runtime_routes_run_overview_loads_detail_without_trace_node
     let data = &payload["data"];
 
     assert_eq!(data["flow_run"]["id"], json!(flow_run_id));
+    assert!(data["flow_run"].get("input_payload").is_none());
+    assert!(data["flow_run"].get("output_payload").is_none());
+    let (status, section) = super::run_trajectory::get(&app, Some(&cookie), &format!("/api/console/applications/{application_id}/logs/runs/{flow_run_id}/payloads/input_payload")).await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        data["flow_run"]["input_payload"]["node-start"]["query"],
+        section["data"]["node-start"]["query"],
         json!("总结退款政策")
     );
     assert_eq!(data["run"]["id"], json!(flow_run_id));

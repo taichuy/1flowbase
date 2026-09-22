@@ -270,7 +270,6 @@ pub(crate) enum ConsoleAuthenticationCredential {
         headers: HeaderMap,
         admission: ConsoleProtocolAdmission,
     },
-    ServerDelegation(domain::ActorContext),
 }
 
 #[derive(Clone)]
@@ -476,9 +475,6 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                             &headers, &context,
                         ));
                         Ok(context.interface_principal())
-                    }
-                    ConsoleAuthenticationCredential::ServerDelegation(actor) => {
-                        Ok(interface_runtime::UserPrincipal::server_delegation(actor))
                     }
                 }
             },
@@ -704,9 +700,6 @@ fn identity_host_authentication_factories(
                                 &headers, &context,
                             ));
                             Ok(context.interface_principal())
-                        }
-                        ConsoleAuthenticationCredential::ServerDelegation(actor) => {
-                            Ok(interface_runtime::UserPrincipal::server_delegation(actor))
                         }
                     }
                 },

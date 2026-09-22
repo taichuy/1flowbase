@@ -8,6 +8,8 @@ pub struct ProviderRuntimeInvocationOutput {
 
 #[derive(Debug, Clone)]
 pub struct ProviderLiveEventSenders {
+    pub protocol_observation:
+        Option<std::sync::Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
     pub required: tokio::sync::mpsc::Sender<ProviderStreamEvent>,
     pub diagnostic: tokio::sync::mpsc::Sender<ProviderStreamEvent>,
 }

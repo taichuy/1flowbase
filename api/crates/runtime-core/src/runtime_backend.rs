@@ -180,8 +180,15 @@ pub trait RuntimeStreamEventSink: Send + Sync {
     async fn emit(&self, event: ProviderStreamEvent) -> Result<(), RuntimeBackendError>;
 }
 
+/// Nonblocking observation admission. Implementations must bound queued bytes and items;
+/// rejection is capture evidence, never a provider invocation failure.
+pub trait RuntimeProtocolObservationSink: Send + Sync + std::fmt::Debug {
+    fn observe(&self, event: ProviderStreamEvent);
+}
+
 #[derive(Clone, Default)]
 pub struct RuntimeStreamSinks {
+    pub protocol_observation: Option<Arc<dyn RuntimeProtocolObservationSink>>,
     pub required: Option<Arc<dyn RuntimeStreamEventSink>>,
     pub diagnostic: Option<Arc<dyn RuntimeStreamEventSink>>,
 }

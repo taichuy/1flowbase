@@ -423,6 +423,9 @@ pub fn recovery_plan_digest(
         mcp_artifact_count: u64,
         active_work: &'a [super::RecoveryActiveWork],
         failures: &'a [RecoveryPreflightFailure],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        selective:
+            &'a Option<control_plane_contracts::system_backup::selective::SelectiveBackupPreview>,
     }
 
     let bytes = serde_json::to_vec(&DigestInput {
@@ -434,6 +437,7 @@ pub fn recovery_plan_digest(
         mcp_artifact_count: plan.impact.mcp_artifact_count,
         active_work: &plan.impact.active_work,
         failures: &plan.failures,
+        selective: &plan.selective,
     })
     .map_err(|_| RecoveryCoordinatorError::PlanDigest)?;
     ContentDigest::try_from(format!("{:x}", Sha256::digest(bytes)))

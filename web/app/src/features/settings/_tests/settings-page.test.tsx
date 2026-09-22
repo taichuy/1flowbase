@@ -198,11 +198,6 @@ const fileManagementApi = vi.hoisted(() => ({
 }));
 
 const hostInfrastructureApi = vi.hoisted(() => ({
-  settingsHostInfrastructureProvidersQueryKey: [
-    'settings',
-    'host-infrastructure',
-    'providers'
-  ],
   settingsHostInfrastructureMemoryOverviewQueryKey: [
     'settings',
     'host-infrastructure',
@@ -254,8 +249,6 @@ const hostInfrastructureApi = vi.hoisted(() => ({
       'search'
     ]
   ),
-  fetchSettingsHostInfrastructureProviders: vi.fn(),
-  saveSettingsHostInfrastructureProviderConfig: vi.fn(),
   fetchSettingsHostInfrastructureMemoryOverview: vi.fn(),
   fetchSettingsHostInfrastructureMemoryStatsOverview: vi.fn(),
   fetchSettingsHostInfrastructureMemoryStats: vi.fn(),
@@ -832,9 +825,6 @@ describe('SettingsPage', () => {
         status: 'active'
       }
     ]);
-    hostInfrastructureApi.fetchSettingsHostInfrastructureProviders.mockResolvedValue(
-      []
-    );
     hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryOverview.mockResolvedValue(
       {
         can_manage: true,

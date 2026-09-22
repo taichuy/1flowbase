@@ -105,6 +105,24 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
     .await
     .unwrap();
 
+    let root_page = store
+        .list_application_run_trace_children_page(
+            control_plane_contracts::ports::ListApplicationRunTraceChildrenPageInput {
+                flow_run_id: run.id,
+                parent_trace_node_id: Uuid::nil(),
+                page_size: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(root_page.items.len(), 1);
+    assert_eq!(root_page.items[0].trace_node_id, root_trace_node_id);
+    assert!(
+        !root_page.has_more,
+        "children must never leak into root pages"
+    );
+
     let status =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
             &store,
@@ -498,4 +516,86 @@ async fn trace_projection_failed_status_preserves_diagnostics() {
     .unwrap();
     assert_eq!(status_scope_id, seeded.workspace_id);
     assert_ne!(status_id, run.id);
+}
+
+#[tokio::test]
+async fn issue_2106_trace_refresh_is_write_scheduled_and_revision_safe() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-09-21 10:00:00 UTC),
+        FlowRunMode::DebugFlowRun,
+        None,
+    )
+    .await;
+    let status = store
+        .get_application_run_trace_read_status(run.application_id, run.id, 15)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        status.status,
+        domain::ApplicationRunTraceProjectionStatus::Pending
+    );
+    assert!(store
+        .get_application_run_trace_read_status(Uuid::now_v7(), run.id, 15)
+        .await
+        .unwrap()
+        .is_none());
+    let job = store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.flow_run_id, run.id);
+    assert!(store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .is_none());
+    // A source change during projection may not be lost by its older completion.
+    sqlx::query("update flow_runs set updated_at=now() where id=$1")
+        .bind(run.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    store
+        .finish_application_run_trace_refresh(&job, true)
+        .await
+        .unwrap();
+    let queued: i64 = sqlx::query_scalar(
+        "select revision from application_run_trace_refresh_queue where flow_run_id=$1",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(queued > job.revision);
+    sqlx::query(
+        "update application_run_trace_refresh_queue set available_at=now() where flow_run_id=$1",
+    )
+    .bind(run.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let newer = store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .finish_application_run_trace_refresh(&newer, true)
+        .await
+        .unwrap();
+    assert!(store
+        .claim_application_run_trace_refresh()
+        .await
+        .unwrap()
+        .is_none());
 }

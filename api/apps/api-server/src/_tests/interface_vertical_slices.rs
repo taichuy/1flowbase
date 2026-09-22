@@ -1,6 +1,4 @@
-use interface_runtime::{
-    BindingId, InterfaceExecutionMode, InterfaceExtensionPoint, InterfaceProtocol, PrincipalProfile,
-};
+use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, PrincipalProfile};
 
 use super::support::test_api_state_with_database_url;
 
@@ -22,7 +20,7 @@ async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
             InterfaceExecutionMode::Unary,
         ),
         (
-            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+            "http.console.host-infrastructure.memory.overview.get.v1",
             InterfaceProtocol::Http,
             PrincipalProfile::User,
             InterfaceExecutionMode::Unary,
@@ -58,14 +56,9 @@ async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
 }
 
 #[tokio::test]
-async fn issue_1944_providers_http_and_mcp_resolve_distinct_binding_plans() {
+async fn retired_provider_bindings_are_absent_from_published_catalog() {
     let (state, _) = test_api_state_with_database_url().await;
-    state
-        .extension_boot_snapshot
-        .as_ref()
-        .unwrap()
-        .publish_complete_catalog(&state)
-        .unwrap();
+    let _router = crate::app_with_state(state.clone());
     let registry = state
         .extension_boot_snapshot
         .as_ref()
@@ -73,46 +66,15 @@ async fn issue_1944_providers_http_and_mcp_resolve_distinct_binding_plans() {
         .interface_registry()
         .unwrap()
         .snapshot();
-    let http = registry
-        .plan(&BindingId::new(
-            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
-        ).unwrap())
-        .unwrap();
-    let mcp = registry
-        .plan(&BindingId::new(
-            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
-        ).unwrap())
-        .unwrap();
-    assert_eq!(
-        http.definition().interface_id(),
-        mcp.definition().interface_id()
-    );
-    assert_eq!(
-        http.binding().projection().protocol(),
-        InterfaceProtocol::Http
-    );
-    assert_eq!(
-        mcp.binding().projection().protocol(),
-        InterfaceProtocol::Mcp
-    );
-    assert_ne!(http.binding_fingerprint(), mcp.binding_fingerprint());
-    assert_eq!(http.extension_plan(), mcp.extension_plan());
-    assert!(!http.extension_plan().registrations().is_empty());
-    let points = http
-        .extension_plan()
-        .registrations()
-        .iter()
-        .map(|entry| entry.registration().point())
-        .collect::<Vec<_>>();
-    for required in [
-        InterfaceExtensionPoint::Definition,
-        InterfaceExtensionPoint::AuthenticationAdapter,
-        InterfaceExtensionPoint::Authorization,
-        InterfaceExtensionPoint::Admission,
+    for id in [
+        "http.host_infrastructure.providers.view.v1",
+        "mcp.host_infrastructure.providers.view.v1",
+        "internal.host_infrastructure.providers.view.v1",
+        "http.console.host-infrastructure.providers.configure.v1",
     ] {
         assert!(
-            points.contains(&required),
-            "missing executable point {required:?}"
+            registry.plan(&BindingId::new(id).unwrap()).is_none(),
+            "retired binding: {id}"
         );
     }
 }

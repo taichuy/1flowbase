@@ -211,6 +211,7 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
                 run,
                 None,
                 None,
+                None,
             )
             .await
             .map(ApplicationNativeRunOutput)
@@ -826,6 +827,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
     run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Result<NativeRunResult, NativeApiError> {
     let _execution_activity = dependencies.runtime_activity.start(
         run.application_id,
@@ -843,6 +845,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
                 flow_run_id: run.id,
                 provider_transport_slot,
                 transport_connection_scope,
+                observation_context,
             }),
     )
     .await;
@@ -1223,6 +1226,7 @@ async fn start_native_run_event_channel_with_dependencies(
                 flow_run_id: background_run.id,
                 provider_transport_slot: None,
                 transport_connection_scope: None,
+                observation_context: None,
             }),
         )
         .await

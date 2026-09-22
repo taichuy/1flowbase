@@ -202,6 +202,8 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
             >= 1
     );
 
+    flush_trace_fixture(&state).await;
+
     let trace_tree = app
         .clone()
         .oneshot(

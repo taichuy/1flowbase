@@ -1,3 +1,7 @@
+import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../../../state/navigation-query-scope';
 import { useMemo } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
@@ -44,11 +48,13 @@ export function SettingsPage({
   extensionCenterCursor?: string;
   extensionCenterQ?: string;
 }) {
+  const navigationScope = useAuthStore(selectNavigationQueryScope);
   const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const consoleNavigationQuery = useQuery({
-    queryKey: settingsConsoleNavigationQueryKey,
+    queryKey: [...settingsConsoleNavigationQueryKey, navigationScope],
+    staleTime: navigationQueryStaleTime,
     queryFn: fetchSettingsConsoleNavigation
   });
   const permissions = useMemo(() => me?.permissions ?? [], [me?.permissions]);

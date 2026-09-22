@@ -14,10 +14,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
     errors::ControlPlaneError,
-    orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-    },
+    orchestration_runtime::trace_projection::APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     ports::{
         ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, OrchestrationRuntimeRepository,
@@ -40,6 +37,11 @@ use crate::{
 };
 
 use super::debug_run_stream;
+pub(crate) mod provider_trajectory;
+use provider_trajectory::{
+    get_client_trajectory_section, get_provider_trajectory_body, get_run_payload,
+    list_client_trajectory, list_provider_trajectory, list_run_trajectory,
+};
 mod application_log_cache;
 mod application_logs;
 pub(crate) mod application_monitoring;
@@ -63,9 +65,9 @@ pub use debug_variable_cache::{
     delete_debug_variable_cache_entries, upsert_debug_variable_cache_entry,
 };
 pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnapshotResponse};
+pub(crate) use runtime_debug_artifacts::enrich_application_run_detail_visible_internal_llm_route_traces;
 use runtime_debug_artifacts::{
     application_run_model, application_run_query, count_llm_tool_callback_trace_items,
-    enrich_application_run_detail_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value_with_dependencies,
     offload_application_run_detail_artifacts_with_dependencies, RuntimeDebugArtifactContent,
@@ -88,6 +90,12 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .route("/applications/:id/logs/runs/:run_id/client-trajectory", console_get(list_client_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/client-trajectory/:step_id", console_get(get_client_trajectory_section, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/trajectory", console_get(list_run_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/payloads/:section", console_get(get_run_payload, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", console_get(list_provider_trajectory, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
+        .route("/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id", console_get(get_provider_trajectory_body, ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string())))
         .route(
             "/applications/:id/orchestration/debug-runs",
             console_post(

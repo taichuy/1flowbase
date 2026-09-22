@@ -809,6 +809,73 @@ impl SystemBackupService {
         Ok(())
     }
 
+    /// Streams one authenticated component and verifies its complete digest before returning.
+    /// Consumers must await this method before committing imported records.
+    pub async fn write_plaintext_component<W>(
+        &self,
+        backup_set_id: BackupSetId,
+        component_id: &BackupComponentId,
+        password: Option<&str>,
+        mut destination: W,
+    ) -> Result<(), SystemBackupServiceError>
+    where
+        W: AsyncWrite + Unpin + Send,
+    {
+        let sealed = self.get(backup_set_id).await?;
+        let key = resolve_backup_key(self.key_provider.as_ref(), sealed.manifest(), password)
+            .await
+            .map_err(|_| SystemBackupServiceError::Key)?;
+        verify_backup_manifest(&sealed, &key).map_err(map_envelope_error)?;
+        let component = sealed
+            .manifest()
+            .components()
+            .iter()
+            .find(|component| {
+                &component.component_id == component_id
+                    && component.disposition == BackupComponentDisposition::Embedded
+            })
+            .ok_or(SystemBackupServiceError::Manifest)?;
+        let encrypted = self
+            .repository
+            .open_component(backup_set_id, component_id)
+            .await
+            .map_err(|_| SystemBackupServiceError::Repository)?;
+        let receipt = decrypt_backup_stream(
+            encrypted,
+            &mut destination,
+            &key,
+            backup_set_id,
+            component_id,
+        )
+        .await
+        .map_err(map_envelope_error)?;
+        if receipt.plaintext_size_bytes != component.size_bytes
+            || receipt.plaintext_digest != component.content_digest
+        {
+            return Err(SystemBackupServiceError::Verification);
+        }
+        destination
+            .flush()
+            .await
+            .map_err(|_| SystemBackupServiceError::Repository)?;
+        Ok(())
+    }
+
+    pub async fn source_master_key(
+        &self,
+        backup_set_id: BackupSetId,
+        password: Option<&str>,
+    ) -> Result<String, SystemBackupServiceError> {
+        let sealed = self.get(backup_set_id).await?;
+        let key = resolve_backup_key(self.key_provider.as_ref(), sealed.manifest(), password)
+            .await
+            .map_err(|_| SystemBackupServiceError::Key)?;
+        verify_backup_manifest(&sealed, &key).map_err(map_envelope_error)?;
+        recover_source_master_key(self.key_provider.as_ref(), sealed.manifest(), password)
+            .await
+            .map_err(|_| SystemBackupServiceError::Key)
+    }
+
     async fn transition(
         &self,
         command: &CreateSystemBackupCommand,

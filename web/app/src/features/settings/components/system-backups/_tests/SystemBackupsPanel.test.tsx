@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   listSystemBackups: vi.fn(),
+  getSystemBackupCatalog: vi.fn(),
   getSystemBackup: vi.fn(),
   createSystemBackup: vi.fn(),
   getSystemBackupJobStatus: vi.fn(),
@@ -35,6 +36,7 @@ const backup = {
   exact_backup_name: '0198f8e1-21e0-7000-8000-000000000001',
   created_at: '2026-08-12T08:00:00Z',
   availability: 'ready' as const,
+  backup_kind: 'legacy' as const,
   total_size_bytes: 1024,
   envelope_digest: 'a'.repeat(64)
 };
@@ -61,6 +63,18 @@ describe('SystemBackupsPanel', () => {
     vi.clearAllMocks();
     await appI18n.changeLanguage('en_US');
     useAuthStore.setState({ csrfToken: 'csrf-token' });
+    api.getSystemBackupCatalog.mockResolvedValue({
+      items: [
+        {
+          feature_id: 'logs',
+          label_key: 'logs',
+          structure_bytes: 100,
+          data_bytes: 2000,
+          structure_tables: ['log_settings'],
+          data_tables: ['logs', 'trajectories']
+        }
+      ]
+    });
     api.listSystemBackups.mockResolvedValue({ items: [backup] });
     api.getSystemBackup.mockResolvedValue({
       backup_set_id: backup.backup_set_id,
@@ -204,6 +218,9 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
+    );
+    fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
     );
 
@@ -235,6 +252,9 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
+    );
+    fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
     );
 
@@ -260,11 +280,215 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
+    );
+    fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
     );
 
     expect(await screen.findByText('Backup completed')).toBeInTheDocument();
     await waitFor(() => expect(api.listSystemBackups).toHaveBeenCalledTimes(2));
+  });
+
+  test('defaults to no backup and switches exclusively between structure and structure with data', async () => {
+    api.createSystemBackup.mockResolvedValue({
+      backup_job_id: 'selected-job',
+      backup_set_id: backup.backup_set_id
+    });
+    api.getSystemBackupJobStatus.mockResolvedValue({
+      status: 'queued',
+      sealed_components: 0
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Create backup/ })
+    );
+    const dialog = await screen.findByRole('dialog');
+    const create = within(dialog).getByRole('button', {
+      name: /Create backup/
+    });
+    expect(create).toBeDisabled();
+    const structure = await within(dialog).findByRole('radio', {
+      name: 'Structure'
+    });
+    const data = within(dialog).getByRole('radio', { name: 'Structure and data' });
+    const files = within(dialog).getByRole('checkbox', {
+      name: 'Include file bytes (optional)'
+    });
+    expect(structure).not.toBeChecked();
+    expect(data).not.toBeChecked();
+    expect(files).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: 'Do not back up' })).toBeChecked();
+    expect(
+      within(dialog).getByText(/including logs and execution trajectories/)
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Plugin packages are not included/)
+    ).toBeInTheDocument();
+    fireEvent.click(structure);
+    expect(data).not.toBeChecked();
+    expect(create).not.toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Do not back up' }));
+    expect(create).toBeDisabled();
+    fireEvent.click(data);
+    expect(structure).not.toBeChecked();
+    expect(data).toBeChecked();
+    expect(
+      within(dialog).getByText(
+        'Selected records: approximately 2.1 KB before compression'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(api.createSystemBackup).toHaveBeenCalledWith(
+        'csrf-token',
+        undefined,
+        {
+          backup_password: undefined,
+          selection: {
+            features: [{ feature_id: 'logs', structure: true, data: true }],
+            include_file_bytes: false
+          }
+        }
+      )
+    );
+  });
+
+  test('includes explicitly selected file bytes while retaining the backup password', async () => {
+    api.createSystemBackup.mockResolvedValue({
+      backup_job_id: 'files-job',
+      backup_set_id: backup.backup_set_id
+    });
+    api.getSystemBackupJobStatus.mockResolvedValue({
+      status: 'queued',
+      sealed_components: 0
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Create backup/ })
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      await within(dialog).findByRole('radio', { name: 'Structure' })
+    );
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Structure and data' }));
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', {
+        name: 'Include file bytes (optional)'
+      })
+    );
+    fireEvent.change(
+      within(dialog).getByPlaceholderText('Optional backup password'),
+      { target: { value: 'archive-secret' } }
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /Create backup/ })
+    );
+    await waitFor(() =>
+      expect(api.createSystemBackup).toHaveBeenCalledWith(
+        'csrf-token',
+        undefined,
+        {
+          backup_password: 'archive-secret',
+          selection: {
+            features: [{ feature_id: 'logs', structure: true, data: true }],
+            include_file_bytes: true
+          }
+        }
+      )
+    );
+  });
+
+  test('requires explicit missing-plugin confirmation and completes selective restoration without offline polling', async () => {
+    const legacy = await api.preflightSystemRecovery();
+    api.preflightSystemRecovery.mockResolvedValue({
+      ...legacy,
+      impact: { ...legacy.impact, database_replaced: false },
+      selective: {
+        failures: [],
+        missing_plugins: ['example.plugin'],
+        table_count: 2,
+        row_count: 37
+      }
+    });
+    api.reauthenticateSystemRecovery.mockResolvedValue({
+      challenge_token: 'challenge'
+    });
+    api.createSystemRecoveryIntent.mockResolvedValue({
+      status: 'succeeded',
+      restart_required: true,
+      recovery_job_id: 'selective-job'
+    });
+    renderPanel();
+    await openActions();
+    fireEvent.click(await screen.findByText('Restore'));
+    expect(await screen.findByText('example.plugin')).toBeInTheDocument();
+    expect(
+      screen.getByText('2 tables and 37 records will be imported.')
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Current password'), {
+      target: { value: 'password' }
+    });
+    fireEvent.change(screen.getByPlaceholderText(backup.exact_backup_name), {
+      target: { value: backup.exact_backup_name }
+    });
+    const confirm = screen.getByRole('button', {
+      name: 'Confirm and import records'
+    });
+    expect(confirm).toBeDisabled();
+    expect(api.reauthenticateSystemRecovery).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: /I understand these plugins are missing/
+      })
+    );
+    fireEvent.click(confirm);
+    expect(
+      await screen.findByText('Records restored successfully')
+    ).toBeInTheDocument();
+    expect(api.createSystemRecoveryIntent).toHaveBeenCalledWith(
+      backup.backup_set_id,
+      expect.objectContaining({
+        confirm_missing_plugins: true,
+        challenge_token: 'challenge'
+      }),
+      'csrf-token'
+    );
+    expect(
+      screen.getByText(
+        'Restart the server after recovery to load restored settings and plugin registrations.'
+      )
+    ).toBeInTheDocument();
+    expect(api.getSystemRecoveryStatus).not.toHaveBeenCalled();
+  });
+
+  test('blocks selective schema failures even with password and exact name', async () => {
+    const legacy = await api.preflightSystemRecovery();
+    api.preflightSystemRecovery.mockResolvedValue({
+      ...legacy,
+      selective: {
+        failures: ['Required table is missing'],
+        missing_plugins: [],
+        table_count: 1,
+        row_count: 2
+      }
+    });
+    renderPanel();
+    await openActions();
+    fireEvent.click(await screen.findByText('Restore'));
+    expect(
+      await screen.findByText('Required table is missing')
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Current password'), {
+      target: { value: 'password' }
+    });
+    fireEvent.change(screen.getByPlaceholderText(backup.exact_backup_name), {
+      target: { value: backup.exact_backup_name }
+    });
+    expect(
+      screen.getByRole('button', { name: 'Confirm and import records' })
+    ).toBeDisabled();
+    expect(api.reauthenticateSystemRecovery).not.toHaveBeenCalled();
   });
 
   test('keeps restore dangerous and projects server preflight and journal status', async () => {

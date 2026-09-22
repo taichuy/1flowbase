@@ -23,3 +23,7 @@ pub use query_models::*;
 pub use repository::*;
 pub use run_lifecycle::*;
 pub use trace_projection::*;
+
+pub use control_plane_contracts::ports::runtime::trajectory::*;
+
+pub use control_plane_contracts::ports::runtime::client_trajectory::*;

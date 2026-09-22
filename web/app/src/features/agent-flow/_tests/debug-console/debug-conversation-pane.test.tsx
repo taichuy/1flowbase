@@ -276,7 +276,7 @@ describe('DebugConversationPane workflow trace', () => {
     ).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('collapses repeated LLM node runs into one workflow row', () => {
+  test('keeps distinct LLM node runs and their own tool callbacks', () => {
     renderPane([
       {
         ...assistantMessage('等待工具结果'),
@@ -363,15 +363,16 @@ describe('DebugConversationPane workflow trace', () => {
       }
     ]);
 
-    expect(screen.getAllByTestId('debug-workflow-node-row')).toHaveLength(2);
-
-    const llmTraceNode = screen.getAllByTestId('debug-workflow-node-row')[1];
-    expect(llmTraceNode).toHaveTextContent('工具 2');
-
-    const toolsNode = screen.getByRole('button', {
-      name: /^工具 2 次工具回调$/
+    const rows = screen.getAllByTestId('debug-workflow-node-row');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('用户输入');
+    expect(rows[1]).toHaveTextContent('工具 1');
+    expect(rows[2]).toHaveTextContent('工具 1');
+    const toolsNodes = screen.getAllByRole('button', {
+      name: /^工具 1 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(toolsNodes).toHaveLength(2);
+    toolsNodes.forEach((node) => expect(node).toHaveAttribute('aria-expanded', 'true'));
 
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
@@ -379,10 +380,91 @@ describe('DebugConversationPane workflow trace', () => {
     expect(
       screen.getByRole('button', { name: /lookup_weather/ })
     ).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.getByRole('button', { name: /read_policy/ })
-    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /read_policy/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
     expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
     expect(screen.queryByText('call_policy')).not.toBeInTheDocument();
+  });
+});
+
+describe('DebugConversationPane log access before an assistant answer', () => {
+  const user: AgentFlowDebugMessage = {
+    id: 'pending-user',
+    role: 'user',
+    status: 'waiting_callback',
+    runId: 'task-run',
+    detailRunId: 'actual-detail-run',
+    canOpenDetail: true,
+    content: '请继续执行工具',
+    rawOutput: null,
+    traceSummary: []
+  };
+
+  function renderLogs(
+    messages: AgentFlowDebugMessage[],
+    logActionRunId?: string
+  ) {
+    const onOpenMessageLog = vi.fn();
+    render(
+      <DebugConversationPane
+        messages={messages}
+        runContext={runContext}
+        status="waiting_callback"
+        stopping={false}
+        showComposer={false}
+        logActionRunId={logActionRunId}
+        onChangeQuery={vi.fn()}
+        onStopRun={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onOpenMessageLog={onOpenMessageLog}
+      />
+    );
+    return onOpenMessageLog;
+  }
+
+  test('opens the backend-enabled detail from a pending user-only turn without inventing an answer', () => {
+    const openLog = renderLogs([user]);
+    fireEvent.click(screen.getByRole('button', { name: '查看对话日志' }));
+    expect(openLog).toHaveBeenCalledWith(user);
+    expect(screen.getByText(user.content)).toBeInTheDocument();
+    expect(
+      document.querySelector('.agent-flow-editor__debug-message--assistant')
+    ).toBeNull();
+  });
+
+  test.each([
+    { ...user, canOpenDetail: false },
+    { ...user, canOpenDetail: undefined },
+    { ...user, detailRunId: null, runId: null }
+  ])(
+    'does not create an entry without an explicit enabled detail identity',
+    (message) => {
+      renderLogs([message]);
+      expect(
+        screen.queryByRole('button', { name: '查看对话日志' })
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  test('keeps the existing single assistant entry when the answer is displayed', () => {
+    const answer = {
+      ...assistantMessage('已完成'),
+      detailRunId: user.detailRunId
+    };
+    const openLog = renderLogs([user, answer]);
+    expect(
+      screen.getAllByRole('button', { name: '查看对话日志' })
+    ).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '查看对话日志' }));
+    expect(openLog).toHaveBeenCalledWith(answer);
+  });
+
+  test('respects the selected log run scope', () => {
+    renderLogs([user], 'different-run');
+    expect(
+      screen.queryByRole('button', { name: '查看对话日志' })
+    ).not.toBeInTheDocument();
   });
 });

@@ -17,7 +17,9 @@ use crate::installed_provider_package::load_installed_provider_package;
 mod failover_queue;
 mod fee_lifecycle;
 mod main_instance_routing;
+mod native_trajectory;
 mod protocol_context;
+mod protocol_observation;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
@@ -359,7 +361,26 @@ where
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
-        self.runtime.compact(&installation, input).await
+        let active_node = self
+            .flow_execution_context
+            .as_ref()
+            .and_then(|context| context.active_node.lock().ok()?.clone())
+            .or_else(|| {
+                Some(RuntimeActiveNode {
+                    node_id: self.active_node_id.clone()?,
+                    node_run_id: self.active_node_run_id?,
+                })
+            });
+        let capture = native_trajectory::start(
+            self.repository.clone(),
+            self.flow_run_id,
+            active_node.map(|node| (node.node_id, node.node_run_id)),
+            &input,
+            self.observation_context.as_ref(),
+        );
+        let result = self.runtime.compact(&installation, input).await;
+        capture.finish_compact(result.as_ref().ok(), result.is_err());
+        result
     }
 
     async fn count_tokens(
@@ -612,6 +633,31 @@ where
             }
         }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
+        let native_capture = native_trajectory::start(
+            self.repository.clone(),
+            self.flow_run_id,
+            active_node
+                .as_ref()
+                .map(|node| (node.node_id.clone(), node.node_run_id)),
+            &input,
+            self.observation_context.as_ref(),
+        );
+        let native_observer = native_capture.observer();
+        let (protocol_observation, protocol_completion) =
+            if std::env::var("FLOWBASE_PROVIDER_PROTOCOL_CAPTURE").as_deref() == Ok("1") {
+                protocol_observation::start(
+                    self.repository.clone(),
+                    self.flow_run_id,
+                    protocol_observation::Capture::new(
+                        active_node
+                            .as_ref()
+                            .map(|node| (node.node_id.clone(), node.node_run_id)),
+                        &input,
+                    ),
+                )
+            } else {
+                (None, protocol_observation::Completion::default())
+            };
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,
             node_run_id,
@@ -649,6 +695,7 @@ where
                             &mut event,
                             &canonical_tool_registry_for_task,
                         );
+                    native_observer.observe(&event);
                     record_first_token_timing(
                         &first_token_timing_for_task,
                         &event,
@@ -854,6 +901,7 @@ where
                 }
             }));
             Some(crate::ports::ProviderLiveEventSenders {
+                protocol_observation,
                 required: required_sender,
                 diagnostic: diagnostic_sender,
             })
@@ -922,6 +970,15 @@ where
             } else {
                 (None, None)
             };
+        native_capture.finish(
+            invocation_result.as_ref().ok().map(|output| &output.result),
+            invocation_result
+                .as_ref()
+                .err()
+                .map(|_| "invocation failed"),
+            forwarding_error.is_none(),
+        );
+        protocol_completion.finish(invocation_result.is_ok() && forwarding_error.is_none());
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {
                 tracing::warn!(error = %error, "provider diagnostic event forwarding task panicked");
@@ -1146,6 +1203,7 @@ fn attach_gateway_stage_timing(
 
 fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
     match event {
+        ProviderStreamEvent::ProtocolObservation { .. } => "protocol_observation",
         ProviderStreamEvent::NativeEvent { .. } => "native_event",
         ProviderStreamEvent::TextDelta { .. } => "text_delta",
         ProviderStreamEvent::ReasoningDelta { .. } => "reasoning_delta",
@@ -1275,7 +1333,8 @@ impl RuntimeCanonicalStreamWriter {
                 })?;
                 Ok(deltas)
             }
-            ProviderStreamEvent::NativeEvent { .. }
+            ProviderStreamEvent::ProtocolObservation { .. }
+            | ProviderStreamEvent::NativeEvent { .. }
             | ProviderStreamEvent::ToolCallCommit { .. }
             | ProviderStreamEvent::McpCallDelta { .. }
             | ProviderStreamEvent::McpCallCommit { .. } => Ok(Vec::new()),
@@ -1729,6 +1788,7 @@ where
             flow_execution_context: self.flow_execution_context.clone(),
             answer_presentation: self.answer_presentation.clone(),
             transport_connection_scope_override: self.transport_connection_scope_override.clone(),
+            observation_context: self.observation_context.clone(),
             provider_transport_payload: self.provider_transport_payload.clone(),
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: self.provider_continuation.clone(),
@@ -1754,6 +1814,15 @@ where
     ) -> Self {
         let mut invoker = self.clone();
         invoker.answer_presentation = Some(answer_presentation);
+        invoker
+    }
+
+    pub(super) fn with_observation_context(
+        &self,
+        context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
+    ) -> Self {
+        let mut invoker = self.clone();
+        invoker.observation_context = context;
         invoker
     }
 

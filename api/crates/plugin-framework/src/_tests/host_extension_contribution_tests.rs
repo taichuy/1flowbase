@@ -64,13 +64,13 @@ fn rr14_host_extension_parses_typed_interface_authentication_contribution() {
 
     assert_eq!(
         authentication.contribution_id,
-        "acme.authentication-host.interface-authentication.host-infrastructure-providers-view"
+        "acme.authentication-host.interface-authentication.memory-overview"
     );
     assert_eq!(
         authentication.interface_id,
-        "host_infrastructure.providers.view"
+        "host_infrastructure.memory.overview.get"
     );
-    assert_eq!(authentication.binding_ids.len(), 3);
+    assert_eq!(authentication.binding_ids.len(), 1);
     assert_eq!(
         authentication.principal_profile,
         plugin_framework::HostExtensionInterfaceAuthenticationPrincipalProfile::User

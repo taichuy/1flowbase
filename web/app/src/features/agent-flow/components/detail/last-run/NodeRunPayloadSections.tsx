@@ -1,3 +1,6 @@
+import { useState, type ReactNode } from 'react';
+import { Alert, Button, Spin } from 'antd';
+import { CollapseShell } from '../../../../../shared/ui/collapse-shell/CollapseShell';
 import {
   RuntimeDebugPayloadBlock,
   type RuntimeDebugArtifactBatchLoader
@@ -110,8 +113,12 @@ export function NodeRunPayloadSections({
   hideEmptyPayloads = false,
   defaultCollapsed = false,
   onLoadArtifact,
-  onLoadArtifacts
+  onLoadArtifacts,
+  onLoadSection,
+  processAction
 }: {
+  onLoadSection?: (section: NodeRunPayloadSection) => Promise<unknown>;
+  processAction?: ReactNode;
   inputPayload: unknown;
   debugPayload: unknown;
   outputPayload: unknown;
@@ -122,6 +129,26 @@ export function NodeRunPayloadSections({
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
+  if (onLoadSection) {
+    return (
+      <>
+        {(['input_payload', 'debug_payload', 'output_payload'] as const)
+          .filter(
+            (section) => includeDebugPayload || section !== 'debug_payload'
+          )
+          .map((section) => (
+            <LazyNodeRunPayloadSection
+              key={section}
+              section={section}
+              load={onLoadSection}
+              action={section === 'debug_payload' ? processAction : undefined}
+              onLoadArtifact={onLoadArtifact}
+              onLoadArtifacts={onLoadArtifacts}
+            />
+          ))}
+      </>
+    );
+  }
   const processPayload = pickProcessPayload(debugPayload);
   const showInputPayload =
     !hideEmptyPayloads || runtimePayloadHasValue(inputPayload);
@@ -143,6 +170,7 @@ export function NodeRunPayloadSections({
           onLoadArtifacts={onLoadArtifacts}
         />
       ) : null}
+      {processAction}
       {showDebugPayload ? (
         <RuntimeDebugPayloadBlock
           defaultCollapsed={defaultCollapsed}
@@ -171,5 +199,96 @@ export function NodeRunPayloadSections({
         />
       ) : null}
     </>
+  );
+}
+
+export type NodeRunPayloadSection =
+  | 'input_payload'
+  | 'debug_payload'
+  | 'output_payload';
+
+function LazyNodeRunPayloadSection({
+  section,
+  load,
+  action,
+  onLoadArtifact,
+  onLoadArtifacts
+}: {
+  section: NodeRunPayloadSection;
+  load: (section: NodeRunPayloadSection) => Promise<unknown>;
+  action?: ReactNode;
+  onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
+  onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    value?: unknown;
+  }>({ status: 'idle' });
+  const title =
+    section === 'input_payload'
+      ? i18nText('agentFlow', 'auto.input')
+      : section === 'debug_payload'
+        ? i18nText('agentFlow', 'auto.data_processing')
+        : i18nText('agentFlow', 'auto.outputs');
+  const fetchSection = async () => {
+    if (state.status === 'loading' || state.status === 'ready') return;
+    setState({ status: 'loading' });
+    try {
+      setState({ status: 'ready', value: await load(section) });
+    } catch {
+      setState({ status: 'error' });
+    }
+  };
+  return (
+    <CollapseShell
+      variant="compact"
+      activeKey={open ? [section] : []}
+      onChange={(keys) => {
+        const next = keys.includes(section);
+        setOpen(next);
+        if (next) void fetchSection();
+      }}
+      items={[
+        {
+          key: section,
+          header: (
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                width: '100%'
+              }}
+            >
+              {title}
+              <span onClick={(event) => event.stopPropagation()}>{action}</span>
+            </span>
+          ),
+          children:
+            state.status === 'ready' ? (
+              <RuntimeDebugPayloadBlock
+                title={title}
+                payload={state.value}
+                onLoadArtifact={onLoadArtifact}
+                onLoadArtifacts={onLoadArtifacts}
+              />
+            ) : state.status === 'error' ? (
+              <Alert
+                type="error"
+                showIcon
+                title={i18nText('agentFlow', 'auto.loading_failed')}
+                action={
+                  <Button size="small" onClick={() => void fetchSection()}>
+                    {i18nText('agentFlow', 'auto.retry')}
+                  </Button>
+                }
+              />
+            ) : (
+              <Spin />
+            )
+        }
+      ]}
+    />
   );
 }

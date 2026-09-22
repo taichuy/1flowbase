@@ -16,14 +16,16 @@ use uuid::Uuid;
 pub enum SystemWriteOwner {
     ApiMutation,
     ProviderRequestLogPersistence,
+    TraceProjectionPersistence,
     WorkflowScheduleDispatch,
     WorkflowScheduleExecution,
 }
 
 impl SystemWriteOwner {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::ApiMutation,
         Self::ProviderRequestLogPersistence,
+        Self::TraceProjectionPersistence,
         Self::WorkflowScheduleDispatch,
         Self::WorkflowScheduleExecution,
     ];
@@ -34,6 +36,7 @@ impl SystemWriteOwner {
             Self::ProviderRequestLogPersistence => 1,
             Self::WorkflowScheduleDispatch => 2,
             Self::WorkflowScheduleExecution => 3,
+            Self::TraceProjectionPersistence => 4,
         }
     }
 }

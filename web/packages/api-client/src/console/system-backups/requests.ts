@@ -1,6 +1,7 @@
 import { apiFetch, getDefaultApiBaseUrl } from '../../transport';
 import type {
   BackupMutationResponse,
+  BackupCatalogResponse,
   BackupJobStatusResponse,
   BackupSetDetailResponse,
   BackupSetListResponse,
@@ -19,6 +20,8 @@ const BASE_PATH = '/api/console/settings/system-backups';
 const backupPath = (backupSetId: string) =>
   `${BASE_PATH}/${encodeURIComponent(backupSetId)}`;
 
+export const getSystemBackupCatalog = (baseUrl?: string) =>
+  apiFetch<BackupCatalogResponse>({ path: `${BASE_PATH}/catalog`, baseUrl });
 export const listSystemBackups = (baseUrl?: string) =>
   apiFetch<BackupSetListResponse>({ path: BASE_PATH, baseUrl });
 export const getSystemBackup = (backupSetId: string, baseUrl?: string) =>

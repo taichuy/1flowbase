@@ -215,8 +215,7 @@ describe('ApplicationLogsPage - table field settings', () => {
           expand_id: 'customer-42',
           authorized_account: 'root',
           compatibility_mode: 'openai-responses-v1',
-          total_cost: '0.000001250000000000',
-          currency_code: 'USD',
+          total_cost: 0.15000125,
           total_tokens: 128,
           input_tokens: 100,
           output_tokens: 28,
@@ -283,13 +282,14 @@ describe('ApplicationLogsPage - table field settings', () => {
   });
 
   test.each([
-    ['0.000000000000000000', 'USD', '0 USD'],
-    ['0.000000000000000001', 'USD', '0.000000000000000001 USD'],
-    [null, null, '—']
-  ])('renders the saved cost %s without losing decimal precision', (total_cost, currency_code, expected) => {
+    { total_cost: 0, expected: '0 $' },
+    { total_cost: 0.000000000000000001, expected: '0.000000000000000001 $' },
+    { total_cost: 0.17, expected: '0.17 $' },
+    { total_cost: null, expected: '—' }
+  ])('renders the saved numeric cost with a display-only dollar suffix: $expected', ({ total_cost, expected }) => {
     const column = getApplicationRunsTableColumns(appI18n.getFixedT(null, 'applications'))
       .find((item) => item.key === 'total_cost');
-    expect(column?.render?.(null, { total_cost, currency_code } as ApplicationRunSummary, 0)).toBe(expected);
+    expect(column?.render?.(null, { total_cost } as ApplicationRunSummary, 0)).toBe(expected);
   });
 
   test('shows token breakdown columns from run summaries', async () => {
@@ -317,7 +317,7 @@ describe('ApplicationLogsPage - table field settings', () => {
       screen.getByRole('columnheader', { name: '缓存命中率' })
     ).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '费用' })).toBeInTheDocument();
-    expect(screen.getByText('0.00000125 USD')).toBeInTheDocument();
+    expect(screen.getByText('0.15000125 $')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('28')).toBeInTheDocument();
     expect(screen.getByText('6,956')).toBeInTheDocument();

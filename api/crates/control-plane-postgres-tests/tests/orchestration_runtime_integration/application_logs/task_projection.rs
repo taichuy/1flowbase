@@ -307,7 +307,7 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
         members
     );
 
-    // AC-003: the anchor converges; a member keeps its own messages.
+    // #2105: opening any member resolves to its owning business turn.
     let task_row = store
         .get_application_run_log_task(seeded.application_id, members[0])
         .await
@@ -326,14 +326,14 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
         )
         .await
         .unwrap();
-    assert!(
-        member_messages
-            .items
-            .iter()
-            .all(|item| item.flow_run_id == members[1]),
-        "member detail is single-run scoped"
+    assert_eq!(member_messages.items.len(), 1);
+    assert_eq!(member_messages.items[0].id, members[0]);
+    assert_eq!(member_messages.items[0].detail_run_id, Some(members[0]));
+    assert_eq!(member_messages.items[0].flow_run_id, members[2]);
+    assert_eq!(
+        member_messages.items[0].answer.as_deref(),
+        Some("login refactored")
     );
-    assert!(!member_messages.items.is_empty());
 
     // AC-004/005 sources: the anchor detail carries member rounds and child tasks.
     let detail = store
@@ -378,4 +378,175 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
         )
     );
     assert!(watermark.contains("task_rounds:2"));
+}
+
+#[tokio::test]
+async fn issue_2105_business_turn_pages_keep_facts_and_reads_do_not_lock_writers() {
+    let database = isolated_database().await;
+    let store = PgControlPlaneStore::new(database.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    let mut ids = Vec::new();
+    for index in 0..6 {
+        let mut input = task_fixture_input(&seeded, &compiled, key, &format!("Question {index}"));
+        input.input_payload["system"] = json!(format!("System {index}"));
+        input.application_run_log_context = Some(ApplicationRunLogContext {
+            identity_status: "identified".into(),
+            protocol: Some("openai_responses".into()),
+            thread_id: Some("business-turn-page".into()),
+            turn_id: Some(format!("turn-{index}")),
+            prompt: Some(json!({"role":"user","content":format!("Question {index}")})),
+            ..Default::default()
+        });
+        let run = ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
+            .await
+            .unwrap()
+            .flow_run;
+        append_output_item(&store, run.id, json!({"type":"custom_tool_call","id":format!("tool-{index}"),"call_id":format!("call-{index}"),"name":"exec","input":"pwd"})).await;
+        append_output_item(&store, run.id, json!({"type":"message","id":format!("intermediate-{index}"),"role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Working..."}]})).await;
+        if index < 5 {
+            append_output_item(&store, run.id, json!({"type":"message","id":format!("final-{index}"),"role":"assistant","phase":if index == 4 { serde_json::Value::Null } else { json!("final_answer") },"content":[{"type":"output_text","text":format!("Answer {index}")}]})).await;
+            finish(&store, run.id, 0).await;
+        }
+        ids.push(run.id);
+    }
+    let task = store
+        .get_application_run_log_task(seeded.application_id, ids[0])
+        .await
+        .unwrap()
+        .unwrap();
+    let conversation = task.log_conversation_id.unwrap().to_string();
+    let page = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                external_conversation_id: conversation.clone(),
+                around_run_id: None,
+                before_run_id: None,
+                after_run_id: None,
+                limit: 5,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        page.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+        ids[1..]
+    );
+    assert!(page.has_before);
+    assert!(!page.has_after);
+    assert_eq!(page.items[0].answer.as_deref(), Some("Answer 1"));
+    assert_eq!(
+        page.items[3].answer.as_deref(),
+        Some("Answer 4"),
+        "successful ordinary text without phase is retained"
+    );
+    assert!(
+        page.items[4].answer.is_none(),
+        "intermediate messages are not a final answer"
+    );
+    let older = store
+        .list_application_conversation_runs_page(
+            seeded.application_id,
+            ListApplicationConversationRunsPageInput {
+                external_conversation_id: conversation,
+                around_run_id: None,
+                before_run_id: page.before_cursor,
+                after_run_id: None,
+                limit: 5,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(older.items.len(), 1);
+    assert_eq!(older.items[0].id, ids[0]);
+    let mut writer = store.pool().begin().await.unwrap();
+    sqlx::query("select id from flow_runs where id=$1 for update")
+        .bind(ids[5])
+        .fetch_one(&mut *writer)
+        .await
+        .unwrap();
+    let turn = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        store.list_application_run_conversation_message_items_page(
+            seeded.application_id,
+            ids[5],
+            ListApplicationRunConversationMessageItemsPageInput {
+                before_sequence: None,
+                after_sequence: None,
+                limit: 5,
+            },
+        ),
+    )
+    .await
+    .expect("chat GET must not wait for a writer row lock")
+    .unwrap();
+    assert_eq!(turn.items.len(), 1);
+    assert!(turn.items[0].answer.is_none());
+    assert!(turn
+        .contexts
+        .iter()
+        .any(|context| context.flow_run_id == ids[5] && context.content == "System 5"));
+    writer.rollback().await.unwrap();
+    let retained: i64 = sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1 and event_type='provider_output_item_done'")
+        .bind(ids[5]).fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        retained, 2,
+        "raw tool and intermediate output facts remain retained"
+    );
+}
+
+#[tokio::test]
+async fn issue_2105_failed_payload_is_not_answer_and_successful_plain_text_is() {
+    let database = isolated_database().await;
+    let store = PgControlPlaneStore::new(database.connect().await.unwrap());
+    run_migrations(store.pool()).await.unwrap();
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let key = seed_application_api_key(&store, &seeded).await;
+    for (index, status) in [FlowRunStatus::Failed, FlowRunStatus::Succeeded]
+        .into_iter()
+        .enumerate()
+    {
+        let input = task_fixture_input(&seeded, &compiled, key, &format!("ordinary-{index}"));
+        let run = store.create_flow_run(&input).await.unwrap();
+        store
+            .update_flow_run(&UpdateFlowRunInput {
+                flow_run_id: run.id,
+                status,
+                output_payload: if index == 1 {
+                    json!({"answer":"actual answer"})
+                } else {
+                    json!({})
+                },
+                error_payload: if index == 0 {
+                    Some(json!({"message":"provider failed"}))
+                } else {
+                    None
+                },
+                finished_at: Some(OffsetDateTime::now_utc()),
+            })
+            .await
+            .unwrap();
+        let page = store
+            .list_application_run_conversation_message_items_page(
+                seeded.application_id,
+                run.id,
+                ListApplicationRunConversationMessageItemsPageInput {
+                    before_sequence: None,
+                    after_sequence: None,
+                    limit: 5,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        if index == 0 {
+            assert!(page.items[0].answer.is_none());
+        } else {
+            assert_eq!(page.items[0].answer.as_deref(), Some("actual answer"));
+        }
+    }
 }

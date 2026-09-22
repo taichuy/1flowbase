@@ -124,6 +124,7 @@ pub struct ContinueFlowDebugRunCommand {
 pub struct StartPublishedFlowRunCommand {
     /// Private host execution state; never stored in the flow input or protocol envelope.
     pub transport_connection_scope: Option<String>,
+    pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     pub application_id: Uuid,
     pub flow_run_id: Uuid,
     pub provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
@@ -163,6 +164,7 @@ pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-
 
 pub struct CompleteCallbackTaskCommand {
     pub transport_connection_scope: Option<String>,
+    pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     pub native_transport: Option<crate::ports::ProviderTransportPayload>,
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
@@ -281,6 +283,7 @@ struct RuntimeProviderInvoker<R, H> {
     answer_presentation:
         Option<Arc<tokio::sync::Mutex<answer_presentation::AnswerPresentationCursor>>>,
     transport_connection_scope_override: Option<Option<String>>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     provider_continuation: Option<crate::ports::ProviderContinuation>,
@@ -324,6 +327,7 @@ struct RuntimeDataModelExecutionContext {
 
 struct ResumeExecutionSegmentInput<'a> {
     transport_connection_scope: Option<String>,
+    observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     resumed_node_run: Option<crate::ports::CallbackResumeWaitingNode>,
     native_transport: Option<crate::ports::ProviderTransportPayload>,
     response_round_id: Option<Uuid>,
@@ -513,6 +517,7 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             transport_connection_scope_override: None,
+            observation_context: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -543,6 +548,7 @@ where
             flow_execution_context: None,
             answer_presentation: None,
             transport_connection_scope_override: None,
+            observation_context: None,
             provider_transport_payload: None,
             provider_transport_store: Some(self.provider_transport_store.clone()),
             provider_continuation: None,
@@ -627,7 +633,8 @@ where
                 provider_continuation
             })
             .with_provider_transport_payload(transport)
-            .with_transport_connection_scope_override(input.transport_connection_scope);
+            .with_transport_connection_scope_override(input.transport_connection_scope)
+            .with_observation_context(input.observation_context);
         invoker.response_round_id = input.response_round_id;
         invoker.native_history = input
             .snapshot
@@ -1029,6 +1036,7 @@ where
             command.flow_run_id,
             command.provider_transport_slot,
             command.transport_connection_scope,
+            command.observation_context,
         )
         .await
     }
@@ -1039,6 +1047,7 @@ where
         flow_run_id: Uuid,
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
         transport_connection_scope: Option<String>,
+        observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     ) -> Result<domain::ApplicationRunDetail>
     where
         R: BillingRepository + crate::ports::FileManagementRepository,
@@ -1156,6 +1165,7 @@ where
             continuation,
             provider_transport_payload,
             transport_connection_scope,
+            observation_context,
         )
         .await;
         if let Some(slot_id) = provider_transport_slot {
@@ -1303,6 +1313,7 @@ where
             let execution = self
                 .resume_execution_segment(ResumeExecutionSegmentInput {
                     transport_connection_scope: None,
+                    observation_context: None,
                     resumed_node_run: None,
                     native_transport: None,
                     response_round_id: None,

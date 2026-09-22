@@ -1255,6 +1255,49 @@
       "reason": "global upgrade attempts are bounded by their marker and run id instead of workspace row routing",
       "skip": ["managed-table-id", "managed-table-created-at", "managed-table-scope-column", "managed-table-scope-time-index"]
     },
+    "client_trajectory_captures": {
+      "kind": "bounded_projection",
+      "reason": "client capture integrity is a bounded one-row-per-request projection keyed by request_id and linked to runtime event evidence",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_steps": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory steps are bounded event projections keyed by request and event identity with pagination indexes on flow runs",
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_sections": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory sections are bounded event projections keyed by event_id and request with section-specific evidence ordering",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "client_trajectory_node_links": {
+      "kind": "bounded_projection",
+      "reason": "client trajectory node links are a bounded many-to-many correlation projection keyed by request_id and node_run_id, sourced from runtime_events and scoped through the owning flow run",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "runtime_canonical_contents": {
       "kind": "immutable_application_content",
       "reason": "canonical content is immutable and addressed by application plus content hash rather than a scope chronology scan",

@@ -1,3 +1,6 @@
+pub mod selective;
+pub use selective::PgSelectiveBackupRepository;
+
 mod dump;
 mod managed_schema;
 mod metadata;

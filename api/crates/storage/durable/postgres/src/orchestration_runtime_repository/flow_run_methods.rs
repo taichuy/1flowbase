@@ -783,6 +783,11 @@ impl PgControlPlaneStore {
         .bind(input.finished_at)
         .execute(&mut *tx)
         .await?;
+        if node_run.node_type == "llm" {
+            // Effective prompt/debug facts are owned by the node writer. GET
+            // must never rebuild the business conversation to discover them.
+            Self::refresh_completed_output_projection(&mut tx, node_run.flow_run_id).await?;
+        }
         tx.commit().await?;
 
         Ok(node_run)
@@ -859,12 +864,8 @@ impl PgControlPlaneStore {
         append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
-        // Facts already published for an in-flight call stay readable; the read
-        // path reprojects when the run watermark advances.
-        if is_terminal_application_run_log_status(flow_run.status) {
-            Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
-                .await?;
-        }
+        Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
+            .await?;
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
 
@@ -938,12 +939,8 @@ impl PgControlPlaneStore {
             append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
             Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
                 .await?;
-            if is_terminal_application_run_log_status(flow_run.status) {
-                Self::ensure_application_run_conversation_message_items_projection(
-                    &mut tx, &flow_run,
-                )
+            Self::ensure_application_run_conversation_message_items_projection(&mut tx, &flow_run)
                 .await?;
-            }
             Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
             tx.commit().await?;
             if is_terminal_application_run_log_status(flow_run.status) {

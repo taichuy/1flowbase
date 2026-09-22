@@ -30,9 +30,6 @@ pub const SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.extension-center";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_ID: &str = "system.files";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
-pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
-pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION: &str =
-    "settings_feature.access.system.host-infrastructure";
 pub const SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_ID: &str = "system.i18n-catalog";
 pub const SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.i18n-catalog";
@@ -135,6 +132,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/system-backups"),
+                ("GET", "/api/console/settings/system-backups/catalog"),
                 ("POST", "/api/console/settings/system-backups"),
                 ("POST", "/api/console/settings/system-backups/import"),
                 ("POST", "/api/console/settings/system-backups/recovery/reauth"),
@@ -550,7 +548,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
-            feature_id: SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID.to_string(),
+            feature_id: SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
                 owner_id: "boot-core".to_string(),
@@ -558,14 +556,14 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             },
             lifecycle: SettingsFeatureLifecycle::Active,
             console_surface: SettingsFeatureConsoleSurface {
-                route_id: "settings.host-infrastructure".to_string(),
-                surface_key: "host-infrastructure".to_string(),
-                path: "/settings/host-infrastructure".to_string(),
-                label_key: "auto.infrastructure".to_string(),
+                route_id: "settings.memory-observation".to_string(),
+                surface_key: "memory-observation".to_string(),
+                path: "/settings/memory-observation".to_string(),
+                label_key: "auto.memory_observation".to_string(),
                 description_key:
-                    "console.policy_groups.settings.system.host-infrastructure.description"
+                    "console.policy_groups.settings.system.memory-observation.description"
                         .to_string(),
-                order: 1400,
+                order: 1300,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/host-infrastructure/cache"),
@@ -585,35 +583,6 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                     "POST",
                     "/api/console/settings/host-infrastructure/cache/domains/{domain_code}/clear",
                 ),
-                (
-                    "GET",
-                    "/api/console/settings/host-infrastructure/providers",
-                ),
-                (
-                    "PUT",
-                    "/api/console/settings/host-infrastructure/providers/{installation_id}/{provider_code}/config",
-                ),
-            ]),
-        },
-        SettingsFeatureRegistration {
-            feature_id: SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID.to_string(),
-            owner: SettingsFeatureOwner {
-                kind: SettingsFeatureOwnerKind::Core,
-                owner_id: "boot-core".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            },
-            lifecycle: SettingsFeatureLifecycle::Active,
-            console_surface: SettingsFeatureConsoleSurface {
-                route_id: "settings.memory-observation".to_string(),
-                surface_key: "memory-observation".to_string(),
-                path: "/settings/memory-observation".to_string(),
-                label_key: "auto.memory_observation".to_string(),
-                description_key:
-                    "console.policy_groups.settings.system.memory-observation.description"
-                        .to_string(),
-                order: 1300,
-            },
-            api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/host-infrastructure/memory"),
                 (
                     "GET",

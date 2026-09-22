@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -14,7 +14,7 @@ pub use control_plane_contracts::persistence_projection::{
     trace_node_id_for_locator, trace_projection_source_watermark_from_counts,
 };
 
-pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 14;
+pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 15;
 
 pub fn legacy_locator_component(
     source_path: &str,
@@ -133,26 +133,11 @@ fn trace_visible_current_node_run_groups(
 fn trace_visible_node_run_groups(
     node_runs: &[domain::NodeRunRecord],
 ) -> Vec<Vec<domain::NodeRunRecord>> {
-    let mut groups = Vec::<Vec<domain::NodeRunRecord>>::new();
-    let mut llm_group_index_by_node = HashMap::<(Uuid, String), usize>::new();
-
-    for node_run in trace_visible_node_runs(node_runs) {
-        if node_run.node_type != "llm" {
-            groups.push(vec![node_run]);
-            continue;
-        }
-
-        let group_key = (node_run.flow_run_id, node_run.node_id.clone());
-        if let Some(group_index) = llm_group_index_by_node.get(&group_key).copied() {
-            groups[group_index].push(node_run);
-            continue;
-        }
-
-        llm_group_index_by_node.insert(group_key, groups.len());
-        groups.push(vec![node_run]);
-    }
-
-    groups
+    // A repeated node id is another execution, not a replacement snapshot.
+    trace_visible_node_runs(node_runs)
+        .into_iter()
+        .map(|node_run| vec![node_run])
+        .collect()
 }
 
 /// The task groups attach to the same LLM root the stitched context targets:
@@ -1530,3 +1515,7 @@ mod task_rounds;
 #[cfg(test)]
 #[path = "_tests/native_callback.rs"]
 mod native_callback_tests;
+
+#[cfg(test)]
+#[path = "_tests/node_run_identity.rs"]
+mod node_run_identity_tests;

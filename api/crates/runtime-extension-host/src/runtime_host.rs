@@ -1247,6 +1247,7 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
                     input,
                     required_sender,
                     diagnostic_sender,
+                    sinks.protocol_observation,
                     request.principal,
                     Some(plugin_data),
                 )

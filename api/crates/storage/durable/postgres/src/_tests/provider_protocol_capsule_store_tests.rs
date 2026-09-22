@@ -16,7 +16,7 @@ fn base_database_url() -> String {
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
 }
 
-pub(super) async fn seeded_flow_run() -> (sqlx::PgPool, Uuid) {
+pub(crate) async fn seeded_flow_run() -> (sqlx::PgPool, Uuid) {
     let schema = postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
         .unwrap();

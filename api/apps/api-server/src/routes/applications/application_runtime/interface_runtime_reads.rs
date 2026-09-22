@@ -1,14 +1,11 @@
 mod managed_projection;
+mod trajectory;
 
 use std::sync::Arc;
 
 use control_plane::{
     application::ApplicationService,
     errors::ControlPlaneError,
-    orchestration_runtime::trace_projection::{
-        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-    },
     ports::{
         CacheStore, GetApplicationRunMonitoringReportInput,
         ListApplicationConversationRunsPageInput,
@@ -33,6 +30,40 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeReadsInput {
+    ClientTrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    },
+    ClientTrajectorySection {
+        application_id: Uuid,
+        run_id: Uuid,
+        step_id: Uuid,
+        query: provider_trajectory::ClientTrajectoryQuery,
+    },
+    RunTrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
+    },
+    RunPayload {
+        application_id: Uuid,
+        run_id: Uuid,
+        section: control_plane::ports::ApplicationRunPayloadSection,
+    },
+    TrajectoryPage {
+        application_id: Uuid,
+        run_id: Uuid,
+        node_run_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
+    },
+    TrajectoryBody {
+        application_id: Uuid,
+        run_id: Uuid,
+        node_run_id: Uuid,
+        event_id: Uuid,
+        query: provider_trajectory::ProviderTrajectoryQuery,
+    },
     ListRuns {
         application_id: Uuid,
         query: ApplicationRunsQuery,
@@ -96,6 +127,11 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     reason = "the typed read output is projected immediately into the console response"
 )]
 pub(crate) enum ApplicationRuntimeReadsOutput {
+    ClientTrajectoryPage(control_plane::ports::ClientTrajectoryPage),
+    ClientTrajectorySection(control_plane::ports::ClientTrajectorySection),
+    RunPayload(serde_json::Value),
+    TrajectoryPage(control_plane::ports::ProviderTrajectoryPage),
+    TrajectoryBody(control_plane::ports::ProviderTrajectoryBody),
     Runs(FlowRunSummaryPageResponse),
     ConversationMessages(ApplicationConversationMessagesPageResponse),
     RunOverview(ApplicationRunOverviewResponse),
@@ -115,6 +151,7 @@ struct ApplicationRuntimeReadsAdapter {
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 }
 
 pub(crate) fn runtime_reads_port(
@@ -122,12 +159,14 @@ pub(crate) fn runtime_reads_port(
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsOutput>> {
     Arc::new(ApplicationRuntimeReadsAdapter {
         store,
         cache,
         runtime_activity,
         process_started_at,
+        file_storage_registry,
     })
 }
 
@@ -147,62 +186,7 @@ impl ApplicationRuntimeReadsAdapter {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
-        let status =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-                &self.store,
-                flow_run_id,
-                APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-            )
-            .await?;
-        if let Some(status) = status.as_ref() {
-            match status.status {
-                domain::ApplicationRunTraceProjectionStatus::Pending
-                | domain::ApplicationRunTraceProjectionStatus::Running
-                | domain::ApplicationRunTraceProjectionStatus::Failed => return Ok(status.clone()),
-                domain::ApplicationRunTraceProjectionStatus::Succeeded
-                | domain::ApplicationRunTraceProjectionStatus::Stale
-                | domain::ApplicationRunTraceProjectionStatus::Partial => {}
-            }
-        }
-        let source_watermark = <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
-            &self.store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        if !projection_status_needs_lazy_rebuild(status.as_ref(), &source_watermark) {
-            return status
-                .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into());
-        }
-        let source =
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-                &self.store,
-                application_id,
-                flow_run_id,
-            )
-            .await?
-            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let runtime_events =
-            <_ as OrchestrationRuntimeRepository>::list_runtime_events(&self.store, flow_run_id, 0)
-                .await?;
-        let source = enrich_application_run_detail_visible_internal_llm_route_traces(
-            source,
-            &runtime_events,
-        );
-        let projection = build_application_run_trace_projection(&source)?;
-        <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
-            &self.store,
-            &projection,
-        )
-        .await?;
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            &self.store,
-            flow_run_id,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        )
-        .await?
-        .ok_or_else(|| ControlPlaneError::Conflict("trace_projection_status").into())
+        read_application_run_trace_projection_status(&self.store, application_id, flow_run_id).await
     }
 
     async fn list_runs(
@@ -278,7 +262,6 @@ impl ApplicationRuntimeReadsAdapter {
                     log_summary.log_conversation_id.map(|id| id.to_string());
                 response.log_task_run_id = log_summary.log_task_run_id.map(|id| id.to_string());
                 response.total_cost = log_summary.total_cost;
-                response.currency_code = log_summary.currency_code;
                 response.call_kind = log_summary.call_kind;
                 response.member_run_ids = log_summary
                     .member_run_ids
@@ -335,13 +318,31 @@ impl ApplicationRuntimeReadsAdapter {
             },
         )
         .await?;
-        let items = page
-            .items
-            .into_iter()
-            .map(|run| {
-                to_application_conversation_message_summary_response(run, query.around_run_id)
-            })
-            .collect();
+        let mut items = Vec::new();
+        for run in page.items {
+            // Each page slot is one business turn; its effective context travels
+            // with it, including when the caller prepends an older page.
+            let projection = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
+                &self.store, application_id, run.id,
+                ListApplicationRunConversationMessageItemsPageInput {
+                    before_sequence: None, after_sequence: None, limit: 1,
+                },
+            ).await?;
+            if projection.total_count > 0 {
+                let mut turn = conversation_messages_from_projection_page(run.id, projection);
+                let started_at = format_time(run.started_at);
+                for item in &mut turn.items {
+                    item.started_at = started_at.clone();
+                    item.sequence = None;
+                }
+                items.extend(turn.items);
+            } else {
+                items.push(to_application_conversation_message_summary_response(
+                    run,
+                    query.around_run_id,
+                ));
+            }
+        }
         Ok(ApplicationConversationMessagesPageResponse {
             items,
             output_state: None,
@@ -350,7 +351,7 @@ impl ApplicationRuntimeReadsAdapter {
                 has_after: page.has_after,
                 before_cursor: page.before_cursor.map(|value| value.to_string()),
                 after_cursor: page.after_cursor.map(|value| value.to_string()),
-                newest_cursor: None,
+                newest_cursor: page.after_cursor.map(|value| value.to_string()),
             },
         })
     }
@@ -363,35 +364,6 @@ impl ApplicationRuntimeReadsAdapter {
         query: ApplicationConversationMessagesQuery,
     ) -> Result<ApplicationConversationMessagesPageResponse, ApiError> {
         self.visible_application(actor, application_id).await?;
-        // A task anchor converges to what the user asked and what the model
-        // finally answered; the calls in between live in the trace tree. Its
-        // context and output state still come from the run projection so the
-        // console can name the source instead of guessing at a missing answer.
-        if let Some(task) = <_ as OrchestrationRuntimeRepository>::get_application_run_log_task(
-            &self.store,
-            application_id,
-            run_id,
-        )
-        .await?
-        .filter(|task| task.member_run_ids.len() > 1)
-        {
-            let anchor_projection = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
-                &self.store,
-                application_id,
-                run_id,
-                ListApplicationRunConversationMessageItemsPageInput {
-                    before_sequence: None,
-                    after_sequence: None,
-                    limit: 1,
-                },
-            )
-            .await?;
-            return Ok(converged_task_conversation_messages(
-                &task,
-                anchor_projection.contexts,
-                anchor_projection.output_state,
-            ));
-        }
         let projection_page = <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &self.store,
             application_id,
@@ -437,13 +409,16 @@ impl ApplicationRuntimeReadsAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let mut response = to_application_run_overview_response(&application, overview);
-        response.statistics = to_trace_projection_statistics_response(
+        let statistics = to_trace_projection_statistics_response(
             self.store
                 .get_application_run_trace_statistics(run_id)
                 .await?,
         );
-        Ok(response)
+        Ok(to_application_run_overview_response(
+            &application,
+            overview,
+            statistics,
+        ))
     }
 
     async fn trace_tree(
@@ -454,22 +429,41 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRunTraceTreeResponse, ApiError> {
         let application = self.visible_application(actor, application_id).await?;
         let status = self.trace_projection_status(application_id, run_id).await?;
-        let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run(
+        let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run_metadata(
             &self.store,
             application_id,
             run_id,
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let nodes = if projection_is_succeeded(&status) {
-            <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
-                &self.store,
-                run_id,
+        let page_size = application_run_trace_children_page_size(None);
+        let page = if projection_is_succeeded(&status) {
+            Some(
+                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
+                    &self.store,
+                    ListApplicationRunTraceChildrenPageInput {
+                        flow_run_id: run_id,
+                        parent_trace_node_id: Uuid::nil(),
+                        page_size,
+                        cursor: None,
+                    },
+                )
+                .await?,
             )
-            .await?
         } else {
-            Vec::new()
+            None
         };
+        let next_cursor = page
+            .as_ref()
+            .and_then(|page| page.next_cursor.as_ref())
+            .map(|cursor| encode_application_run_trace_children_cursor(cursor, Uuid::nil()))
+            .transpose()?;
+        let page_info = ApplicationRunTraceNodeChildrenPageInfoResponse {
+            has_more: page.as_ref().is_some_and(|page| page.has_more),
+            next_cursor,
+            page_size,
+        };
+        let nodes = page.map(|page| page.items).unwrap_or_default();
         let statistics = to_trace_projection_statistics_response(
             <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
                 &self.store,
@@ -478,11 +472,11 @@ impl ApplicationRuntimeReadsAdapter {
             .await?,
         );
         Ok(ApplicationRunTraceTreeResponse {
-            run: application_run_log_response_for_trace_tree(&application, &flow_run),
+            run: application_run_log_response_for_metadata(&application, &flow_run),
             statistics,
-            flow_run: to_flow_run_response(flow_run),
-            answer_snapshot: None,
+            flow_run: to_flow_run_metadata_response(flow_run),
             projection_status: to_trace_projection_status_response(&status),
+            page_info,
             nodes: nodes
                 .into_iter()
                 .map(to_trace_node_summary_from_projection)
@@ -501,7 +495,11 @@ impl ApplicationRuntimeReadsAdapter {
         let status = self.trace_projection_status(application_id, run_id).await?;
         let projection_status = to_trace_projection_status_response(&status);
         let page_size = application_run_trace_children_page_size(query.page_size);
-        let parent_trace_node_id = parse_trace_projection_node_id(&query.parent_trace_node_id)?;
+        let parent_trace_node_id = if query.parent_trace_node_id == "root" {
+            Uuid::nil()
+        } else {
+            parse_trace_projection_node_id(&query.parent_trace_node_id)?
+        };
         let cursor = parse_application_run_trace_children_cursor(
             query.cursor.as_deref(),
             parent_trace_node_id,
@@ -517,13 +515,15 @@ impl ApplicationRuntimeReadsAdapter {
                 },
             });
         }
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-            &self.store,
-            run_id,
-            parent_trace_node_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+        if !parent_trace_node_id.is_nil() {
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+                &self.store,
+                run_id,
+                parent_trace_node_id,
+            )
+            .await?
+            .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+        }
         let page = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &self.store,
             ListApplicationRunTraceChildrenPageInput {
@@ -791,6 +791,58 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ApplicationRuntimeReadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ApplicationRuntimeReadsInput::ClientTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ClientTrajectoryPage(
+                self.client_trajectory_page(actor, application_id, run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::ClientTrajectorySection {
+                application_id,
+                run_id,
+                step_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::ClientTrajectorySection(
+                self.client_trajectory_section(actor, application_id, run_id, step_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::RunTrajectoryPage {
+                application_id,
+                run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryPage(
+                self.run_trajectory_page(actor, application_id, run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::RunPayload {
+                application_id,
+                run_id,
+                section,
+            } => Ok(ApplicationRuntimeReadsOutput::RunPayload(
+                self.run_payload(actor, application_id, run_id, section)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::TrajectoryPage {
+                application_id,
+                run_id,
+                node_run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryPage(
+                self.trajectory_page(actor, application_id, run_id, node_run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::TrajectoryBody {
+                application_id,
+                run_id,
+                node_run_id,
+                event_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::TrajectoryBody(
+                self.trajectory_body(actor, application_id, run_id, node_run_id, event_id, query)
+                    .await?,
+            )),
             ApplicationRuntimeReadsInput::ListRuns {
                 application_id,
                 query,
@@ -902,6 +954,12 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.client-trajectory.list", binding_id: "http.console.applications.runtime.client-trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/client-trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.client-trajectory.section.get", binding_id: "http.console.applications.runtime.client-trajectory.section.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/client-trajectory/:step_id", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.trajectory.list", binding_id: "http.console.applications.runtime.run.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.run.payload.get", binding_id: "http.console.applications.runtime.run.payload.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/payloads/:section", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.list", binding_id: "http.console.applications.runtime.trajectory.list.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "applications.runtime.trajectory.body.get", binding_id: "http.console.applications.runtime.trajectory.body.get.v1", method: "GET", path: "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id", mutating: false },
     ConsoleInterfaceDeclaration {
         interface_id: "applications.runtime.logs.list",
         binding_id: "http.console.applications.runtime.logs.list.v1",
@@ -1000,6 +1058,7 @@ pub(crate) fn compile_registry(
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     process_started_at: OffsetDateTime,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
@@ -1008,7 +1067,13 @@ pub(crate) fn compile_registry(
         "api-server.console-application-runtime-reads",
         "graph:console-application-runtime-reads-v1",
         DECLARATIONS,
-        runtime_reads_port(store, cache, runtime_activity, process_started_at),
+        runtime_reads_port(
+            store,
+            cache,
+            runtime_activity,
+            process_started_at,
+            file_storage_registry,
+        ),
     )
 }
 

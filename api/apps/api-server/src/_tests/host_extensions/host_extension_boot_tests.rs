@@ -126,13 +126,6 @@ impl NativeSettingsFixture {
             crate::extension_bus::ExtensionBootSnapshot::compile(
                 Arc::new(assembly.compile_graph().unwrap()),
                 assembly.interface_operations(),
-                assembly.host_extension_manifests(),
-                Arc::new(
-                    crate::extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
-                        self.state.store.clone(),
-                        self.state.api_node_id.clone(),
-                    ),
-                ),
                 Vec::new(),
             )
             .unwrap(),

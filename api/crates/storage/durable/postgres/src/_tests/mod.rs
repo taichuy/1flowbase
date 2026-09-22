@@ -9,7 +9,6 @@ mod file_management_repository_tests;
 mod flow_repository_tests;
 mod frontend_block_catalog_repository_tests;
 mod frontstage;
-mod host_infrastructure_config_repository_tests;
 mod i18n_global_key_migration_tests;
 mod identity;
 mod lifecycle_outbox_repository_tests;
@@ -26,7 +25,7 @@ mod physical_schema_repository_tests;
 mod plugin;
 mod pricing_rule_upgrade_migration_tests;
 mod protocol_context_migration_tests;
-mod provider_protocol_capsule_store_tests;
+pub(crate) mod provider_protocol_capsule_store_tests;
 mod runtime_registry_health_tests;
 mod ui_management_repository_tests;
 mod unified_extension_installation_migration_tests;
@@ -36,3 +35,7 @@ mod workspace_scope_tests;
 mod plugin_settings_template_tests;
 
 mod runtime_json_storage_tests;
+
+mod trajectory;
+
+mod client_trajectory;

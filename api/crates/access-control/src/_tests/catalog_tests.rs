@@ -39,7 +39,6 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
         "api-key-authentication",
         "auth-center",
         "system-runtime",
-        "host-infrastructure",
         "i18n-catalog",
         "memory-observation",
         "applications",

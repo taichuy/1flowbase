@@ -15,7 +15,7 @@ use tower::ServiceExt;
 
 const INTERFACES: [&str; 3] = [
     "model_definitions.create",
-    "host_infrastructure.providers.view",
+    "host_infrastructure.memory.overview.get",
     "application.native.runs.execute-stream",
 ];
 const PHASES: [&str; 6] = [
@@ -125,10 +125,20 @@ fn assert_trace(f: &Fixture, interface: &str, phases: &[&str]) {
         );
     }
 }
-async fn providers(f: &Fixture) -> u16 {
-    f.app.clone().oneshot(Request::builder()
-        .uri(crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH)
-        .header("cookie", &f.cookie).body(Body::empty()).unwrap()).await.unwrap().status().as_u16()
+async fn memory_overview(f: &Fixture) -> u16 {
+    f.app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/host-infrastructure/memory")
+                .header("cookie", &f.cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
 }
 
 #[tokio::test]
@@ -219,7 +229,7 @@ async fn root_2014_ac_002_installed_two_interface_plugin() {
         ],
     );
     f.mode("");
-    assert_eq!(providers(&f).await, 200);
+    assert_eq!(memory_overview(&f).await, 200);
     assert_trace(
         &f,
         INTERFACES[1],
@@ -233,7 +243,7 @@ async fn root_2014_ac_002_installed_two_interface_plugin() {
     );
     f.mode("fail.after");
     assert_eq!(
-        providers(&f).await,
+        memory_overview(&f).await,
         200,
         "observer failure cannot replace the host result"
     );
@@ -249,7 +259,7 @@ async fn root_2014_ac_002_installed_two_interface_plugin() {
         ],
     );
     f.mode("deny.authorization");
-    assert!(providers(&f).await >= 400);
+    assert!(memory_overview(&f).await >= 400);
     assert_trace(
         &f,
         INTERFACES[1],
@@ -279,7 +289,7 @@ async fn root_2014_ac_002_installed_two_interface_plugin() {
         .await
         .unwrap();
     f.mode("");
-    assert!(providers(&f).await >= 400);
+    assert!(memory_overview(&f).await >= 400);
     assert!(!trace(&f)
         .iter()
         .any(|frame| frame.handler == "trace.before"));
@@ -499,7 +509,7 @@ async fn root_2014_ac_003_unary_stream_terminals() {
     .await;
     // The same compiled bridge still preserves unary result ownership.
     f.mode("fail.completion");
-    assert_eq!(providers(&f).await, 200);
+    assert_eq!(memory_overview(&f).await, 200);
     assert_trace(
         &f,
         INTERFACES[1],
@@ -729,9 +739,18 @@ async fn root_2014_ac_015_017_protocol_equivalence() {
     )
     .await;
     async fn response(f: &Fixture) -> (u16, serde_json::Value) {
-        let response = f.app.clone().oneshot(Request::builder()
-            .uri(crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH)
-            .header("cookie", &f.cookie).body(Body::empty()).unwrap()).await.unwrap();
+        let response = f
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/console/settings/host-infrastructure/memory")
+                    .header("cookie", &f.cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         let status = response.status().as_u16();
         let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await

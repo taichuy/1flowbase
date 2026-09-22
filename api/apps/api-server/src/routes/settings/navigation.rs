@@ -4,7 +4,7 @@ use access_control::{
     ConsoleNavigation, ConsoleNavigationItem, ConsolePermissionBinding, ConsoleRouteDefinition,
 };
 use axum::{extract::State, http::HeaderMap, Json, Router};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
@@ -14,14 +14,14 @@ use crate::{
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConsoleNavigationResponse {
     pub route_definitions: Vec<ConsoleRouteDefinitionResponse>,
     pub navigation_items: Vec<ConsoleNavigationItemResponse>,
     pub permission_bindings: Vec<ConsolePermissionBindingResponse>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConsoleRouteDefinitionResponse {
     pub route_id: String,
     pub surface_key: String,
@@ -29,7 +29,7 @@ pub struct ConsoleRouteDefinitionResponse {
     pub surface_kind: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConsoleNavigationItemResponse {
     pub item_id: String,
     pub route_id: String,
@@ -39,7 +39,7 @@ pub struct ConsoleNavigationItemResponse {
     pub order: i32,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ConsolePermissionBindingResponse {
     pub binding_id: String,
     pub route_id: String,

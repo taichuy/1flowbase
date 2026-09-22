@@ -1,3 +1,5 @@
+import { configureExecutionProjection } from './trajectory/projection';
+import '../../../agent-flow/_tests/debug-console/trajectory/navigation';
 import { App as AntdApp } from 'antd';
 import {
   fireEvent,
@@ -144,6 +146,7 @@ const runtimeApi = vi.hoisted(() => ({
   fetchApplicationRunTraceTree: vi.fn(),
   fetchApplicationRunTraceNodeChildren: vi.fn(),
   fetchApplicationRunTraceNodeContent: vi.fn(),
+  fetchApplicationRunTraceNodeDetail: vi.fn(),
   fetchApplicationRunResumeTimeline: vi.fn(),
   fetchApplicationConversationMessages: vi.fn(),
   fetchApplicationLogConversationMessages: vi.fn(),
@@ -157,6 +160,16 @@ const runtimeApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/runtime', () => runtimeApi);
+vi.mock('../../api/trajectory', () => ({
+  fetchProviderTrajectory: vi.fn().mockResolvedValue({
+    items: [],
+    next_cursor: null,
+    observation_count: 0,
+    persist_failed_count: 0,
+    integrity: 'unavailable'
+  }),
+  fetchProviderTrajectoryBody: vi.fn()
+}));
 
 import type { ConsoleApplicationRunDetail as ApplicationRunDetail } from '@1flowbase/api-client';
 import { AppProviders } from '../../../../app/AppProviders';
@@ -198,6 +211,7 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
     runtimeApi.fetchApplicationRunTraceTree.mockReset();
     runtimeApi.fetchApplicationRunTraceNodeChildren.mockReset();
     runtimeApi.fetchApplicationRunTraceNodeContent.mockReset();
+    runtimeApi.fetchApplicationRunTraceNodeDetail.mockReset();
     runtimeApi.fetchApplicationRunResumeTimeline.mockReset();
     runtimeApi.fetchApplicationConversationMessages.mockReset();
     runtimeApi.fetchApplicationLogConversationMessages.mockReset();
@@ -292,230 +306,7 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
     dateNowSpy = undefined;
   });
 
-  test('renders fusion route branch summaries as trace sub nodes', async () => {
-    const detail = sampleRunDetail();
-    const llmNodeRun = detail.node_runs[0]!;
-    detail.stitched_trace = [
-      {
-        source_flow_run: {
-          ...detail.flow_run,
-          id: 'run-prior-fusion',
-          status: 'succeeded',
-          started_at: '2026-04-17T08:59:50Z',
-          finished_at: '2026-04-17T08:59:59Z'
-        },
-        node_runs: [
-          {
-            ...llmNodeRun,
-            id: 'node-run-prior-fusion-llm',
-            flow_run_id: 'run-prior-fusion',
-            output_payload: {
-              text: 'main merged fusion review'
-            },
-            debug_payload: {
-              llm_rounds: [
-                {
-                  round_index: 0,
-                  assistant: {
-                    role: 'assistant',
-                    content: 'need fusion review',
-                    tool_calls: [
-                      {
-                        id: 'call_fusion',
-                        name: 'fusion_review'
-                      }
-                    ]
-                  }
-                },
-                {
-                  round_index: 1,
-                  tool_results: [
-                    {
-                      tool_call_id: 'call_fusion',
-                      name: 'fusion_review',
-                      content: 'panel A says strict\npanel B says flexible'
-                    }
-                  ]
-                },
-                {
-                  round_index: 2,
-                  assistant: {
-                    role: 'assistant',
-                    content: 'main merged fusion review'
-                  }
-                }
-              ],
-              visible_internal_llm_tool_trace: [
-                {
-                  __runtime_debug_artifact: true,
-                  kind: 'visible_internal_llm_tool_trace',
-                  preview_kind: 'visible_internal_llm_tool_trace',
-                  artifact_ref: 'artifact-fusion-route',
-                  route_kind: 'fusion',
-                  tool_call_id: 'call_fusion',
-                  tool_name: 'fusion_review',
-                  status: 'succeeded',
-                  route_model: 'fusion-main-v1',
-                  target_node_id: 'node-panel-a',
-                  route_node_id: 'node-panel-a',
-                  route_node_alias: 'Fusion fan-in',
-                  returned_to_main: true,
-                  main_resume: true,
-                  branch_count: 2,
-                  branch_summaries: [
-                    {
-                      node_id: 'node-panel-a',
-                      node_alias: 'Risk Panel',
-                      node_type: 'llm',
-                      status: 'succeeded',
-                      route_model: 'risk-v1',
-                      output_summary: {
-                        kind: 'text',
-                        preview: 'panel A says strict',
-                        char_count: 19,
-                        truncated: false
-                      }
-                    },
-                    {
-                      node_id: 'node-panel-b',
-                      node_alias: 'Support Panel',
-                      node_type: 'llm',
-                      status: 'succeeded',
-                      route_model: 'support-v1',
-                      output_summary: {
-                        kind: 'text',
-                        preview: 'panel B says flexible',
-                        char_count: 21,
-                        truncated: false
-                      }
-                    }
-                  ],
-                  fan_in: {
-                    mode: 'bounded_parallel_panel',
-                    branch_count: 2,
-                    returned_to_main: true,
-                    main_resume: true
-                  }
-                }
-              ]
-            },
-            started_at: '2026-04-17T08:59:51Z',
-            finished_at: '2026-04-17T08:59:58Z'
-          }
-        ],
-        callback_tasks: [],
-        events: []
-      }
-    ];
-    currentRunDetail = detail;
-    runtimeApi.fetchRuntimeDebugArtifact.mockImplementation(
-      async (_applicationId: string, artifactRef: string) => {
-        if (artifactRef === 'artifact-fusion-route') {
-          return {
-            kind: 'visible_internal_llm_tool_trace',
-            route_kind: 'fusion',
-            tool_call_id: 'call_fusion',
-            tool_name: 'fusion_review',
-            status: 'succeeded',
-            branch_traces: [
-              {
-                event_type: 'visible_internal_llm_tool_completed',
-                node_id: 'node-panel-a',
-                node_alias: 'Risk Panel',
-                node_type: 'llm',
-                status: 'succeeded',
-                route_model: 'risk-v1',
-                input_payload: {
-                  user_prompt: 'review refund policy risk',
-                  model: 'risk-v1'
-                },
-                debug_payload: {
-                  provider_debug: 'risk panel debug metadata',
-                  llm_rounds: [
-                    {
-                      round_index: 0,
-                      assistant: {
-                        content: 'risk needs branch lookup',
-                        tool_calls: [
-                          {
-                            id: 'call_branch_policy',
-                            name: 'branch_policy_lookup'
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      round_index: 1,
-                      tool_results: [
-                        {
-                          tool_call_id: 'call_branch_policy',
-                          name: 'branch_policy_lookup',
-                          content: 'branch policy lookup result'
-                        }
-                      ]
-                    },
-                    {
-                      round_index: 2,
-                      assistant: {
-                        content: 'risk result'
-                      }
-                    }
-                  ]
-                },
-                output_payload: {
-                  text: 'panel A says strict',
-                  provider_route: {
-                    model: 'risk-v1'
-                  }
-                },
-                output_summary: {
-                  kind: 'text',
-                  preview: 'panel A says strict',
-                  char_count: 19,
-                  truncated: false
-                }
-              },
-              {
-                event_type: 'visible_internal_llm_tool_completed',
-                node_id: 'node-panel-b',
-                node_alias: 'Support Panel',
-                node_type: 'llm',
-                status: 'succeeded',
-                route_model: 'support-v1',
-                input_payload: {
-                  user_prompt: 'review refund policy support',
-                  model: 'support-v1'
-                },
-                debug_payload: {
-                  llm_rounds: []
-                },
-                output_payload: {
-                  text: 'panel B says flexible',
-                  provider_route: {
-                    model: 'support-v1'
-                  }
-                },
-                output_summary: {
-                  kind: 'text',
-                  preview: 'panel B says flexible',
-                  char_count: 21,
-                  truncated: false
-                }
-              }
-            ],
-            fan_in: {
-              mode: 'bounded_parallel_panel',
-              branch_count: 2,
-              returned_to_main: true,
-              main_resume: true
-            }
-          };
-        }
-
-        throw new Error(`unexpected artifact: ${artifactRef}`);
-      }
-    );
-
+  async function openTrace() {
     render(
       <AppProviders>
         <AntdApp>
@@ -523,413 +314,143 @@ describe('ApplicationLogsPage - artifacts trace floating detail', () => {
         </AntdApp>
       </AppProviders>
     );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
+    await screen.findByText('run-1');
     fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const openLogButton = lastElement(
-      await screen.findAllByRole(
-        'button',
-        { name: '查看对话日志' },
-        { timeout: 8_000 }
-      ),
-      'expected conversation log button'
-    );
-    fireEvent.click(openLogButton);
-
-    const logPanel = await screen.findByRole('complementary', {
-      name: '对话日志'
-    });
-    fireEvent.click(within(logPanel).getByRole('tab', { name: '追踪' }));
-
-    const llmTraceNode = lastElement(
-      await within(logPanel).findAllByRole('button', { name: /LLM/ }),
-      'expected routed LLM trace node'
-    );
-    fireEvent.click(llmTraceNode);
-    const nodeDetail = await openLazyLlmNodeDetail(logPanel);
-
-    const toolsNode = await within(nodeDetail).findByRole('button', {
-      name: /工具 1 次工具回调/
-    });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
-
-    const toolCallbackNode = within(logPanel).getByRole('button', {
-      name: /fusion_review/
-    });
-    expect(toolCallbackNode).toHaveTextContent('fusion');
-    fireEvent.click(toolCallbackNode);
-
-    const routeNode = within(logPanel).getByTestId('debug-llm-route-node');
-    await waitFor(() =>
-      expect(runtimeApi.fetchRuntimeDebugArtifact).toHaveBeenCalledWith(
-        'app-1',
-        'artifact-fusion-route'
+    fireEvent.click(
+      lastElement(
+        await screen.findAllByRole('button', { name: '查看对话日志' }),
+        'conversation log entry'
       )
     );
-    await waitFor(() =>
-      expect(within(routeNode).queryByText('加载中')).not.toBeInTheDocument()
-    );
-    expect(routeNode).not.toHaveTextContent('Fusion fan-in');
-    expect(routeNode).toHaveTextContent('执行成功');
+    const panel = await screen.findByRole('complementary', {
+      name: '对话日志'
+    });
+    fireEvent.click(within(panel).getByRole('tab', { name: '追踪' }));
+    const llm = await within(panel).findAllByRole('button', { name: /LLM/ });
+    return { panel, llm };
+  }
+
+  async function openTool(execution: HTMLElement, name = 'lookup_weather') {
+    const tools = await within(execution).findByRole('button', {
+      name: /Tools/
+    });
+    expect(tools).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(tools);
+    const tool = await within(execution).findByRole('button', {
+      name: new RegExp(name)
+    });
+    return { tools, tool };
+  }
+
+  test('inspects real fusion branches in the workflow tree without eagerly loading branch bodies', async () => {
+    configureExecutionProjection(runtimeApi, { mode: 'fusion' });
+    const { panel, llm } = await openTrace();
+    fireEvent.click(llm[0]!);
+    const execution = await openLazyLlmNodeDetail(panel);
     expect(
-      within(routeNode).getAllByTestId('debug-workflow-node-item')
-    ).toHaveLength(2);
-    const branchNodes = within(routeNode).getAllByTestId(
-      'debug-llm-route-branch-node'
-    );
-    expect(branchNodes).toHaveLength(2);
-    expect(branchNodes[0]).toHaveTextContent('Risk Panel');
-    expect(branchNodes[1]).toHaveTextContent('Support Panel');
-    const firstBranchTrigger = within(branchNodes[0]).getByRole('button', {
+      screen.queryByRole('dialog', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
+    const { tool } = await openTool(execution);
+    expect(tool).toHaveTextContent('fusion');
+    fireEvent.click(tool);
+    const risk = await within(execution).findByRole('button', {
       name: /Risk Panel/
     });
-    expect(firstBranchTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(branchNodes[0]).not.toHaveTextContent('risk-v1');
-    fireEvent.click(firstBranchTrigger);
-    expect(firstBranchTrigger).toHaveAttribute('aria-expanded', 'true');
-    expect(branchNodes[0]).toHaveTextContent('risk-v1');
-    const firstBranchToolsNode = within(branchNodes[0]).getByRole('button', {
-      name: /工具 1 次工具回调/
-    });
-    expect(firstBranchToolsNode).toHaveAttribute('aria-expanded', 'true');
     expect(
-      within(branchNodes[0]).getByRole('button', {
-        name: /branch_policy_lookup/
-      })
+      await within(execution).findByRole('button', { name: /Support Panel/ })
     ).toBeInTheDocument();
     expect(
-      within(branchNodes[0]).getByLabelText('输入 JSON')
-    ).toHaveTextContent('review refund policy risk');
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalledWith('app-1', 'run-1', 'branch-1-1');
     expect(
-      within(branchNodes[0]).getByLabelText('数据处理 JSON')
-    ).toHaveTextContent('risk panel debug metadata');
-    expect(
-      within(branchNodes[0]).getByLabelText('数据处理 JSON')
-    ).not.toHaveTextContent('branch_policy_lookup');
-    expect(
-      within(branchNodes[0]).getByLabelText('输出 JSON')
-    ).toHaveTextContent('panel A says strict');
-    expect(
-      within(branchNodes[0]).queryByText('visible_internal_llm_tool_completed')
-    ).not.toBeInTheDocument();
-    fireEvent.click(firstBranchTrigger);
-    expect(firstBranchTrigger).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      within(branchNodes[0]).queryByLabelText('输入 JSON')
-    ).not.toBeInTheDocument();
-    expect(
-      within(routeNode).queryByLabelText('fusion JSON')
-    ).not.toBeInTheDocument();
-  }, 20_000);
-
-  test('keeps expanded trace tools and loaded tool details across floating window activation', async () => {
-    const detail = sampleRunDetail();
-    const llmNodeRun = detail.node_runs[0]!;
-    detail.node_runs = [
-      {
-        ...llmNodeRun,
-        id: 'node-run-llm-1',
-        debug_payload: {
-          llm_rounds: {
-            __runtime_debug_artifact: true,
-            artifact_ref: 'artifact-llm-rounds',
-            tool_callbacks: [
-              {
-                id: 'call_weather',
-                name: 'lookup_weather',
-                callback_status: 'returned',
-                execution_status: 'succeeded',
-                artifact_ref: 'artifact-tool-weather'
-              }
-            ]
-          },
-          visible_internal_llm_tool_trace: [
-            {
-              __runtime_debug_artifact: true,
-              kind: 'visible_internal_llm_tool_trace',
-              preview_kind: 'visible_internal_llm_tool_trace',
-              artifact_ref: 'artifact-route-weather',
-              tool_call_id: 'call_weather',
-              tool_name: 'lookup_weather',
-              route_model: 'mimo-v2.5',
-              returned_to_main: true,
-              main_resume: true,
-              route_output_summary: {
-                kind: 'text',
-                preview: 'weather route said warm',
-                char_count: 23,
-                truncated: false
-              }
-            }
-          ]
-        }
-      },
-      {
-        ...llmNodeRun,
-        id: 'node-run-llm-2',
-        debug_payload: {},
-        started_at: '2026-04-17T09:00:01Z',
-        finished_at: '2026-04-17T09:00:02Z'
-      }
-    ];
-    currentRunDetail = detail;
-    runtimeApi.fetchRuntimeDebugArtifact.mockImplementation(
-      async (_applicationId: string, artifactRef: string) => {
-        if (artifactRef === 'artifact-tool-weather') {
-          return {
-            id: 'call_weather',
-            name: 'lookup_weather',
-            callback_status: 'returned',
-            execution_status: 'succeeded',
-            request_payload: {
-              city: 'Shanghai'
-            },
-            callback_payload: {
-              temperature: 'warm'
-            },
-            parsed_result: {
-              ok: true
-            }
-          };
-        }
-        if (artifactRef === 'artifact-route-weather') {
-          return {
-            kind: 'visible_internal_llm_tool_trace',
-            tool_call_id: 'call_weather',
-            route: {
-              model: 'mimo-v2.5'
-            },
-            returned_to_main: true,
-            main_resume: true,
-            main_resume_output: {
-              content: 'main saw weather route'
-            }
-          };
-        }
-
-        throw new Error(`unexpected artifact: ${artifactRef}`);
-      }
-    );
-    runtimeApi.fetchRuntimeDebugArtifacts.mockImplementation(
-      async (_applicationId: string, artifactRefs: string[]) => ({
-        artifacts: artifactRefs.map((artifactRef) => {
-          if (artifactRef === 'artifact-route-weather') {
-            return {
-              artifact_ref: artifactRef,
-              value: {
-                kind: 'visible_internal_llm_tool_trace',
-                tool_call_id: 'call_weather',
-                route: {
-                  model: 'mimo-v2.5'
-                },
-                returned_to_main: true,
-                main_resume: true,
-                main_resume_output: {
-                  content: 'main saw weather route'
-                }
-              }
-            };
-          }
-
-          throw new Error(`unexpected artifact: ${artifactRef}`);
-        })
-      })
-    );
-
-    render(
-      <AppProviders>
-        <AntdApp>
-          <ApplicationLogsPage applicationId="app-1" />
-        </AntdApp>
-      </AppProviders>
-    );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const openLogButton = lastElement(
-      await screen.findAllByRole(
-        'button',
-        { name: '查看对话日志' },
-        { timeout: 8_000 }
-      ),
-      'expected conversation log button'
-    );
-    fireEvent.click(openLogButton);
-
-    const logPanel = await screen.findByRole('complementary', {
-      name: '对话日志'
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalledWith('app-1', 'run-1', 'branch-1-2');
+    fireEvent.click(risk);
+    const detail = await within(execution).findByRole('region', {
+      name: 'Risk Panel 节点详情'
     });
-    fireEvent.click(within(logPanel).getByRole('tab', { name: '追踪' }));
-    const llmTraceNode = await within(logPanel).findByRole('button', {
-      name: /LLM/
-    });
-    fireEvent.click(llmTraceNode);
-    const nodeDetail = await openLazyLlmNodeDetail(logPanel);
-
-    const toolsNode = await within(nodeDetail).findByRole('button', {
-      name: /工具 1 次工具回调/
-    });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
-
-    const toolCallbackNode = within(logPanel).getByRole('button', {
-      name: /lookup_weather/
-    });
-    expect(toolCallbackNode).toHaveTextContent('智能路由');
-    expect(toolCallbackNode).not.toHaveTextContent('路由模型 mimo-v2.5');
-    expect(toolCallbackNode).not.toHaveTextContent('weather route said warm');
-    fireEvent.click(toolCallbackNode);
-
-    await waitFor(() =>
-      expect(runtimeApi.fetchRuntimeDebugArtifact).toHaveBeenCalledTimes(1)
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeDetail
+    ).not.toHaveBeenCalled();
+    expect(await within(detail).findByLabelText('输入 JSON')).toHaveTextContent(
+      'Risk Panel input'
     );
-    expect(runtimeApi.fetchRuntimeDebugArtifact).toHaveBeenCalledWith(
+    expect(runtimeApi.fetchApplicationRunTraceNodeContent).toHaveBeenCalledWith(
       'app-1',
-      'artifact-tool-weather'
+      'run-1',
+      'branch-1-1'
     );
-    const routeNode = within(logPanel).getByTestId('debug-llm-route-node');
-    const routeTraceJson = within(routeNode).getByLabelText('智能路由 JSON');
-    expect(routeTraceJson).toHaveTextContent('weather route said warm');
+    expect(
+      await within(detail).findByLabelText('数据处理 JSON')
+    ).toHaveTextContent('recorded-provider');
+    expect(
+      within(detail).queryByRole('button', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(detail).getByRole('button', { name: /branch_policy_lookup/ })
+    ).toBeInTheDocument();
+    expect(
+      within(detail).getByLabelText('数据处理 JSON')
+    ).not.toHaveTextContent('branch_policy_lookup');
+    expect(await within(detail).findByLabelText('输出 JSON')).toHaveTextContent(
+      'Risk Panel result'
+    );
+    expect(
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).not.toHaveBeenCalledWith('app-1', 'run-1', 'branch-1-2');
+  });
+
+  test('retains loaded execution details and artifacts across floating window activation', async () => {
+    configureExecutionProjection(runtimeApi, { artifact: true });
+    runtimeApi.fetchRuntimeDebugArtifacts.mockResolvedValue({
+      artifacts: [
+        {
+          artifact_ref: 'artifact-branch-output',
+          value: { text: 'retained branch result' }
+        }
+      ]
+    });
+    const { panel, llm } = await openTrace();
+    fireEvent.click(llm[0]!);
+    const execution = await openLazyLlmNodeDetail(panel);
+    expect(
+      screen.queryByRole('dialog', { name: '调用轨迹' })
+    ).not.toBeInTheDocument();
+    const { tool, tools } = await openTool(execution);
+    fireEvent.click(tool);
     fireEvent.click(
-      within(routeNode).getByRole('button', {
-        name: '加载完整值'
-      })
+      await within(execution).findByRole('button', { name: /Image LLM/ })
     );
-    await waitFor(() =>
-      expect(runtimeApi.fetchRuntimeDebugArtifacts).toHaveBeenCalledWith(
-        'app-1',
-        ['artifact-route-weather']
-      )
+    const detail = await within(execution).findByRole('region', {
+      name: 'Image LLM 节点详情'
+    });
+    expect(runtimeApi.fetchRuntimeDebugArtifacts).not.toHaveBeenCalled();
+    fireEvent.click(
+      await within(detail).findByRole('button', { name: '加载完整值' })
     );
     await waitFor(() =>
       expect(
-        within(routeNode).getByLabelText('智能路由 JSON')
-      ).toHaveTextContent('main saw weather route')
+        runtimeApi.fetchRuntimeDebugArtifacts
+      ).toHaveBeenCalledExactlyOnceWith('app-1', ['artifact-branch-output'])
     );
-
+    await waitFor(() =>
+      expect(within(detail).getByLabelText('输出 JSON')).toHaveTextContent(
+        'retained branch result'
+      )
+    );
+    const contentCalls =
+      runtimeApi.fetchApplicationRunTraceNodeContent.mock.calls.length;
     fireEvent.mouseDown(
       screen.getByTestId('application-logs-floating-run-detail')
     );
-
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /工具 1 次工具回调/
-      })
-    ).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /lookup_weather/
-      })
-    ).toHaveAttribute('aria-expanded', 'true');
-
-    fireEvent.click(llmTraceNode);
-    expect(
-      within(logPanel).queryByRole('button', {
-        name: /lookup_weather/
-      })
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(llmTraceNode);
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /工具 1 次工具回调/
-      })
-    ).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      within(logPanel).getByRole('button', {
-        name: /lookup_weather/
-      })
-    ).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(
-      within(logPanel).getByRole('button', {
-        name: /lookup_weather/
-      })
-    );
-
-    await waitFor(() =>
-      expect(runtimeApi.fetchRuntimeDebugArtifact).toHaveBeenCalledTimes(1)
-    );
-  }, 20_000);
-
-  test('does not offer run log details for imported context messages', async () => {
-    runtimeApi.fetchApplicationRunConversationMessages.mockResolvedValue(
-      conversationMessagesPage([
-        {
-          id: 'msg-history-system',
-          flow_run_id: null,
-          role: 'system',
-          content: '你是项目助手',
-          sequence: 1,
-          started_at: '2026-04-17T08:58:59Z',
-          finished_at: '2026-04-17T08:59:00Z'
-        },
-        {
-          id: 'msg-history-user',
-          flow_run_id: null,
-          role: 'user',
-          content: '外部传入的问题',
-          sequence: 2,
-          started_at: '2026-04-17T08:59:00Z',
-          finished_at: '2026-04-17T08:59:01Z'
-        },
-        {
-          id: 'msg-history-assistant',
-          flow_run_id: null,
-          role: 'assistant',
-          content: '外部传入的回答',
-          sequence: 3,
-          started_at: '2026-04-17T08:59:01Z',
-          finished_at: '2026-04-17T08:59:02Z'
-        },
-        {
-          id: 'msg-run-1-user',
-          flow_run_id: 'run-1',
-          role: 'user',
-          content: '总结退款政策',
-          sequence: 4,
-          started_at: '2026-04-17T09:00:00Z',
-          finished_at: '2026-04-17T09:00:01Z'
-        },
-        {
-          id: 'msg-run-1-assistant',
-          flow_run_id: 'run-1',
-          role: 'assistant',
-          content: '退款政策摘要',
-          sequence: 5,
-          started_at: '2026-04-17T09:00:00Z',
-          finished_at: '2026-04-17T09:00:01Z'
-        }
-      ])
-    );
-
-    render(
-      <AppProviders>
-        <AntdApp>
-          <ApplicationLogsPage applicationId="app-1" />
-        </AntdApp>
-      </AppProviders>
-    );
-
-    expect(await screen.findByText('run-1')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '查看运行详情' }));
-
-    const conversation = await screen.findByTestId(
-      'debug-conversation-messages'
+    expect(tools).toHaveAttribute('aria-expanded', 'true');
+    expect(tool).toHaveAttribute('aria-expanded', 'true');
+    expect(within(detail).getByLabelText('输出 JSON')).toHaveTextContent(
+      'retained branch result'
     );
     expect(
-      await within(conversation).findByText('你是项目助手')
-    ).toBeInTheDocument();
-    expect(
-      await within(conversation).findByText('外部传入的问题')
-    ).toBeInTheDocument();
-    expect(
-      within(conversation).getByText('外部传入的回答')
-    ).toBeInTheDocument();
-    expect(
-      within(conversation).getAllByRole('button', {
-        name: '查看对话日志'
-      })
-    ).toHaveLength(1);
-  }, 20_000);
+      runtimeApi.fetchApplicationRunTraceNodeContent
+    ).toHaveBeenCalledTimes(contentCalls);
+    expect(runtimeApi.fetchRuntimeDebugArtifacts).toHaveBeenCalledTimes(1);
+  });
 });

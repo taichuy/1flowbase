@@ -253,7 +253,11 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
         );
     }
 
-    assert!(trace_tree.contains("list_application_run_trace_roots"));
+    assert!(trace_tree.contains("list_application_run_trace_children_page"));
+    assert!(trace_tree.contains("parent_trace_node_id: Uuid::nil()"));
+    assert!(trace_tree.contains("get_flow_run_metadata"));
+    assert!(!trace_tree.contains("::get_flow_run("));
+    assert!(!trace_tree.contains("to_flow_run_response("));
     assert!(trace_tree.contains("get_application_run_trace_statistics"));
     assert!(!trace_tree.contains("list_application_run_trace_nodes_for_statistics"));
     assert!(trace_children.contains("list_application_run_trace_children_page"));
@@ -289,22 +293,22 @@ fn run_conversation_messages_endpoint_reads_projection_without_full_detail_fallb
 }
 
 #[test]
-fn trace_projection_status_ensure_checks_lightweight_watermark_before_full_source() {
-    let function_source = application_runtime_function_source(
+fn trace_projection_status_read_never_rebuilds_or_reads_source() {
+    let source = application_runtime_function_source(
         include_str!("../log_handlers.rs"),
-        "async fn ensure_application_run_trace_projection_status",
+        "async fn read_application_run_trace_projection_status",
     );
-    let watermark_query = function_source
-        .find("get_application_run_trace_projection_source_watermark")
-        .expect("trace projection ensure must read a lightweight source watermark");
-    let full_source_query = function_source
-        .find("get_application_run_trace_projection_source(")
-        .expect("trace projection ensure may read the full source only for rebuild");
-
-    assert!(
-        watermark_query < full_source_query,
-        "trace projection ensure must decide unchanged succeeded projections before loading the full detail source"
-    );
+    assert!(source.contains("get_application_run_trace_read_status"));
+    for forbidden in [
+        "get_application_run_trace_projection_source",
+        "rebuild",
+        "get_flow_run(",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "read path contains {forbidden}"
+        );
+    }
 }
 
 #[test]
@@ -415,61 +419,86 @@ fn resume_timeline_contract_fixture_preserves_callback_payloads_and_event_order(
 }
 
 #[test]
-fn overview_contract_fixture_preserves_answer_snapshot_and_top_level_fields() {
+fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
     let application = test_application_record();
-    let flow_run_id = Uuid::from_u128(20);
-    let waiting_node_run_id = Uuid::from_u128(21);
-    let answer_node_run_id = Uuid::from_u128(22);
     let flow_run = test_flow_run_record(
         application.id,
-        flow_run_id,
+        Uuid::from_u128(20),
         domain::FlowRunStatus::WaitingCallback,
-        serde_json::json!({ "answer": "partial answer" }),
+        serde_json::json!({"answer":"not loaded by overview"}),
     );
     let overview = control_plane::ports::ApplicationRunOverviewReadModel {
-        flow_run,
-        node_runs: vec![domain::NodeRunRecord {
-            id: answer_node_run_id,
-            flow_run_id,
-            node_id: "node-answer".to_string(),
-            node_type: "answer".to_string(),
-            node_alias: "Answer".to_string(),
-            status: domain::NodeRunStatus::Succeeded,
-            input_payload: serde_json::json!({
-                "presentation": {
-                    "complete": false,
-                    "materialized_from": "waiting_prefix"
-                }
-            }),
-            output_payload: serde_json::json!({ "answer": "partial answer" }),
-            error_payload: None,
-            metrics_payload: serde_json::json!({}),
-            debug_payload: serde_json::json!({}),
-            started_at: OffsetDateTime::UNIX_EPOCH,
-            finished_at: Some(OffsetDateTime::UNIX_EPOCH),
-        }],
-        tool_callback_count: 0,
-        waiting_node_id: Some("node-tool".to_string()),
-        waiting_node_run_id: Some(waiting_node_run_id),
+        flow_run: (&flow_run).into(),
+        tool_callback_count: 3,
+        waiting_node_id: Some("node-tool".into()),
+        waiting_node_run_id: Some(Uuid::from_u128(21)),
     };
-    let value =
-        serde_json::to_value(to_application_run_overview_response(&application, overview)).unwrap();
-
-    let object = value.as_object().unwrap();
-    assert_eq!(object.len(), 4);
-    for field in ["run", "statistics", "flow_run", "answer_snapshot"] {
-        assert!(object.contains_key(field), "overview is missing {field}");
+    let statistics = to_trace_projection_statistics_response(
+        control_plane::ports::ApplicationRunTraceProjectionStatistics {
+            total_tokens: Some(154),
+            tool_callback_count: 3,
+            ..Default::default()
+        },
+    );
+    let response = to_application_run_overview_response(&application, overview, statistics);
+    let value = serde_json::to_value(&response).unwrap();
+    let managed = interface_runtime::InterfaceContract::project_for_managed_hook(
+        &interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response),
+    )
+    .expect("metadata has a registered safe projection");
+    assert!(managed["0"]["flow_run"].get("input_payload").is_none());
+    assert!(managed["0"].get("answer_snapshot").is_none());
+    let schema = <interface_runtime_reads::ApplicationRuntimeReadsOutput as interface_runtime::InterfaceContract>::managed_projection_schema().unwrap();
+    for variant in ["RunOverview", "TraceTree"] {
+        let shape = schema["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|shape| shape["properties"]["variant"]["const"] == variant)
+            .unwrap();
+        let properties = &shape["properties"]["0"]["properties"];
+        assert!(properties.get("answer_snapshot").is_none());
+        for field in [
+            "input_payload",
+            "output_payload",
+            "error_payload",
+            "query",
+            "model",
+        ] {
+            assert!(properties["flow_run"]["properties"].get(field).is_none());
+        }
     }
-    assert_eq!(value["answer_snapshot"]["kind"], "answer");
-    assert_eq!(value["answer_snapshot"]["text"], "partial answer");
-    assert_eq!(
-        value["answer_snapshot"]["answer_node_run_id"],
-        answer_node_run_id.to_string()
-    );
-    assert_eq!(
-        value["answer_snapshot"]["waiting_node_run_id"],
-        waiting_node_run_id.to_string()
-    );
+    assert_eq!(value.as_object().unwrap().len(), 3);
+    assert_eq!(value["flow_run"]["id"], flow_run.id.to_string());
+    assert_eq!(value["flow_run"]["status"], "waiting_callback");
+    assert_eq!(value["statistics"]["total_tokens"], 154);
+    assert!(!value.as_object().unwrap().contains_key("answer_snapshot"));
+    for body in [
+        "input_payload",
+        "output_payload",
+        "error_payload",
+        "query",
+        "model",
+    ] {
+        assert!(!value["flow_run"].as_object().unwrap().contains_key(body));
+    }
+    let adapter = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"));
+    let metadata = application_runtime_method_source(adapter, "get_flow_run_metadata");
+    for body in [
+        "input_payload",
+        "output_payload",
+        "error_payload",
+        "raw_json_payloads",
+        "node_runs",
+    ] {
+        assert!(
+            !metadata.contains(body),
+            "metadata query must not select {body}"
+        );
+    }
+    let overview = application_runtime_method_source(adapter, "get_application_run_overview");
+    assert!(overview.contains("get_flow_run_metadata"));
+    assert!(!overview.contains("list_node_runs_for_flow_run"));
 }
 
 #[test]

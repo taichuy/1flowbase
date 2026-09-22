@@ -33,6 +33,9 @@ pub async fn call_executable_streaming(
     limits: &PluginRuntimeLimits,
     required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
     diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    protocol_observation: Option<
+        Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
+    >,
     event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 ) -> FrameworkResult<StreamingProviderOutput> {
     let mut command = Command::new(executable_path);
@@ -48,7 +51,7 @@ pub async fn call_executable_streaming(
         .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let mut payload = serde_json::to_vec(request)
+        let mut payload = serialize_provider_stdio_request(request, protocol_observation.is_some())
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
         payload.push(b'\n');
         stdin
@@ -110,6 +113,17 @@ pub async fn call_executable_streaming(
                 }
                 other => {
                     if let Some(event) = other.into_stream_event() {
+                        // Capture traffic is independent of provider progress and idle timers.
+                        if matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            forward_provider_live_event(
+                                None,
+                                None,
+                                protocol_observation.as_deref(),
+                                event,
+                            )
+                            .await?;
+                            continue;
+                        }
                         outcome.observe(&event);
                         timeout_state.record_stream_event(&event);
                         if let Some(event_observer) = &event_observer {
@@ -118,10 +132,13 @@ pub async fn call_executable_streaming(
                         forward_provider_live_event(
                             required_live_events.as_ref(),
                             diagnostic_live_events.as_ref(),
+                            protocol_observation.as_deref(),
                             event.clone(),
                         )
                         .await?;
-                        events.push(event);
+                        if !matches!(event, ProviderStreamEvent::ProtocolObservation { .. }) {
+                            events.push(event);
+                        }
                     }
                 }
             }

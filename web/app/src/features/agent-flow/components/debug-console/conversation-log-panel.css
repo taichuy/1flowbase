@@ -129,3 +129,9 @@
 .agent-flow-editor__conversation-log-empty {
   padding: 24px 12px;
 }
+
+.agent-flow-editor__conversation-log-metadata-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

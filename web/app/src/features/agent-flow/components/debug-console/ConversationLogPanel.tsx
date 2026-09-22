@@ -1,3 +1,4 @@
+import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import {
   useCallback,
   useEffect,
@@ -41,6 +42,7 @@ import type {
   ConversationLogOverviewLoader,
   ConversationLogRunOverview,
   ConversationLogTraceLoader,
+  ConversationLogTraceNodeChildren,
   ConversationLogTraceNodeChildrenPageInfo,
   ConversationLogTraceNodeSummary,
   ConversationLogTraceProjectionStatus
@@ -119,45 +121,20 @@ function formatNullableNumber(value: number | null | undefined) {
     : '-';
 }
 
-function overviewDetailInput(
-  message: AgentFlowDebugMessage,
-  overview: ConversationLogRunOverview | undefined
-) {
-  return overview?.flow_run.input_payload ?? buildDetailInput(message);
-}
-
-function overviewDetailOutput(
-  message: AgentFlowDebugMessage,
-  overview: ConversationLogRunOverview | undefined
-) {
-  if (!overview) {
-    return buildDetailOutput(message);
-  }
-
-  if (Object.keys(overview.flow_run.output_payload).length > 0) {
-    return overview.flow_run.output_payload;
-  }
-
-  const answerPayload = overview.answer_snapshot?.output_payload;
-  if (answerPayload && Object.keys(answerPayload).length > 0) {
-    return answerPayload;
-  }
-
-  return {
-    answer: overview.answer_snapshot?.text ?? message.content
-  };
-}
-
 function ConversationLogDetailContent({
   message,
   onLoadArtifact,
   onLoadArtifacts,
-  overview
+  overview,
+  overviewLoader,
+  traceLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overview?: ConversationLogRunOverview;
+  overviewLoader?: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
 }) {
   const firstTraceItem = message.traceSummary[0] ?? null;
   const lastTraceItem = message.traceSummary.at(-1) ?? null;
@@ -174,10 +151,24 @@ function ConversationLogDetailContent({
     <div className="agent-flow-editor__conversation-log-tab">
       <div className="agent-flow-editor__conversation-log-json-list">
         <NodeRunPayloadSections
+          key={message.detailRunId ?? message.runId ?? message.id}
+          defaultCollapsed={Boolean(overview)}
+          onLoadSection={
+            overviewLoader?.loadPayload &&
+            (message.detailRunId ?? message.runId)
+              ? (section) => {
+                  if (section === 'debug_payload') return Promise.resolve({});
+                  return overviewLoader.loadPayload!(
+                    message.detailRunId ?? message.runId!,
+                    section
+                  );
+                }
+              : undefined
+          }
           debugPayload={{}}
           includeDebugPayload={false}
-          inputPayload={overviewDetailInput(message, overview)}
-          outputPayload={overviewDetailOutput(message, overview)}
+          inputPayload={buildDetailInput(message)}
+          outputPayload={buildDetailOutput(message)}
           onLoadArtifact={onLoadArtifact}
           onLoadArtifacts={onLoadArtifacts}
         />
@@ -186,9 +177,22 @@ function ConversationLogDetailContent({
         aria-label={i18nText('agentFlow', 'auto.metadata')}
         className="agent-flow-editor__conversation-log-metadata"
       >
-        <Typography.Text strong>
-          {i18nText('agentFlow', 'auto.metadata')}
-        </Typography.Text>
+        <div className="agent-flow-editor__conversation-log-metadata-heading">
+          <Typography.Text strong>
+            {i18nText('agentFlow', 'auto.metadata')}
+          </Typography.Text>
+          {traceLoader?.loadRunTrajectory &&
+          (message.detailRunId ?? message.runId) ? (
+            <ProviderTrajectory
+              runId={(message.detailRunId ?? message.runId)!}
+              compatibility_mode={overviewCompatibilityModeLabel(
+                message,
+                overview
+              )}
+              loader={traceLoader}
+            />
+          ) : null}
+        </div>
         <Descriptions
           column={1}
           items={[
@@ -254,12 +258,14 @@ function ConversationLogLazyDetail({
   onLoadArtifact,
   onLoadArtifacts,
   overviewLoader,
+  traceLoader,
   overviewRunId
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overviewLoader: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
   overviewRunId: string;
 }) {
   const overviewQuery = useQuery({
@@ -281,6 +287,8 @@ function ConversationLogLazyDetail({
     <ConversationLogDetailContent
       message={message}
       overview={overviewQuery.data}
+      overviewLoader={overviewLoader}
+      traceLoader={traceLoader}
       onLoadArtifact={onLoadArtifact}
       onLoadArtifacts={onLoadArtifacts}
     />
@@ -291,12 +299,14 @@ function ConversationLogDetail({
   message,
   onLoadArtifact,
   onLoadArtifacts,
-  overviewLoader
+  overviewLoader,
+  traceLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   overviewLoader?: ConversationLogOverviewLoader;
+  traceLoader?: ConversationLogTraceLoader;
 }) {
   const overviewRunId = message.detailRunId ?? message.runId;
 
@@ -305,6 +315,7 @@ function ConversationLogDetail({
       <ConversationLogLazyDetail
         message={message}
         overviewLoader={overviewLoader}
+        traceLoader={traceLoader}
         overviewRunId={overviewRunId}
         onLoadArtifact={onLoadArtifact}
         onLoadArtifacts={onLoadArtifacts}
@@ -315,6 +326,8 @@ function ConversationLogDetail({
   return (
     <ConversationLogDetailContent
       message={message}
+      overviewLoader={overviewLoader}
+      traceLoader={traceLoader}
       onLoadArtifact={onLoadArtifact}
       onLoadArtifacts={onLoadArtifacts}
     />
@@ -412,12 +425,41 @@ function LazyConversationTrace({
   runId: string;
   traceLoader: ConversationLogTraceLoader;
 }) {
+  const [rootPages, setRootPages] = useState<
+    ConversationLogTraceNodeChildren[]
+  >([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const traceTreeQuery = useQuery({
     queryKey: ['conversation-log-trace-tree', runId],
     queryFn: () => traceLoader.loadTree(runId),
     refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
+    refetchInterval: (query) => {
+      const status = query.state.data?.projection_status?.projection_status;
+      return status === 'pending' || status === 'running' ? 1000 : false;
+    },
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
+  const rootPageInfo =
+    rootPages.at(-1)?.page_info ?? traceTreeQuery.data?.page_info;
+  const loadMoreRoots = async () => {
+    if (!rootPageInfo?.next_cursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadFailed(false);
+    try {
+      const page = await traceLoader.loadChildren(
+        runId,
+        'root',
+        rootPageInfo.next_cursor
+      );
+      setRootPages((pages) => [...pages, page]);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   if (traceTreeQuery.isLoading) {
     return (
@@ -428,7 +470,10 @@ function LazyConversationTrace({
   }
 
   const projectionStatus = traceTreeQuery.data?.projection_status;
-  const nodes = traceTreeQuery.data?.nodes ?? [];
+  const nodes = rootPages.reduce(
+    (items, page) => appendTraceChildrenPage(items, page.items),
+    traceTreeQuery.data?.nodes ?? []
+  );
 
   if (!traceProjectionStatusSucceeded(projectionStatus) && projectionStatus) {
     return (
@@ -459,6 +504,23 @@ function LazyConversationTrace({
         runId={runId}
         traceLoader={traceLoader}
       />
+      {loadFailed ? (
+        <Alert
+          type="error"
+          showIcon
+          title={i18nText('agentFlow', 'auto.loading_failed')}
+        />
+      ) : null}
+      {rootPageInfo?.has_more ? (
+        <Button
+          type="link"
+          size="small"
+          loading={loadingMore}
+          onClick={() => void loadMoreRoots()}
+        >
+          {i18nText('agentFlow', 'auto.load_more_trace_children')}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -612,6 +674,7 @@ function LazyTraceNodeItem({
   traceLoader: ConversationLogTraceLoader;
 }) {
   const isGroupNode = isTraceGroupNode(node);
+  const hasTrajectory = node.node_type === 'llm' && Boolean(node.node_run_id);
   const [expanded, setExpanded] = useState(false);
   const [childrenState, dispatchChildrenState] = useReducer(
     lazyTraceChildrenReducer,
@@ -633,31 +696,23 @@ function LazyTraceNodeItem({
     () => findNodeRunDetailRefId(contentQuery.data),
     [contentQuery.data]
   );
-  const nodeRunDetailQuery = useQuery({
-    enabled:
-      expanded &&
-      Boolean(nodeRunDetailRefId) &&
-      Boolean(traceLoader.loadDetail),
-    queryKey: [
-      'conversation-log-trace-node-detail',
-      runId,
-      node.trace_node_id,
-      nodeRunDetailRefId
-    ],
-    queryFn: () => {
-      if (!traceLoader.loadDetail || !nodeRunDetailRefId) {
-        throw new Error('trace_node_detail_loader_unavailable');
-      }
-
-      return traceLoader.loadDetail(
-        runId,
-        node.trace_node_id,
-        nodeRunDetailRefId
-      );
-    },
-    refetchOnWindowFocus: false,
-    staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
-  });
+  const loadNodeRunSection =
+    nodeRunDetailRefId && traceLoader.loadDetail
+      ? async (
+          section: 'input_payload' | 'debug_payload' | 'output_payload'
+        ) => {
+          const result = await traceLoader.loadDetail!(
+            runId,
+            node.trace_node_id,
+            nodeRunDetailRefId,
+            section
+          );
+          const nodeRun = result.payload.node_run as
+            | Record<string, unknown>
+            | undefined;
+          return nodeRun?.[section];
+        }
+      : undefined;
   const childrenQuery = useQuery({
     enabled: expanded && node.has_children,
     queryKey: [
@@ -723,17 +778,13 @@ function LazyTraceNodeItem({
   const item = useMemo(
     () =>
       traceItemWithToolMode(
-        mapTraceContentToTraceItem(
-          fallbackItem,
-          contentQuery.data,
-          nodeRunDetailQuery.data
-        ),
+        mapTraceContentToTraceItem(fallbackItem, contentQuery.data),
         toolModeFromTraceNodes(childNodes)
       ),
-    [childNodes, contentQuery.data, fallbackItem, nodeRunDetailQuery.data]
+    [childNodes, contentQuery.data, fallbackItem]
   );
   const contentProjectionStatus = contentQuery.data?.projection_status;
-  const contentLoading = contentQuery.isLoading || nodeRunDetailQuery.isLoading;
+  const contentLoading = contentQuery.isLoading;
   const loadToolCallbackDetail = traceLoader.loadToolCallbackDetail;
   const childNodesBeforePayload =
     visibleChildNodes.length > 0 || toolModeNodes.length > 0 ? (
@@ -815,7 +866,19 @@ function LazyTraceNodeItem({
           ) : (
             <div className="agent-flow-editor__conversation-log-json-list">
               <DebugWorkflowNodeDetailContent
+                onLoadSection={loadNodeRunSection}
                 beforePayloadContent={childNodesBeforePayload}
+                processAction={
+                  hasTrajectory && node.node_run_id ? (
+                    <ProviderTrajectory
+                      runId={
+                        node.source_flow_run_id ?? node.flow_run_id ?? runId
+                      }
+                      nodeRunId={node.node_run_id}
+                      loader={traceLoader}
+                    />
+                  ) : undefined
+                }
                 defaultToolsExpanded={defaultToolsExpanded}
                 item={item}
                 onLoadArtifact={onLoadArtifact}
@@ -1032,6 +1095,7 @@ export function ConversationLogPanel({
               <ConversationLogDetail
                 message={message}
                 overviewLoader={overviewLoader}
+                traceLoader={traceLoader}
                 onLoadArtifact={loadArtifact}
                 onLoadArtifacts={onLoadArtifacts}
               />

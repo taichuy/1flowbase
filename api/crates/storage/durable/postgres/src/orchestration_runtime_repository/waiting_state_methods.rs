@@ -359,6 +359,7 @@ impl PgControlPlaneStore {
                 ))
             }
         }
+        Self::refresh_completed_output_projection(&mut tx, input.flow_run_id).await?;
         tx.commit().await?;
 
         let flow_run = self

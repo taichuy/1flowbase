@@ -46,6 +46,7 @@ async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -70,6 +71,7 @@ async fn provider_stdio_default_invocation_budget_is_300_seconds() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -88,6 +90,7 @@ async fn provider_stdio_v2_rejects_bad_json_line() {
         &script,
         &invoke_request(),
         &limits(),
+        None,
         None,
         None,
         None,

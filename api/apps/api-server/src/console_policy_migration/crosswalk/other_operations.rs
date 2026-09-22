@@ -82,7 +82,6 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
         &[
             "frontend_blocks.view",
             "host_infrastructure.cache.view",
-            "host_infrastructure.providers.view",
             "js_dependencies.view",
             "model_provider_plugins.families.view",
             "model_provider_plugins.official_catalog.view",
@@ -111,7 +110,6 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
             "host_infrastructure.cache.domain.clear",
             "host_infrastructure.cache.entry.clear",
             "host_infrastructure.cache.reveal",
-            "host_infrastructure.providers.configure",
             "model_provider_plugins.artifact.install",
             "model_provider_plugins.artifact.refresh",
             "model_provider_plugins.families.delete",

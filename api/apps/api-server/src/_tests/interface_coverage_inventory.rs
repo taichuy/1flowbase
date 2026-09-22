@@ -164,7 +164,7 @@ fn issue_1944_inventory_is_finite_frozen_and_source_anchored() {
         inventory.migration_scope,
         [
             "public.auth.login-entries",
-            "console.host-infrastructure.providers",
+            "console.host-infrastructure.memory",
             "application.native.runs",
             "mcp.user-api-key.tools",
         ]

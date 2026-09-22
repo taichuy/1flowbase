@@ -157,17 +157,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         ],
     ),
     core_simple_settings(
-        "system.host-infrastructure",
-        &[
-            "host_infrastructure.cache.domain.clear",
-            "host_infrastructure.cache.entry.clear",
-            "host_infrastructure.cache.reveal",
-            "host_infrastructure.cache.view",
-            "host_infrastructure.providers.configure",
-            "host_infrastructure.providers.view",
-        ],
-    ),
-    core_simple_settings(
         "system.i18n-catalog",
         &[
             "i18n_catalog.custom_keys.delete",
@@ -282,6 +271,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.memory-observation",
         &[
+            "host_infrastructure.cache.domain.clear",
+            "host_infrastructure.cache.entry.clear",
+            "host_infrastructure.cache.reveal",
+            "host_infrastructure.cache.view",
             "host_infrastructure.memory.reveal",
             "host_infrastructure.memory.view",
         ],
@@ -393,6 +386,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.backups",
         &[
+            "system_backups.catalog",
             "system_backups.create",
             "system_backups.delete",
             "system_backups.detail",
@@ -469,6 +463,7 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    "system_backups.catalog",
     "system_backups.create",
     "system_backups.delete",
     "system_backups.detail",

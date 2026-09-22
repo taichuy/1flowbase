@@ -247,27 +247,9 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
     migrated_core_console_route_assembly_with_interface_operations(None)
 }
 
-/// Returns the complete Core authorization contract, including routes whose executable
-/// binding is supplied by the compiled Extension Bus graph at boot.
-///
-/// This is intentionally separate from `migrated_core_console_route_assembly`: callers that
-/// build a runtime router must still provide the typed interface-operation catalog and fail
-/// closed when it is unavailable.
+/// Core contract bindings come from the same route assembly as the mounted routes.
 pub fn migrated_core_console_contract_bindings() -> Vec<ConsoleRouteAssemblyBinding> {
-    let assembly = migrated_core_console_route_assembly();
-    let mut bindings = assembly.bindings().to_vec();
-    bindings.push(ConsoleRouteAssemblyBinding {
-        route: ConsoleRouteBinding {
-            method: "GET".to_string(),
-            path: crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
-                .to_string(),
-        },
-        ownership: ConsoleRouteOwnership::ConsoleOperation(
-            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-                .to_string(),
-        ),
-    });
-    bindings
+    migrated_core_console_route_assembly().bindings().to_vec()
 }
 
 pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
@@ -1003,15 +985,9 @@ pub(crate) fn compile_migrated_console_operation_registry(
     let registrations = CORE_CONSOLE_OPERATION_SPECS
         .iter()
         .enumerate()
-        .filter_map(|(order, spec)| {
+        .map(|(order, spec)| {
             let routes = routes_for_core_operation_spec(spec, bindings);
-            if spec.operation_id
-                == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-                && routes.is_empty()
-            {
-                return None;
-            }
-            Some(ConsoleOperationRegistration {
+            ConsoleOperationRegistration {
                 operation_id: spec.operation_id.to_string(),
                 authorization_profile_id: (spec.route_selector
                     == CoreConsoleRouteSelector::OwnedOperation)
@@ -1022,7 +998,7 @@ pub(crate) fn compile_migrated_console_operation_registry(
                 order: order as i32,
                 routes,
                 authorization: authorization_for_spec(spec),
-            })
+            }
         })
         .collect::<Vec<_>>();
     let mut registrations = expand_core_interface_registrations(registrations)?;

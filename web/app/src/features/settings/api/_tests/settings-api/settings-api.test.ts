@@ -56,7 +56,6 @@ import {
   upgradeConsolePluginFamilyLatest,
   switchConsolePluginFamilyVersion,
   getConsolePluginTask,
-  listConsoleHostInfrastructureProviders,
   getConsoleHostInfrastructureMemoryOverview,
   getConsoleHostInfrastructureMemoryStatsOverview,
   getConsoleHostInfrastructureMemoryStats,
@@ -69,7 +68,6 @@ import {
   revealConsoleHostInfrastructureCacheEntry,
   clearConsoleHostInfrastructureCacheEntry,
   clearConsoleHostInfrastructureCacheDomain,
-  saveConsoleHostInfrastructureProviderConfig
 } from '@1flowbase/api-client';
 import type { ConsoleModelProviderInstance } from '@1flowbase/api-client';
 
@@ -173,10 +171,8 @@ import {
   fetchSettingsHostInfrastructureMemoryStatsOverview,
   fetchSettingsHostInfrastructureMemoryStats,
   fetchSettingsHostInfrastructureMemoryTree,
-  fetchSettingsHostInfrastructureProviders,
   revealSettingsHostInfrastructureMemoryEntry,
   revealSettingsHostInfrastructureCacheEntry,
-  saveSettingsHostInfrastructureProviderConfig,
   searchSettingsHostInfrastructureMemoryEntries,
   settingsHostInfrastructureCacheEntriesQueryKey,
   settingsHostInfrastructureCacheOverviewQueryKey,
@@ -186,7 +182,6 @@ import {
   settingsHostInfrastructureMemoryStatsQueryKey,
   settingsHostInfrastructureMemorySearchQueryKey,
   settingsHostInfrastructureMemoryTreeQueryKey,
-  settingsHostInfrastructureProvidersQueryKey
 } from '../../host-infrastructure';
 
 afterEach(() => {
@@ -969,36 +964,6 @@ describe('settings api wrappers', () => {
       'csrf-123'
     );
     expect(getConsolePluginTask).toHaveBeenCalledWith('task-1');
-  });
-
-  test('forwards host infrastructure provider helpers', async () => {
-    expect(settingsHostInfrastructureProvidersQueryKey).toEqual([
-      'settings',
-      'host-infrastructure',
-      'providers'
-    ]);
-
-    await fetchSettingsHostInfrastructureProviders();
-    await saveSettingsHostInfrastructureProviderConfig(
-      'installation-1',
-      'redis',
-      {
-        enabled_contracts: ['storage-ephemeral'],
-        config_json: { host: 'localhost', port: 6379 }
-      },
-      'csrf-123'
-    );
-
-    expect(listConsoleHostInfrastructureProviders).toHaveBeenCalledTimes(1);
-    expect(saveConsoleHostInfrastructureProviderConfig).toHaveBeenCalledWith(
-      'installation-1',
-      'redis',
-      {
-        enabled_contracts: ['storage-ephemeral'],
-        config_json: { host: 'localhost', port: 6379 }
-      },
-      'csrf-123'
-    );
   });
 
   test('forwards host infrastructure cache helpers', async () => {

@@ -1,3 +1,4 @@
+import { openPayloadSection } from './trajectory/navigation';
 import {
   fireEvent,
   render,
@@ -86,10 +87,7 @@ describe('debug conversation log panel', () => {
 
   test('owns the Ant Design 6 tab body and scroll region through semantic slots', () => {
     const { container } = renderWithQueryClient(
-      <ConversationLogPanel
-        message={assistantMessage}
-        onClose={vi.fn()}
-      />
+      <ConversationLogPanel message={assistantMessage} onClose={vi.fn()} />
     );
 
     expect(
@@ -97,15 +95,15 @@ describe('debug conversation log panel', () => {
         '.agent-flow-editor__conversation-log-tabs-body.ant-tabs-body'
       )
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('tabpanel', { name: '详情' })
-    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+    expect(screen.getByRole('tabpanel', { name: '详情' })).toHaveClass(
+      'agent-flow-editor__conversation-log-scroll-region'
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
 
-    expect(
-      screen.getByRole('tabpanel', { name: '追踪' })
-    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+    expect(screen.getByRole('tabpanel', { name: '追踪' })).toHaveClass(
+      'agent-flow-editor__conversation-log-scroll-region'
+    );
   });
 
   test('opens from an assistant message and keeps detail limited to input, output and metadata', () => {
@@ -199,7 +197,12 @@ describe('debug conversation log panel', () => {
     expect(toolNode).not.toHaveTextContent('执行成功');
   });
 
-  test('loads lazy overview for application log details before trace root', async () => {
+  test('keeps run input and output available and reads only the expanded section before trace root', async () => {
+    const loadPayload = vi.fn(async (_runId: string, section: string) =>
+      section === 'input_payload'
+        ? { query: 'recorded workflow input' }
+        : { answer: 'recorded workflow output' }
+    );
     const loadOverview = vi.fn().mockResolvedValue({
       run: {
         id: 'run-application-log',
@@ -215,22 +218,12 @@ describe('debug conversation log panel', () => {
       flow_run: {
         id: 'run-application-log',
         status: 'succeeded',
-        input_payload: {
-          'node-start': {
-            query: '总结退款政策',
-            model: 'deepseek-chat'
-          }
-        },
-        output_payload: {
-          answer: '退款政策摘要'
-        },
-        error_payload: null,
         started_at: '2026-04-25T10:00:00Z',
         finished_at: '2026-04-25T10:00:05Z'
-      },
-      answer_snapshot: null
+      }
     });
     const traceLoader = {
+      loadRunTrajectory: vi.fn(),
       loadTree: vi.fn().mockResolvedValue({ nodes: [] }),
       loadChildren: vi.fn(),
       loadContent: vi.fn()
@@ -248,22 +241,43 @@ describe('debug conversation log panel', () => {
           rawOutput: null,
           traceSummary: []
         }}
-        overviewLoader={{ loadOverview }}
+        overviewLoader={{ loadOverview, loadPayload }}
         traceLoader={traceLoader}
         onClose={vi.fn()}
       />
     );
 
+    expect(await screen.findByText('run-application-log')).toBeInTheDocument();
+    expect(screen.getByText('输入', { exact: true })).toBeInTheDocument();
+    expect(screen.getByText('输出', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.queryByText('数据处理', { exact: true })
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: '元数据' })).getByRole('button')
+    ).toBeInTheDocument();
+    expect(traceLoader.loadRunTrajectory).not.toHaveBeenCalled();
+    expect(loadPayload).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('输入', { exact: true }));
     await waitFor(() =>
-      expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('query')
+      expect(loadPayload).toHaveBeenCalledExactlyOnceWith(
+        'run-application-log',
+        'input_payload'
+      )
     );
-    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent(
-      '总结退款政策'
+    expect(await screen.findByLabelText('输入 JSON')).toHaveTextContent(
+      'recorded workflow input'
     );
-    expect(screen.getByLabelText('输出 JSON')).toHaveTextContent(
-      '退款政策摘要'
+    expect(screen.queryByLabelText('输出 JSON')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('输出', { exact: true }));
+    expect(await screen.findByLabelText('输出 JSON')).toHaveTextContent(
+      'recorded workflow output'
     );
-    expect(screen.getByText('run-application-log')).toBeInTheDocument();
+    expect(loadPayload).toHaveBeenNthCalledWith(
+      2,
+      'run-application-log',
+      'output_payload'
+    );
     expect(screen.getByText('154')).toBeInTheDocument();
     expect(loadOverview).toHaveBeenCalledWith('run-application-log');
     expect(traceLoader.loadTree).not.toHaveBeenCalled();
@@ -458,21 +472,26 @@ describe('debug conversation log panel', () => {
         'node_run:node-run-llm'
       )
     );
-    await waitFor(() =>
-      expect(traceLoader.loadDetail).toHaveBeenCalledWith(
-        'run-application-log',
-        'node_run:node-run-llm',
-        'node_run'
-      )
-    );
+    expect(traceLoader.loadDetail).not.toHaveBeenCalled();
     const nodeDetail = await screen.findByRole('region', {
       name: 'LLM 节点详情'
     });
     expect(
       within(nodeDetail).queryByRole('button', { name: '详情' })
     ).not.toBeInTheDocument();
+    await openPayloadSection(nodeDetail, '输入');
+    await waitFor(() =>
+      expect(traceLoader.loadDetail).toHaveBeenCalledExactlyOnceWith(
+        'run-application-log',
+        'node_run:node-run-llm',
+        'node_run',
+        'input_payload'
+      )
+    );
+    const execution = nodeDetail;
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(
-      await within(nodeDetail).findByRole('button', { name: /lookup_weather/ })
+      await within(execution).findByRole('button', { name: /lookup_weather/ })
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(within(nodeDetail).getByLabelText('输入 JSON')).toHaveTextContent(

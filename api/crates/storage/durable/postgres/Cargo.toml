@@ -13,6 +13,8 @@ control-plane-contracts = { path = "../../../control-plane-contracts" }
 domain = { path = "../../../domain" }
 extension-contracts = { path = "../../../extension-contracts" }
 futures-util.workspace = true
+flate2.workspace = true
+serde.workspace = true
 percent-encoding.workspace = true
 rand.workspace = true
 rand_regex.workspace = true

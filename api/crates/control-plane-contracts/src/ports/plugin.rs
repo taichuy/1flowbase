@@ -165,18 +165,6 @@ pub struct UpsertPluginPackageCatalogProjectionInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpsertHostInfrastructureProviderConfigInput {
-    pub installation_id: Uuid,
-    pub extension_id: String,
-    pub provider_code: String,
-    pub config_ref: String,
-    pub enabled_contracts: Vec<String>,
-    pub config_json: serde_json::Value,
-    pub status: domain::HostInfrastructureConfigStatus,
-    pub actor_user_id: Uuid,
-}
-
-#[derive(Debug, Clone)]
 pub struct OfficialPluginCatalogSource {
     pub source_kind: String,
     pub source_label: String,
@@ -450,18 +438,6 @@ pub trait PluginRepository: Send + Sync {
     ) -> anyhow::Result<domain::PluginTaskRecord>;
     async fn get_task(&self, task_id: Uuid) -> anyhow::Result<Option<domain::PluginTaskRecord>>;
     async fn list_tasks(&self) -> anyhow::Result<Vec<domain::PluginTaskRecord>>;
-}
-
-#[async_trait]
-pub trait HostInfrastructureConfigRepository: Send + Sync {
-    async fn upsert_host_infrastructure_provider_config(
-        &self,
-        input: &UpsertHostInfrastructureProviderConfigInput,
-    ) -> anyhow::Result<domain::HostInfrastructureProviderConfigRecord>;
-
-    async fn list_host_infrastructure_provider_configs(
-        &self,
-    ) -> anyhow::Result<Vec<domain::HostInfrastructureProviderConfigRecord>>;
 }
 
 #[derive(Debug, Clone)]

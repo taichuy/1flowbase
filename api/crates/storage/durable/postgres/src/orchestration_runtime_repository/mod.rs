@@ -20,12 +20,13 @@ use control_plane_contracts::{
         ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
-        AttachCompiledPlanToFlowRunInput, BillingRepository, BindInvocationContextInput,
-        CallbackResumeContext, CallbackResumeWaitingNode, ClaimRuntimeEventDeliveriesInput,
-        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CommitToolCallbackResultsInput, CommitToolCallbackResultsOutput, CompleteCallbackTaskInput,
-        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        ApplicationRunTraceRefreshJob, AttachCompiledPlanToFlowRunInput, BillingRepository,
+        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
+        ClaimRuntimeEventDeliveriesInput, ClearModelProviderRequestLogsBatchInput,
+        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CommitToolCallbackResultsInput,
+        CommitToolCallbackResultsOutput, CompleteCallbackTaskInput, CompleteFlowRunInput,
+        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
@@ -63,8 +64,10 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
+mod client_trajectory;
 mod detail_queries;
 mod json_storage;
+mod trajectory;
 use json_storage::{
     lossless_json_columns, lossless_json_parameter, lossless_text_parameter,
     original_optional_text, original_required_text,
@@ -86,6 +89,7 @@ include!("application_run_logs/run_conversation_projection_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 include!("application_run_logs/task_projection_methods.rs");
 include!("application_run_trace_projection_methods.rs");
+include!("application_run_logs/trace_refresh_methods.rs");
 include!("application_run_monitoring_methods.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
@@ -401,6 +405,41 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::append_runtime_span(self, input).await
     }
 
+    async fn append_client_trajectory(
+        &self,
+        input: &control_plane_contracts::ports::AppendClientTrajectoryInput,
+    ) -> Result<()> {
+        self.append_client_trajectory_fact(input).await
+    }
+    async fn client_trajectory_page(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<control_plane_contracts::ports::ClientTrajectoryPage> {
+        self.read_client_trajectory_page(flow_run_id, node_run_id, cursor, limit)
+            .await
+    }
+    async fn client_trajectory_section(
+        &self,
+        flow_run_id: Uuid,
+        node_run_id: Option<Uuid>,
+        step_id: Uuid,
+        section: &str,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<control_plane_contracts::ports::ClientTrajectorySection>> {
+        self.read_client_trajectory_section(
+            flow_run_id,
+            node_run_id,
+            step_id,
+            section,
+            cursor,
+            limit,
+        )
+        .await
+    }
     async fn append_runtime_event(
         &self,
         input: &AppendRuntimeEventInput,
@@ -911,6 +950,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::get_application_run_detail(self, application_id, flow_run_id).await
     }
 
+    async fn get_flow_run_metadata(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<control_plane_contracts::ports::FlowRunMetadataReadModel>> {
+        PgControlPlaneStore::get_flow_run_metadata(self, application_id, flow_run_id).await
+    }
+
     async fn get_application_run_overview(
         &self,
         application_id: Uuid,
@@ -1024,6 +1071,39 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn settle_next_application_log_projection(&self) -> Result<bool> {
+        sqlx::query_scalar("select settle_next_application_log_projection()")
+            .fetch_one(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn claim_application_run_trace_refresh(
+        &self,
+    ) -> Result<Option<ApplicationRunTraceRefreshJob>> {
+        PgControlPlaneStore::claim_application_run_trace_refresh(self).await
+    }
+    async fn finish_application_run_trace_refresh(
+        &self,
+        job: &ApplicationRunTraceRefreshJob,
+        succeeded: bool,
+    ) -> Result<()> {
+        PgControlPlaneStore::finish_application_run_trace_refresh(self, job, succeeded).await
+    }
+    async fn get_application_run_trace_read_status(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        projection_version: i32,
+    ) -> Result<Option<domain::ApplicationRunTraceProjectionStatusRecord>> {
+        PgControlPlaneStore::get_application_run_trace_read_status(
+            self,
+            application_id,
+            flow_run_id,
+            projection_version,
+        )
+        .await
+    }
     async fn list_application_run_trace_roots(
         &self,
         flow_run_id: Uuid,
@@ -1079,6 +1159,26 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn list_application_run_trace_node_run_sections(
+        &self,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+        section: &str,
+    ) -> Result<Vec<domain::NodeRunRecord>> {
+        PgControlPlaneStore::list_application_run_trace_node_run_sections(
+            self,
+            flow_run_id,
+            node_run_ids,
+            section,
+        )
+        .await
+    }
+    async fn list_trace_enrichment_events(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        PgControlPlaneStore::list_trace_enrichment_events(self, flow_run_id).await
+    }
     async fn list_application_run_trace_node_run_details(
         &self,
         flow_run_id: Uuid,

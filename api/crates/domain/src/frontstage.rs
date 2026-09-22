@@ -100,7 +100,7 @@ impl FrontstagePageVisibility {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontstagePageRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,

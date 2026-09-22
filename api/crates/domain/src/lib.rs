@@ -92,7 +92,6 @@ pub use frontstage::{
 };
 pub use host_extension::{
     HostExtensionActivationStatus, HostExtensionInventoryRecord, HostExtensionTrustLevel,
-    HostInfrastructureConfigStatus, HostInfrastructureProviderConfigRecord,
 };
 pub use i18n_catalog::{
     ActiveOfficialCatalogMessage, CatalogDigest, CatalogLocale, CatalogMessageIdentity,

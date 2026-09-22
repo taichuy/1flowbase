@@ -95,11 +95,7 @@ pub(crate) fn mcp_interface_entry_from_capability(
             domain::McpInterfaceCatalogSource::PublishedWorkflow
         }
     };
-    let permission_code = if entry.activated_operation.is_some() {
-        Some(access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION.to_string())
-    } else {
-        operation_permission_code(&entry.interface.method, &entry.interface.path)
-    };
+    let permission_code = operation_permission_code(&entry.interface.method, &entry.interface.path);
     let interface = entry.interface;
     domain::McpInterfaceCatalogEntry {
         interface_id: interface.operation_id,
@@ -345,88 +341,4 @@ pub(super) fn operation_permission_code(method: &str, path: &str) -> Option<Stri
     }
 
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use serde_json::json;
-
-    use super::*;
-    use crate::{
-        extension_bus::{
-            assemble_extension_graph_input, ExtensionBootSnapshot, DEFAULT_PLUGIN_SET_PATH,
-        },
-        openapi_interface::{ActivatedInterfaceOperationProjection, OpenApiInterfaceCatalogEntry},
-    };
-
-    #[test]
-    fn activated_openapi_projection_becomes_the_same_mcp_interface_contract() {
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let assembly =
-            assemble_extension_graph_input(root, DEFAULT_PLUGIN_SET_PATH, Vec::new()).unwrap();
-        let snapshot = ExtensionBootSnapshot::compile_for_test(
-            Arc::new(assembly.compile_graph().unwrap()),
-            assembly.interface_operations(),
-        )
-        .unwrap();
-        let registry = snapshot.interface_registry().unwrap().snapshot();
-        let definition =
-            crate::routes::host_infrastructure::interface_operation::providers_view_definition(
-                registry.as_ref(),
-            )
-            .unwrap();
-        let route = registry
-            .plan_for_interface(definition.interface_id())
-            .and_then(|plan| plan.binding().projection().http_route())
-            .unwrap();
-        let parameter_schema = json!({"type": "object", "properties": {}});
-        let result_schema = json!({"type": "array", "items": {"type": "object"}});
-        let entry = OpenApiCapabilityCatalogEntry {
-            interface: OpenApiInterfaceCatalogEntry {
-                operation_id: definition.interface_id().as_str().to_string(),
-                method: route.method().to_string(),
-                path: route.path().to_string(),
-                name: "providers".to_string(),
-                description: "providers".to_string(),
-                parameter_descriptors: Vec::new(),
-                request_schema: parameter_schema.clone(),
-                response_schema: result_schema.clone(),
-                request_media_type: None,
-                response_media_type: Some("application/json".to_string()),
-                security: json!([{"cookie_auth": []}]),
-            },
-            source: OpenApiCapabilitySource::ActivatedInterfaceOperation,
-            risk_level: "low",
-            bindable: true,
-            disabled_reason: None,
-            activated_operation: Some(ActivatedInterfaceOperationProjection {
-                operation_id: definition.interface_id().as_str().to_string(),
-                input_contract_id: definition.input_contract().contract_id().to_string(),
-                input_contract_version: definition.input_contract().version().to_string(),
-                output_contract_id: definition.output_contract().contract_id().to_string(),
-                output_contract_version: definition.output_contract().version().to_string(),
-                required_core_permission: definition.authorization_operation().as_str().to_string(),
-                auth_policy: definition.authentication(),
-                audit_policy: definition.audit(),
-                error_policy: definition.error(),
-                graph_fingerprint: registry.graph_fingerprint().as_str().to_string(),
-                registry_fingerprint: registry.fingerprint().as_str().to_string(),
-                owner: definition.owner().as_str().to_string(),
-            }),
-        };
-
-        let mcp = mcp_interface_entry_from_capability(entry);
-        assert_eq!(mcp.interface_id, definition.interface_id().as_str());
-        assert_eq!(mcp.method, route.method());
-        assert_eq!(mcp.path, route.path());
-        assert_eq!(mcp.parameter_schema, parameter_schema);
-        assert_eq!(mcp.result_schema, result_schema);
-        assert_eq!(
-            mcp.permission_code.as_deref(),
-            Some(access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION)
-        );
-        assert_eq!(mcp.source, domain::McpInterfaceCatalogSource::StaticApi);
-    }
 }

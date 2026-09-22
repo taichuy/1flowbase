@@ -624,6 +624,7 @@ impl InterfaceContract for FrontstagePagesOutput {
 
 #[derive(Clone)]
 pub(crate) struct FrontstagePagesDependencies {
+    pub(crate) navigation_cache: control_plane::navigation_cache::NavigationCache,
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) bootstrap_workspace_id: Uuid,
     pub(crate) api_node_id: String,
@@ -670,7 +671,8 @@ impl FrontstagePagesAdapter {
     ) -> Result<FrontstagePagesOutput, ApiError> {
         let actor = principal.actor();
         let workspace_id = actor.current_workspace_id;
-        let service = FrontstagePageService::for_actor(self.0.store.clone(), actor.clone());
+        let service = FrontstagePageService::for_actor(self.0.store.clone(), actor.clone())
+            .with_navigation_cache(self.0.navigation_cache.clone());
         match input {
             FrontstagePagesInput::List => Ok(FrontstagePagesOutput::Tree(
                 service

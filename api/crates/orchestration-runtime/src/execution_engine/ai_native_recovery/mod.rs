@@ -321,7 +321,8 @@ impl AiNativeRecoveryLedger {
     pub fn observe_events(&mut self, events: &[ProviderStreamEvent]) {
         for event in events {
             match event {
-                ProviderStreamEvent::NativeEvent { .. }
+                ProviderStreamEvent::ProtocolObservation { .. }
+                | ProviderStreamEvent::NativeEvent { .. }
                 | ProviderStreamEvent::UsageDelta { .. }
                 | ProviderStreamEvent::UsageSnapshot { .. }
                 | ProviderStreamEvent::Finish { .. }

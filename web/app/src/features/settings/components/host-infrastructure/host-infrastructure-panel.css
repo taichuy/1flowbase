@@ -1,20 +1,3 @@
-.host-infrastructure-panel {
-  width: 100%;
-  min-width: 0;
-}
-
-.host-infrastructure-drawer {
-  width: 100%;
-}
-
-.host-infrastructure-drawer__number {
-  width: 100%;
-}
-
-.host-infrastructure-panel__providers {
-  width: 100%;
-}
-
 .host-cache-panel {
   width: 100%;
   min-width: 0;

@@ -28,6 +28,7 @@ use utoipa::OpenApi;
         crate::routes::auth_center::update_auth_center_authenticator_public_ui_block,
         crate::routes::system::get_release_status,
         crate::routes::system::get_runtime_profile,
+        crate::routes::system_backups::get_catalog,
         crate::routes::system_backups::list_backups,
         crate::routes::system_backups::create_backup,
         crate::routes::system_backups::get_backup_job_status,

@@ -2,6 +2,34 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    /// Observational append only: may record client delivery after business terminal.
+    async fn append_client_trajectory(
+        &self,
+        _input: &AppendClientTrajectoryInput,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("append_client_trajectory not implemented")
+    }
+    async fn client_trajectory_page(
+        &self,
+        _flow_run_id: Uuid,
+        _node_run_id: Option<Uuid>,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<ClientTrajectoryPage> {
+        anyhow::bail!("client_trajectory_page not implemented")
+    }
+    async fn client_trajectory_section(
+        &self,
+        _flow_run_id: Uuid,
+        _node_run_id: Option<Uuid>,
+        _step_id: Uuid,
+        _section: &str,
+        _cursor: Option<i64>,
+        _limit: i64,
+    ) -> anyhow::Result<Option<ClientTrajectorySection>> {
+        anyhow::bail!("client_trajectory_section not implemented")
+    }
+
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,
@@ -612,6 +640,15 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Option<domain::ApplicationRunDetail>>;
+    async fn get_flow_run_metadata(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<FlowRunMetadataReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_flow_run_metadata not implemented")
+    }
+
     async fn get_application_run_overview(
         &self,
         application_id: Uuid,
@@ -692,6 +729,32 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (flow_run_id, projection_version);
         anyhow::bail!("get_application_run_trace_projection_status not implemented")
     }
+    /// Settle one due conversation read model without changing execution state.
+    async fn settle_next_application_log_projection(&self) -> anyhow::Result<bool> {
+        anyhow::bail!("settle_next_application_log_projection not implemented")
+    }
+    async fn claim_application_run_trace_refresh(
+        &self,
+    ) -> anyhow::Result<Option<ApplicationRunTraceRefreshJob>> {
+        anyhow::bail!("claim_application_run_trace_refresh not implemented")
+    }
+    async fn finish_application_run_trace_refresh(
+        &self,
+        job: &ApplicationRunTraceRefreshJob,
+        succeeded: bool,
+    ) -> anyhow::Result<()> {
+        let _ = (job, succeeded);
+        anyhow::bail!("finish_application_run_trace_refresh not implemented")
+    }
+    async fn get_application_run_trace_read_status(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        projection_version: i32,
+    ) -> anyhow::Result<Option<domain::ApplicationRunTraceProjectionStatusRecord>> {
+        let _ = (application_id, flow_run_id, projection_version);
+        anyhow::bail!("get_application_run_trace_read_status not implemented")
+    }
     async fn list_application_run_trace_roots(
         &self,
         flow_run_id: Uuid,
@@ -736,6 +799,22 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
     ) -> anyhow::Result<Option<domain::ApplicationRunTraceNodeContentRecord>> {
         let _ = (flow_run_id, trace_node_id);
         anyhow::bail!("get_application_run_trace_node_content not implemented")
+    }
+    async fn list_application_run_trace_node_run_sections(
+        &self,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+        section: &str,
+    ) -> anyhow::Result<Vec<domain::NodeRunRecord>> {
+        let _ = (flow_run_id, node_run_ids, section);
+        anyhow::bail!("list_application_run_trace_node_run_sections not implemented")
+    }
+    async fn list_trace_enrichment_events(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::RuntimeEventRecord>> {
+        let _ = flow_run_id;
+        anyhow::bail!("list_trace_enrichment_events not implemented")
     }
     async fn list_application_run_trace_node_run_details(
         &self,

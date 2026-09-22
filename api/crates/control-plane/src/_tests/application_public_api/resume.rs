@@ -140,6 +140,7 @@ async fn native_resume_rejects_callback_task_from_another_run() {
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
             transport_connection_scope: None,
+            observation_context: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token,
@@ -190,6 +191,7 @@ async fn native_resume_validates_ownership_before_execution_continuation_boundar
     let error = ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer)
         .resume_callback(ResumePublishedCallbackCommand {
             transport_connection_scope: None,
+            observation_context: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: second_token,
@@ -317,10 +319,17 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
         ..RecordingCallbackConsumer::default()
     };
 
+    let observation = control_plane_contracts::ports::WorkflowObservationContext {
+        client_request_id: Uuid::now_v7(),
+        context_flow_run_id: Some(run.id),
+        context_response_id: Some("resp-prior-round".into()),
+        is_resume: true,
+    };
     let result =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
                 transport_connection_scope: Some("host-generated-connection".into()),
+                observation_context: Some(observation.clone()),
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token,
@@ -341,6 +350,7 @@ async fn public_callback_resume_consumes_pending_callback_in_request() {
         calls[0].transport_connection_scope.as_deref(),
         Some("host-generated-connection")
     );
+    assert_eq!(calls[0].observation_context.as_ref(), Some(&observation));
     assert_eq!(calls[0].application_id, application.id);
     assert_eq!(calls[0].callback_task_id, callback_task.id);
     assert_eq!(calls[0].response_payload, json!({ "answer": "approved" }));
@@ -456,6 +466,7 @@ async fn callback_resume_preserves_original_compatibility_mode() {
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone())
             .resume_callback(ResumePublishedCallbackCommand {
                 transport_connection_scope: None,
+                observation_context: None,
                 reserved_attempt_id: None,
                 native_transport: None,
                 bearer_token: token.clone(),
@@ -771,6 +782,7 @@ mod tests {
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
             transport_connection_scope: None,
+            observation_context: None,
             reserved_attempt_id: None,
             native_transport: None,
             bearer_token: token.to_string(),

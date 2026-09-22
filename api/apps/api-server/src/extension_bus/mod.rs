@@ -6,8 +6,6 @@ pub(crate) use managed_interface::FrozenManagedProjection;
 pub(crate) mod managed_projection;
 pub(crate) use authentication_invocation::AuthenticatedInvocation;
 mod boot_snapshot;
-#[cfg(test)]
-pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 mod input_assembly;
 mod managed_activation;
 #[cfg(test)]
@@ -20,12 +18,11 @@ mod interface_contributions;
 #[cfg(test)]
 pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
 pub(crate) use authentication_activation::{
-    activated_host_authentication, production_host_extension_authentication_factories,
-    ApplicationApiKeyAuthenticationCredential, AuthenticationAdapterFactoryBinding,
-    AuthenticationAdapterFactoryRegistry, ConsoleAuthenticationCredential,
-    ConsoleProtocolAdmission, McpUserApiKeyAuthenticationCredential,
-    PublicAuthenticationCredential, RuntimeModelAuthenticationCredential,
-    CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID, CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
+    production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
+    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
+    ConsoleAuthenticationCredential, ConsoleProtocolAdmission,
+    McpUserApiKeyAuthenticationCredential, PublicAuthenticationCredential,
+    RuntimeModelAuthenticationCredential,
 };
 pub use boot_snapshot::{
     compile_extension_boot_snapshot, EffectiveExtensionPlan, ExtensionBootSnapshot,

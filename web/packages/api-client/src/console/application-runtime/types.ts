@@ -58,8 +58,7 @@ export interface ConsoleApplicationRunLog {
 }
 
 export interface ConsoleApplicationRunSummary {
-  total_cost: string | null;
-  currency_code: string | null;
+  total_cost: number | null;
   parent_run_id: string | null;
   caused_by_run_id: string | null;
   log_conversation_id: string | null;
@@ -394,6 +393,27 @@ export interface ConsoleFlowRunDetail {
   updated_at?: string;
 }
 
+export interface ConsoleFlowRunMetadata {
+  id: string;
+  application_id: string;
+  flow_id: string;
+  draft_id: string;
+  compiled_plan_id: string | null;
+  debug_session_id?: string;
+  run_mode: ConsoleFlowRunMode;
+  status: string;
+  target_node_id: string | null;
+  title?: string;
+  expand_id?: string | null;
+  authorized_account?: string | null;
+  external_conversation_id?: string | null;
+  created_by: string;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface ConsoleNodeRunDetail {
   id: string;
   flow_run_id: string;
@@ -482,8 +502,7 @@ export interface ConsoleApplicationRunDetail {
 export interface ConsoleApplicationRunOverview {
   run: ConsoleApplicationRunLog;
   statistics: ConsoleApplicationRunStatistics;
-  flow_run: ConsoleFlowRunDetail;
-  answer_snapshot?: ConsoleAnswerSnapshot | null;
+  flow_run: ConsoleFlowRunMetadata;
 }
 
 export type ConsoleApplicationRunTraceNodeKind =
@@ -828,10 +847,10 @@ export interface ConsoleRunArchiveImportJob {
 export interface ConsoleApplicationRunTraceTree {
   run: ConsoleApplicationRunLog;
   statistics: ConsoleApplicationRunStatistics;
-  flow_run: ConsoleFlowRunDetail;
-  answer_snapshot?: ConsoleAnswerSnapshot | null;
+  flow_run: ConsoleFlowRunMetadata;
   projection_status: ConsoleApplicationRunTraceProjectionStatus;
   nodes: ConsoleApplicationRunTraceNodeSummary[];
+  page_info: ConsoleApplicationRunTraceNodeChildrenPageInfo;
 }
 
 export interface ConsoleApplicationRunTraceNodeChildrenPageInfo {
@@ -905,7 +924,8 @@ export interface ConsoleApplicationConversationMessage {
   run_id: string;
   detail_run_id?: string | null;
   can_open_detail?: boolean;
-  role?: 'system' | 'user' | 'assistant' | 'tool' | null;
+  // The backend preserves the canonical message role as Option<String>, including developer.
+  role?: string | null;
   content?: string | null;
   started_at: string;
   finished_at: string | null;
@@ -923,6 +943,8 @@ export interface ConsoleApplicationConversationMessage {
 
 export type ConsoleApplicationRunOutputSource =
   | 'provider_output_item'
+  | 'projection_timeout'
+  | 'waiting_callback'
   | 'persisted_answer'
   | 'error'
   | 'none';

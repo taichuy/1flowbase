@@ -1,0 +1,968 @@
+use super::*;
+
+async fn append(
+    store: &PgControlPlaneStore,
+    flow: Uuid,
+    node: Uuid,
+    kind: &str,
+    payload: serde_json::Value,
+) -> Uuid {
+    store
+        .append_runtime_event(&AppendRuntimeEventInput {
+            flow_run_id: flow,
+            node_run_id: Some(node),
+            span_id: None,
+            parent_span_id: None,
+            event_type: kind.into(),
+            layer: domain::RuntimeEventLayer::RuntimeItem,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload,
+            visibility: domain::RuntimeEventVisibility::Internal,
+            durability: domain::RuntimeEventDurability::Durable,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+fn step(key: &str, body: &str) -> serde_json::Value {
+    json!({"source":"ai_native","invocation_id":"native","provider_attempt_index":0,
+        "step_key":key,"kind":"model_reply","status":"recorded","body":body})
+}
+fn integrity(status: &str, count: i64, failed: i64) -> serde_json::Value {
+    json!({"invocation_id":"native","provider_attempt_index":0,"status":status,
+        "observed_count":count,"persist_failed_count":failed,"dropped_count":0})
+}
+async fn setup() -> (PgControlPlaneStore, Uuid, Uuid) {
+    let (pool, flow) = super::super::provider_protocol_capsule_store_tests::seeded_flow_run().await;
+    let store = PgControlPlaneStore::new(pool);
+    let node = Uuid::now_v7();
+    sqlx::query("insert into node_runs (id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'llm','llm','LLM','running' from flow_runs where id=$2")
+        .bind(node).bind(flow).execute(store.pool()).await.unwrap();
+    (store, flow, node)
+}
+
+#[tokio::test]
+async fn native_latest_lossless_body_stable_cursor_and_independent_integrity() {
+    let (store, flow, node) = setup().await;
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        integrity("pending", 0, 0),
+    )
+    .await;
+    let id = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        step("reply", "old"),
+    )
+    .await;
+    let before = store
+        .provider_trajectory_page(flow, node, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(before.integrity, "incomplete");
+    let latest = "{\"text\":\"actual NUL \0 and escaped \\u0000\"}";
+    append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        step("reply", latest),
+    )
+    .await;
+    let mut error = step("error", "{\"error\":\"provider error\"}");
+    error["status"] = json!("error");
+    append(&store, flow, node, "provider_semantic_step", error).await;
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        integrity("complete", 3, 0),
+    )
+    .await;
+    let page = store
+        .provider_trajectory_page(flow, node, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(page.integrity, "complete");
+    assert_eq!(page.protocol_integrity, "not_recorded");
+    assert_eq!(page.observation_count, 0);
+    assert_eq!(page.items[0].event_id, id);
+    assert_eq!(page.items[0].event_sequence, before.items[0].event_sequence);
+    assert_eq!(page.items[0].metadata["source"], "ai_native");
+    assert!(page.items[0].metadata.get("body").is_none());
+    let next = store
+        .provider_trajectory_page(flow, node, page.next_cursor, 1)
+        .await
+        .unwrap();
+    assert_eq!(next.items.len(), 1);
+    assert!(next.next_cursor.is_none());
+    let body = store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(body.items[0].body, latest);
+    assert_eq!(body.source, "ai_native");
+    assert_eq!(body.evidence_scope, "step");
+    let empty = store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Protocol)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(empty.items.is_empty());
+    assert_eq!(empty.evidence_scope, "invocation");
+    let raw = |seq| {
+        json!({"invocation_id":"native","provider_attempt_index":0,
+        "sequence":seq,"body":format!("raw-{seq}"),"encoding":"utf8"})
+    };
+    let raw_id = append(&store, flow, node, "provider_protocol_observation", raw(1)).await;
+    append(&store, flow, node, "provider_protocol_observation", raw(2)).await;
+    append(
+        &store,
+        flow,
+        node,
+        "provider_protocol_integrity",
+        integrity("incomplete", 2, 1),
+    )
+    .await;
+    let page = store
+        .provider_trajectory_page(flow, node, None, 100)
+        .await
+        .unwrap();
+    assert_eq!(page.integrity, "complete");
+    assert_eq!(page.persist_failed_count, 0);
+    assert_eq!(page.protocol_integrity, "incomplete");
+    assert_eq!(page.protocol_persist_failed_count, 1);
+    assert_eq!(page.observation_count, 2);
+    let raw_page = store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Protocol)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(raw_page.items[0].body, "raw-1");
+    assert_eq!(raw_page.source, "supplier_protocol");
+    assert_eq!(raw_page.evidence_scope, "invocation");
+    let raw_next = store
+        .provider_trajectory_body(
+            flow,
+            node,
+            id,
+            raw_page.next_cursor,
+            1,
+            ProviderTrajectoryView::Protocol,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(raw_next.items[0].body, "raw-2");
+    assert!(raw_next.next_cursor.is_none());
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            node,
+            raw_id,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            Uuid::now_v7(),
+            id,
+            None,
+            1,
+            ProviderTrajectoryView::Protocol
+        )
+        .await
+        .unwrap()
+        .is_none());
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        integrity("complete", 4, 1),
+    )
+    .await;
+    let failed = store
+        .provider_trajectory_page(flow, node, None, 10)
+        .await
+        .unwrap();
+    assert_eq!(failed.integrity, "incomplete");
+    assert_eq!(failed.persist_failed_count, 1);
+}
+
+#[tokio::test]
+async fn legacy_source_mixed_attempts_and_reads_do_not_mutate_history() {
+    let (store, flow, node) = setup().await;
+    append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        step("reply", "native details"),
+    )
+    .await;
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        integrity("complete", 1, 0),
+    )
+    .await;
+    let legacy = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        json!({"invocation_id":"legacy",
+        "provider_attempt_index":1,"step_key":"reply","status":"recorded",
+        "raw_sequence_start":1,"raw_sequence_end":1}),
+    )
+    .await;
+    for seq in 1..=2 {
+        append(&store,flow,node,"provider_protocol_observation",json!({"invocation_id":"legacy",
+            "provider_attempt_index":1,"sequence":seq,"body":format!("legacy-{seq}"),"encoding":"utf8"})).await;
+    }
+    let before: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+            .bind(flow)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let page = store
+        .provider_trajectory_page(flow, node, None, 10)
+        .await
+        .unwrap();
+    assert_eq!(page.integrity, "incomplete");
+    assert_eq!(page.items[1].metadata["source"], "supplier_protocol");
+    let body = store
+        .provider_trajectory_body(
+            flow,
+            node,
+            legacy,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(body.source, "supplier_protocol");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body.items[0].body).unwrap()["source"],
+        "supplier_protocol"
+    );
+    let raw = store
+        .provider_trajectory_body(
+            flow,
+            node,
+            legacy,
+            None,
+            10,
+            ProviderTrajectoryView::Protocol,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(raw.evidence_scope, "step");
+    assert_eq!(raw.items.len(), 1);
+    assert_eq!(raw.items[0].body, "legacy-1");
+    let after: i64 = sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+        .bind(flow)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    let source: Option<String> = sqlx::query_scalar(
+        "select metadata->>'source' from provider_semantic_trajectory_steps where event_id=$1",
+    )
+    .bind(legacy)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(source, None);
+    append(
+        &store,
+        flow,
+        node,
+        "provider_protocol_integrity",
+        json!({"invocation_id":"legacy","provider_attempt_index":1,
+        "status":"complete","observed_count":2,"persist_failed_count":0,"dropped_count":0}),
+    )
+    .await;
+    assert_eq!(
+        store
+            .provider_trajectory_page(flow, node, None, 10)
+            .await
+            .unwrap()
+            .integrity,
+        "complete"
+    );
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        json!({"invocation_id":"missing-terminal","provider_attempt_index":2,
+        "status":"pending","observed_count":0,"persist_failed_count":0,"dropped_count":0}),
+    )
+    .await;
+    assert_eq!(
+        store
+            .provider_trajectory_page(flow, node, None, 10)
+            .await
+            .unwrap()
+            .integrity,
+        "incomplete"
+    );
+}
+
+#[tokio::test]
+async fn run_trajectory_paginates_nodes_without_reading_bodies_or_merging_node_integrity() {
+    let (store, flow, node) = setup().await;
+    let other_node = Uuid::now_v7();
+    sqlx::query("insert into node_runs (id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'second','llm','Second','running' from flow_runs where id=$2")
+        .bind(other_node).bind(flow).execute(store.pool()).await.unwrap();
+    let first = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        step("reply", "first"),
+    )
+    .await;
+    append(
+        &store,
+        flow,
+        node,
+        "native_trajectory_integrity",
+        integrity("complete", 1, 0),
+    )
+    .await;
+    let second = append(
+        &store,
+        flow,
+        other_node,
+        "provider_semantic_step",
+        step("reply", "second"),
+    )
+    .await;
+    append(
+        &store,
+        flow,
+        other_node,
+        "native_trajectory_integrity",
+        integrity("complete", 1, 0),
+    )
+    .await;
+    let legacy = append(&store, flow, other_node, "provider_semantic_step", json!({"invocation_id":"legacy","provider_attempt_index":1,"step_key":"legacy","kind":"model_reply","status":"recorded"})).await;
+    // Invalid original bodies make any accidental whole-event/body read fail.
+    sqlx::query("update runtime_events set raw_json_payloads=jsonb_build_object('payload','invalid JSON') where flow_run_id=$1")
+        .bind(flow).execute(store.pool()).await.unwrap();
+    let page = store
+        .provider_run_trajectory_page(flow, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(page.items[0].event_id, first);
+    assert_eq!(page.items[0].metadata["flow_run_id"], json!(flow));
+    assert_eq!(page.items[0].metadata["node_run_id"], json!(node));
+    assert!(page.items[0].metadata.get("body").is_none());
+    let next = store
+        .provider_run_trajectory_page(flow, page.next_cursor, 1)
+        .await
+        .unwrap();
+    assert_eq!(next.items[0].event_id, second);
+    let tail = store
+        .provider_run_trajectory_page(flow, next.next_cursor, 1)
+        .await
+        .unwrap();
+    assert_eq!(tail.items[0].event_id, legacy);
+    assert_eq!(tail.items[0].metadata["source"], "supplier_protocol");
+    assert!(tail.next_cursor.is_none());
+    assert_eq!(page.integrity, "incomplete");
+    let node_page = store
+        .provider_trajectory_page(flow, node, None, 100)
+        .await
+        .unwrap();
+    assert_eq!(node_page.items.len(), 1);
+    assert_eq!(node_page.integrity, "complete");
+    assert!(store
+        .provider_run_trajectory_page(Uuid::now_v7(), None, 10)
+        .await
+        .unwrap()
+        .items
+        .is_empty());
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            node,
+            second,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .unwrap()
+        .is_none());
+    // Same invocation id on two nodes is two independent Native attempts.
+    sqlx::query("delete from provider_semantic_trajectory_steps where event_id=$1")
+        .bind(legacy)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .provider_run_trajectory_page(flow, None, 100)
+            .await
+            .unwrap()
+            .integrity,
+        "complete"
+    );
+}
+
+#[tokio::test]
+async fn selected_run_payload_preserves_original_and_never_reads_other_sections() {
+    use control_plane_contracts::ports::ApplicationRunPayloadSection::{
+        InputPayload, OutputPayload,
+    };
+    let (store, flow, node) = setup().await;
+    let application: Uuid = sqlx::query_scalar("select application_id from flow_runs where id=$1")
+        .bind(flow)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let original = json!({"text":"actual NUL \0 and literal \\u0000", "ordered":[3,1,2]});
+    sqlx::query("update flow_runs set input_payload='{}',raw_json_payloads=jsonb_build_object('input_payload',$2::text,'output_payload','invalid JSON') where id=$1")
+        .bind(flow).bind(original.to_string()).execute(store.pool()).await.unwrap();
+    sqlx::query("update node_runs set raw_json_payloads=jsonb_build_object('input_payload','invalid JSON') where id=$1")
+        .bind(node).execute(store.pool()).await.unwrap();
+    assert_eq!(
+        store
+            .application_run_payload(application, flow, InputPayload)
+            .await
+            .unwrap(),
+        Some(original)
+    );
+    assert!(store
+        .application_run_payload(Uuid::now_v7(), flow, InputPayload)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .application_run_payload(application, Uuid::now_v7(), InputPayload)
+        .await
+        .unwrap()
+        .is_none());
+    let output = json!({"text":"selected output"});
+    sqlx::query("update flow_runs set output_payload='{}',raw_json_payloads=jsonb_build_object('output_payload',$2::text,'input_payload','invalid JSON') where id=$1")
+        .bind(flow).bind(output.to_string()).execute(store.pool()).await.unwrap();
+    assert_eq!(
+        store
+            .application_run_payload(application, flow, OutputPayload)
+            .await
+            .unwrap(),
+        Some(output)
+    );
+}
+
+#[tokio::test]
+async fn native_snapshot_references_are_lossless_scoped_immutable_and_read_only() {
+    let (store, flow, node) = setup().await;
+    let key = Uuid::now_v7().to_string();
+    let tool = json!({"id":"tool-1","arguments":{"text":"actual NUL \0 and 中文"}});
+    let compact = json!({"final_content":"reply", "result":{"tool_calls":[tool.clone()],"provider_metadata":{"unknown":42}}});
+    let mut snapshot = step(&key, &compact.to_string());
+    snapshot["body_format"] = json!("native_reply_v2");
+    let source = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        snapshot.clone(),
+    )
+    .await;
+    let mut reference = step("tool:1", "unused");
+    reference.as_object_mut().unwrap().remove("body");
+    reference["kind"] = json!("tool_call");
+    reference["body_ref"] = json!({"step_key":key,"pointer":"/result/tool_calls/0"});
+    let id = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        reference.clone(),
+    )
+    .await;
+    let count_before: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+            .bind(flow)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let reply = store
+        .provider_trajectory_body(
+            flow,
+            node,
+            source,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let expanded: serde_json::Value = serde_json::from_str(&reply.items[0].body).unwrap();
+    assert_eq!(expanded["final_content"], "reply");
+    assert_eq!(expanded["result"]["final_content"], "reply");
+    assert_eq!(expanded["result"]["provider_metadata"]["unknown"], 42);
+    let detail = store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&detail.items[0].body).unwrap(),
+        tool
+    );
+    let page = store
+        .provider_trajectory_page(flow, node, None, 100)
+        .await
+        .unwrap();
+    assert!(page
+        .items
+        .iter()
+        .all(|item| item.metadata.get("body").is_none()));
+    let count_after: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+            .bind(flow)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(count_before, count_after);
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            Uuid::now_v7(),
+            id,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .unwrap()
+        .is_none());
+    // A matching snapshot key in another attempt or invocation is never borrowed.
+    for (field, value) in [
+        ("provider_attempt_index", json!(1)),
+        ("invocation_id", json!("other")),
+    ] {
+        let mut foreign = reference.clone();
+        foreign[field] = value;
+        let foreign_id = append(&store, flow, node, "provider_semantic_step", foreign).await;
+        assert!(store
+            .provider_trajectory_body(
+                flow,
+                node,
+                foreign_id,
+                None,
+                1,
+                ProviderTrajectoryView::Semantic
+            )
+            .await
+            .is_err());
+    }
+    let mut bad_pointer = reference.clone();
+    bad_pointer["step_key"] = json!("tool:bad-pointer");
+    bad_pointer["body_ref"]["pointer"] = json!("/not-recorded");
+    let bad_id = append(&store, flow, node, "provider_semantic_step", bad_pointer).await;
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            node,
+            bad_id,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .is_err());
+    // A second version under a supposedly immutable key must not silently change evidence.
+    append(&store, flow, node, "provider_semantic_step", snapshot).await;
+    assert!(store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .is_err());
+    sqlx::query("delete from runtime_events where id=$1")
+        .bind(source)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn workflow_requests_link_exact_calls_and_focus_without_reading_bodies() {
+    use control_plane_contracts::ports::{
+        AppendClientTrajectoryInput, ClientTrajectoryFact, ClientTrajectoryStep,
+        ClientTrajectoryTransport, TrajectorySelection,
+    };
+    let (store, flow, node) = setup().await;
+    let a = Uuid::now_v7();
+    let b = Uuid::now_v7();
+    let make_call = |key: &str, request: Uuid, purpose: &str, attempt: i64| {
+        let mut value=step(key,"{\"system\":[\"actual-system\"],\"messages\":[{\"role\":\"user\",\"content\":\"actual-context\"}],\"tools\":[],\"model\":\"actual-model\"}");
+        value["kind"] = json!("model_call");
+        value["trigger_request_id"] = json!(request);
+        value["purpose"] = json!(purpose);
+        value["provider_attempt_index"] = json!(attempt);
+        value
+    };
+    let first = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        make_call("a", a, "prewarm", 0),
+    )
+    .await;
+    let mut second = make_call("b", b, "tool_resume", 0);
+    second["invocation_id"] = json!("native-b");
+    second["context_flow_run_id"] = json!(flow);
+    second["context_response_id"] = json!("resp-a");
+    let target = append(&store, flow, node, "provider_semantic_step", second.clone()).await;
+    second["step_key"] = json!("b-retry");
+    second["provider_attempt_index"] = json!(1);
+    let retry = append(&store, flow, node, "provider_semantic_step", second).await;
+    let early = store
+        .provider_run_trajectory_page(flow, None, 100)
+        .await
+        .unwrap();
+    assert!(
+        early.items.iter().all(|s| s.links.is_empty()),
+        "client may be observed later"
+    );
+    for request in [a, b] {
+        let append_fact = |fact| AppendClientTrajectoryInput {
+            flow_run_id: flow,
+            node_run_id: None,
+            request_id: request,
+            observed_at: "2026-09-22T00:00:00Z".into(),
+            fact,
+        };
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::Integrity {
+                status: "complete".into(),
+                dropped_count: 0,
+                persist_failed_count: 0,
+            }))
+            .await
+            .unwrap();
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::NodeLink {
+                node_run_id: node,
+            }))
+            .await
+            .unwrap();
+        store
+            .append_client_trajectory(&append_fact(ClientTrajectoryFact::ResponseLink {
+                response_id: if request == a { "resp-a" } else { "resp-b" }.into(),
+            }))
+            .await
+            .unwrap();
+        for output in [false] {
+            let step = ClientTrajectoryStep {
+                id: if output { Uuid::now_v7() } else { request },
+                request_id: request,
+                sequence: 0,
+                created_at: "2026-09-22T00:00:00Z".into(),
+                category: if output { "assistant" } else { "request" }.into(),
+                name: "request".into(),
+                namespace: None,
+                preview: "client-input".into(),
+                parameters_preview: None,
+                result_preview: None,
+                status: "recorded".into(),
+                origin: if output { "emitted" } else { "submitted" }.into(),
+                protocol: "openai-responses-v1".into(),
+                transport: ClientTrajectoryTransport::Http,
+                flow_run_id: flow,
+                node_run_id: None,
+                parent_id: if output { Some(request) } else { None },
+                call_id: None,
+                item_id: None,
+                response_id: if output {
+                    Some(if request == a { "resp-a" } else { "resp-b" }.into())
+                } else {
+                    None
+                },
+                turn_id: None,
+                related_step_id: None,
+                available_sections: vec![],
+            };
+            store
+                .append_client_trajectory(&append_fact(ClientTrajectoryFact::Step {
+                    step: Box::new(step),
+                }))
+                .await
+                .unwrap();
+        }
+    }
+    let page = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: Some(target),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.items[0].event_id, target);
+    assert_eq!(page.items[0].metadata["purpose"], "tool_resume");
+    let links = &page.items[0].links;
+    assert!(links
+        .iter()
+        .any(|l| l.relation == "trigger" && l.request_id == b));
+    assert!(links
+        .iter()
+        .any(|l| l.relation == "context" && l.request_id == a));
+    assert!(!links
+        .iter()
+        .any(|l| l.relation == "trigger" && l.request_id == a));
+    let next = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            page.next_cursor,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(next.items[0].event_id, retry);
+    assert!(next.next_cursor.is_none());
+    assert_eq!(next.items[0].metadata["provider_attempt_index"], 1);
+    assert!(store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(a),
+                target_id: Some(target)
+            }
+        )
+        .await
+        .is_err());
+    assert!(store
+        .provider_trajectory_filtered_page(
+            flow,
+            Some(Uuid::now_v7()),
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(target)
+            }
+        )
+        .await
+        .is_err());
+    let client = store
+        .client_trajectory_filtered_page(
+            flow,
+            Some(node),
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(b),
+                target_id: Some(b),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(client.items[0].id, b);
+    assert!(store
+        .client_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: Some(a),
+                target_id: Some(b)
+            }
+        )
+        .await
+        .is_err());
+    assert!(store
+        .client_trajectory_filtered_page(
+            Uuid::now_v7(),
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(b)
+            }
+        )
+        .await
+        .is_err());
+    let body = store
+        .provider_trajectory_body(flow, node, first, None, 8, ProviderTrajectoryView::Semantic)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(body
+        .sections
+        .iter()
+        .any(|s| s.kind == "system" && s.value["system"][0] == "actual-system"));
+    assert!(body
+        .sections
+        .iter()
+        .any(|s| s.kind == "context" && s.value["messages"][0]["content"] == "actual-context"));
+    // Wrong application context is not promoted into a navigable link.
+    let wrong = Uuid::now_v7();
+    let other_application = Uuid::now_v7();
+    let other_flow = Uuid::now_v7();
+    let other_draft = Uuid::now_v7();
+    let other_plan = Uuid::now_v7();
+    sqlx::query("insert into applications (id,workspace_id,application_type,name,description,created_by,updated_by) select $1,a.workspace_id,a.application_type,'Other application','',a.created_by,a.updated_by from applications a join flow_runs r on r.application_id=a.id where r.id=$2")
+        .bind(other_application).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flows (id,application_id,scope_id,created_by,updated_by) select $1,$2,scope_id,created_by,updated_by from applications where id=$2")
+        .bind(other_flow).bind(other_application).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_drafts (id,flow_id,scope_id,schema_version,document,created_by,updated_by) select $1,$2,d.scope_id,d.schema_version,d.document,d.created_by,d.updated_by from flow_drafts d join flow_runs r on r.flow_draft_id=d.id where r.id=$3")
+        .bind(other_draft).bind(other_flow).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_compiled_plans (id,flow_id,flow_draft_id,schema_version,document_updated_at,plan,scope_id,created_by,updated_by) select $1,$2,$3,p.schema_version,p.document_updated_at,p.plan,p.scope_id,p.created_by,p.updated_by from flow_compiled_plans p join flow_runs r on r.compiled_plan_id=p.id where r.id=$4")
+        .bind(other_plan).bind(other_flow).bind(other_draft).bind(flow).execute(store.pool()).await.unwrap();
+    sqlx::query("insert into flow_runs (id,application_id,flow_id,flow_draft_id,compiled_plan_id,run_mode,status,created_by) select $1,$2,$3,$4,$5,run_mode,status,created_by from flow_runs where id=$6")
+        .bind(wrong).bind(other_application).bind(other_flow).bind(other_draft).bind(other_plan).bind(flow).execute(store.pool()).await.unwrap();
+    let other_request = Uuid::now_v7();
+    for fact in [
+        ClientTrajectoryFact::Integrity {
+            status: "complete".into(),
+            dropped_count: 0,
+            persist_failed_count: 0,
+        },
+        ClientTrajectoryFact::ResponseLink {
+            response_id: "resp-a".into(),
+        },
+    ] {
+        store
+            .append_client_trajectory(&AppendClientTrajectoryInput {
+                flow_run_id: wrong,
+                node_run_id: None,
+                request_id: other_request,
+                observed_at: "2026-09-22T00:00:00Z".into(),
+                fact,
+            })
+            .await
+            .unwrap();
+    }
+    let mut forged = make_call("no-parent", b, "generate", 2);
+    forged["context_flow_run_id"] = json!(wrong);
+    forged["context_response_id"] = json!("resp-a");
+    let wrong_id = append(&store, flow, node, "provider_semantic_step", forged).await;
+    let isolated = store
+        .provider_trajectory_filtered_page(
+            flow,
+            None,
+            None,
+            1,
+            TrajectorySelection {
+                request_id: None,
+                target_id: Some(wrong_id),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!isolated.items[0]
+        .links
+        .iter()
+        .any(|l| l.relation == "context"));
+    // Controlled positive: this exact response is resolvable inside its own application.
+    sqlx::query("insert into node_runs (id,scope_id,flow_run_id,node_id,node_type,node_alias,status) select $1,scope_id,id,'llm','llm','LLM','running' from flow_runs where id=$2")
+        .bind(other_request).bind(wrong).execute(store.pool()).await.unwrap();
+    let mut local_context = make_call("own-parent", other_request, "generate", 0);
+    local_context["context_flow_run_id"] = json!(wrong);
+    local_context["context_response_id"] = json!("resp-a");
+    append(
+        &store,
+        wrong,
+        other_request,
+        "provider_semantic_step",
+        local_context,
+    )
+    .await;
+    let own = store
+        .provider_run_trajectory_page(wrong, None, 10)
+        .await
+        .unwrap();
+    assert!(own.items[0]
+        .links
+        .iter()
+        .any(|l| l.relation == "context" && l.request_id == other_request));
+    // Poison bodies: list/focus/link queries must still operate only on indexes.
+    sqlx::query("update runtime_events set raw_json_payloads=jsonb_build_object('payload','invalid JSON') where flow_run_id=$1").bind(flow).execute(store.pool()).await.unwrap();
+    assert_eq!(
+        store
+            .provider_trajectory_filtered_page(
+                flow,
+                None,
+                None,
+                1,
+                TrajectorySelection {
+                    request_id: Some(b),
+                    target_id: Some(target)
+                }
+            )
+            .await
+            .unwrap()
+            .items[0]
+            .event_id,
+        target
+    );
+    assert_eq!(
+        store
+            .client_trajectory_filtered_page(
+                flow,
+                None,
+                None,
+                1,
+                TrajectorySelection {
+                    request_id: Some(b),
+                    target_id: Some(b)
+                }
+            )
+            .await
+            .unwrap()
+            .items[0]
+            .id,
+        b
+    );
+}

@@ -91,8 +91,7 @@ export type ApplicationRunSummary = {
   external_trace_id?: string | null;
   compatibility_mode?: string | null;
   idempotency_key?: string | null;
-  total_cost: string | null;
-  currency_code: string | null;
+  total_cost: number | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -642,7 +641,8 @@ export function fetchApplicationRunTraceNodeDetail(
   applicationId: string,
   runId: string,
   traceNodeId: string,
-  detailRefId: string
+  detailRefId: string,
+  section?: 'input_payload' | 'debug_payload' | 'output_payload'
 ): Promise<ConsoleApplicationRunTraceNodeDetail> {
   return getConsoleApplicationRunTraceNodeDetail(
     applicationId,
@@ -650,7 +650,7 @@ export function fetchApplicationRunTraceNodeDetail(
     traceNodeId,
     detailRefId,
     getApplicationsApiBaseUrl(),
-    TRACE_NODE_ARTIFACT_PREVIEW_AUTO_QUERY
+    { ...TRACE_NODE_ARTIFACT_PREVIEW_AUTO_QUERY, section }
   );
 }
 
@@ -1149,8 +1149,7 @@ function toApplicationRunSummary(
     external_trace_id: optionalStringField(record, 'external_trace_id'),
     compatibility_mode: optionalStringField(record, 'compatibility_mode'),
     idempotency_key: optionalStringField(record, 'idempotency_key'),
-    total_cost: optionalStringField(record, 'total_cost'),
-    currency_code: optionalStringField(record, 'currency_code'),
+    total_cost: optionalNumberField(record, 'total_cost'),
     total_tokens: optionalNumberField(record, 'total_tokens'),
     input_tokens: optionalNumberField(record, 'input_tokens'),
     output_tokens: optionalNumberField(record, 'output_tokens'),

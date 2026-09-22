@@ -998,6 +998,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             self.ensure_provider_loaded(&binding).await?;
             let sinks = live_events
                 .map(|senders| RuntimeStreamSinks {
+                    protocol_observation: senders.protocol_observation,
                     required: Some(Arc::new(RuntimeEventChannelSink(senders.required))),
                     diagnostic: Some(Arc::new(RuntimeEventChannelSink(senders.diagnostic))),
                 })
@@ -1084,6 +1085,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
         let sinks = live_events
             .map(|senders| RuntimeStreamSinks {
+                protocol_observation: senders.protocol_observation,
                 required: Some(Arc::new(RuntimeEventChannelSink(senders.required))),
                 diagnostic: Some(Arc::new(RuntimeEventChannelSink(senders.diagnostic))),
             })

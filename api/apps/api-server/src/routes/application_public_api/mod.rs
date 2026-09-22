@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub(crate) mod callback_adapter;
+mod client_observer;
 pub mod compat_sse;
 pub(crate) mod compatibility_interface;
 pub(crate) mod delivery_receipt;

@@ -193,19 +193,19 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     authenticated_operation("frontstage.ui_templates.view", "other.frontstage"),
     settings(
         "host_infrastructure.cache.domain.clear",
-        "system.host-infrastructure",
+        "system.memory-observation",
     ),
     settings(
         "host_infrastructure.cache.entry.clear",
-        "system.host-infrastructure",
+        "system.memory-observation",
     ),
     settings(
         "host_infrastructure.cache.reveal",
-        "system.host-infrastructure",
+        "system.memory-observation",
     ),
     settings(
         "host_infrastructure.cache.view",
-        "system.host-infrastructure",
+        "system.memory-observation",
     ),
     settings(
         "host_infrastructure.memory.reveal",
@@ -214,14 +214,6 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings(
         "host_infrastructure.memory.view",
         "system.memory-observation",
-    ),
-    settings(
-        "host_infrastructure.providers.configure",
-        "system.host-infrastructure",
-    ),
-    settings(
-        "host_infrastructure.providers.view",
-        "system.host-infrastructure",
     ),
     authenticated_operation("i18n.catalog.view", "other.i18n-catalog"),
     settings("i18n_catalog.custom_keys.delete", "system.i18n-catalog"),
@@ -617,6 +609,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("system.runtime_profile.view", "system.system-runtime"),
     settings("system.runtime_processes.view", "system.system-runtime"),
     settings("system.runtime_process.terminate", "system.system-runtime"),
+    settings("system_backups.catalog", "system.backups"),
     settings("system_backups.create", "system.backups"),
     settings("system_backups.delete", "system.backups"),
     settings("system_backups.detail", "system.backups"),
