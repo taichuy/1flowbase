@@ -218,7 +218,7 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
-      await within(createDialog).findByRole('checkbox', { name: /STRUCTURE$/ })
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
     );
     fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
@@ -252,7 +252,7 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
-      await within(createDialog).findByRole('checkbox', { name: /STRUCTURE$/ })
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
     );
     fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
@@ -280,7 +280,7 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
-      await within(createDialog).findByRole('checkbox', { name: /STRUCTURE$/ })
+      await within(createDialog).findByRole('radio', { name: 'Structure' })
     );
     fireEvent.click(
       within(createDialog).getByRole('button', { name: /Create backup/ })
@@ -290,7 +290,7 @@ describe('SystemBackupsPanel', () => {
     await waitFor(() => expect(api.listSystemBackups).toHaveBeenCalledTimes(2));
   });
 
-  test('requires a selection, keeps STRUCTURE and DATA independent, and defaults file bytes off', async () => {
+  test('defaults to no backup and switches exclusively between structure and structure with data', async () => {
     api.createSystemBackup.mockResolvedValue({
       backup_job_id: 'selected-job',
       backup_set_id: backup.backup_set_id
@@ -308,27 +308,34 @@ describe('SystemBackupsPanel', () => {
       name: /Create backup/
     });
     expect(create).toBeDisabled();
-    const structure = await within(dialog).findByRole('checkbox', {
-      name: /STRUCTURE$/
+    const structure = await within(dialog).findByRole('radio', {
+      name: 'Structure'
     });
-    const data = within(dialog).getByRole('checkbox', { name: /DATA$/ });
+    const data = within(dialog).getByRole('radio', { name: 'Structure and data' });
     const files = within(dialog).getByRole('checkbox', {
       name: 'Include file bytes (optional)'
     });
     expect(structure).not.toBeChecked();
     expect(data).not.toBeChecked();
     expect(files).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: 'Do not back up' })).toBeChecked();
     expect(
       within(dialog).getByText(/including logs and execution trajectories/)
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(/Plugin packages are not included/)
     ).toBeInTheDocument();
+    fireEvent.click(structure);
+    expect(data).not.toBeChecked();
+    expect(create).not.toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Do not back up' }));
+    expect(create).toBeDisabled();
     fireEvent.click(data);
     expect(structure).not.toBeChecked();
+    expect(data).toBeChecked();
     expect(
       within(dialog).getByText(
-        'Selected records: approximately 2.0 KB before compression'
+        'Selected records: approximately 2.1 KB before compression'
       )
     ).toBeInTheDocument();
     fireEvent.click(create);
@@ -339,7 +346,7 @@ describe('SystemBackupsPanel', () => {
         {
           backup_password: undefined,
           selection: {
-            features: [{ feature_id: 'logs', structure: false, data: true }],
+            features: [{ feature_id: 'logs', structure: true, data: true }],
             include_file_bytes: false
           }
         }
@@ -362,9 +369,9 @@ describe('SystemBackupsPanel', () => {
     );
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(
-      await within(dialog).findByRole('checkbox', { name: /STRUCTURE$/ })
+      await within(dialog).findByRole('radio', { name: 'Structure' })
     );
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: /DATA$/ }));
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Structure and data' }));
     fireEvent.click(
       within(dialog).getByRole('checkbox', {
         name: 'Include file bytes (optional)'

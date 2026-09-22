@@ -13,6 +13,7 @@ pub const SELECTIVE_BACKUP_CONTENT_TYPE: &str = "application/vnd.1flowbase.setti
 pub struct SelectiveBackupSelection {
     pub feature_id: String,
     pub structure: bool,
+    /// Includes structure/configuration as well as the feature's persistent data.
     pub data: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -79,11 +79,10 @@
   "backup_kind": "Backup type",
   "selective_kind": "Selected settings backup",
   "legacy_kind": "Legacy full backup",
-  "selection_help": "Choose at least one STRUCTURE or DATA entry. STRUCTURE contains configuration records. DATA includes all corresponding persistent records, including logs and execution trajectories.",
+  "selection_help": "Each setting defaults to Do not back up. Structure includes configuration records. Structure and data includes configuration and all corresponding persistent records, including logs and execution trajectories.",
   "catalog_failed": "Unable to load backup settings. Close and reopen to retry.",
   "settings_feature": "Settings feature",
-  "structure": "STRUCTURE",
-  "data": "DATA",
+  "structure": "Structure",
   "estimated_size": "Estimated size",
   "estimated_total": "Selected records: approximately {{size}} before compression",
   "estimate_help": "Estimates cover selected records before compression. File bytes and archive overhead are additional; the compressed file size varies.",
@@ -95,5 +94,8 @@
   "selective_restore_notice": "Records are inserted or updated using their original primary keys. Target-only records are preserved. No tables are created, replaced, or cleared. Enter your password and the complete backup name to confirm.",
   "confirm_selective_restore": "Confirm and import records",
   "recovery_succeeded": "Records restored successfully",
-  "restart_required": "Restart the server after recovery to load restored settings and plugin registrations."
+  "restart_required": "Restart the server after recovery to load restored settings and plugin registrations.",
+  "backup_mode": "Backup mode",
+  "no_backup": "Do not back up",
+  "structure_and_data": "Structure and data"
 }

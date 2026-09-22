@@ -492,3 +492,57 @@ async fn selective_rejects_unrestorable_dynamic_table_before_source_creation() {
         Ok(_) => panic!("unrestorable table must fail before source creation"),
     }
 }
+
+#[tokio::test]
+async fn selective_data_mode_includes_configuration_and_records_effective_scope() {
+    let (db, actor) = fixture().await;
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let id = Uuid::now_v7();
+    pool(&db, actor, id, "Configuration included").await;
+    let bytes = capture(&repo, select("network-center", false, true)).await;
+    let scratch = archive::unpack(reader(bytes.clone())).await.unwrap();
+    let header = archive::header(&mut scratch.reader().await.unwrap())
+        .await
+        .unwrap();
+    assert!(header
+        .tables
+        .iter()
+        .any(|entry| entry.name == "network_egress_projections"));
+    sqlx::query("update network_egress_pools set display_name='Changed' where id=$1")
+        .bind(id)
+        .execute(&db)
+        .await
+        .unwrap();
+    repo.restore(reader(bytes), "key", "key", true)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "select display_name from network_egress_pools where id=$1"
+        )
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap(),
+        "Configuration included"
+    );
+
+    let ui = capture(&repo, select("ui-management", false, true)).await;
+    let scratch = archive::unpack(reader(ui)).await.unwrap();
+    let header = archive::header(&mut scratch.reader().await.unwrap())
+        .await
+        .unwrap();
+    assert!(header.selection[0].structure && header.selection[0].data);
+    for table in [
+        "frontstage_pages",
+        "frontstage_page_tabs",
+        "frontstage_page_schemas",
+        "frontstage_block_nodes",
+        "frontstage_block_codes",
+    ] {
+        assert!(
+            header.tables.iter().any(|entry| entry.name == table),
+            "missing {table}"
+        );
+    }
+}

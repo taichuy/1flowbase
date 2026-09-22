@@ -36,6 +36,7 @@ import {
   Flex,
   Input,
   Modal,
+  Radio,
   Select,
   Space,
   Steps,
@@ -124,23 +125,21 @@ export function SystemBackupsPanel() {
       (selected?.data ? item.data_bytes : 0)
     );
   }, 0);
-  const toggleSelection = (
+  const setBackupMode = (
     feature_id: string,
-    part: 'structure' | 'data',
-    checked: boolean
+    mode: 'none' | 'structure' | 'structure_and_data'
   ) => {
-    setSelection((current) => {
-      const entry = current.features.find(
-        (item) => item.feature_id === feature_id
-      ) ?? { feature_id, structure: false, data: false };
-      return {
-        ...current,
-        features: [
-          ...current.features.filter((item) => item.feature_id !== feature_id),
-          { ...entry, [part]: checked }
-        ]
-      };
-    });
+    setSelection((current) => ({
+      ...current,
+      features: [
+        ...current.features.filter((item) => item.feature_id !== feature_id),
+        {
+          feature_id,
+          structure: mode !== 'none',
+          data: mode === 'structure_and_data'
+        }
+      ]
+    }));
   };
   const detail = useQuery({
     queryKey: [...queryKey, detailId],
@@ -769,27 +768,39 @@ export function SystemBackupsPanel() {
               dataIndex: 'label_key',
               render: (label_key: string) => settingsT(label_key)
             },
-            ...(['structure', 'data'] as const).map((part) => ({
-              title: part === 'structure' ? t('structure') : t('data'),
-              key: part,
-              width: 130,
-              render: (
-                _: unknown,
-                item: NonNullable<typeof catalog.data>['items'][number]
-              ) => (
-                <Checkbox
-                  aria-label={`${settingsT(item.label_key)} ${part === 'structure' ? t('structure') : t('data')}`}
-                  checked={
-                    selection.features.find(
-                      (entry) => entry.feature_id === item.feature_id
-                    )?.[part] ?? false
-                  }
-                  onChange={(event) =>
-                    toggleSelection(item.feature_id, part, event.target.checked)
-                  }
-                />
-              )
-            })),
+            {
+              title: t('backup_mode'),
+              key: 'backup_mode',
+              render: (_, item) => {
+                const selected = selection.features.find(
+                  (entry) => entry.feature_id === item.feature_id
+                );
+                return (
+                  <Radio.Group
+                    name={`backup-mode-${item.feature_id}`}
+                    aria-label={`${settingsT(item.label_key)} ${t('backup_mode')}`}
+                    value={
+                      selected?.data
+                        ? 'structure_and_data'
+                        : selected?.structure
+                          ? 'structure'
+                          : 'none'
+                    }
+                    onChange={(event) =>
+                      setBackupMode(item.feature_id, event.target.value)
+                    }
+                    options={[
+                      { value: 'none', label: t('no_backup') },
+                      { value: 'structure', label: t('structure') },
+                      {
+                        value: 'structure_and_data',
+                        label: t('structure_and_data')
+                      }
+                    ]}
+                  />
+                );
+              }
+            },
             {
               title: t('estimated_size'),
               key: 'estimate',

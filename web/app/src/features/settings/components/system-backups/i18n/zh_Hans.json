@@ -79,11 +79,10 @@
   "backup_kind": "备份类型",
   "selective_kind": "按设置选择备份",
   "legacy_kind": "旧版全量备份",
-  "selection_help": "至少选择一项结构或数据。结构包含配置记录；数据包含对应的全部持久化记录，包括日志和执行轨迹。",
+  "selection_help": "每项默认不备份。结构包含配置记录；结构和数据包含配置及对应的全部持久化记录，包括日志和执行轨迹。",
   "catalog_failed": "无法加载备份设置，请关闭后重新打开重试。",
   "settings_feature": "设置功能",
   "structure": "结构",
-  "data": "数据",
   "estimated_size": "预计体积",
   "estimated_total": "所选记录压缩前预计 {{size}}",
   "estimate_help": "预计体积为所选记录压缩前大小，不含文件字节和归档开销；实际压缩文件大小会变化。",
@@ -95,5 +94,8 @@
   "selective_restore_notice": "按原主键新增或更新记录，保留目标端独有记录，不建表、不替换、不清空。请输入当前密码和完整备份名称确认。",
   "confirm_selective_restore": "确认并导入记录",
   "recovery_succeeded": "记录恢复成功",
-  "restart_required": "恢复完成后请重启服务，以加载恢复的设置和插件注册。"
+  "restart_required": "恢复完成后请重启服务，以加载恢复的设置和插件注册。",
+  "backup_mode": "备份模式",
+  "no_backup": "不备份",
+  "structure_and_data": "结构和数据"
 }

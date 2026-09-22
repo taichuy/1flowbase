@@ -222,8 +222,12 @@ impl SelectiveBackupRepository for PgSelectiveBackupRepository {
     }
     async fn source(
         &self,
-        selection: Vec<SelectiveBackupSelection>,
+        mut selection: Vec<SelectiveBackupSelection>,
     ) -> Result<Arc<dyn BackupComponentSource>> {
+        // Data mode includes its configuration; persist the effective scope in the archive.
+        for item in &mut selection {
+            item.structure |= item.data;
+        }
         let mut connection = self.pool.acquire().await?;
         let tables =
             inventory::selected(&inventory::inventory(&mut connection).await?, &selection)?;
