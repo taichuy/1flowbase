@@ -100,3 +100,13 @@
   clip-path: inset(50%);
   white-space: pre-wrap;
 }
+
+.json-preview-block--embedded {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.json-preview-block--embedded .json-preview-block__editor {
+  border-top: 0;
+}
