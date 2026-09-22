@@ -480,3 +480,141 @@ async fn selected_run_payload_preserves_original_and_never_reads_other_sections(
         Some(output)
     );
 }
+
+#[tokio::test]
+async fn native_snapshot_references_are_lossless_scoped_immutable_and_read_only() {
+    let (store, flow, node) = setup().await;
+    let key = Uuid::now_v7().to_string();
+    let tool = json!({"id":"tool-1","arguments":{"text":"actual NUL \0 and 中文"}});
+    let compact = json!({"final_content":"reply", "result":{"tool_calls":[tool.clone()],"provider_metadata":{"unknown":42}}});
+    let mut snapshot = step(&key, &compact.to_string());
+    snapshot["body_format"] = json!("native_reply_v2");
+    let source = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        snapshot.clone(),
+    )
+    .await;
+    let mut reference = step("tool:1", "unused");
+    reference.as_object_mut().unwrap().remove("body");
+    reference["kind"] = json!("tool_call");
+    reference["body_ref"] = json!({"step_key":key,"pointer":"/result/tool_calls/0"});
+    let id = append(
+        &store,
+        flow,
+        node,
+        "provider_semantic_step",
+        reference.clone(),
+    )
+    .await;
+    let count_before: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+            .bind(flow)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let reply = store
+        .provider_trajectory_body(
+            flow,
+            node,
+            source,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let expanded: serde_json::Value = serde_json::from_str(&reply.items[0].body).unwrap();
+    assert_eq!(expanded["final_content"], "reply");
+    assert_eq!(expanded["result"]["final_content"], "reply");
+    assert_eq!(expanded["result"]["provider_metadata"]["unknown"], 42);
+    let detail = store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&detail.items[0].body).unwrap(),
+        tool
+    );
+    let page = store
+        .provider_trajectory_page(flow, node, None, 100)
+        .await
+        .unwrap();
+    assert!(page
+        .items
+        .iter()
+        .all(|item| item.metadata.get("body").is_none()));
+    let count_after: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id=$1")
+            .bind(flow)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(count_before, count_after);
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            Uuid::now_v7(),
+            id,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .unwrap()
+        .is_none());
+    // A matching snapshot key in another attempt or invocation is never borrowed.
+    for (field, value) in [
+        ("provider_attempt_index", json!(1)),
+        ("invocation_id", json!("other")),
+    ] {
+        let mut foreign = reference.clone();
+        foreign[field] = value;
+        let foreign_id = append(&store, flow, node, "provider_semantic_step", foreign).await;
+        assert!(store
+            .provider_trajectory_body(
+                flow,
+                node,
+                foreign_id,
+                None,
+                1,
+                ProviderTrajectoryView::Semantic
+            )
+            .await
+            .is_err());
+    }
+    let mut bad_pointer = reference.clone();
+    bad_pointer["step_key"] = json!("tool:bad-pointer");
+    bad_pointer["body_ref"]["pointer"] = json!("/not-recorded");
+    let bad_id = append(&store, flow, node, "provider_semantic_step", bad_pointer).await;
+    assert!(store
+        .provider_trajectory_body(
+            flow,
+            node,
+            bad_id,
+            None,
+            1,
+            ProviderTrajectoryView::Semantic
+        )
+        .await
+        .is_err());
+    // A second version under a supposedly immutable key must not silently change evidence.
+    append(&store, flow, node, "provider_semantic_step", snapshot).await;
+    assert!(store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .is_err());
+    sqlx::query("delete from runtime_events where id=$1")
+        .bind(source)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(store
+        .provider_trajectory_body(flow, node, id, None, 1, ProviderTrajectoryView::Semantic)
+        .await
+        .is_err());
+}

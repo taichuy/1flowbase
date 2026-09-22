@@ -1,4 +1,7 @@
-//! Host Native facts, independent of optional supplier bytes and of business success.
+//! Observation at the Native execution boundary, not protocol translation or billing.
+//! Input is the actual value handed to the plugin; output is what the plugin returned.
+//! The repository owns storage/query. Child steps reference immutable invocation-local
+//! snapshots; observation failure never changes execution or client protocol facts.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -145,9 +148,10 @@ fn redact_metadata(value: &mut Value) {
 fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
     let detail = safe_input(input);
     let gap = detail.is_none();
-    sink.step(
+    let snapshot_key = Uuid::now_v7().to_string();
+    let saved = sink.step(
         "model_call",
-        "request",
+        &snapshot_key,
         "prepared",
         detail.unwrap_or_else(|| json!({"truncated":true})),
         None,
@@ -161,13 +165,13 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
         .filter(|(_, message)| message.role == ProviderMessageRole::Tool)
     {
         if let Some(detail) = bounded(message) {
-            sink.step(
+            sink.referenced_step(
                 "tool_result",
                 &format!("submitted:{index}"),
                 "prepared",
                 detail,
                 message.tool_call_id.as_deref(),
-                false,
+                (saved && !gap).then(|| (snapshot_key.as_str(), format!("/messages/{index}"))),
             );
             if let Some(id) = &message.tool_call_id {
                 if submitted.len() < RECORDS {
@@ -197,13 +201,18 @@ fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
                 continue;
             }
             if let Some(detail) = bounded(item) {
-                sink.step(
+                sink.referenced_step(
                     "tool_result",
                     &format!("native-submitted:{index}"),
                     "prepared",
                     detail,
                     id,
-                    false,
+                    (saved && !gap).then(|| {
+                        (
+                            snapshot_key.as_str(),
+                            format!("/native_request/wire_body/input/{index}"),
+                        )
+                    }),
                 );
             } else {
                 sink.dropped.fetch_add(1, Relaxed);
@@ -433,12 +442,54 @@ impl Sink {
         detail: Value,
         tool: Option<&str>,
         incomplete: bool,
-    ) {
-        let body = detail.to_string();
+    ) -> bool {
+        let mut detail = detail;
         let preview = native_preview(kind, &detail);
-        let payload = self.id.event("provider_semantic_step", json!({"step_key":key,"kind":kind,
+        // Exact duplicate only. The reader restores the public detail shape.
+        let compact_reply = kind == "model_reply"
+            && detail["result"].is_object()
+            && detail.get("final_content") == detail["result"].get("final_content");
+        if compact_reply {
+            detail["result"]
+                .as_object_mut()
+                .unwrap()
+                .remove("final_content");
+        }
+        let body = detail.to_string();
+        let mut payload = self.id.event("provider_semantic_step", json!({"step_key":key,"kind":kind,
             "status":if incomplete {"incomplete"} else {"recorded"},"direction":direction,"preview":preview,
             "tool_call_id":tool,"body":body}));
+        if compact_reply {
+            payload.payload["body_format"] = json!("native_reply_v2");
+        }
+        self.enqueue(payload)
+    }
+
+    fn referenced_step(
+        &self,
+        kind: &str,
+        key: &str,
+        direction: &str,
+        detail: Value,
+        tool: Option<&str>,
+        reference: Option<(&str, String)>,
+    ) {
+        let Some((step_key, pointer)) = reference else {
+            self.step(kind, key, direction, detail, tool, false);
+            return;
+        };
+        let preview = native_preview(kind, &detail);
+        self.enqueue(self.id.event(
+            "provider_semantic_step",
+            json!({
+                "step_key":key, "kind":kind, "status":"recorded", "direction":direction,
+                "preview":preview, "tool_call_id":tool,
+                "body_ref":{"step_key":step_key,"pointer":pointer}
+            }),
+        ));
+    }
+
+    fn enqueue(&self, payload: crate::ports::RuntimeEventPayload) -> bool {
         let size = payload.payload.to_string().len().saturating_add(512);
         let permit = u32::try_from(size)
             .ok()
@@ -453,10 +504,11 @@ impl Sink {
                 .is_ok()
             {
                 self.observed.fetch_add(1, Relaxed);
-                return;
+                return true;
             }
         }
         self.dropped.fetch_add(1, Relaxed);
+        false
     }
 }
 
@@ -552,14 +604,16 @@ impl Capture {
             .as_ref()
             .and_then(|value| value["final_content"].as_str())
             .unwrap_or(&state.text);
+        let reply_key = Uuid::now_v7().to_string();
+        let mut saved_reply = false;
         if result.is_some()
             || !text.is_empty()
             || !state.reasoning.is_empty()
             || !reply_items.is_empty()
         {
-            sink.step(
+            saved_reply = sink.step(
                 "model_reply",
-                "reply",
+                &reply_key,
                 "received",
                 json!({"final_content":text,"reasoning":state.reasoning,
             "reasoning_signature":state.signature,"output_items":reply_items,"result":result}),
@@ -568,13 +622,28 @@ impl Capture {
             );
         }
         for (id, call) in &state.tools {
-            sink.step(
+            // A stream output item may carry different metadata from the final
+            // result. Share only exact values; never infer equality from call_id.
+            let pointer = saved_reply
+                .then(|| {
+                    result.as_ref().and_then(|result| {
+                        ["tool_calls", "mcp_calls"].into_iter().find_map(|field| {
+                            result[field]
+                                .as_array()?
+                                .iter()
+                                .position(|value| value == call)
+                                .map(|index| format!("/result/{field}/{index}"))
+                        })
+                    })
+                })
+                .flatten();
+            sink.referenced_step(
                 "tool_call",
                 &format!("tool:{id}"),
                 "received",
                 call.clone(),
                 Some(id),
-                false,
+                pointer.map(|pointer| (reply_key.as_str(), pointer)),
             );
         }
         for (index, error) in state.errors.iter().enumerate() {

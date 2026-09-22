@@ -1,4 +1,5 @@
 use super::*;
+mod native_body;
 use control_plane_contracts::ports::{
     ApplicationRunPayloadSection, ProviderTrajectoryBody, ProviderTrajectoryEvidence,
     ProviderTrajectoryPage, ProviderTrajectoryRepository, ProviderTrajectoryStep,
@@ -88,11 +89,8 @@ impl ProviderTrajectoryRepository for PgControlPlaneStore {
                         "select runtime_original_json(payload,raw_json_payloads,'payload') from runtime_events where id=$1 and flow_run_id=$2 and node_run_id=$3"
                     ).bind(scope.get::<Uuid,_>("body_event_id")).bind(flow_run_id).bind(node_run_id)
                         .fetch_one(self.pool()).await?;
-                    payload
-                        .get("body")
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| anyhow!("native trajectory body missing"))?
-                        .to_owned()
+                    self.native_trajectory_body(flow_run_id, node_run_id, &payload)
+                        .await?
                 } else {
                     let mut historical = metadata.clone();
                     historical["source"] = Value::String(source.clone());

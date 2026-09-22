@@ -79,6 +79,11 @@ fn chunks_are_not_steps_and_result_does_not_duplicate_reply_or_tool() {
         assert_eq!(body(&records[0])["reasoning"], "reason");
         assert_eq!(records[1]["tool_call_id"], "call-1");
         assert_eq!(records[1]["status"], "recorded");
+        assert!(body(&records[0])["result"].get("final_content").is_none());
+        assert_eq!(records[0]["body_format"], "native_reply_v2");
+        assert!(records[1].get("body").is_none());
+        assert_eq!(records[1]["body_ref"]["step_key"], records[0]["step_key"]);
+        assert_eq!(records[1]["body_ref"]["pointer"], "/result/tool_calls/0");
     }
 }
 #[test]
@@ -240,6 +245,12 @@ fn native_continuation_keeps_sealed_request_and_tool_results_without_auth_contex
     assert_eq!(records[1]["kind"], "tool_result");
     assert_eq!(records[1]["direction"], "prepared");
     assert_eq!(records[1]["tool_call_id"], "call-1");
+    assert!(records[1].get("body").is_none());
+    assert_eq!(records[1]["body_ref"]["step_key"], records[0]["step_key"]);
+    assert_eq!(
+        records[1]["body_ref"]["pointer"],
+        "/native_request/wire_body/input/0"
+    );
 }
 #[tokio::test]
 async fn error_only_has_complete_capture_without_invented_reply() {
@@ -389,4 +400,90 @@ fn preview_uses_native_content_and_tool_name_with_unicode_limit() {
         ),
         ""
     );
+}
+
+#[test]
+fn oversized_request_retains_available_tool_result_without_dangling_reference() {
+    let input = ProviderInvocationInput {
+        tools: vec![json!({"description":"x".repeat(CAPACITY)})],
+        native_transport: Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: "openai.responses".into(),
+                digest: "d".into(),
+                size_bytes: 100,
+                wire_body: json!({"input":[{"type":"function_call_output","call_id":"c","output":"kept"}]}),
+            },
+        ),
+        ..Default::default()
+    };
+    let (capture, receiver, _) = fixture(16);
+    assert!(record_input(capture.sink.as_ref().unwrap(), &input));
+    let records = records(receiver);
+    assert_eq!(records[0]["status"], "incomplete");
+    assert!(records[1].get("body_ref").is_none());
+    assert_eq!(body(&records[1])["output"], "kept");
+}
+
+#[test]
+fn different_stream_tool_evidence_is_not_replaced_by_result_with_same_id() {
+    let (capture, receiver, _) = fixture(16);
+    let observed = ProviderToolCall {
+        id: "c".into(),
+        name: "search".into(),
+        arguments: json!({"q":"stream"}),
+        provider_metadata: json!({}),
+    };
+    capture
+        .observer()
+        .observe(&ProviderStreamEvent::ToolCallCommit { call: observed });
+    capture.finish(
+        Some(&ProviderInvocationResult {
+            tool_calls: vec![ProviderToolCall {
+                id: "c".into(),
+                name: "search".into(),
+                arguments: json!({"q":"final"}),
+                provider_metadata: json!({}),
+            }],
+            ..Default::default()
+        }),
+        None,
+        true,
+    );
+    let records = records(receiver);
+    let tool = records.iter().find(|r| r["kind"] == "tool_call").unwrap();
+    assert!(tool.get("body_ref").is_none());
+    assert_eq!(body(tool)["arguments"]["q"], "stream");
+    assert_eq!(
+        body(&records[0])["result"]["tool_calls"][0]["arguments"]["q"],
+        "final"
+    );
+}
+
+#[test]
+fn repeated_large_reply_and_tool_are_stored_once_per_snapshot() {
+    let text = "unique-reply-".repeat(4000);
+    let arguments = json!({"data":"unique-tool-".repeat(4000)});
+    let result = ProviderInvocationResult {
+        final_content: Some(text.clone()),
+        tool_calls: vec![ProviderToolCall {
+            id: "c".into(),
+            name: "search".into(),
+            arguments,
+            provider_metadata: json!({}),
+        }],
+        ..Default::default()
+    };
+    let (capture, receiver, _) = fixture(16);
+    capture.finish(Some(&result), None, true);
+    let records = records(receiver);
+    let size: usize = records.iter().map(|r| r.to_string().len()).sum();
+    let legacy = json!({"final_content":text,"reasoning":"","reasoning_signature":"","output_items":[],"result":result}).to_string().len()
+        + serde_json::to_string(&result.tool_calls[0]).unwrap().len();
+    eprintln!("Native snapshot fixture: compact={size} bytes; previous={legacy} bytes");
+    assert!(
+        size * 100 < legacy * 65,
+        "compact={size}, duplicated={legacy}"
+    );
+    assert_eq!(records.len(), 2);
+    assert!(records[1].get("body").is_none());
 }
