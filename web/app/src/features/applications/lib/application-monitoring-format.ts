@@ -18,7 +18,7 @@ function monitoringTimeRangeOptions(): Array<{
 }
 
 function getMonitoringBucket(
-  range: MonitoringTimeRange
+  range: number
 ): ApplicationRunMonitoringBucket {
   if (range <= 1) {
     return 'hour';

@@ -3,8 +3,10 @@ import type { EChartOption } from '@1flowbase/charts';
 
 export function ApplicationMonitoringChart({
   ariaLabel,
-  option
+  option,
+  onDataClick
 }: {
+  onDataClick?: (dataIndex: number) => void;
   ariaLabel: string;
   option: EChartOption;
 }) {
@@ -13,6 +15,7 @@ export function ApplicationMonitoringChart({
       ariaLabel={ariaLabel}
       className="application-monitoring-chart"
       option={option}
+      onDataClick={onDataClick}
     />
   );
 }

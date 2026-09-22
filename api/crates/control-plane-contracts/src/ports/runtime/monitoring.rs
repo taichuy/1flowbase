@@ -9,6 +9,9 @@ pub struct GetApplicationRunMonitoringReportInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationRunMonitoringReport {
+    pub costs: ApplicationRunMonitoringCosts,
+    pub models: Vec<ApplicationRunMonitoringModelUsage>,
+    pub users: Vec<ApplicationRunMonitoringUserUsage>,
     pub overview: ApplicationRunMonitoringOverview,
     pub duration: ApplicationRunMonitoringDuration,
     pub tokens: ApplicationRunMonitoringTokens,
@@ -28,6 +31,7 @@ pub struct ApplicationRunMonitoringReport {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationRunMonitoringOverview {
+    pub running_count: i64,
     pub total_count: i64,
     pub success_count: i64,
     pub failed_count: i64,
@@ -86,8 +90,11 @@ pub struct ApplicationRunMonitoringConcurrency {
     pub peak_concurrency: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationRunMonitoringTokenTrendPoint {
+    pub total_cost: Option<f64>,
+    pub avg_duration_ms: Option<f64>,
+    pub bucket_end: OffsetDateTime,
     pub bucket_start: OffsetDateTime,
     pub run_count: i64,
     pub total_tokens: i64,
@@ -150,4 +157,28 @@ pub struct ApplicationRunMonitoringRunRank {
     pub finished_at: Option<OffsetDateTime>,
     pub duration_ms: Option<f64>,
     pub total_tokens: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApplicationRunMonitoringCosts {
+    pub total_cost: Option<f64>,
+    pub cost_recorded_count: i64,
+    pub cost_missing_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApplicationRunMonitoringModelUsage {
+    pub requested_model_id: Option<String>,
+    pub task_count: i64,
+    pub total_tokens: i64,
+    pub total_cost: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApplicationRunMonitoringUserUsage {
+    pub user_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub task_count: i64,
+    pub total_tokens: i64,
+    pub total_cost: Option<f64>,
 }

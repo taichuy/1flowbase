@@ -1,3 +1,7 @@
+import {
+  readStatisticsLogFilters,
+  statisticsFilterKeys
+} from '../lib/statistics-log-filters';
 import type { ConversationLogTraceLoader } from '../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
   fetchWorkflowTrajectory,
@@ -433,6 +437,16 @@ export function ApplicationLogsPage({
     window.addEventListener('resize', handleViewportResize);
     return () => window.removeEventListener('resize', handleViewportResize);
   }, [runDetailRect, conversationLogRect, resumeTimelineRect]);
+  const [statisticsFilters, setStatisticsFilters] = useState(() =>
+    readStatisticsLogFilters(window.location.search)
+  );
+  const clearStatisticsFilters = () => {
+    const url = new URL(window.location.href);
+    statisticsFilterKeys.forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState(window.history.state, '', url);
+    setStatisticsFilters({});
+    setPage(1);
+  };
   const [keywordSearch, setKeywordSearch] = useState('');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] =
@@ -493,12 +507,18 @@ export function ApplicationLogsPage({
     () => ({
       page,
       pageSize: PAGE_SIZE,
-      timeRangeDays: timeRange === 'all' ? null : Number(timeRange),
+      ...statisticsFilters,
+      timeRangeDays:
+        statisticsFilters.started_from ||
+        statisticsFilters.started_to ||
+        timeRange === 'all'
+          ? null
+          : Number(timeRange),
       sortBy,
       sortOrder,
       titleIncludes: titleIncludes || undefined
     }),
-    [page, sortBy, sortOrder, timeRange, titleIncludes]
+    [page, sortBy, sortOrder, timeRange, titleIncludes, statisticsFilters]
   );
   const runsQuery = useQuery({
     queryKey: applicationRunsQueryKey(applicationId, runsInput),
@@ -522,6 +542,8 @@ export function ApplicationLogsPage({
 
   useEffect(() => {
     function applyLocationSearch() {
+      setStatisticsFilters(readStatisticsLogFilters(window.location.search));
+      setPage(1);
       const searchState = readApplicationLogsSearchState();
       setSelectedRunId(searchState.runId);
       setOpenConversationLogMessage(
@@ -1063,10 +1085,41 @@ export function ApplicationLogsPage({
 
   const logsHeader = (
     <div className="application-logs-page__header">
+      {Object.keys(statisticsFilters).length > 0 && (
+        <Alert
+          type="info"
+          message={t('statistics.active_filters')}
+          description={
+            <>
+              {statisticsFilters.started_from} – {statisticsFilters.started_to}
+              {statisticsFilters.requested_model_id && (
+                <span> · {statisticsFilters.requested_model_id}</span>
+              )}
+              {statisticsFilters.user_id && (
+                <span> · {t('statistics.user_filter')}</span>
+              )}
+              {statisticsFilters.missing_model && (
+                <span> · {t('statistics.unknown_model')}</span>
+              )}
+              {statisticsFilters.missing_user && (
+                <span> · {t('statistics.unknown_user')}</span>
+              )}
+            </>
+          }
+          action={
+            <Button onClick={clearStatisticsFilters}>
+              {t('statistics.clear_filters')}
+            </Button>
+          }
+        />
+      )}
       <div className="application-logs-page__filters" role="search">
         <AutosizeSelect<ApplicationLogTimeRange>
           aria-label={t('auto.time_range')}
           options={timeRangeOptions}
+          disabled={Boolean(
+            statisticsFilters.started_from || statisticsFilters.started_to
+          )}
           value={timeRange}
           onChange={changeTimeRange}
         />

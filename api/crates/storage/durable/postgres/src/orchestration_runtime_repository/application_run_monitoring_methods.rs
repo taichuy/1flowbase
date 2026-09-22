@@ -24,6 +24,15 @@ impl PgControlPlaneStore {
         let started_to = input.started_to;
         let slow_run_threshold_ms = input.slow_run_threshold_ms.max(0);
 
+        let costs = self
+            .application_run_monitoring_costs(application_id, started_from, started_to)
+            .await?;
+        let models = self
+            .application_run_monitoring_models(application_id, started_from, started_to)
+            .await?;
+        let users = self
+            .application_run_monitoring_users(application_id, started_from, started_to)
+            .await?;
         let overview = self
             .application_run_monitoring_overview(application_id, started_from, started_to)
             .await?;
@@ -105,23 +114,28 @@ impl PgControlPlaneStore {
             )
             .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringReport {
-            overview,
-            duration,
-            tokens,
-            tokens_comparison,
-            tool_callbacks,
-            nodes,
-            concurrency,
-            tokens_trend,
-            protocols,
-            sources,
-            authorized_accounts,
-            api_keys,
-            external_conversations,
-            slowest_runs,
-            high_token_runs,
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringReport {
+                costs,
+                models,
+                users,
+                overview,
+                duration,
+                tokens,
+                tokens_comparison,
+                tool_callbacks,
+                nodes,
+                concurrency,
+                tokens_trend,
+                protocols,
+                sources,
+                authorized_accounts,
+                api_keys,
+                external_conversations,
+                slowest_runs,
+                high_token_runs,
+            },
+        )
     }
 
     async fn application_run_monitoring_overview(
@@ -134,6 +148,7 @@ impl PgControlPlaneStore {
             r#"
             select
                 count(*)::bigint as total_count,
+                count(*) filter (where status in ('queued','running','waiting_callback','waiting_human','paused'))::bigint as running_count,
                 count(*) filter (where status = 'succeeded')::bigint as success_count,
                 count(*) filter (where status = 'failed')::bigint as failed_count,
                 count(*) filter (where status = 'cancelled')::bigint as cancelled_count,
@@ -156,15 +171,18 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringOverview {
-            total_count: row.get("total_count"),
-            success_count: row.get("success_count"),
-            failed_count: row.get("failed_count"),
-            cancelled_count: row.get("cancelled_count"),
-            success_rate: row.get("success_rate"),
-            failed_rate: row.get("failed_rate"),
-            running_count_included: false,
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringOverview {
+                running_count: row.get("running_count"),
+                total_count: row.get("total_count"),
+                success_count: row.get("success_count"),
+                failed_count: row.get("failed_count"),
+                cancelled_count: row.get("cancelled_count"),
+                success_rate: row.get("success_rate"),
+                failed_rate: row.get("failed_rate"),
+                running_count_included: true,
+            },
+        )
     }
 
     async fn application_run_monitoring_duration(
@@ -211,13 +229,15 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringDuration {
-            duration_recorded_count: row.get("duration_recorded_count"),
-            avg_duration_ms: row.get("avg_duration_ms"),
-            p50_duration_ms: row.get("p50_duration_ms"),
-            p95_duration_ms: row.get("p95_duration_ms"),
-            slow_run_rate: row.get("slow_run_rate"),
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringDuration {
+                duration_recorded_count: row.get("duration_recorded_count"),
+                avg_duration_ms: row.get("avg_duration_ms"),
+                p50_duration_ms: row.get("p50_duration_ms"),
+                p95_duration_ms: row.get("p95_duration_ms"),
+                slow_run_rate: row.get("slow_run_rate"),
+            },
+        )
     }
 
     async fn application_run_monitoring_tokens(
@@ -246,14 +266,16 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringTokens {
-            total_tokens_sum: row.get("total_tokens_sum"),
-            input_tokens_sum: row.get("input_tokens_sum"),
-            output_tokens_sum: row.get("output_tokens_sum"),
-            input_cache_hit_tokens_sum: row.get("input_cache_hit_tokens_sum"),
-            avg_tokens_per_run: row.get("avg_tokens_per_run"),
-            token_recorded_count: row.get("token_recorded_count"),
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringTokens {
+                total_tokens_sum: row.get("total_tokens_sum"),
+                input_tokens_sum: row.get("input_tokens_sum"),
+                output_tokens_sum: row.get("output_tokens_sum"),
+                input_cache_hit_tokens_sum: row.get("input_cache_hit_tokens_sum"),
+                avg_tokens_per_run: row.get("avg_tokens_per_run"),
+                token_recorded_count: row.get("token_recorded_count"),
+            },
+        )
     }
 
     async fn application_run_monitoring_tokens_comparison(
@@ -265,7 +287,8 @@ impl PgControlPlaneStore {
         current_total_tokens: i64,
         current_avg_tokens_per_run: f64,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison> {
-        let Some((previous_from, previous_to)) = previous_monitoring_window(started_from, started_to)
+        let Some((previous_from, previous_to)) =
+            previous_monitoring_window(started_from, started_to)
         else {
             return Ok(empty_tokens_comparison());
         };
@@ -291,19 +314,24 @@ impl PgControlPlaneStore {
         let previous_run_count = row.get("previous_run_count");
         let previous_avg_tokens_per_run = row.get("previous_avg_tokens_per_run");
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
-            previous_total_tokens_sum,
-            previous_run_count,
-            previous_avg_tokens_per_run,
-            token_change_rate: change_rate_i64(current_total_tokens, previous_total_tokens_sum),
-            run_count_change_rate: change_rate_i64(current_run_count, previous_run_count),
-            avg_tokens_per_run_change_rate: change_rate_f64(
-                current_avg_tokens_per_run,
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
+                previous_total_tokens_sum,
+                previous_run_count,
                 previous_avg_tokens_per_run,
-            ),
-            traffic_effect: ratio_i64(current_run_count, previous_run_count),
-            cost_per_run_effect: ratio_f64(current_avg_tokens_per_run, previous_avg_tokens_per_run),
-        })
+                token_change_rate: change_rate_i64(current_total_tokens, previous_total_tokens_sum),
+                run_count_change_rate: change_rate_i64(current_run_count, previous_run_count),
+                avg_tokens_per_run_change_rate: change_rate_f64(
+                    current_avg_tokens_per_run,
+                    previous_avg_tokens_per_run,
+                ),
+                traffic_effect: ratio_i64(current_run_count, previous_run_count),
+                cost_per_run_effect: ratio_f64(
+                    current_avg_tokens_per_run,
+                    previous_avg_tokens_per_run,
+                ),
+            },
+        )
     }
 
     async fn application_run_monitoring_tool_callbacks(
@@ -329,11 +357,13 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringToolCallbacks {
-            total_tool_callback_count: row.get("total_tool_callback_count"),
-            avg_tool_callback_count: row.get("avg_tool_callback_count"),
-            runs_with_tool_callback: row.get("runs_with_tool_callback"),
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringToolCallbacks {
+                total_tool_callback_count: row.get("total_tool_callback_count"),
+                avg_tool_callback_count: row.get("avg_tool_callback_count"),
+                runs_with_tool_callback: row.get("runs_with_tool_callback"),
+            },
+        )
     }
 
     async fn application_run_monitoring_nodes(
@@ -357,10 +387,12 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringNodes {
-            avg_unique_node_count: row.get("avg_unique_node_count"),
-            max_unique_node_count: row.get("max_unique_node_count"),
-        })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringNodes {
+                avg_unique_node_count: row.get("avg_unique_node_count"),
+                max_unique_node_count: row.get("max_unique_node_count"),
+            },
+        )
     }
 
     async fn application_run_monitoring_concurrency(
@@ -369,9 +401,9 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
     ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringConcurrency> {
-        let peak_concurrency = sqlx::query_scalar::<_, i64>(
-            &application_run_monitoring_logs_query(
-            r#"
+        let peak_concurrency =
+            sqlx::query_scalar::<_, i64>(&application_run_monitoring_logs_query(
+                r#"
             , logs as (
                 select started_at, finished_at
                 from monitoring_logs
@@ -388,15 +420,18 @@ impl PgControlPlaneStore {
             )
             select coalesce(max(concurrency), 0)::bigint as peak_concurrency from scan
             "#,
-            )
-        )
-        .bind(application_id)
-        .bind(started_from)
-        .bind(started_to)
-        .fetch_one(self.pool())
-        .await?;
+            ))
+            .bind(application_id)
+            .bind(started_from)
+            .bind(started_to)
+            .fetch_one(self.pool())
+            .await?;
 
-        Ok(control_plane_contracts::ports::ApplicationRunMonitoringConcurrency { peak_concurrency })
+        Ok(
+            control_plane_contracts::ports::ApplicationRunMonitoringConcurrency {
+                peak_concurrency,
+            },
+        )
     }
 
     async fn application_run_monitoring_tokens_trend(
@@ -409,13 +444,16 @@ impl PgControlPlaneStore {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
-                date_trunc($4, started_at) as bucket_start,
+                date_trunc($4, started_at, 'UTC') as bucket_start,
+                date_trunc($4, started_at, 'UTC') + ('1 ' || $4)::interval as bucket_end,
+                sum(total_cost)::double precision as total_cost,
+                avg(extract(epoch from (finished_at - started_at)) * 1000)::double precision as avg_duration_ms,
                 count(*)::bigint as run_count, coalesce(sum(coalesce(total_tokens, 0)), 0)::bigint as total_tokens,
                 coalesce(sum(coalesce(input_tokens, 0)), 0)::bigint as input_tokens,
                 coalesce(sum(coalesce(output_tokens, 0)), 0)::bigint as output_tokens,
                 coalesce(sum(coalesce(input_cache_hit_tokens, 0)), 0)::bigint as input_cache_hit_tokens
             from monitoring_logs
-            group by bucket_start
+            group by bucket_start, bucket_end
             order by bucket_start asc
             "#,
         ))
@@ -425,14 +463,22 @@ impl PgControlPlaneStore {
         .bind(bucket)
         .fetch_all(self.pool())
         .await?;
-        Ok(rows.into_iter().map(|row| control_plane_contracts::ports::ApplicationRunMonitoringTokenTrendPoint {
-                bucket_start: row.get("bucket_start"),
-                run_count: row.get("run_count"),
-                total_tokens: row.get("total_tokens"),
-                input_tokens: row.get("input_tokens"),
-                output_tokens: row.get("output_tokens"),
-                input_cache_hit_tokens: row.get("input_cache_hit_tokens"),
-            }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |row| control_plane_contracts::ports::ApplicationRunMonitoringTokenTrendPoint {
+                    bucket_start: row.get("bucket_start"),
+                    bucket_end: row.get("bucket_end"),
+                    total_cost: row.get("total_cost"),
+                    avg_duration_ms: row.get("avg_duration_ms"),
+                    run_count: row.get("run_count"),
+                    total_tokens: row.get("total_tokens"),
+                    input_tokens: row.get("input_tokens"),
+                    output_tokens: row.get("output_tokens"),
+                    input_cache_hit_tokens: row.get("input_cache_hit_tokens"),
+                },
+            )
+            .collect())
     }
 
     async fn application_run_monitoring_protocols(
@@ -440,7 +486,8 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown>>
+    {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             , logs as (
@@ -475,13 +522,15 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown {
-                protocol: row.get("protocol"),
-                request_count: row.get("request_count"),
-                success_rate: row.get("success_rate"),
-                avg_duration_ms: row.get("avg_duration_ms"),
-                total_tokens: row.get("total_tokens"),
-            })
+            .map(
+                |row| control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown {
+                    protocol: row.get("protocol"),
+                    request_count: row.get("request_count"),
+                    success_rate: row.get("success_rate"),
+                    avg_duration_ms: row.get("avg_duration_ms"),
+                    total_tokens: row.get("total_tokens"),
+                },
+            )
             .collect())
     }
 
@@ -529,12 +578,14 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringSourceBreakdown {
-                invocation_source: row.get("invocation_source"),
-                request_count: row.get("request_count"),
-                success_rate: row.get("success_rate"),
-                total_tokens: row.get("total_tokens"),
-            })
+            .map(
+                |row| control_plane_contracts::ports::ApplicationRunMonitoringSourceBreakdown {
+                    invocation_source: row.get("invocation_source"),
+                    request_count: row.get("request_count"),
+                    success_rate: row.get("success_rate"),
+                    total_tokens: row.get("total_tokens"),
+                },
+            )
             .collect())
     }
 
@@ -543,7 +594,8 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage>>
+    {
         let rows = self
             .application_run_monitoring_nullable_text_usage(
                 application_id,
@@ -555,12 +607,14 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage {
-                authorized_account: row.dimension_value,
-                request_count: row.request_count,
-                total_tokens: row.total_tokens,
-                avg_duration_ms: row.avg_duration_ms,
-                failed_count: row.failed_count,
+            .map(|row| {
+                control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage {
+                    authorized_account: row.dimension_value,
+                    request_count: row.request_count,
+                    total_tokens: row.total_tokens,
+                    avg_duration_ms: row.avg_duration_ms,
+                    failed_count: row.failed_count,
+                }
             })
             .collect())
     }
@@ -570,7 +624,9 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringExternalConversationUsage>> {
+    ) -> Result<
+        Vec<control_plane_contracts::ports::ApplicationRunMonitoringExternalConversationUsage>,
+    > {
         let rows = self
             .application_run_monitoring_nullable_text_usage(
                 application_id,
@@ -679,14 +735,16 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringApiKeyUsage {
-                api_key_id: row.get("api_key_id"),
-                api_key_name_snapshot: row.get("api_key_name_snapshot"),
-                request_count: row.get("request_count"),
-                total_tokens: row.get("total_tokens"),
-                avg_duration_ms: row.get("avg_duration_ms"),
-                failed_count: row.get("failed_count"),
-            })
+            .map(
+                |row| control_plane_contracts::ports::ApplicationRunMonitoringApiKeyUsage {
+                    api_key_id: row.get("api_key_id"),
+                    api_key_name_snapshot: row.get("api_key_name_snapshot"),
+                    request_count: row.get("request_count"),
+                    total_tokens: row.get("total_tokens"),
+                    avg_duration_ms: row.get("avg_duration_ms"),
+                    failed_count: row.get("failed_count"),
+                },
+            )
             .collect())
     }
 
@@ -701,9 +759,10 @@ impl PgControlPlaneStore {
             ApplicationRunMonitoringRankKind::Slowest => {
                 ("and finished_at is not null", "duration_ms desc nulls last")
             }
-            ApplicationRunMonitoringRankKind::HighToken => {
-                ("and total_tokens is not null", "total_tokens desc nulls last")
-            }
+            ApplicationRunMonitoringRankKind::HighToken => (
+                "and total_tokens is not null",
+                "total_tokens desc nulls last",
+            ),
         };
         let rows = sqlx::query(&application_run_monitoring_logs_query(&format!(
             r#"
@@ -735,18 +794,20 @@ impl PgControlPlaneStore {
             .map(|row| {
                 let status: String = row.get("status");
 
-                Ok(control_plane_contracts::ports::ApplicationRunMonitoringRunRank {
-                    flow_run_id: row.get("flow_run_id"),
-                    title: row.get("title"),
-                    status:
-                        crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(
-                            &status,
-                        )?,
-                    started_at: row.get("started_at"),
-                    finished_at: row.get("finished_at"),
-                    duration_ms: row.get("duration_ms"),
-                    total_tokens: row.get("total_tokens"),
-                })
+                Ok(
+                    control_plane_contracts::ports::ApplicationRunMonitoringRunRank {
+                        flow_run_id: row.get("flow_run_id"),
+                        title: row.get("title"),
+                        status:
+                            crate::mappers::orchestration_runtime_mapper::parse_flow_run_status(
+                                &status,
+                            )?,
+                        started_at: row.get("started_at"),
+                        finished_at: row.get("finished_at"),
+                        duration_ms: row.get("duration_ms"),
+                        total_tokens: row.get("total_tokens"),
+                    },
+                )
             })
             .collect()
     }
@@ -763,17 +824,8 @@ fn normalize_application_run_monitoring_bucket(input: &str) -> &'static str {
 
 fn application_run_monitoring_logs_query(select_sql: &str) -> String {
     format!(
-        r#"
-        with monitoring_logs as (
-            select *
-            from application_run_log_summaries
-            where application_id = $1
-              and ($2::timestamptz is null or started_at >= $2)
-              and ($3::timestamptz is null or started_at < $3)
-              and status in ('succeeded', 'incomplete', 'failed', 'cancelled')
-        )
-        {select_sql}
-        "#
+        "{}\n{select_sql}",
+        include_str!("application_run_logs/monitoring_tasks.sql")
     )
 }
 
@@ -787,7 +839,8 @@ fn previous_monitoring_window(
     (window > Duration::ZERO).then(|| (previous_to - window, previous_to))
 }
 
-fn empty_tokens_comparison() -> control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
+fn empty_tokens_comparison(
+) -> control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
     control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
         previous_total_tokens_sum: 0,
         previous_run_count: 0,

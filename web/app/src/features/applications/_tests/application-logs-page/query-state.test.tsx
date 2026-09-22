@@ -1,5 +1,5 @@
 import { App as AntdApp } from 'antd';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
 const runtimeApi = vi.hoisted(() => ({
@@ -187,6 +187,47 @@ describe('ApplicationLogsPage - query states', () => {
 
   afterEach(() => {
     resetAuthStore();
+  });
+
+  test('loads statistics filters from URL and clears them without local row filtering', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/applications/app-1/logs?started_from=2026-09-01T00%3A00%3A00Z&started_to=2026-09-02T00%3A00%3A00Z&requested_model_id=model-a&user_id=user-a'
+    );
+    runtimeApi.fetchApplicationRuns.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    });
+    render(
+      <AppProviders>
+        <AntdApp>
+          <ApplicationLogsPage applicationId="app-1" />
+        </AntdApp>
+      </AppProviders>
+    );
+    await waitFor(() =>
+      expect(runtimeApi.fetchApplicationRuns).toHaveBeenCalledWith(
+        'app-1',
+        expect.objectContaining({
+          started_from: '2026-09-01T00:00:00Z',
+          started_to: '2026-09-02T00:00:00Z',
+          requested_model_id: 'model-a',
+          user_id: 'user-a',
+          timeRangeDays: null
+        })
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: '清除统计筛选' }));
+    await waitFor(() =>
+      expect(runtimeApi.fetchApplicationRuns).toHaveBeenLastCalledWith(
+        'app-1',
+        expect.not.objectContaining({ user_id: 'user-a' })
+      )
+    );
+    expect(window.location.search).toBe('');
   });
 
   test('shows a loading state instead of a blank logs section', () => {

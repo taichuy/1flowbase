@@ -1,8 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
   chart: {
+    on: vi.fn(),
+    off: vi.fn(),
     dispose: vi.fn(),
     resize: vi.fn(),
     setOption: vi.fn()
@@ -14,6 +22,8 @@ const runtimeApi = vi.hoisted(() => ({
   applicationRunMonitoringReportQueryKey: (
     applicationId: string,
     input?: {
+      from?: string;
+      to?: string;
       timeRangeDays?: number | null;
       bucket?: 'hour' | 'day' | 'week' | 'month';
     }
@@ -25,7 +35,9 @@ const runtimeApi = vi.hoisted(() => ({
       'monitoring',
       'run-metrics',
       input?.timeRangeDays ?? 7,
-      input?.bucket ?? 'day'
+      input?.bucket ?? 'day',
+      input?.from,
+      input?.to
     ] as const,
   applicationRuntimeActivityQueryKey: (applicationId: string) =>
     [
@@ -71,14 +83,33 @@ import { ApplicationStatisticsPage } from '../pages/ApplicationStatisticsPage';
 
 function monitoringReport() {
   return {
+    costs: { total_cost: 1.25, cost_recorded_count: 10, cost_missing_count: 2 },
+    models: [
+      {
+        requested_model_id: 'model-a',
+        task_count: 12,
+        total_tokens: 5600,
+        total_cost: 1.25
+      }
+    ],
+    users: [
+      {
+        user_id: 'user-a',
+        name: 'Alice',
+        task_count: 12,
+        total_tokens: 5600,
+        total_cost: 1.25
+      }
+    ],
     meta: {
       started_from: '2026-05-01T00:00:00Z',
-      started_to: null,
+      started_to: '2026-05-03T00:00:00Z',
       bucket: 'day',
       slow_run_threshold_ms: 30000
     },
     overview: {
       total_count: 12,
+      running_count: 0,
       success_count: 9,
       failed_count: 2,
       cancelled_count: 1,
@@ -126,6 +157,9 @@ function monitoringReport() {
     tokens_trend: [
       {
         bucket_start: '2026-05-01T00:00:00Z',
+        bucket_end: '2026-05-02T00:00:00Z',
+        total_cost: 0.25,
+        avg_duration_ms: 1200,
         run_count: 4,
         total_tokens: 1200,
         input_tokens: 900,
@@ -134,6 +168,9 @@ function monitoringReport() {
       },
       {
         bucket_start: '2026-05-02T00:00:00Z',
+        bucket_end: '2026-05-03T00:00:00Z',
+        total_cost: 1,
+        avg_duration_ms: 3000,
         run_count: 8,
         total_tokens: 4400,
         input_tokens: 3300,
@@ -252,6 +289,9 @@ function hourlyMonitoringReport() {
     tokens_trend: [
       {
         bucket_start: '2026-05-01T08:00:00Z',
+        bucket_end: '2026-05-01T09:00:00Z',
+        total_cost: 0.25,
+        avg_duration_ms: 1200,
         run_count: 4,
         total_tokens: 1200,
         input_tokens: 900,
@@ -260,6 +300,9 @@ function hourlyMonitoringReport() {
       },
       {
         bucket_start: '2026-05-01T09:00:00Z',
+        bucket_end: '2026-05-01T10:00:00Z',
+        total_cost: 1,
+        avg_duration_ms: 3000,
         run_count: 8,
         total_tokens: 4400,
         input_tokens: 3300,
@@ -385,60 +428,159 @@ describe('ApplicationStatisticsPage', () => {
     );
   });
 
-  test('renders backend aggregated monitoring report and charts', async () => {
+  test('shows task metrics, server distributions and matching log drilldowns', async () => {
     render(
       <AppProviders>
         <ApplicationStatisticsPage applicationId="app-1" />
       </AppProviders>
     );
-
-    expect(await screen.findByText('12')).toBeInTheDocument();
-    expect(screen.getByText('75.0%')).toBeInTheDocument();
-    expect(screen.queryByText('运行中数未包含')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Running statistical caliber' })
+      await screen.findByText(
+        'Succeeded 9 · Failed 2 · Cancelled 1 · Running 0'
+      )
     ).toBeInTheDocument();
-    expect(screen.getByText('openai-responses-v1')).toBeInTheDocument();
-    expect(screen.getByText('New tokens')).toBeInTheDocument();
-    expect(screen.getAllByText('5.6K').length).toBeGreaterThan(0);
-    expect(screen.getByText('Input tokens')).toBeInTheDocument();
-    expect(screen.getByText('4.2K')).toBeInTheDocument();
-    expect(screen.queryByText('external users')).not.toBeInTheDocument();
-    expect(screen.getByText('Output tokens')).toBeInTheDocument();
-    expect(screen.getByText('1.4K')).toBeInTheDocument();
-    expect(screen.getByText('Cache-hit tokens')).toBeInTheDocument();
-    expect(screen.getByText('900')).toBeInTheDocument();
-    expect(screen.queryByText('+560,000.0%')).not.toBeInTheDocument();
-    expect(screen.getByText('Customer API')).toBeInTheDocument();
-    expect(screen.getByText('Assistant')).toBeInTheDocument();
-    expect(screen.getAllByText('最慢运行').length).toBeGreaterThan(0);
-    expect(echartsMock.chart.setOption).toHaveBeenCalled();
-    const tokenTrendOption = echartsMock.chart.setOption.mock.calls[0]?.[0];
-    expect(tokenTrendOption.series).toHaveLength(4);
-    expect(tokenTrendOption.series[0]).toMatchObject({
-      name: 'total tokens',
-      type: 'line',
-      data: [1200, 4400]
+    expect(
+      screen.getByText('Succeeded 9 · Failed 2 · Cancelled 1 · Running 0')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Costs include missing records for 2 root tasks')
+    ).toBeInTheDocument();
+    const userLink = screen.getByRole('link', { name: 'Alice' });
+    expect(userLink).toHaveAttribute(
+      'href',
+      '/applications/app-1/logs?started_from=2026-05-01T00%3A00%3A00Z&started_to=2026-05-03T00%3A00%3A00Z&user_id=user-a'
+    );
+    expect(screen.getByRole('link', { name: 'model-a' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('requested_model_id=model-a')
+    );
+    expect(
+      screen.getByRole('link', { name: 'View task logs' })
+    ).toHaveAttribute('href', expect.stringContaining('started_to='));
+    expect(screen.queryByText('Customer API')).not.toBeInTheDocument();
+    const trend = echartsMock.chart.setOption.mock.calls
+      .map((call) => call[0])
+      .find((option) => option.xAxis);
+    expect(trend.series[0].data).toEqual([4, 8]);
+  });
+
+  test('keeps missing cost distinct from zero and missing identities drillable', async () => {
+    runtimeApi.fetchApplicationRunMonitoringReport.mockResolvedValue({
+      ...monitoringReport(),
+      costs: {
+        total_cost: null,
+        cost_recorded_count: 0,
+        cost_missing_count: 12
+      },
+      users: [
+        {
+          user_id: null,
+          name: null,
+          task_count: 12,
+          total_tokens: 5600,
+          total_cost: null
+        }
+      ],
+      models: [
+        {
+          requested_model_id: null,
+          task_count: 12,
+          total_tokens: 5600,
+          total_cost: null
+        }
+      ]
     });
-    expect(tokenTrendOption.series[0]).not.toHaveProperty('stack');
-    expect(tokenTrendOption.series[1]).toMatchObject({
-      name: 'Input tokens',
-      type: 'line',
-      data: [900, 3300]
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    expect((await screen.findAllByText('—')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Unknown user' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('missing_user=true')
+    );
+    expect(
+      screen.getByRole('link', { name: 'Unspecified model' })
+    ).toHaveAttribute('href', expect.stringContaining('missing_model=true'));
+  });
+
+  test('switches distributions and trends to backend cost values', async () => {
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    await screen.findByText('Succeeded 9 · Failed 2 · Cancelled 1 · Running 0');
+    const costOptions = screen.getAllByRole('radio', { name: 'Recorded cost' });
+    fireEvent.click(costOptions[0]);
+    fireEvent.click(costOptions[1]);
+    await waitFor(() => {
+      const options = echartsMock.chart.setOption.mock.calls.map(
+        (call) => call[0]
+      );
+      expect(
+        options.some(
+          (option) =>
+            option.xAxis && JSON.stringify(option.series[0].data) === '[0.25,1]'
+        )
+      ).toBe(true);
+      expect(
+        options.some(
+          (option) =>
+            option.series[0]?.type === 'pie' &&
+            option.series[0].data[0].value === 1.25
+        )
+      ).toBe(true);
     });
-    expect(tokenTrendOption.series[1]).not.toHaveProperty('stack');
-    expect(tokenTrendOption.series[2]).toMatchObject({
-      name: 'Output tokens',
-      type: 'line',
-      data: [300, 1100]
+  });
+
+  test('retains every measure in tables and does not invent zero-cost ring sectors', async () => {
+    runtimeApi.fetchApplicationRunMonitoringReport.mockResolvedValue({
+      ...monitoringReport(),
+      models: [
+        {
+          requested_model_id: 'model-a',
+          task_count: 12,
+          total_tokens: 5600,
+          total_cost: 0
+        }
+      ],
+      users: [
+        {
+          user_id: 'user-a',
+          name: 'Alice',
+          task_count: 12,
+          total_tokens: 5600,
+          total_cost: null
+        }
+      ]
     });
-    expect(tokenTrendOption.series[2]).not.toHaveProperty('stack');
-    expect(tokenTrendOption.series[3]).toMatchObject({
-      name: 'Cache-hit tokens',
-      type: 'line',
-      data: [120, 780]
-    });
-    expect(tokenTrendOption.series[3]).not.toHaveProperty('stack');
+    render(
+      <AppProviders>
+        <ApplicationStatisticsPage applicationId="app-1" />
+      </AppProviders>
+    );
+    await screen.findByRole('link', { name: 'Alice' });
+    for (const table of screen.getAllByRole('table')) {
+      expect(
+        within(table).getByRole('columnheader', { name: 'Root tasks' })
+      ).toBeInTheDocument();
+      expect(
+        within(table).getByRole('columnheader', { name: 'Tokens' })
+      ).toBeInTheDocument();
+      expect(
+        within(table).getByRole('columnheader', { name: 'Recorded cost' })
+      ).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Recorded cost' })[0]);
+    expect(
+      screen.getAllByText('No recorded positive values for this metric')
+    ).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'Alice' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('img', { name: 'User distribution' })
+    ).not.toBeInTheDocument();
   });
 
   test('keeps realtime activity in the monitoring section', async () => {
@@ -480,13 +622,12 @@ describe('ApplicationStatisticsPage', () => {
     expect(
       await screen.findByText('Total amount of tokens')
     ).toBeInTheDocument();
-    expect(screen.getAllByText('11.7M')).toHaveLength(2);
-    expect(screen.getByText('Input tokens')).toBeInTheDocument();
-    expect(screen.getByText('11.3M')).toBeInTheDocument();
-    expect(screen.getByText('Output tokens')).toBeInTheDocument();
-    expect(screen.getByText('366.4K')).toBeInTheDocument();
-    expect(screen.getByText('Cache-hit tokens')).toBeInTheDocument();
-    expect(screen.getByText('7.9M')).toBeInTheDocument();
+    expect(screen.getAllByText('11.7M')).toHaveLength(1);
+    expect(
+      screen.getByText(
+        /Input tokens: 11.3M.*Output tokens: 366.4K.*Cache-hit tokens: 7.9M/
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText('11,739,169')).not.toBeInTheDocument();
   });
 
@@ -497,7 +638,11 @@ describe('ApplicationStatisticsPage', () => {
       </AppProviders>
     );
 
-    expect(await screen.findByText('12')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Succeeded 9 · Failed 2 · Cancelled 1 · Running 0'
+      )
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'past 4 weeks' }));
 
     await waitFor(() => {

@@ -332,6 +332,11 @@ async fn upsert_terminal_summary_tokens(
     .execute(store.pool())
     .await
     .unwrap();
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(flow_run_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
 }
 
 async fn seed_node_run(

@@ -40,13 +40,20 @@ echarts.use([
 export type { EChartOption, EChartValue };
 
 export interface EChartProps {
+  readonly onDataClick?: (dataIndex: number) => void;
   readonly ariaLabel?: string;
   readonly className?: string;
   readonly option: EChartOption;
   readonly style?: CSSProperties;
 }
 
-export function EChart({ ariaLabel, className, option, style }: EChartProps) {
+export function EChart({
+  ariaLabel,
+  className,
+  option,
+  style,
+  onDataClick
+}: EChartProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
 
@@ -84,6 +91,18 @@ export function EChart({ ariaLabel, className, option, style }: EChartProps) {
       lazyUpdate: true
     });
   }, [option]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !onDataClick) return;
+    const handleClick = (event: { dataIndex?: number }) => {
+      if (typeof event.dataIndex === 'number') onDataClick(event.dataIndex);
+    };
+    chart.on('click', handleClick);
+    return () => {
+      if (chartRef.current === chart) chart.off('click', handleClick);
+    };
+  }, [onDataClick]);
 
   return (
     <div

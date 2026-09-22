@@ -349,5 +349,31 @@
     "inspect_application": "查看应用",
     "invalid_count": "归档必须包含 1 至 100 个应用。",
     "invalid_archive": "无法读取应用归档，请检查文件格式。"
+  },
+  "statistics": {
+    "tasks": "根任务数",
+    "cost": "已记录费用",
+    "custom": "自定义时间",
+    "bucket": "时间粒度",
+    "hour": "按小时",
+    "day": "按天",
+    "week": "按周",
+    "month": "按月",
+    "view_logs": "查看任务日志",
+    "scope": "按根任务开始时间统计；子任务 Token 与费用归入根任务的请求模型和用户。",
+    "status_summary": "成功 {{success}} · 失败 {{failed}} · 取消 {{cancelled}} · 运行中 {{running}}",
+    "cost_coverage": "{{missing}} 项根任务费用未完整记录",
+    "distribution_metric": "分布指标",
+    "models": "请求模型分布",
+    "users": "用户分布",
+    "unknown_model": "未指定模型",
+    "unknown_user": "未知用户",
+    "trend": "任务趋势",
+    "trend_metric": "趋势指标",
+    "clear_filters": "清除统计筛选",
+    "active_filters": "统计筛选",
+    "auto_bucket": "自动粒度",
+    "no_metric_data": "当前指标暂无已记录的正值",
+    "user_filter": "已按用户筛选"
   }
 }

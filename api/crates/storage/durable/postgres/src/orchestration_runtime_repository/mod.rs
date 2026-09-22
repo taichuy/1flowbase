@@ -91,6 +91,7 @@ include!("application_run_logs/task_projection_methods.rs");
 include!("application_run_trace_projection_methods.rs");
 include!("application_run_logs/trace_refresh_methods.rs");
 include!("application_run_monitoring_methods.rs");
+include!("application_run_logs/monitoring_usage.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");

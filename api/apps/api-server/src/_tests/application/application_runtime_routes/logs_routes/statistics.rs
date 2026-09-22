@@ -413,6 +413,12 @@ async fn application_runtime_routes_monitoring_non_positive_window_uses_default(
     .await
     .unwrap();
 
+    sqlx::query("select application_run_log_task_refresh($1)")
+        .bind(Uuid::parse_str(&old_run_id).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+
     let default_payload = get_console_json(
         &app,
         &cookie,
@@ -434,6 +440,15 @@ async fn application_runtime_routes_monitoring_non_positive_window_uses_default(
         default_payload["data"].get("external_users").is_none(),
         "monitoring report must not expose external user usage"
     );
+
+    assert_eq!(
+        default_payload["data"]["overview"]["running_count"].as_i64(),
+        Some(0)
+    );
+    assert!(default_payload["data"]["models"].is_array());
+    assert!(default_payload["data"]["users"].is_array());
+    assert!(default_payload["data"]["costs"].get("total_cost").is_some());
+    assert!(default_payload["data"]["meta"]["started_to"].is_string());
 
     let extended_payload = get_console_json(
         &app,

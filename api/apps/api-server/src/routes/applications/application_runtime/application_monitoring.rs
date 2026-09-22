@@ -40,6 +40,9 @@ pub struct ApplicationRunMonitoringMetaResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunMonitoringReportResponse {
+    pub costs: ApplicationRunMonitoringCostsResponse,
+    pub models: Vec<ApplicationRunMonitoringModelUsageResponse>,
+    pub users: Vec<ApplicationRunMonitoringUserUsageResponse>,
     pub meta: ApplicationRunMonitoringMetaResponse,
     pub overview: ApplicationRunMonitoringOverviewResponse,
     pub duration: ApplicationRunMonitoringDurationResponse,
@@ -60,6 +63,7 @@ pub struct ApplicationRunMonitoringReportResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunMonitoringOverviewResponse {
+    pub running_count: i64,
     pub total_count: i64,
     pub success_count: i64,
     pub failed_count: i64,
@@ -120,6 +124,9 @@ pub struct ApplicationRunMonitoringConcurrencyResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunMonitoringTokenTrendPointResponse {
+    pub total_cost: Option<f64>,
+    pub avg_duration_ms: Option<f64>,
+    pub bucket_end: String,
     pub bucket_start: String,
     pub run_count: i64,
     pub total_tokens: i64,
@@ -308,7 +315,34 @@ pub(super) fn to_report_response(
 ) -> ApplicationRunMonitoringReportResponse {
     ApplicationRunMonitoringReportResponse {
         meta,
+        costs: ApplicationRunMonitoringCostsResponse {
+            total_cost: report.costs.total_cost,
+            cost_recorded_count: report.costs.cost_recorded_count,
+            cost_missing_count: report.costs.cost_missing_count,
+        },
+        models: report
+            .models
+            .into_iter()
+            .map(|item| ApplicationRunMonitoringModelUsageResponse {
+                requested_model_id: item.requested_model_id,
+                task_count: item.task_count,
+                total_tokens: item.total_tokens,
+                total_cost: item.total_cost,
+            })
+            .collect(),
+        users: report
+            .users
+            .into_iter()
+            .map(|item| ApplicationRunMonitoringUserUsageResponse {
+                user_id: item.user_id.map(|id| id.to_string()),
+                name: item.name,
+                task_count: item.task_count,
+                total_tokens: item.total_tokens,
+                total_cost: item.total_cost,
+            })
+            .collect(),
         overview: ApplicationRunMonitoringOverviewResponse {
+            running_count: report.overview.running_count,
             total_count: report.overview.total_count,
             success_count: report.overview.success_count,
             failed_count: report.overview.failed_count,
@@ -358,6 +392,9 @@ pub(super) fn to_report_response(
             .tokens_trend
             .into_iter()
             .map(|point| ApplicationRunMonitoringTokenTrendPointResponse {
+                total_cost: point.total_cost,
+                avg_duration_ms: point.avg_duration_ms,
+                bucket_end: format_time(point.bucket_end),
                 bucket_start: format_time(point.bucket_start),
                 run_count: point.run_count,
                 total_tokens: point.total_tokens,
@@ -452,4 +489,28 @@ fn to_run_rank_response(
         duration_ms: run.duration_ms,
         total_tokens: run.total_tokens,
     }
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunMonitoringCostsResponse {
+    pub total_cost: Option<f64>,
+    pub cost_recorded_count: i64,
+    pub cost_missing_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunMonitoringModelUsageResponse {
+    pub requested_model_id: Option<String>,
+    pub task_count: i64,
+    pub total_tokens: i64,
+    pub total_cost: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunMonitoringUserUsageResponse {
+    pub user_id: Option<String>,
+    pub name: Option<String>,
+    pub task_count: i64,
+    pub total_tokens: i64,
+    pub total_cost: Option<f64>,
 }

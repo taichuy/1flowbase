@@ -643,7 +643,7 @@ async fn monitoring_source_breakdown_includes_assistant_execution() {
 }
 
 #[tokio::test]
-async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_started_at() {
+async fn application_run_monitoring_report_aggregates_root_tasks_by_started_at() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -805,6 +805,12 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     .await
     .unwrap();
 
+    sqlx::query("select application_run_log_task_refresh(id) from unnest($1::uuid[]) id")
+        .bind(vec![console_run.id, public_run.id])
+        .execute(store.pool())
+        .await
+        .unwrap();
+
     sqlx::query("delete from api_keys where id = $1")
         .bind(api_key_id)
         .execute(store.pool())
@@ -851,7 +857,7 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     assert_eq!(report.overview.success_count, 1);
     assert_eq!(report.overview.failed_count, 1);
     assert_eq!(report.overview.cancelled_count, 0);
-    assert!(!report.overview.running_count_included);
+    assert!(report.overview.running_count_included);
     assert_eq!(report.duration.duration_recorded_count, 2);
     assert_eq!(report.duration.avg_duration_ms.round() as i64, 22_500);
     assert_eq!(report.duration.p50_duration_ms.round() as i64, 22_500);
@@ -889,4 +895,175 @@ async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_
     );
     assert_eq!(report.slowest_runs[0].flow_run_id, public_run.id);
     assert_eq!(report.high_token_runs[0].flow_run_id, public_run.id);
+}
+
+// Report read semantics are tested against persisted task facts. No runtime
+// state transitions are changed by this report or reconstructed on reads.
+#[tokio::test]
+async fn task_report_rolls_descendants_into_root_model_user_and_time_once() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let start = datetime!(2026-09-20 10:00:00 UTC);
+    let mut ids = Vec::new();
+    // Root, child outside root's window, grandchild, unknown active root,
+    // root on exclusive upper boundary. Different child model is not a group.
+    for offset in [0, 86400, 86401, 10, 3600] {
+        let run = seed_flow_run_with_mode(
+            &store,
+            &seeded,
+            &compiled,
+            start + Duration::seconds(offset),
+            FlowRunMode::DebugFlowRun,
+            None,
+        )
+        .await;
+        ids.push(run.id);
+    }
+    for (index, tokens, cost) in [
+        (0, 100_i64, Some(1.0_f64)),
+        (1, 20, Some(0.2)),
+        (2, 5, Some(0.05)),
+        (3, 0, None),
+        (4, 9000, Some(90.0)),
+    ] {
+        sqlx::query(
+            "update application_run_log_summaries set requested_model_id=$2 where flow_run_id=$1",
+        )
+        .bind(ids[index])
+        .bind(if index == 0 {
+            "root-model"
+        } else {
+            "child-model"
+        })
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query("update application_run_log_tasks set total_tokens=$2, total_cost=$3, requested_model_id=$4, status='succeeded', finished_at=started_at+interval '10 seconds' where id=$1")
+            .bind(ids[index]).bind(tokens).bind(cost).bind(if index == 0 { "root-model" } else { "child-model" })
+            .execute(store.pool()).await.unwrap();
+    }
+    sqlx::query("update application_run_log_tasks set parent_task_run_id=$2 where id=$1")
+        .bind(ids[1])
+        .bind(ids[0])
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query("update application_run_log_tasks set parent_task_run_id=$2 where id=$1")
+        .bind(ids[2])
+        .bind(ids[1])
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::query(
+        "update application_run_log_summaries set requested_model_id=null where flow_run_id=$1",
+    )
+    .bind(ids[3])
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query("update application_run_log_tasks set status='running', finished_at=null, created_by=null, requested_model_id=null, total_tokens=null where id=$1")
+        .bind(ids[3]).execute(store.pool()).await.unwrap();
+    let report = store
+        .get_application_run_monitoring_report(
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(start),
+                started_to: Some(start + Duration::hours(1)),
+                bucket: "hour".into(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(report.overview.total_count, 2);
+    assert_eq!(report.overview.running_count, 1);
+    assert_eq!(report.overview.success_count, 1);
+    assert_eq!(report.tokens.total_tokens_sum, 125);
+    assert_eq!(report.costs.total_cost, Some(1.25));
+    assert_eq!(report.costs.cost_recorded_count, 1);
+    assert_eq!(report.costs.cost_missing_count, 1);
+    assert_eq!(report.duration.duration_recorded_count, 1);
+    assert_eq!(report.duration.avg_duration_ms, 10_000.0);
+    assert_eq!(report.models.len(), 2);
+    let model = report
+        .models
+        .iter()
+        .find(|row| row.requested_model_id.as_deref() == Some("root-model"))
+        .unwrap();
+    assert_eq!(
+        (model.task_count, model.total_tokens, model.total_cost),
+        (1, 125, Some(1.25))
+    );
+    assert!(!report
+        .models
+        .iter()
+        .any(|row| row.requested_model_id.as_deref() == Some("child-model")));
+    let user = report
+        .users
+        .iter()
+        .find(|row| row.user_id == Some(seeded.actor_user_id))
+        .unwrap();
+    let name: String = sqlx::query_scalar("select name from users where id=$1")
+        .bind(seeded.actor_user_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(user.name.as_deref(), Some(name.as_str()));
+    assert_eq!((user.task_count, user.total_tokens), (1, 125));
+    assert_eq!(
+        report
+            .users
+            .iter()
+            .find(|row| row.user_id.is_none())
+            .unwrap()
+            .total_cost,
+        None
+    );
+    assert_eq!(report.tokens_trend.len(), 1);
+    assert_eq!(report.tokens_trend[0].run_count, 2);
+    assert_eq!(report.tokens_trend[0].total_tokens, 125);
+    assert_eq!(
+        report.tokens_trend[0].bucket_end,
+        start + Duration::hours(1)
+    );
+    assert_eq!(report.tokens_trend[0].avg_duration_ms, Some(10_000.0));
+    // Missing descendant cost keeps the known subtotal and marks the root
+    // incomplete; it is never silently treated as a fully recorded zero.
+    sqlx::query("update application_run_log_tasks set total_cost=null where id=$1")
+        .bind(ids[1])
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let partial = store
+        .get_application_run_monitoring_report(
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(start),
+                started_to: Some(start + Duration::hours(1)),
+                bucket: "hour".into(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(partial.costs.total_cost, Some(1.05));
+    assert_eq!(partial.costs.cost_missing_count, 2);
+    let empty = store
+        .get_application_run_monitoring_report(
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(start - Duration::hours(2)),
+                started_to: Some(start - Duration::hours(1)),
+                bucket: "hour".into(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(empty.overview.total_count, 0);
+    assert_eq!(empty.costs.total_cost, None);
+    assert!(empty.users.is_empty());
 }

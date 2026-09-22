@@ -349,5 +349,31 @@
     "inspect_application": "View application",
     "invalid_count": "The archive must contain 1 to 100 applications.",
     "invalid_archive": "Unable to read the application archive. Check the file format."
+  },
+  "statistics": {
+    "tasks": "Root tasks",
+    "cost": "Recorded cost",
+    "custom": "Custom range",
+    "bucket": "Time bucket",
+    "hour": "Hourly",
+    "day": "Daily",
+    "week": "Weekly",
+    "month": "Monthly",
+    "view_logs": "View task logs",
+    "scope": "Counted by root task start time; descendant tokens and cost are attributed to the root requested model and user.",
+    "status_summary": "Succeeded {{success}} · Failed {{failed}} · Cancelled {{cancelled}} · Running {{running}}",
+    "cost_coverage": "Costs include missing records for {{missing}} root tasks",
+    "distribution_metric": "Distribution metric",
+    "models": "Requested model distribution",
+    "users": "User distribution",
+    "unknown_model": "Unspecified model",
+    "unknown_user": "Unknown user",
+    "trend": "Task trend",
+    "trend_metric": "Trend metric",
+    "clear_filters": "Clear statistics filters",
+    "active_filters": "Statistics filters",
+    "auto_bucket": "Auto bucket",
+    "no_metric_data": "No recorded positive values for this metric",
+    "user_filter": "User filter applied"
   }
 }

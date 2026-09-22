@@ -2,6 +2,8 @@ import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const chart = {
+  on: vi.fn(),
+  off: vi.fn(),
   dispose: vi.fn(),
   resize: vi.fn(),
   setOption: vi.fn()
@@ -30,6 +32,19 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
 
     view.unmount();
     expect(chart.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('bridges data clicks and removes listeners when the handler changes', () => {
+    const handler = vi.fn();
+    const view = render(
+      <EChart option={{ series: [] }} onDataClick={handler} />
+    );
+    const listener = chart.on.mock.calls[0][1];
+    listener({ dataIndex: 2 });
+    listener({});
+    expect(handler).toHaveBeenCalledExactlyOnceWith(2);
+    view.rerender(<EChart option={{ series: [] }} />);
+    expect(chart.off).toHaveBeenCalledWith('click', listener);
   });
 
   it.each([

@@ -144,6 +144,7 @@ export interface ConsoleApplicationRunMonitoringOverview {
   success_rate: number;
   failed_rate: number;
   running_count_included: boolean;
+  running_count: number;
 }
 
 export interface ConsoleApplicationRunMonitoringDuration {
@@ -180,6 +181,9 @@ export interface ConsoleApplicationRunMonitoringConcurrency {
 
 export interface ConsoleApplicationRunMonitoringTokenTrendPoint {
   bucket_start: string;
+  bucket_end: string;
+  total_cost: number | null;
+  avg_duration_ms: number | null;
   run_count: number;
   total_tokens: number;
   input_tokens: number;
@@ -238,6 +242,24 @@ export interface ConsoleApplicationRunMonitoringRunRank {
 }
 
 export interface ConsoleApplicationRunMonitoringReport {
+  costs: {
+    total_cost: number | null;
+    cost_recorded_count: number;
+    cost_missing_count: number;
+  };
+  models: {
+    requested_model_id: string | null;
+    task_count: number;
+    total_tokens: number;
+    total_cost: number | null;
+  }[];
+  users: {
+    user_id: string | null;
+    name: string | null;
+    task_count: number;
+    total_tokens: number;
+    total_cost: number | null;
+  }[];
   meta: ConsoleApplicationRunMonitoringMeta;
   overview: ConsoleApplicationRunMonitoringOverview;
   duration: ConsoleApplicationRunMonitoringDuration;

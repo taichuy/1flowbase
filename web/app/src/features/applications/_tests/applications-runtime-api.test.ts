@@ -322,7 +322,13 @@ describe('applications runtime api', () => {
       'all',
       'started_at',
       'desc',
-      ''
+      '',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     ]);
     expect(applicationRunsQueryKey('app-1', { titleIncludes: '退款' })).toEqual(
       [
@@ -335,7 +341,13 @@ describe('applications runtime api', () => {
         'all',
         'started_at',
         'desc',
-        '退款'
+        '退款',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined
       ]
     );
     expect(applicationRunTraceTreeQueryKey('app-1', 'run-1')).toEqual([
@@ -393,7 +405,9 @@ describe('applications runtime api', () => {
       'monitoring',
       'run-metrics',
       7,
-      'day'
+      'day',
+      undefined,
+      undefined
     ]);
     expect(applicationRuntimeActivityQueryKey('app-1')).toEqual([
       'applications',
@@ -402,6 +416,59 @@ describe('applications runtime api', () => {
       'monitoring',
       'runtime-activity'
     ]);
+  });
+
+  test('sends conjunctive root-task statistics filters with an exclusive end', async () => {
+    await fetchApplicationRuns('app-1', {
+      started_from: '2026-09-01T00:00:00Z',
+      started_to: '2026-09-02T00:00:00Z',
+      requested_model_id: 'model-a',
+      user_id: 'user-a'
+    });
+    expect(fetchConsoleRuntimeModelRecords).toHaveBeenLastCalledWith(
+      'application_run_log_tasks',
+      expect.objectContaining({
+        filter: {
+          application_id: { $eq: 'app-1' },
+          is_root: { $eq: true },
+          started_at: {
+            $gte: '2026-09-01T00:00:00Z',
+            $lt: '2026-09-02T00:00:00Z'
+          },
+          requested_model_id: { $eq: 'model-a' },
+          created_by: { $eq: 'user-a' }
+        }
+      }),
+      'http://127.0.0.1:7800'
+    );
+    await fetchApplicationRuns('app-1', {
+      missing_model: true,
+      missing_user: true
+    });
+    expect(fetchConsoleRuntimeModelRecords).toHaveBeenLastCalledWith(
+      'application_run_log_tasks',
+      expect.objectContaining({
+        filter: expect.objectContaining({
+          requested_model_id: { $eq: null },
+          created_by: { $eq: null }
+        })
+      }),
+      'http://127.0.0.1:7800'
+    );
+    await fetchApplicationRunMonitoringReport('app-1', {
+      from: '2026-09-01T00:00:00Z',
+      to: '2026-09-02T00:00:00Z',
+      bucket: 'hour'
+    });
+    expect(getConsoleApplicationRunMonitoringReport).toHaveBeenLastCalledWith(
+      'app-1',
+      expect.objectContaining({
+        from: '2026-09-01T00:00:00Z',
+        to: '2026-09-02T00:00:00Z',
+        bucket: 'hour'
+      }),
+      'http://127.0.0.1:7800'
+    );
   });
 
   test('passes the resolved base url to runtime read requests', async () => {

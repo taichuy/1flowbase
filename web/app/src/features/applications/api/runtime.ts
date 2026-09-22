@@ -1,3 +1,4 @@
+import type { StatisticsLogFilters } from '../lib/statistics-log-filters';
 import {
   completeConsoleCallbackTask,
   completeConsoleRunArchiveUploadSession,
@@ -224,11 +225,13 @@ const TRACE_NODE_ARTIFACT_PREVIEW_AUTO_QUERY = {
 } as const;
 
 export interface FetchApplicationRunMonitoringReportInput {
+  from?: string;
+  to?: string;
   timeRangeDays?: number | null;
   bucket?: ApplicationRunMonitoringBucket;
 }
 
-export interface FetchApplicationRunsInput {
+export interface FetchApplicationRunsInput extends StatisticsLogFilters {
   page?: number;
   pageSize?: number;
   timeRangeDays?: number | null;
@@ -252,7 +255,13 @@ export const applicationRunsQueryKey = (
     input.timeRangeDays ?? 'all',
     input.sortBy ?? 'started_at',
     input.sortOrder ?? 'desc',
-    input.titleIncludes ?? ''
+    input.titleIncludes ?? '',
+    input.started_from,
+    input.started_to,
+    input.requested_model_id,
+    input.user_id,
+    input.missing_model,
+    input.missing_user
   ] as const;
 
 export const applicationConversationsQueryKey = (
@@ -441,7 +450,9 @@ export const applicationRunMonitoringReportQueryKey = (
     'monitoring',
     'run-metrics',
     input.timeRangeDays ?? 7,
-    input.bucket ?? 'day'
+    input.bucket ?? 'day',
+    input.from,
+    input.to
   ] as const;
 
 export const applicationRuntimeActivityQueryKey = (applicationId: string) =>
@@ -488,7 +499,9 @@ export function fetchApplicationRunMonitoringReport(
     applicationId,
     {
       time_range_days: input.timeRangeDays ?? 7,
-      bucket: input.bucket ?? 'day'
+      bucket: input.bucket ?? 'day',
+      from: input.from,
+      to: input.to
     },
     getApplicationsApiBaseUrl()
   );
@@ -952,6 +965,19 @@ function applicationRunLogTaskFilter(
     };
   }
 
+  if (input.started_from || input.started_to) {
+    filter.started_at = {
+      ...(input.started_from ? { $gte: input.started_from } : {}),
+      ...(input.started_to ? { $lt: input.started_to } : {})
+    };
+  }
+  if (input.missing_model) filter.requested_model_id = { $eq: null };
+  else if (input.requested_model_id !== undefined)
+    filter.requested_model_id = { $eq: input.requested_model_id };
+  // The report user dimension is the root task creator, not the external user.
+  if (input.missing_user) filter.created_by = { $eq: null };
+  else if (input.user_id !== undefined)
+    filter.created_by = { $eq: input.user_id };
   return filter;
 }
 

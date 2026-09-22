@@ -786,6 +786,22 @@ fn append_field_filter_expr(
     operator: domain::ResourceFilterOperator,
     value: &Value,
 ) -> Result<()> {
+    // JSON null remains a JSON value; null on scalar fields means SQL NULL.
+    if value.is_null()
+        && field.field_kind != domain::ModelFieldKind::Json
+        && matches!(
+            operator,
+            domain::ResourceFilterOperator::Eq | domain::ResourceFilterOperator::Ne
+        )
+    {
+        builder.push(quote_identifier(&field.physical_column_name)?);
+        builder.push(if operator == domain::ResourceFilterOperator::Eq {
+            " is null"
+        } else {
+            " is not null"
+        });
+        return Ok(());
+    }
     if operator == domain::ResourceFilterOperator::In {
         let Some(values) = value.as_array() else {
             return Err(anyhow!("filter $in value must be an array"));
@@ -1143,3 +1159,7 @@ fn is_runtime_object_missing_error(error: &sqlx::Error) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/runtime_record_filters/scalar_null.rs"]
+mod scalar_null_tests;

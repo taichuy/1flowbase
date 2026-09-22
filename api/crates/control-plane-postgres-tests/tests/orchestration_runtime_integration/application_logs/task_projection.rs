@@ -208,6 +208,35 @@ async fn issue_2035_task_projection_owns_list_and_converged_detail() {
     .await
     .unwrap();
     assert_eq!(member_runs, 5);
+    let report = store
+        .get_application_run_monitoring_report(
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: None,
+                started_to: None,
+                bucket: "day".into(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        report.overview.total_count, 2,
+        "multi-round calls and child tasks do not increase root count"
+    );
+    assert_eq!(
+        report.tokens.total_tokens_sum, 6570,
+        "6000 root + 500 child + 70 standalone, each once"
+    );
+    assert_eq!(
+        report
+            .models
+            .iter()
+            .find(|row| row.requested_model_id.as_deref() == Some("gpt-5.6-sol"))
+            .unwrap()
+            .total_tokens,
+        6500
+    );
 
     // AC-002: the console list reads root tasks; the run model stays pure.
     let page = store

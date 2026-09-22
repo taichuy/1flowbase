@@ -697,7 +697,14 @@ impl ApplicationRuntimeReadsAdapter {
         let started_from =
             application_monitoring::parse_optional_time(query.from.as_deref(), "from")?
                 .or_else(|| application_monitoring::default_started_from(&query));
-        let started_to = application_monitoring::parse_optional_time(query.to.as_deref(), "to")?;
+        let started_to = application_monitoring::parse_optional_time(query.to.as_deref(), "to")?
+            .or_else(|| Some(time::OffsetDateTime::now_utc()));
+        if started_from
+            .zip(started_to)
+            .is_some_and(|(from, to)| from >= to)
+        {
+            return Err(ControlPlaneError::InvalidInput("time_range").into());
+        }
         let bucket = application_monitoring::normalize_monitoring_bucket(
             query.bucket.as_deref(),
             query.time_range_days,
