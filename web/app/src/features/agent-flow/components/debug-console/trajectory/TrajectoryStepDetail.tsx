@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Spin, Tabs } from 'antd';
-import type {
-  ProviderTrajectoryStep,
-  ProviderTrajectoryView
-} from '@1flowbase/api-client';
+import type { ProviderTrajectoryStep } from '@1flowbase/api-client';
 import type { ConversationLogTraceLoader } from '../conversation-log-trace-model';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { nativeSectionLabel, purposeLabel } from './trajectory-presentation';
@@ -24,7 +21,6 @@ export function TrajectoryStepDetail({
   ) => void;
 }) {
   const [rawSemantic, setRawSemantic] = useState(false);
-  const [view, setView] = useState<ProviderTrajectoryView>('semantic');
   const { flow_run_id, node_run_id } = step.metadata;
   const body = useInfiniteQuery({
     queryKey: [
@@ -32,7 +28,7 @@ export function TrajectoryStepDetail({
       flow_run_id,
       node_run_id,
       step.event_id,
-      view
+      'semantic'
     ],
     enabled: Boolean(loader.loadTrajectoryBody),
     initialPageParam: undefined as number | undefined,
@@ -42,7 +38,7 @@ export function TrajectoryStepDetail({
         node_run_id,
         step.event_id,
         pageParam,
-        view
+        'semantic'
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     // Layout switches must reuse the selected evidence, like other log details.
@@ -94,10 +90,9 @@ export function TrajectoryStepDetail({
       </div>
       <Tabs
         size="small"
-        activeKey={rawSemantic ? 'semantic_raw' : view}
+        activeKey={rawSemantic ? 'semantic_raw' : 'semantic'}
         onChange={(key) => {
           setRawSemantic(key === 'semantic_raw');
-          setView(key === 'protocol' ? 'protocol' : 'semantic');
         }}
         items={[
           {
@@ -107,21 +102,9 @@ export function TrajectoryStepDetail({
           {
             key: 'semantic_raw',
             label: i18nText('agentFlow', 'trajectory.semantic_raw')
-          },
-          {
-            key: 'protocol',
-            label: i18nText('agentFlow', 'trajectory.raw_evidence')
           }
         ]}
       />
-      {view === 'protocol' &&
-      body.data?.pages[0]?.evidence_scope === 'invocation' ? (
-        <Alert
-          type="info"
-          showIcon
-          title={i18nText('agentFlow', 'trajectory.invocation_evidence')}
-        />
-      ) : null}
       {body.isLoading ? <Spin /> : null}
       {body.isError ? (
         <Alert
@@ -137,16 +120,14 @@ export function TrajectoryStepDetail({
       ) : null}
       {body.isSuccess &&
       !body.data.pages.some((page) =>
-        view === 'semantic' && !rawSemantic
-          ? page.sections.length
-          : page.items.length
+        !rawSemantic ? page.sections.length : page.items.length
       ) ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={i18nText('agentFlow', 'trajectory.no_evidence')}
         />
       ) : null}
-      {view === 'semantic' && !rawSemantic
+      {!rawSemantic
         ? body.data?.pages
             .flatMap((page) => page.sections)
             .map((section, index) => (

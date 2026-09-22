@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Input, Spin, Tooltip } from 'antd';
+import { Alert, Button, Empty, Input, Spin } from 'antd';
 import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
@@ -15,6 +15,12 @@ import { formatDateTime } from '../../../../../../shared/i18n/format';
 import { ClientTrajectoryDetail } from './ClientTrajectoryDetail';
 import { categoryLabel, clientLane } from './presentation';
 import { integrityLabel } from '../trajectory-presentation';
+import {
+  TrajectoryTimeline,
+  inTrajectoryRange,
+  type TrajectoryRange
+} from '../TrajectoryTimeline';
+import { useProgressiveTrajectory } from '../use-progressive-trajectory';
 import './client-trajectory.css';
 
 export function ClientTrajectoryWorkspace({
@@ -22,8 +28,10 @@ export function ClientTrajectoryWorkspace({
   nodeRunId,
   loader,
   options,
+  active = true,
   onInternal
 }: {
+  active?: boolean;
   runId: string;
   nodeRunId?: string;
   loader: ConversationLogTraceLoader;
@@ -34,6 +42,8 @@ export function ClientTrajectoryWorkspace({
   const [selected, setSelected] = useState<string | null>(
     options?.focus_step_id ?? null
   );
+  const [timeScale, setTimeScale] = useState(true);
+  const [timeRange, setTimeRange] = useState<TrajectoryRange>(null);
   const [search, setSearch] = useState('');
   const [groupCategories, setGroupCategories] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -44,21 +54,37 @@ export function ClientTrajectoryWorkspace({
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const pages = useInfiniteQuery({
     queryKey: ['client-trajectory', runId, scope ?? 'run', options],
-    enabled: Boolean(loader.loadClientTrajectory),
+    enabled: active && Boolean(loader.loadClientTrajectory),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       loader.loadClientTrajectory!(runId, scope, pageParam, options),
-    getNextPageParam: (page) => page.next_cursor ?? undefined,
+    getNextPageParam: (page, _pages, cursor) =>
+      page.next_cursor != null &&
+      (cursor === undefined || page.next_cursor > cursor)
+        ? page.next_cursor
+        : undefined,
     refetchOnWindowFocus: false
   });
+  useProgressiveTrajectory(active, pages);
   const items = useMemo(
     () => pages.data?.pages.flatMap((page) => page.items) ?? [],
     [pages.data]
+  );
+  const coordinates = useMemo(
+    () =>
+      new Map(
+        items.map((step, index) => [
+          step.id,
+          timeScale ? Date.parse(step.created_at) : index
+        ])
+      ),
+    [items, timeScale]
   );
   const selectedStep = items.find((step) => step.id === selected);
   const categories = [...new Set(items.map((step) => step.category))];
   const query = search.trim().toLocaleLowerCase();
   const matches = (step: ClientTrajectoryStep) =>
+    inTrajectoryRange(coordinates.get(step.id)!, timeRange) &&
     (!category || step.category === category) &&
     (!query ||
       [
@@ -162,6 +188,20 @@ export function ClientTrajectoryWorkspace({
           <Button
             size="small"
             type="text"
+            aria-pressed={timeScale}
+            onClick={() => {
+              setTimeScale(!timeScale);
+              setTimeRange(null);
+            }}
+          >
+            {i18nText(
+              'agentFlow',
+              timeScale ? 'trajectory.time_axis' : 'trajectory.sequence_axis'
+            )}
+          </Button>
+          <Button
+            size="small"
+            type="text"
             aria-pressed={groupCategories}
             onClick={() => setGroupCategories(!groupCategories)}
           >
@@ -195,7 +235,11 @@ export function ClientTrajectoryWorkspace({
             size="small"
             type="text"
             loading={pages.isRefetching}
-            onClick={() => void pages.refetch()}
+            onClick={() =>
+              void (pages.isFetchNextPageError
+                ? pages.fetchNextPage()
+                : pages.refetch())
+            }
           >
             {i18nText('agentFlow', 'client_trajectory.refresh')}
           </Button>
@@ -211,40 +255,19 @@ export function ClientTrajectoryWorkspace({
           placeholder={i18nText('agentFlow', 'trajectory.search')}
         />
       </div>
-      <div
-        className="provider-trajectory__timeline"
-        aria-label={i18nText('agentFlow', 'trajectory.timeline')}
-      >
-        <div className="provider-trajectory__lane-labels">
-          <span>{i18nText('agentFlow', 'auto.input')}</span>
-          <span>{i18nText('agentFlow', 'auto.model')}</span>
-          <span>{i18nText('agentFlow', 'auto.tools')}</span>
-        </div>
-        <div className="provider-trajectory__lanes">
-          {items.map((step, index) => (
-            <Tooltip
-              key={step.id}
-              title={`${categoryLabel(step.category)} · ${step.preview}`}
-            >
-              <button
-                type="button"
-                className="provider-trajectory__block"
-                data-lane={clientLane(step)}
-                data-selected={selected === step.id || undefined}
-                data-dimmed={!matches(step) || undefined}
-                aria-label={`${categoryLabel(step.category)} #${step.sequence}`}
-                onClick={() => focus(step.id)}
-                style={
-                  {
-                    '--trajectory-x': `${(index / Math.max(items.length, 1)) * 98}%`,
-                    '--trajectory-width': `${Math.min(3, 72 / Math.max(items.length, 1))}%`
-                  } as CSSProperties
-                }
-              />
-            </Tooltip>
-          ))}
-        </div>
-      </div>
+      <TrajectoryTimeline
+        points={items.map((step) => ({
+          id: step.id,
+          value: coordinates.get(step.id)!,
+          lane: clientLane(step),
+          label: `${categoryLabel(step.category)} #${step.sequence}`
+        }))}
+        timeScale={timeScale}
+        range={timeRange}
+        onChange={setTimeRange}
+        selected={selected}
+        onSelect={focus}
+      />
       <div className="provider-trajectory__split" ref={split}>
         <div className="provider-trajectory__ledger">
           <nav
@@ -297,7 +320,13 @@ export function ClientTrajectoryWorkspace({
               type="error"
               title={i18nText('agentFlow', 'auto.loading_failed')}
               action={
-                <Button onClick={() => void pages.refetch()}>
+                <Button
+                  onClick={() =>
+                    void (pages.isFetchNextPageError
+                      ? pages.fetchNextPage()
+                      : pages.refetch())
+                  }
+                >
                   {i18nText('agentFlow', 'auto.retry')}
                 </Button>
               }
@@ -383,14 +412,10 @@ export function ClientTrajectoryWorkspace({
               </section>
             );
           })}
-          {pages.hasNextPage ? (
-            <div className="provider-trajectory__more">
-              <Button
-                loading={pages.isFetchingNextPage}
-                onClick={() => void pages.fetchNextPage()}
-              >
-                {i18nText('agentFlow', 'trajectory.more')}
-              </Button>
+          {pages.hasNextPage && !pages.isError ? (
+            <div className="provider-trajectory__more" role="status">
+              <Spin size="small" />{' '}
+              {i18nText('agentFlow', 'trajectory.loading_pages')}
             </div>
           ) : null}
         </div>
@@ -472,7 +497,10 @@ export function ClientTrajectoryWorkspace({
               step={selectedStep}
               loader={loader}
               nodeRunId={scope}
-              onRelated={focus}
+              onRelated={(id) => {
+                setTimeRange(null);
+                focus(id);
+              }}
             />
           </aside>
         ) : null}

@@ -330,3 +330,90 @@
     display: none;
   }
 }
+
+.trajectory-window {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: 0 12px 48px rgb(0 0 0 / 18%);
+}
+.trajectory-window__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.trajectory-window__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: move;
+  flex: none;
+}
+.trajectory-window__view {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.trajectory-window__view[hidden] {
+  display: none;
+}
+.trajectory-window__view .provider-trajectory {
+  height: 100%;
+  min-height: 0;
+}
+.trajectory-timeline {
+  flex: none;
+}
+.trajectory-timeline .provider-trajectory__timeline {
+  border-bottom: 0;
+  padding-block: 8px 0;
+  height: 70px;
+}
+.trajectory-timeline .provider-trajectory__lanes {
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+.trajectory-timeline .provider-trajectory__block {
+  max-width: calc(100% - var(--trajectory-x));
+  min-width: 3px;
+  transform: translateX(-2px);
+  z-index: 2;
+}
+.trajectory-timeline__selection {
+  position: absolute;
+  inset-block: 0;
+  background: color-mix(in srgb, var(--border-focus) 12%, transparent);
+  cursor: grab;
+}
+.trajectory-timeline__handle {
+  position: absolute;
+  inset-block: 0;
+  width: 6px;
+  transform: translateX(-3px);
+  background: var(--border-focus);
+  cursor: ew-resize;
+  z-index: 3;
+}
+.trajectory-timeline__caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 4px 48px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.trajectory-timeline__caption > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Large progressively loaded ledgers skip layout/paint outside the scrollport. */
+.provider-trajectory__row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}

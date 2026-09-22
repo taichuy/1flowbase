@@ -49,7 +49,9 @@ export function getConsoleClientTrajectory(
   baseUrl?: string,
   options?: ClientTrajectoryOptions
 ) {
-  const query = new URLSearchParams({ limit: '50' });
+  const query = new URLSearchParams({
+    limit: cursor === undefined ? '50' : '100'
+  });
   if (options?.request_id) query.set('request_id', options.request_id);
   if (options?.focus_step_id && cursor === undefined)
     query.set('focus_step_id', options.focus_step_id);

@@ -1,5 +1,11 @@
 {
   "trajectory": {
+    "range_start": "范围起点",
+    "range_end": "范围终点",
+    "range_all": "全部时间范围",
+    "loading_pages": "正在加载更多记录…",
+    "close_window": "关闭轨迹窗口",
+    "resize_window": "调整轨迹窗口 {{edge}} 边界",
     "duration": "耗时",
     "title": "调用轨迹",
     "overview": "概览",
@@ -25,8 +31,6 @@
     "protocol_integrity": "原始协议",
     "pending": "记录中",
     "step_detail": "步骤详情",
-    "raw_evidence": "原始协议证据",
-    "invocation_evidence": "以下是本次调用的协议证据，可能包含多个步骤及插件内部重试。",
     "no_evidence": "未记录此项内容",
     "run_title": "总轨迹",
     "time_axis": "时间",
@@ -39,7 +43,6 @@
     "no_matches": "已加载步骤中没有匹配结果",
     "node_scope": "当前 LLM 节点",
     "run_scope": "当前运行 · 全部 LLM 节点",
-    "return_view": "返回上一视图",
     "no_internal_calls": "此请求没有关联的内部调用",
     "open_internal_calls": "查看关联内部调用",
     "attempt": "尝试 {{count}}",
