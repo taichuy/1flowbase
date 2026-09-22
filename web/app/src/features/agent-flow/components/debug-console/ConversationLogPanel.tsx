@@ -126,8 +126,7 @@ function ConversationLogDetailContent({
   onLoadArtifact,
   onLoadArtifacts,
   overview,
-  overviewLoader,
-  traceLoader
+  overviewLoader
 }: {
   message: AgentFlowDebugMessage;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
@@ -181,17 +180,6 @@ function ConversationLogDetailContent({
           <Typography.Text strong>
             {i18nText('agentFlow', 'auto.metadata')}
           </Typography.Text>
-          {traceLoader?.loadRunTrajectory &&
-          (message.detailRunId ?? message.runId) ? (
-            <ProviderTrajectory
-              runId={(message.detailRunId ?? message.runId)!}
-              compatibility_mode={overviewCompatibilityModeLabel(
-                message,
-                overview
-              )}
-              loader={traceLoader}
-            />
-          ) : null}
         </div>
         <Descriptions
           column={1}

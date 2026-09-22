@@ -1,3 +1,4 @@
+import type { ConversationLogTraceLoader } from '../../agent-flow/components/debug-console/conversation-log-trace-model';
 import {
   fetchClientTrajectory,
   fetchClientTrajectorySection,
@@ -1004,6 +1005,58 @@ export function ApplicationLogsPage({
     </div>
   ) : null;
 
+  const traceLoader: ConversationLogTraceLoader = {
+    loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
+      fetchClientTrajectory(applicationId, runId, nodeRunId, cursor, options),
+    loadClientTrajectorySection: (runId, stepId, section, nodeRunId, cursor) =>
+      fetchClientTrajectorySection(
+        applicationId,
+        runId,
+        stepId,
+        section,
+        nodeRunId,
+        cursor
+      ),
+    loadRunTrajectory: (runId, cursor, options) =>
+      fetchRunTrajectory(applicationId, runId, cursor, options),
+    loadTrajectory: (runId, nodeRunId, cursor, options) =>
+      fetchProviderTrajectory(applicationId, runId, nodeRunId, cursor, options),
+    loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
+      fetchProviderTrajectoryBody(
+        applicationId,
+        runId,
+        nodeRunId,
+        eventId,
+        cursor,
+        view
+      ),
+    loadTree: (runId) => fetchApplicationRunTraceTree(applicationId, runId),
+    loadChildren: (runId, traceNodeId, cursor) =>
+      fetchApplicationRunTraceNodeChildren(
+        applicationId,
+        runId,
+        traceNodeId,
+        cursor
+      ),
+    loadContent: (runId, traceNodeId) =>
+      fetchApplicationRunTraceNodeContent(applicationId, runId, traceNodeId),
+    loadDetail: (runId, traceNodeId, detailRefId, section) =>
+      fetchApplicationRunTraceNodeDetail(
+        applicationId,
+        runId,
+        traceNodeId,
+        detailRefId,
+        section
+      ),
+    loadToolCallbackDetail: (runId, traceNodeId, toolCallId) =>
+      fetchApplicationRunTraceToolCallbackContent(
+        applicationId,
+        runId,
+        traceNodeId,
+        toolCallId
+      )
+  };
+
   const logsHeader = (
     <div className="application-logs-page__header">
       <div className="application-logs-page__filters" role="search">
@@ -1187,80 +1240,7 @@ export function ApplicationLogsPage({
               onLoadArtifacts={(artifactRefs) =>
                 fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
               }
-              traceLoader={{
-                loadClientTrajectory: (runId, nodeRunId, cursor, options) =>
-                  fetchClientTrajectory(
-                    applicationId,
-                    runId,
-                    nodeRunId,
-                    cursor,
-                    options
-                  ),
-                loadClientTrajectorySection: (
-                  runId,
-                  stepId,
-                  section,
-                  nodeRunId,
-                  cursor
-                ) =>
-                  fetchClientTrajectorySection(
-                    applicationId,
-                    runId,
-                    stepId,
-                    section,
-                    nodeRunId,
-                    cursor
-                  ),
-                loadRunTrajectory: (runId, cursor, options) =>
-                  fetchRunTrajectory(applicationId, runId, cursor, options),
-                loadTrajectory: (runId, nodeRunId, cursor, options) =>
-                  fetchProviderTrajectory(
-                    applicationId,
-                    runId,
-                    nodeRunId,
-                    cursor,
-                    options
-                  ),
-                loadTrajectoryBody: (runId, nodeRunId, eventId, cursor, view) =>
-                  fetchProviderTrajectoryBody(
-                    applicationId,
-                    runId,
-                    nodeRunId,
-                    eventId,
-                    cursor,
-                    view
-                  ),
-                loadTree: (runId) =>
-                  fetchApplicationRunTraceTree(applicationId, runId),
-                loadChildren: (runId, traceNodeId, cursor) =>
-                  fetchApplicationRunTraceNodeChildren(
-                    applicationId,
-                    runId,
-                    traceNodeId,
-                    cursor
-                  ),
-                loadContent: (runId, traceNodeId) =>
-                  fetchApplicationRunTraceNodeContent(
-                    applicationId,
-                    runId,
-                    traceNodeId
-                  ),
-                loadDetail: (runId, traceNodeId, detailRefId, section) =>
-                  fetchApplicationRunTraceNodeDetail(
-                    applicationId,
-                    runId,
-                    traceNodeId,
-                    detailRefId,
-                    section
-                  ),
-                loadToolCallbackDetail: (runId, traceNodeId, toolCallId) =>
-                  fetchApplicationRunTraceToolCallbackContent(
-                    applicationId,
-                    runId,
-                    traceNodeId,
-                    toolCallId
-                  )
-              }}
+              traceLoader={traceLoader}
               overviewLoader={{
                 loadPayload: (runId, section) =>
                   fetchRunPayload(applicationId, runId, section),
@@ -1312,6 +1292,7 @@ export function ApplicationLogsPage({
           onActivate={() => setActiveFloatingWindow('run-detail')}
         >
           <ApplicationRunDetailPanel
+            traceLoader={traceLoader}
             applicationId={applicationId}
             requested_model_id={
               runs.find((run) => run.id === selectedRunId)?.requested_model_id
