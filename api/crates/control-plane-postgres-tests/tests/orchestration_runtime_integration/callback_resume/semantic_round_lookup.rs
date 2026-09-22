@@ -28,6 +28,21 @@ async fn semantic_two_round_lookup_preserves_completed_receipt_and_rejects_real_
     let node = seed_node_run(&store, &run, started_at).await;
     let first = persist_callback_wait(&store, &seeded, &run, &node, 1, None, None).await;
     let first_callback = first.callback_task.unwrap();
+    let first_claim = store
+        .acquire_resume_claim(&AcquireResumeClaimInput {
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            checkpoint_id: first.checkpoint.id,
+            callback_task_id: Some(first_callback.id),
+            kind: ResumeClaimKind::Callback,
+            request_payload: json!({
+                "tool_results":[{"tool_call_id":"call-1-0","content":"ok"}]
+            }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(first_claim.disposition, ResumeClaimDisposition::Acquired);
     let second = persist_callback_wait(
         &store,
         &seeded,
@@ -35,7 +50,7 @@ async fn semantic_two_round_lookup_preserves_completed_receipt_and_rejects_real_
         &node,
         2,
         Some(first.recovery_history.context_version_id),
-        None,
+        Some((first_claim.claim.id, first_claim.claim.claim_token)),
     )
     .await;
     let second_callback = second.callback_task.unwrap();
