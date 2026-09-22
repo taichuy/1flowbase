@@ -97,5 +97,7 @@
   "restart_required": "Restart the server after recovery to load restored settings and plugin registrations.",
   "backup_mode": "Backup mode",
   "no_backup": "Do not back up",
-  "structure_and_data": "Structure and data"
+  "structure_and_data": "Structure and data",
+  "create_settings_backup": "Settings backup",
+  "create_template": "Structure template"
 }

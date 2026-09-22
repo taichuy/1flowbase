@@ -97,5 +97,7 @@
   "restart_required": "恢复完成后请重启服务，以加载恢复的设置和插件注册。",
   "backup_mode": "备份模式",
   "no_backup": "不备份",
-  "structure_and_data": "结构和数据"
+  "structure_and_data": "结构和数据",
+  "create_settings_backup": "设置备份",
+  "create_template": "结构模板"
 }

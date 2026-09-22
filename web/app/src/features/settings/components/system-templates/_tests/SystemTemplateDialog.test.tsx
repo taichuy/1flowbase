@@ -12,7 +12,8 @@ const api = vi.hoisted(() => ({
 vi.mock('@1flowbase/api-client', () => api);
 import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { useAuthStore } from '../../../../../state/auth-store';
-import { SystemTemplatesPanel } from '../SystemTemplatesPanel';
+import { useState } from 'react';
+import { SystemTemplateDialog } from '../SystemTemplateDialog';
 
 const body = {
   schema_version: '1flowbase.portable-template/v1',
@@ -21,6 +22,38 @@ const body = {
   data_models: [],
   plugins: []
 };
+function Harness() {
+  const [dialog, setDialog] = useState<{
+    mode: 'import' | 'export';
+    file?: File;
+    key: number;
+  }>();
+  return (
+    <>
+      <button onClick={() => setDialog({ mode: 'export', key: Date.now() })}>
+        Export template
+      </button>
+      <input
+        type="file"
+        onChange={(event) =>
+          setDialog({
+            mode: 'import',
+            file: event.target.files?.[0],
+            key: Date.now()
+          })
+        }
+      />
+      {dialog && (
+        <SystemTemplateDialog
+          key={dialog.key}
+          mode={dialog.mode}
+          file={dialog.file}
+          onClose={() => setDialog(undefined)}
+        />
+      )}
+    </>
+  );
+}
 function setup() {
   return render(
     <App>
@@ -34,7 +67,7 @@ function setup() {
           })
         }
       >
-        <SystemTemplatesPanel />
+        <Harness />
       </QueryClientProvider>
     </App>
   );
@@ -130,9 +163,7 @@ describe('portable template flow', () => {
     expect(
       screen.getByRole('button', { name: 'Install template' })
     ).toBeDisabled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Clear import report' })
-    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
     expect(screen.queryByText('target-model')).not.toBeInTheDocument();
   });
 });

@@ -51,6 +51,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
+import { SystemTemplateDialog } from '../system-templates/SystemTemplateDialog';
 import './system-backups-panel.css';
 
 const queryKey = ['settings', 'system-backups'] as const;
@@ -84,6 +85,10 @@ export function SystemBackupsPanel() {
   const [preflight, setPreflight] = useState<RecoveryPreflightResponse>();
   const [password, setPassword] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [templateDialog, setTemplateDialog] = useState<{
+    mode: 'export' | 'import';
+    file?: File;
+  }>();
   const [selection, setSelection] = useState<BackupSelection>({
     features: [],
     include_file_bytes: false
@@ -303,6 +308,7 @@ export function SystemBackupsPanel() {
 
   return (
     <SettingsSectionSurface
+      heightMode="fill"
       toolbar={
         <Flex gap={8} justify="space-between" wrap>
           <Space wrap>
@@ -327,9 +333,13 @@ export function SystemBackupsPanel() {
           </Space>
           <Space wrap>
             <Upload
-              accept=".1fb-backup,application/octet-stream"
+              accept=".1fb-backup,.json,application/octet-stream,application/json"
               beforeUpload={(file) => {
-                setPendingImport(file);
+                if (file.name.toLowerCase().endsWith('.json')) {
+                  setTemplateDialog({ mode: 'import', file });
+                } else {
+                  setPendingImport(file);
+                }
                 return false;
               }}
               maxCount={1}
@@ -343,21 +353,44 @@ export function SystemBackupsPanel() {
             >
               {t('refresh')}
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              loading={createMutation.isPending}
-              onClick={() => {
-                setSelection({ features: [], include_file_bytes: false });
-                setCreateOpen(true);
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'backup',
+                    label: t('create_settings_backup'),
+                    onClick: () => {
+                      setSelection({ features: [], include_file_bytes: false });
+                      setCreateOpen(true);
+                    }
+                  },
+                  {
+                    key: 'template',
+                    label: t('create_template'),
+                    onClick: () => setTemplateDialog({ mode: 'export' })
+                  }
+                ]
               }}
             >
-              {t('create')}
-            </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                loading={createMutation.isPending}
+              >
+                {t('create')}
+              </Button>
+            </Dropdown>
           </Space>
         </Flex>
       }
     >
+      {templateDialog && (
+        <SystemTemplateDialog
+          {...templateDialog}
+          onClose={() => setTemplateDialog(undefined)}
+        />
+      )}
       {backupJobId ? (
         <Alert
           showIcon

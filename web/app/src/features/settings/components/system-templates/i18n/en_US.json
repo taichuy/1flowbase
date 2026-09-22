@@ -1,5 +1,4 @@
 {
-  "title": "Portable structure templates",
   "structure_notice": "Copy selected page trees, applications and custom data model definitions. Installation creates missing custom tables without copying source business data.",
   "plugin_notice": "External data sources and plugin packages are excluded. Required plugins are verified and downloaded by the target system during installation.",
   "export": "Export template",
@@ -21,12 +20,12 @@
   "source_id": "Source ID",
   "target_id": "Created target ID",
   "install": "Install template",
-  "clear": "Clear import report",
   "download": "Download JSON",
   "cancel": "Cancel",
   "selection_notice": "Nothing is selected by default. Each selected page includes its descendants. Referenced definitions are included automatically.",
   "catalog_failed": "Could not load template objects.",
   "retry": "Reload objects",
   "export_failed": "Template export failed.",
-  "reference_map": "Reference ID mapping"
+  "reference_map": "Reference ID mapping",
+  "close": "Close"
 }

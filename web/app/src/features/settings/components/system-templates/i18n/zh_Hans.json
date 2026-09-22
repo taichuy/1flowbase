@@ -1,5 +1,4 @@
 {
-  "title": "可移植结构模板",
   "structure_notice": "复制选定页面树、应用和自定义数据模型定义。安装会创建缺失的自定义表，不复制来源业务数据。",
   "plugin_notice": "不包含外部数据源和插件包。安装时由目标系统校验并下载所需插件。",
   "export": "导出模板",
@@ -21,12 +20,12 @@
   "source_id": "来源 ID",
   "target_id": "已创建目标 ID",
   "install": "安装模板",
-  "clear": "清除导入报告",
   "download": "下载 JSON",
   "cancel": "取消",
   "selection_notice": "默认不选择任何对象。选择页面会包含其子页面；引用的定义会自动纳入。",
   "catalog_failed": "无法加载可导出的对象。",
   "retry": "重新加载对象",
   "export_failed": "模板导出失败。",
-  "reference_map": "引用 ID 映射"
+  "reference_map": "引用 ID 映射",
+  "close": "关闭"
 }

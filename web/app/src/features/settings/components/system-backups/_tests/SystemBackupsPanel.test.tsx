@@ -10,6 +10,10 @@ import { App } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
+  getSystemTemplateCatalog: vi.fn(),
+  exportSystemTemplate: vi.fn(),
+  previewSystemTemplate: vi.fn(),
+  installSystemTemplate: vi.fn(),
   listSystemBackups: vi.fn(),
   getSystemBackupCatalog: vi.fn(),
   getSystemBackup: vi.fn(),
@@ -143,6 +147,89 @@ describe('SystemBackupsPanel', () => {
     });
   });
 
+  test('keeps templates in the existing backup actions with no standalone panel', async () => {
+    api.getSystemTemplateCatalog.mockResolvedValue({
+      pages: [],
+      applications: [],
+      data_models: []
+    });
+    renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    expect(
+      screen.queryByText('Portable structure templates')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Export template' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    fireEvent.click(await screen.findByText('Structure template'));
+    expect(
+      within(await screen.findByRole('dialog')).getByText('Export template')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Download JSON' })
+    ).toBeDisabled();
+  });
+
+  test('routes template JSON from Import backup to server preview without uploading a backup archive', async () => {
+    api.previewSystemTemplate.mockResolvedValue({
+      valid: true,
+      counts: { pages: 1, applications: 0, data_models: 0 },
+      failures: [],
+      warnings: [],
+      dependencies: []
+    });
+    const { container } = renderPanel();
+    const body = {
+      schema_version: '1flowbase.portable-template/v1',
+      pages: [],
+      applications: [],
+      data_models: [],
+      plugins: []
+    };
+    const file = new File([JSON.stringify(body)], 'template.json', {
+      type: 'application/json'
+    });
+    Object.defineProperty(file, 'text', {
+      value: () => Promise.resolve(JSON.stringify(body))
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] }
+    });
+    await waitFor(() =>
+      expect(api.previewSystemTemplate).toHaveBeenCalledWith(body, 'csrf-token')
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Install template' })
+    ).toBeEnabled();
+    expect(api.importSystemBackup).not.toHaveBeenCalled();
+  });
+
+  test('keeps backup archive import and password confirmation in the same entry', async () => {
+    api.importSystemBackup.mockResolvedValue({});
+    const { container } = renderPanel();
+    const file = new File(['archive'], 'settings.1fb-backup');
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] }
+    });
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(
+      within(dialog).getByPlaceholderText('Optional backup password'),
+      { target: { value: 'archive-password' } }
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Import backup' })
+    );
+    await waitFor(() =>
+      expect(api.importSystemBackup).toHaveBeenCalledWith(
+        file,
+        'csrf-token',
+        undefined,
+        'archive-password'
+      )
+    );
+  });
+
   test('has no batch selection and never renders raw sealed manifest JSON', async () => {
     renderPanel();
     expect(
@@ -216,6 +303,7 @@ describe('SystemBackupsPanel', () => {
     renderPanel();
     await screen.findByText(backup.exact_backup_name);
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    fireEvent.click(await screen.findByText('Settings backup'));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
       await within(createDialog).findByRole('radio', { name: 'Structure' })
@@ -250,6 +338,7 @@ describe('SystemBackupsPanel', () => {
     renderPanel();
     await screen.findByText(backup.exact_backup_name);
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    fireEvent.click(await screen.findByText('Settings backup'));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
       await within(createDialog).findByRole('radio', { name: 'Structure' })
@@ -278,6 +367,7 @@ describe('SystemBackupsPanel', () => {
     renderPanel();
     await screen.findByText(backup.exact_backup_name);
     fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    fireEvent.click(await screen.findByText('Settings backup'));
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
       await within(createDialog).findByRole('radio', { name: 'Structure' })
@@ -303,6 +393,7 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /Create backup/ })
     );
+    fireEvent.click(await screen.findByText('Settings backup'));
     const dialog = await screen.findByRole('dialog');
     const create = within(dialog).getByRole('button', {
       name: /Create backup/
@@ -311,14 +402,18 @@ describe('SystemBackupsPanel', () => {
     const structure = await within(dialog).findByRole('radio', {
       name: 'Structure'
     });
-    const data = within(dialog).getByRole('radio', { name: 'Structure and data' });
+    const data = within(dialog).getByRole('radio', {
+      name: 'Structure and data'
+    });
     const files = within(dialog).getByRole('checkbox', {
       name: 'Include file bytes (optional)'
     });
     expect(structure).not.toBeChecked();
     expect(data).not.toBeChecked();
     expect(files).not.toBeChecked();
-    expect(within(dialog).getByRole('radio', { name: 'Do not back up' })).toBeChecked();
+    expect(
+      within(dialog).getByRole('radio', { name: 'Do not back up' })
+    ).toBeChecked();
     expect(
       within(dialog).getByText(/including logs and execution trajectories/)
     ).toBeInTheDocument();
@@ -328,7 +423,9 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(structure);
     expect(data).not.toBeChecked();
     expect(create).not.toBeDisabled();
-    fireEvent.click(within(dialog).getByRole('radio', { name: 'Do not back up' }));
+    fireEvent.click(
+      within(dialog).getByRole('radio', { name: 'Do not back up' })
+    );
     expect(create).toBeDisabled();
     fireEvent.click(data);
     expect(structure).not.toBeChecked();
@@ -367,11 +464,14 @@ describe('SystemBackupsPanel', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /Create backup/ })
     );
+    fireEvent.click(await screen.findByText('Settings backup'));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(
       await within(dialog).findByRole('radio', { name: 'Structure' })
     );
-    fireEvent.click(within(dialog).getByRole('radio', { name: 'Structure and data' }));
+    fireEvent.click(
+      within(dialog).getByRole('radio', { name: 'Structure and data' })
+    );
     fireEvent.click(
       within(dialog).getByRole('checkbox', {
         name: 'Include file bytes (optional)'
