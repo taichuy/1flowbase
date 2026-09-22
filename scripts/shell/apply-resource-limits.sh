@@ -54,8 +54,8 @@ write_limited_profile() {
   local required
   for required in \
     SESSION_MEMORY_LOW \
-    DEV_OOM_PRESSURE_LIMIT \
-    DEV_OOM_PRESSURE_DURATION \
+    RUST_OOM_PRESSURE_LIMIT \
+    RUST_OOM_PRESSURE_DURATION \
     DEV_MEMORY_HIGH \
     DEV_MEMORY_MAX \
     DEV_MEMORY_SWAP_MAX \
@@ -107,10 +107,8 @@ MemoryHigh=$DEV_MEMORY_HIGH
 MemoryMax=$DEV_MEMORY_MAX
 MemorySwapMax=$DEV_MEMORY_SWAP_MAX
 CPUQuota=$DEV_CPU_QUOTA
-ManagedOOMSwap=kill
-ManagedOOMMemoryPressure=kill
-ManagedOOMMemoryPressureLimit=$DEV_OOM_PRESSURE_LIMIT
-ManagedOOMMemoryPressureDurationSec=$DEV_OOM_PRESSURE_DURATION
+ManagedOOMSwap=auto
+ManagedOOMMemoryPressure=auto
 EOF
 
   cat >"$rust_config" <<EOF
@@ -124,6 +122,10 @@ MemoryMax=$RUST_MEMORY_MAX
 MemorySwapMax=$RUST_MEMORY_SWAP_MAX
 CPUQuota=$RUST_CPU_QUOTA
 IOWeight=$RUST_IO_WEIGHT
+ManagedOOMSwap=kill
+ManagedOOMMemoryPressure=kill
+ManagedOOMMemoryPressureLimit=$RUST_OOM_PRESSURE_LIMIT
+ManagedOOMMemoryPressureDurationSec=$RUST_OOM_PRESSURE_DURATION
 EOF
 
   cat >"$frontend_config" <<EOF
@@ -199,15 +201,7 @@ cleanup_cargo_scope() {
 }
 trap 'cleanup_cargo_scope; exit 130' INT
 trap 'cleanup_cargo_scope; exit 143' TERM HUP
-gate_command=()
-for arg in "\$@"; do
-  case \$arg in
-    build|b|check|c|test|t|bench|clippy|doc|rustc|rustdoc)
-      gate_command=("$user_bin_dir/dev-heavy-run")
-      break ;;
-  esac
-done
-"\${gate_command[@]}" systemd-run --user --scope --quiet --collect \
+systemd-run --user --scope --quiet --collect \
   --unit="\$cargo_scope" --property=TimeoutStopSec=2s \
   --slice=dev-rust.slice \
   -- "\$real_cargo" "\$@" <&0 &

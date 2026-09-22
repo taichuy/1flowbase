@@ -43,11 +43,10 @@ bash scripts/shell/apply-resource-limits.sh \
 bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
-24 GiB / 16 vCPU 配置：`dev.slice` 聚合 High/Max 为 16/18 GiB、swap 2 GiB、
-CPU 1200%；`dev-rust.slice` 为 9/11 GiB、swap 1 GiB；
-`dev-frontend.slice` 为 6/8 GiB。所有任务共享父组预算。
-`DEV_MEMORY_HIGH/MAX/SWAP_MAX`、`DEV_CPU_QUOTA` 控制父组，
-`FRONTEND_MEMORY_HIGH/MAX` 控制前端子组。
+24 GiB / 16 vCPU 配置：仅对所有 Rust 编译合计设置内存预算，
+`dev-rust.slice` High/Max 为 16/18 GiB，swap 上限 1 GiB，Cargo jobs=2。
+`dev.slice` 和 `dev-frontend.slice` 内存、swap 不设上限；父组 CPU 1200% 保留。
+18 GiB 是 Rust 组聚合硬上限，不是每个编译任务的额度，也不预留物理内存。
 
 通过 PATH 中的 `cargo`、`pnpm` 包装器自动进入子组；其他开发命令使用
 `dev-run <command>`（前端可用 `dev-run --frontend <command>`）。
@@ -57,20 +56,14 @@ Docker 数据库不属于用户级开发组，仍需计入组外预算。
 整机 swap 容量保持 4 GiB，3 GiB 仅作为观察线，不触发清理。
 管理员执行 `sudo bash scripts/shell/apply-oomd-policy.sh "$(id -u)"`，
 把 `SwapUsedLimit` 恢复为 90%，关闭 `user-UID.slice` 和 `user@UID.service`
-的上层 oomd 终止策略；用户脚本关闭 app.slice 的 oomd 策略，只在 dev.slice
+的上层 oomd 终止策略；用户脚本关闭 app.slice 的 oomd 策略，只在 dev-rust.slice
 启用 swap 和持续 PSI 压力清理。Docker 的独立保护保留。
 90% 要求整机内存和 swap 比例同时超过阈值；不是 swap 硬上限。
 用 `sudo oomctl dump` 验证监控范围；这些设置不豁免内核 OOM 或 cgroup 硬上限。
 
-重任务通过 `dev-heavy-run COMMAND ...` 共用单个运行槽。Cargo 的
-build/check/test/bench/clippy/doc/rustc/rustdoc（含 b/c/t）以及 pnpm 的
-build、test、build:*、test:*、typecheck、type-check、lint、check 自动排队。
-启动前要求 MemAvailable 至少为总内存 25%，且开发父组扣除 inactive_file 缓存后的占用低于 MemoryHigh，避免已结束构建的缓存阻塞队列。
-等待可取消，不终止正在运行的任务；不依据 swap 占用阻断启动。
-嵌套重任务复用祖先进程持有的槽，避免死锁。watch/dev/start 不持有重任务槽；
-Cargo run、直接运行 Node、绝对路径工具和自定义命令不自动加入排队，重型阶段需显式
-使用 `dev-heavy-run dev-run COMMAND ...`。该机制只约束经入口启动的新任务，
-不会暂停已启动任务，也不能保证单个任务不会超出内存上限。
+Cargo 和 pnpm 不再自动进入统一排队，可以并行执行。
+`dev-heavy-run COMMAND ...` 仅保留为显式选择的串行工具，不影响普通构建入口。
+父组内存无限额时，该可选工具仅用整机 MemAvailable 至少 25% 判断内存余量。
 
 配置通过 `systemctl --user` 生效，不需要 `sudo`。当前数值以
 `scripts/shell/resource-limits.conf` 为唯一真值，字段含义如下：
@@ -79,8 +72,8 @@ Cargo run、直接运行 Node、绝对路径工具和自定义命令不自动加
 | --- | --- |
 | `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
 | `SESSION_MEMORY_LOW` | 为 `session.slice` 设置低水位内存保护，不是最大内存限制。 |
-| `DEV_OOM_PRESSURE_LIMIT` | `dev.slice` 的 PSI 内存压力阈值，只影响通过 `~/.local/bin/dev-run` 启动的开发进程。 |
-| `DEV_OOM_PRESSURE_DURATION` | `dev.slice` 超过压力阈值后必须持续的时间。`dev.slice` 与普通桌面应用分开统计。 |
+| `RUST_OOM_PRESSURE_LIMIT` | `dev-rust.slice` 的 PSI 内存压力阈值，只影响 Rust 组。 |
+| `RUST_OOM_PRESSURE_DURATION` | Rust 组超过压力阈值后必须持续的时间。 |
 | `RUST_MEMORY_HIGH` | Rust 构建 slice 的软阈值；超过后内核开始加强回收和节流。 |
 | `RUST_MEMORY_MAX` | Rust 构建 slice 的内存硬上限。 |
 | `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
@@ -141,7 +134,7 @@ node scripts/node/dev-up.js stop
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。
 - 启动期间按 Ctrl+C 会取消当前异步安装/构建和就绪等待，回收本次新建服务；已复用服务不受影响。启动/停止互斥锁阻止同一仓库重复操作；`status` 仍可查询。Linux Cargo 包装器处理自身编译 scope 的取消；取消后的 2 秒停止宽限期不限制正常编译时长。Docker 与既有 PostgreSQL 工具准备不属于此异步构建阶段。
 - 日志写入 `tmp/logs/`；pid、启动锁和依赖凭据写入 `tmp/dev-up/pids/`。
-- 仓库资源配置面向当前 24 GiB / 16 vCPU 虚拟机：开发父组 MemoryHigh=16G、MemoryMax=18G、swap=2G、CPUQuota=1200%；Rust 子组 MemoryHigh=9G、MemoryMax=11G、swap=1G、Cargo jobs=2。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
+- 仓库资源配置面向当前 24 GiB / 16 vCPU 虚拟机：开发父组 CPUQuota=1200%，不限制内存；Rust 子组 MemoryHigh=16G、MemoryMax=18G、swap=1G、Cargo jobs=2。软阈值高于此前约 5 GiB 的编译工作集，避免持续触发内存回收；硬上限给桌面及其他工具留出余量。较小内存机器需要按容量调整自己的配置，不能直接沿用此预算；编辑配置不会自动修改 systemd，需要应用资源脚本后核对实际值。内存硬上限仍可能导致超限构建失败，不能保证任意规模的编译都能完成。
 
 ### `node scripts/node/reset-account-password.js [options]`
 
