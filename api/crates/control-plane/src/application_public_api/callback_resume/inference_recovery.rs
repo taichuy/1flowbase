@@ -128,7 +128,10 @@ pub(super) fn qualify(
         .map_err(|_| reject("native_recovery_invalid_receipt"))?;
     if receipt.commit_level != CommitLevel::LifecycleOnly
         || receipt.disposition != RecoveryDisposition::LogicalInvocationRetry
-        || receipt.reason != RecoveryReason::TransportDisconnected
+        || !matches!(
+            receipt.reason,
+            RecoveryReason::TransportDisconnected | RecoveryReason::BudgetExhausted
+        )
     {
         return Err(reject("native_recovery_not_transport_failure"));
     }

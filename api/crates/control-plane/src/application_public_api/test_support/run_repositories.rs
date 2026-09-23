@@ -857,7 +857,7 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         )
     }
 
-    async fn reclaim_semantic_callback_resume_attempt(
+    async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: serde_json::Value,

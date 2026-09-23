@@ -459,13 +459,13 @@ fn err_attempt(
 }
 
 #[tokio::test]
-async fn err_path_typed_logical_retry_receipt_authorizes_one_bounded_retry() {
+async fn err_path_socketless_logical_retry_receipt_authorizes_one_bounded_retry() {
     let plan = base_plan();
     let (invoker, invocation_ids) = scripted_invoker([
         err_attempt(
             RecoveryDisposition::LogicalInvocationRetry,
             CommitLevel::LifecycleOnly,
-            Some(6),
+            None,
         ),
         ScriptedAttempt::Output(final_provider_output("recovered via err path".to_string())),
     ]);
@@ -482,7 +482,7 @@ async fn err_path_typed_logical_retry_receipt_authorizes_one_bounded_retry() {
     assert_eq!(attempts[0]["ai_native_recovery"]["outer_attempt"], json!(0));
     assert_eq!(
         attempts[0]["ai_native_recovery"]["provider_inner_receipt"]["socket_incarnation"],
-        json!(6)
+        Value::Null
     );
     assert_eq!(
         attempts[0]["error_code"],

@@ -351,6 +351,7 @@ pub(crate) fn production_interface_contributions(
             cache_store: state.infrastructure.cache_store(),
             runtime_engine: state.runtime_engine.clone(),
             provider_runtime: state.provider_runtime.clone(),
+            network_egress: Arc::new(state.network_egress_http_clients()),
             provider_secret_master_key: state.provider_secret_master_key.clone(),
             model_billing_require_provider_usage: state.model_billing_require_provider_usage,
             api_node_id: state.api_node_id.clone(),

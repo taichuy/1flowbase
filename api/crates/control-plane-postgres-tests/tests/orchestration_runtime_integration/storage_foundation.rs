@@ -429,6 +429,12 @@ async fn legacy_resume_claim_without_recovery_history_still_fences_generation_an
     assert_eq!(first.claim.generation, 0);
     let duplicate = store.acquire_resume_claim(&input).await.unwrap();
     assert_eq!(duplicate.disposition, ResumeClaimDisposition::InProgress);
+    let renewal = RenewResumeClaimInput {
+        claim_id: first.claim.id,
+        claim_token: first.claim.claim_token,
+        expected_generation: first.claim.generation,
+    };
+    assert!(store.renew_resume_claim(&renewal).await.unwrap());
     let mut conflicting = input.clone();
     conflicting.request_payload = json!({ "answer": "different" });
     assert!(store.acquire_resume_claim(&conflicting).await.is_err());
@@ -438,10 +444,12 @@ async fn legacy_resume_claim_without_recovery_history_still_fences_generation_an
         .execute(store.pool())
         .await
         .unwrap();
+    assert!(!store.renew_resume_claim(&renewal).await.unwrap());
     let reacquired = store.acquire_resume_claim(&input).await.unwrap();
     assert_eq!(reacquired.disposition, ResumeClaimDisposition::Acquired);
     assert_eq!(reacquired.claim.generation, 1);
     assert_ne!(reacquired.claim.claim_token, first.claim.claim_token);
+    assert!(!store.renew_resume_claim(&renewal).await.unwrap());
 
     for (claim_token, expected_generation) in [
         (first.claim.claim_token, first.claim.generation),

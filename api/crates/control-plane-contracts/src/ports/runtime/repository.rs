@@ -360,6 +360,7 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AcquireResumeClaimInput,
     ) -> anyhow::Result<AcquireResumeClaimOutput>;
+    async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> anyhow::Result<bool>;
     async fn finish_resume_claim(
         &self,
         input: &FinishResumeClaimInput,

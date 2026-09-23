@@ -458,6 +458,13 @@ pub struct FinishResumeClaimInput {
     pub completed_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone)]
+pub struct RenewResumeClaimInput {
+    pub claim_id: Uuid,
+    pub claim_token: Uuid,
+    pub expected_generation: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolCallbackResultInput {
     pub tool_call_id: String,

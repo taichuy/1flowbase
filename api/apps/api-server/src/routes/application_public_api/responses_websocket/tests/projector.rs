@@ -345,6 +345,42 @@ fn decoded(frames: Vec<String>) -> Vec<Value> {
         .collect()
 }
 
+#[test]
+fn progress_heartbeat_is_protocol_event_without_changing_response_output() {
+    let mut run = native_run(0x11111111111111111111111111111119);
+    let mut projector = ResponsesWebSocketProjector::new("published-model".into(), None);
+    assert!(projector.progress_heartbeat(&run).unwrap().is_none());
+    let created = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(run.id, 1, debug_stream_events::flow_started(run.id)),
+            )
+            .unwrap(),
+    );
+    let progress = decoded(vec![projector.progress_heartbeat(&run).unwrap().unwrap()]);
+    assert_eq!(created[0]["type"], "response.created");
+    assert_eq!(progress[0]["type"], "response.in_progress");
+    assert_eq!(progress[0]["sequence_number"], 1);
+    assert_eq!(progress[0]["response"]["id"], created[0]["response"]["id"]);
+    assert_eq!(progress[0]["response"]["output"], json!([]));
+    run.status = NativeRunStatus::Succeeded;
+    let completed = decoded(
+        projector
+            .project(
+                &run,
+                RuntimeEventEnvelope::new(
+                    run.id,
+                    2,
+                    debug_stream_events::flow_finished(run.id, json!({})),
+                ),
+            )
+            .unwrap(),
+    );
+    assert_eq!(completed.last().unwrap()["sequence_number"], 2);
+    assert!(projector.progress_heartbeat(&run).unwrap().is_none());
+}
+
 fn answer_text(run: &NativeRunResult, sequence: i64, delta: &str) -> RuntimeEventEnvelope {
     RuntimeEventEnvelope::new(
         run.id,

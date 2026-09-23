@@ -234,6 +234,21 @@ impl PgControlPlaneStore {
         })
     }
 
+    async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
+        let updated = sqlx::query(
+            "update flow_run_resume_claims \
+             set lease_expires_at = now() + interval '5 minutes', updated_at = now() \
+             where id = $1 and claim_token = $2 and generation = $3 \
+               and status = 'processing' and lease_expires_at > now()",
+        )
+        .bind(input.claim_id)
+        .bind(input.claim_token)
+        .bind(input.expected_generation)
+        .execute(self.pool())
+        .await?;
+        Ok(updated.rows_affected() == 1)
+    }
+
     async fn finish_resume_claim(
         &self,
         input: &FinishResumeClaimInput,

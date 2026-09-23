@@ -129,7 +129,7 @@ where
                 })
                 .await?;
             let committed = if committed.disposition == ToolCallbackRoundDisposition::Completed
-                && command.responses_continuation.is_some()
+                && (command.responses_continuation.is_some() || command.native_transport.is_some())
             {
                 let stored = committed
                     .callback_task
@@ -234,116 +234,131 @@ where
                     .await?;
                 (callback_task, claim.claim)
             };
-        let result = if callback_task.callback_kind == "data_model_side_effect_confirmation" {
-            self.complete_data_model_side_effect_callback(
-                command,
-                &actor,
-                &callback_task,
-                &waiting_node,
-                base_started_at,
-                &application,
-                &checkpoint,
-                &flow_run,
-                &compiled_plan,
-                &claim,
-            )
-            .await
-        } else {
+        let renew_input = RenewResumeClaimInput {
+            claim_id: claim.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+        };
+        run_with_resume_claim_heartbeat(
             async {
-                let snapshot = checkpoint_snapshot_from_record_with_context(
-                    &self.repository,
-                    &checkpoint,
-                    flow_run.id,
-                )
-                .await?;
-                let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-                let execution = self
-                    .resume_execution_segment(ResumeExecutionSegmentInput {
-                        transport_connection_scope: command.transport_connection_scope.clone(),
-                        observation_context: command.observation_context.clone(),
-                        resumed_node_run: command
-                            .native_transport
+                let result = if callback_task.callback_kind == "data_model_side_effect_confirmation"
+                {
+                    self.complete_data_model_side_effect_callback(
+                        command,
+                        &actor,
+                        &callback_task,
+                        &waiting_node,
+                        base_started_at,
+                        &application,
+                        &checkpoint,
+                        &flow_run,
+                        &compiled_plan,
+                        &claim,
+                    )
+                    .await
+                } else {
+                    async {
+                        let snapshot = checkpoint_snapshot_from_record_with_context(
+                            &self.repository,
+                            &checkpoint,
+                            flow_run.id,
+                        )
+                        .await?;
+                        let waiting_node_id = checkpoint_node_id(&checkpoint)?;
+                        let execution = self
+                            .resume_execution_segment(ResumeExecutionSegmentInput {
+                                transport_connection_scope: command
+                                    .transport_connection_scope
+                                    .clone(),
+                                observation_context: command.observation_context.clone(),
+                                resumed_node_run: command
+                                    .native_transport
+                                    .as_ref()
+                                    .map(|_| waiting_node.clone()),
+                                native_transport: command.native_transport.clone(),
+                                response_round_id: Some(callback_task.id),
+                                actor: &actor,
+                                application: &application,
+                                flow_run: &flow_run,
+                                compiled_plan: &compiled_plan,
+                                snapshot: &snapshot,
+                                waiting_node_id: &waiting_node_id,
+                                waiting_node_run_id: Some(callback_task.node_run_id),
+                                resume_payload: &command.response_payload,
+                            })
+                            .await?;
+                        let waiting_node_output_payload =
+                            if callback_task.callback_kind == "llm_tool_calls" {
+                                waiting_node.output_payload.clone()
+                            } else {
+                                callback_task.response_payload.clone().ok_or_else(|| {
+                                    anyhow!("completed callback task is missing response payload")
+                                })?
+                            };
+
+                        self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
+                            responses_round: responses_round.clone(),
+                            scope_id: application.workspace_id,
+                            application_name: &application.name,
+                            task_queue: self.provider_request_log_queue.as_ref(),
+                            application_id: command.application_id,
+                            flow_run: &flow_run,
+                            compiled_plan: Some(&compiled_plan),
+                            outcome: &execution.outcome,
+                            prepared_node_runs: Some(&execution.prepared_node_runs),
+                            answer_presentation: execution.answer_presentation.as_ref(),
+                            trigger_event_type: "flow_run_resumed",
+                            trigger_event_payload: json!({
+                                "callback_task_id": callback_task.id,
+                                "response_payload": command.response_payload,
+                            }),
+                            base_started_at,
+                            waiting_node_resume: command.native_transport.is_none().then(|| {
+                                WaitingNodeResumeUpdate {
+                                    node_run_id: callback_task.node_run_id,
+                                    from_status: waiting_node.status,
+                                    output_payload: waiting_node_output_payload,
+                                    metrics_payload: json!({
+                                        "resumed": true,
+                                        "callback_kind": callback_task.callback_kind,
+                                    }),
+                                    debug_payload: json!({
+                                        "callback_task_id": callback_task.id,
+                                        "callback_kind": callback_task.callback_kind,
+                                    }),
+                                }
+                            }),
+                            resume_claim_id: Some(claim.id),
+                            resume_claim_token: Some(claim.claim_token),
+                            tool_delivery_events: execution.tool_delivery_events.clone(),
+                        })
+                        .await
+                    }
+                    .await
+                };
+                self.repository
+                    .finish_resume_claim(&FinishResumeClaimInput {
+                        claim_id: claim.id,
+                        claim_token: claim.claim_token,
+                        expected_generation: claim.generation,
+                        status: if result.is_ok() {
+                            ResumeClaimStatus::Succeeded
+                        } else {
+                            ResumeClaimStatus::Failed
+                        },
+                        error_payload: result
                             .as_ref()
-                            .map(|_| waiting_node.clone()),
-                        native_transport: command.native_transport.clone(),
-                        response_round_id: Some(callback_task.id),
-                        actor: &actor,
-                        application: &application,
-                        flow_run: &flow_run,
-                        compiled_plan: &compiled_plan,
-                        snapshot: &snapshot,
-                        waiting_node_id: &waiting_node_id,
-                        waiting_node_run_id: Some(callback_task.node_run_id),
-                        resume_payload: &command.response_payload,
+                            .err()
+                            .map(|error| json!({ "message": error.to_string() })),
+                        completed_at: OffsetDateTime::now_utc(),
                     })
                     .await?;
-                let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls"
-                {
-                    waiting_node.output_payload.clone()
-                } else {
-                    callback_task.response_payload.clone().ok_or_else(|| {
-                        anyhow!("completed callback task is missing response payload")
-                    })?
-                };
-
-                self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
-                    responses_round: responses_round.clone(),
-                    scope_id: application.workspace_id,
-                    application_name: &application.name,
-                    task_queue: self.provider_request_log_queue.as_ref(),
-                    application_id: command.application_id,
-                    flow_run: &flow_run,
-                    compiled_plan: Some(&compiled_plan),
-                    outcome: &execution.outcome,
-                    prepared_node_runs: Some(&execution.prepared_node_runs),
-                    answer_presentation: execution.answer_presentation.as_ref(),
-                    trigger_event_type: "flow_run_resumed",
-                    trigger_event_payload: json!({
-                        "callback_task_id": callback_task.id,
-                        "response_payload": command.response_payload,
-                    }),
-                    base_started_at,
-                    waiting_node_resume: command.native_transport.is_none().then(|| {
-                        WaitingNodeResumeUpdate {
-                            node_run_id: callback_task.node_run_id,
-                            from_status: waiting_node.status,
-                            output_payload: waiting_node_output_payload,
-                            metrics_payload: json!({
-                                "resumed": true,
-                                "callback_kind": callback_task.callback_kind,
-                            }),
-                            debug_payload: json!({
-                                "callback_task_id": callback_task.id,
-                                "callback_kind": callback_task.callback_kind,
-                            }),
-                        }
-                    }),
-                    resume_claim_id: Some(claim.id),
-                    resume_claim_token: Some(claim.claim_token),
-                    tool_delivery_events: execution.tool_delivery_events.clone(),
-                })
-                .await
-            }
-            .await
-        };
-        self.repository
-            .finish_resume_claim(&FinishResumeClaimInput {
-                claim_id: claim.id,
-                claim_token: claim.claim_token,
-                expected_generation: claim.generation,
-                status: if result.is_ok() {
-                    ResumeClaimStatus::Succeeded
-                } else {
-                    ResumeClaimStatus::Failed
-                },
-                error_payload: result
-                    .as_ref()
-                    .err()
-                    .map(|error| json!({ "message": error.to_string() })),
-                completed_at: OffsetDateTime::now_utc(),
-            })
-            .await?;
-        result
+                result
+            },
+            || self.repository.renew_resume_claim(&renew_input),
+            std::time::Duration::from_secs(60),
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -516,5 +531,98 @@ where
             tool_delivery_events: Vec::new(),
         })
         .await
+    }
+}
+
+async fn run_with_resume_claim_heartbeat<T, E, R, F>(
+    execution: E,
+    mut renew: R,
+    period: std::time::Duration,
+) -> Result<T>
+where
+    E: Future<Output = Result<T>>,
+    R: FnMut() -> F,
+    F: Future<Output = Result<bool>>,
+{
+    let heartbeat = async {
+        let mut ticks = tokio::time::interval(period);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticks.tick().await;
+            if !renew().await? {
+                return Err(ControlPlaneError::Conflict("resume_claim_not_owned").into());
+            }
+        }
+    };
+    tokio::pin!(execution, heartbeat);
+    tokio::select! {
+        biased;
+        result = &mut execution => result,
+        lease = &mut heartbeat => lease,
+    }
+}
+
+#[cfg(test)]
+mod resume_claim_heartbeat_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn active_resume_renews_until_execution_finishes() {
+        let renewals = Arc::new(AtomicUsize::new(0));
+        let observed = renewals.clone();
+        let operation = async {
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                while observed.load(Ordering::SeqCst) < 3 {
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                }
+            })
+            .await?;
+            Ok(())
+        };
+        run_with_resume_claim_heartbeat(
+            operation,
+            || {
+                let renewals = renewals.clone();
+                async move {
+                    renewals.fetch_add(1, Ordering::SeqCst);
+                    Ok(true)
+                }
+            },
+            std::time::Duration::from_millis(10),
+        )
+        .await
+        .unwrap();
+        assert!(renewals.load(Ordering::SeqCst) >= 3);
+    }
+
+    #[tokio::test]
+    async fn lost_resume_claim_stops_its_execution() {
+        let error = run_with_resume_claim_heartbeat(
+            std::future::pending::<Result<()>>(),
+            || async { Ok(false) },
+            std::time::Duration::from_millis(10),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("resume_claim_not_owned"));
+    }
+
+    #[tokio::test]
+    async fn blocked_renewal_does_not_block_execution_completion() {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            run_with_resume_claim_heartbeat(
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    Ok(())
+                },
+                || std::future::pending::<Result<bool>>(),
+                std::time::Duration::from_millis(10),
+            ),
+        )
+        .await
+        .expect("execution must remain polled while renewal waits")
+        .unwrap();
     }
 }

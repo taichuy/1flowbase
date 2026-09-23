@@ -6,6 +6,7 @@ use interface_runtime::InterfaceStreamCompletion;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio::time::{Duration, MissedTickBehavior};
 
 use super::{projector::ResponsesWebSocketProjector, ResponsesWebSocketAuthorization};
 use crate::{
@@ -130,8 +131,29 @@ async fn project_observed_turn(
     // Detaching this handle preserves the sole Kernel finalization owner;
     // transport shutdown must not drop hooks/receipt or cancel the business run.
     let completion = tokio::spawn(completion.complete());
-    while let Some(input) = events.recv().await {
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
+    heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut last_run = None;
+    loop {
+        let input = tokio::select! {
+            input = events.recv() => match input {
+                Some(input) => input,
+                None => break,
+            },
+            _ = heartbeat.tick() => {
+                if let Some(run) = last_run.as_ref() {
+                    let frame = projector.progress_heartbeat(run)
+                        .map_err(|_| ResponsesTurnBridgeError::ProjectionFailed)?;
+                    if let Some(frame) = frame {
+                        frames.send(frame).await
+                            .map_err(|_| ResponsesTurnBridgeError::SocketWriterClosed)?;
+                    }
+                }
+                continue;
+            }
+        };
         let (run_snapshot, envelope, mut delivery) = input.into_parts();
+        last_run = Some(run_snapshot.clone());
         if let Some(recorder) = recorder.as_ref() {
             recorder.bind_run(run_snapshot.id, None);
             if envelope.source == control_plane::ports::RuntimeEventSource::Provider {

@@ -210,9 +210,9 @@ async fn primary_failure_and_control_blocker_are_retained_without_provider_body(
 }
 
 #[tokio::test]
-async fn inflight_drain_exhaustion_is_explicit_without_replay_or_new_budget() {
+async fn inflight_drain_starts_close_budget_after_invocation_finishes() {
     let clock = FakeClock::new(2_000_000);
-    let runtime = Arc::new(FakeTransportRuntime::new([]));
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
     let mut config = transport_config();
     config.logical_max_age = Duration::from_secs(120);
     config.physical_max_age = Duration::from_secs(120);
@@ -229,15 +229,57 @@ async fn inflight_drain_exhaustion_is_explicit_without_replay_or_new_budget() {
     coordinator.maintain_and_dispatch().await;
     clock.advance(Duration::from_secs(31));
     coordinator.maintain_and_dispatch().await;
-    let error = coordinator
-        .prepare("runtime-a", &mut input, &context(2_100_000))
-        .await
-        .err()
-        .unwrap();
-    assert!(reason(error).contains("provider_physical_connection_close_exhausted"));
+    assert_eq!(
+        coordinator.pending_commands.lock().unwrap()[0].state,
+        CloseTaskState::Pending,
+        "a deferred Drain has not started its control budget"
+    );
     let snapshot = coordinator.safe_snapshot().await;
     assert_eq!(snapshot.sessions[0].fence, active.lease.fence);
     assert!(snapshot.sessions[0].inflight);
     assert!(runtime.commands().is_empty());
     assert_eq!(coordinator.pending_commands.lock().unwrap()[0].attempts, 0);
+
+    let old_generation = active.lease.fence.generation.get();
+    coordinator
+        .finish(active, &successful_output(old_generation))
+        .await
+        .unwrap();
+    let successor = coordinator
+        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(successor.lease.fence.generation.get() > old_generation);
+    assert_eq!(runtime.commands().len(), 1);
+}
+
+#[tokio::test]
+async fn inflight_drain_upgrade_starts_close_budget_after_failed_invocation() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+    let mut config = transport_config();
+    config.logical_max_age = Duration::from_secs(120);
+    config.physical_max_age = Duration::from_secs(120);
+    let coordinator =
+        TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
+            .unwrap();
+    let mut input = invocation_input("long-failed-inflight", ProviderWireOperation::Generate);
+    let active = coordinator
+        .prepare("runtime-a", &mut input, &context(2_100_000))
+        .await
+        .unwrap()
+        .unwrap();
+    clock.advance(Duration::from_secs(20));
+    coordinator.maintain_and_dispatch().await;
+    clock.advance(Duration::from_secs(31));
+    coordinator.maintain_and_dispatch().await;
+    coordinator
+        .finish(active, &Err(transport_error("primary")))
+        .await
+        .unwrap();
+    assert_eq!(runtime.commands().len(), 1);
+    let tasks = coordinator.pending_commands.lock().unwrap();
+    assert_eq!(tasks[0].state, CloseTaskState::Released);
+    assert_eq!(tasks[0].attempts, 1);
 }

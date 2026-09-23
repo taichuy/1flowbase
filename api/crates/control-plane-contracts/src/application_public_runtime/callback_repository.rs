@@ -35,8 +35,8 @@ pub trait ApplicationPublishedCallbackAttemptRepository: Send + Sync {
         response_payload: Value,
     ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
 
-    /// Re-admit an identical semantic delivery after its admission and execution leases expire.
-    async fn reclaim_semantic_callback_resume_attempt(
+    /// Re-admit an identical delivery after its execution claim lease expires.
+    async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: Value,

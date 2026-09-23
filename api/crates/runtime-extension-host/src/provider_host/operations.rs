@@ -94,12 +94,20 @@ pub(super) fn provider_worker_cleanup_receipt(
 
 pub(super) fn provider_invocation_limits(
     limits: &PluginRuntimeLimits,
-    _input: &ProviderInvocationInput,
+    input: &ProviderInvocationInput,
 ) -> PluginRuntimeLimits {
     let mut invocation_limits = limits.clone();
-    invocation_limits.timeout_ms = limits
-        .invoke_timeout_ms
-        .or(Some(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS));
+    // An active Responses stream needs more than the ordinary call budget for
+    // extended reasoning. A package-specific invocation limit still wins.
+    let default_timeout_ms = if input
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::ResponsesNativePassthrough)
+    {
+        1_800_000
+    } else {
+        DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS
+    };
+    invocation_limits.timeout_ms = limits.invoke_timeout_ms.or(Some(default_timeout_ms));
     invocation_limits
 }
 

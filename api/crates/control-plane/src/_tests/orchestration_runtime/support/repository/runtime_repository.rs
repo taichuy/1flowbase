@@ -1664,6 +1664,29 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         })
     }
 
+    async fn renew_resume_claim(
+        &self,
+        input: &crate::ports::RenewResumeClaimInput,
+    ) -> Result<bool> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let Some(claim) = inner
+            .resume_claims_by_target
+            .values_mut()
+            .find(|claim| claim.id == input.claim_id)
+        else {
+            return Ok(false);
+        };
+        if claim.claim_token != input.claim_token
+            || claim.generation != input.expected_generation
+            || claim.status != crate::ports::ResumeClaimStatus::Processing
+            || claim.lease_expires_at <= OffsetDateTime::now_utc()
+        {
+            return Ok(false);
+        }
+        claim.lease_expires_at = OffsetDateTime::now_utc() + time::Duration::minutes(5);
+        Ok(true)
+    }
+
     async fn finish_resume_claim(
         &self,
         input: &crate::ports::FinishResumeClaimInput,

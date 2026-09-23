@@ -13,7 +13,8 @@ use axum::response::{
 use control_plane::application_public_api::{
     callback_resume::{
         ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
-        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
     },
     native::NativeRunStatus,
 };
@@ -37,7 +38,6 @@ use crate::routes::application_public_api::tool_callback_ids::{
 };
 use crate::{
     app_state::ApiState,
-    provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
         compatibility_interface::CompatibilityExecutionDependencies,
         native::{self, service_error, NativeApiError},
@@ -318,7 +318,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
     let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        native::api_provider_runtime(&state),
         state.runtime_engine.clone(),
         state.provider_secret_master_key.clone(),
         state.infrastructure.provider_transport_store(),
@@ -336,46 +336,71 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
     let service =
         ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
             .with_last_used_cache(state.infrastructure.cache_store());
-    let prepared = service
-        .prepare_callback_resume_for_actor(actor.clone(), &command)
-        .await
-        .map_err(service_error)?;
-    Ok(match prepared {
-        PreparedPublishedCallbackResume::Resume { mut initial_run } => {
-            if command.native_transport.is_some() || command.responses_continuation.is_some() {
-                command.reserved_attempt_id = Some(
-                    service
-                        .reserve_native_callback_for_actor(actor, &command)
+    let mut retried_reservation_race = false;
+    loop {
+        let prepared = service
+            .prepare_callback_resume_for_actor(actor.clone(), &command)
+            .await
+            .map_err(service_error)?;
+        return Ok(match prepared {
+            PreparedPublishedCallbackResume::Resume { mut initial_run } => {
+                if command.native_transport.is_some() || command.responses_continuation.is_some() {
+                    match service
+                        .reserve_native_callback_for_actor(actor.clone(), &command)
                         .await
-                        .map_err(service_error)?,
-                );
+                    {
+                        Ok(attempt_id) => command.reserved_attempt_id = Some(attempt_id),
+                        Err(error)
+                            if !retried_reservation_race
+                                && command.source
+                                    == PublishedCallbackResumeSource::OpenAiResponses
+                                && command.native_transport.is_some()
+                                && error
+                                    .downcast_ref::<control_plane::errors::ControlPlaneError>()
+                                    .is_some_and(|error| {
+                                        matches!(
+                                            error,
+                                            control_plane::errors::ControlPlaneError::Conflict(
+                                                "callback_resume_already_admitted"
+                                            )
+                                        )
+                                    }) =>
+                        {
+                            // Another delivery won the durable reservation after our read.
+                            // Re-read its terminal before deciding replay versus a new turn.
+                            retried_reservation_race = true;
+                            continue;
+                        }
+                        Err(error) => return Err(service_error(error)),
+                    }
+                }
+                if let Some(metadata) = initial_run.metadata.as_object_mut() {
+                    metadata.remove("responses_round");
+                }
+                let round_id = match command.target {
+                    PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
+                    | PublishedCallbackResumeTarget::FlowRun {
+                        callback_task_id, ..
+                    } => callback_task_id,
+                };
+                if initial_run.metadata["native_inference_recovery_replay"] != true {
+                    initial_run.metadata["response_round_id"] = json!(round_id);
+                }
+                CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
+                    initial_run: *initial_run,
+                    command,
+                }))
             }
-            if let Some(metadata) = initial_run.metadata.as_object_mut() {
-                metadata.remove("responses_round");
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
+                CompatibleResumeAdmission::StartNewTurnFromHistory { recovery: None }
             }
-            let round_id = match command.target {
-                PublishedCallbackResumeTarget::CallbackTask { callback_task_id }
-                | PublishedCallbackResumeTarget::FlowRun {
-                    callback_task_id, ..
-                } => callback_task_id,
-            };
-            if initial_run.metadata["native_inference_recovery_replay"] != true {
-                initial_run.metadata["response_round_id"] = json!(round_id);
+            PreparedPublishedCallbackResume::RecoverInference { grant } => {
+                CompatibleResumeAdmission::StartNewTurnFromHistory {
+                    recovery: Some(*grant),
+                }
             }
-            CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
-                initial_run: *initial_run,
-                command,
-            }))
-        }
-        PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
-            CompatibleResumeAdmission::StartNewTurnFromHistory { recovery: None }
-        }
-        PreparedPublishedCallbackResume::RecoverInference { grant } => {
-            CompatibleResumeAdmission::StartNewTurnFromHistory {
-                recovery: Some(*grant),
-            }
-        }
-    })
+        });
+    }
 }
 
 pub(crate) async fn execute_compatible_resume_for_actor(

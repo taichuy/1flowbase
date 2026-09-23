@@ -261,6 +261,19 @@ impl ApplicationPublicApiTestRepository {
             .collect()
     }
 
+    pub fn expire_callback_resume_attempt_for_test(&self, callback_task_id: Uuid) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        let attempt = inner
+            .callback_resume_attempts
+            .values_mut()
+            .find(|attempt| attempt.callback_task_id == callback_task_id)
+            .expect("callback resume attempt fixture must exist");
+        attempt.updated_at = OffsetDateTime::now_utc() - time::Duration::minutes(6);
+    }
+
     pub fn complete_callback_task_for_test(&self, callback_task_id: Uuid) {
         let mut inner = self
             .inner
@@ -272,6 +285,18 @@ impl ApplicationPublicApiTestRepository {
             .expect("callback task fixture must exist");
         task.status = domain::CallbackTaskStatus::Completed;
         task.completed_at = Some(OffsetDateTime::now_utc());
+    }
+
+    pub fn set_flow_run_status_for_test(&self, flow_run_id: Uuid, status: domain::FlowRunStatus) {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("application public api test repo mutex poisoned");
+        inner
+            .flow_runs
+            .get_mut(&flow_run_id)
+            .expect("flow run fixture must exist")
+            .status = status;
     }
 
     pub fn flow_run_count(&self) -> usize {

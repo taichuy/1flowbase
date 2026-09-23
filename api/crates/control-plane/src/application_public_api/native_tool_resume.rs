@@ -227,6 +227,7 @@ where
         FlowRunStatus::WaitingCallback
             | FlowRunStatus::Running
             | FlowRunStatus::Succeeded
+            | FlowRunStatus::Incomplete
             | FlowRunStatus::Failed
             | FlowRunStatus::Cancelled
     ) {

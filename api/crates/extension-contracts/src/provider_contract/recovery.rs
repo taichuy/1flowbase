@@ -354,13 +354,21 @@ impl ProviderRecoveryReceipt {
             ));
         }
         match (self.transport, self.socket_incarnation) {
-            // A terminal receipt claims no reconnect and no resumption, so a
-            // failure observed before any socket existed may report the real
-            // outcome without inventing an incarnation. Every non-terminal
-            // WebSocket receipt still has to name the socket it intends to use.
-            (RecoveryTransport::AiNativeWebSocket, None) if !self.disposition.is_terminal() => Err(
-                "AI Native WebSocket recovery receipt requires a socket incarnation".to_string(),
-            ),
+            // Only a physical reconnect or rebuild claims a socket. A logical
+            // retry starts a new invocation, so it may report a failure before
+            // any socket incarnation was observed.
+            (RecoveryTransport::AiNativeWebSocket, None)
+                if matches!(
+                    self.disposition,
+                    RecoveryDisposition::SameEpochReconnect
+                        | RecoveryDisposition::OneFullContextRebuild
+                ) =>
+            {
+                Err(
+                    "AI Native WebSocket recovery receipt requires a socket incarnation"
+                        .to_string(),
+                )
+            }
             (RecoveryTransport::ProviderHttp, Some(_)) => {
                 Err("provider HTTP recovery receipt cannot claim a socket incarnation".to_string())
             }

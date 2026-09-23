@@ -333,6 +333,25 @@ async fn native_full_context_precommit_transport_admits_inference_only() {
 }
 
 #[tokio::test]
+async fn exhausted_provider_inner_budget_keeps_uncommitted_native_recovery_available() {
+    let mut failure = transport_failure();
+    failure["ai_native_recovery"]["provider_directive"]["policy"]["budget"]["max_inner_attempts"] =
+        json!(2);
+    failure["ai_native_recovery"]["provider_inner_receipt"]["attempt"] = json!(1);
+    failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] = json!("budget_exhausted");
+    failure["ai_native_recovery"]["total_attempt_budget"] = json!(4);
+    failure["ai_native_recovery"]["total_attempts_charged"] = json!(2);
+    let f = fixture(Some(failure)).await;
+    let PreparedPublishedCallbackResume::RecoverInference { grant } =
+        f.prepare(&f.command).await.unwrap()
+    else {
+        panic!("an exhausted provider inner budget must allow the remaining Native budget")
+    };
+    assert_eq!(grant.remaining_attempts, 2);
+    f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
 async fn native_recovery_rejects_missing_changed_history_and_configuration() {
     let f = fixture(Some(transport_failure())).await;
     assert!(matches!(

@@ -20,7 +20,7 @@ use control_plane_contracts::{
         OrchestrationRuntimeRepository, PersistWaitingCallbackTaskInput, PersistWaitingKind,
         PersistWaitingStateInput, ProviderRequestLogTask, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, ReleaseRuntimeEventDeliveryInput,
-        ResumeClaimDisposition, ResumeClaimKind, ResumeClaimStatus,
+        RenewResumeClaimInput, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimStatus,
         RollbackLegacyRuntimeShadowInput, ToolCallbackResultInput, ToolCallbackRoundDisposition,
         UpdateFlowRunInput, UpdateFlowRunPayloadsInput, UpdateNodeRunInput,
         UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput, UpsertCompiledPlanInput,

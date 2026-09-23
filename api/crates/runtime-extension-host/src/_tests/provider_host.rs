@@ -47,6 +47,32 @@ fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
 }
 
 #[test]
+fn native_responses_stream_has_longer_default_without_overriding_package_limit() {
+    let ordinary = invocation_input("fixture-model");
+    let mut native = ordinary.clone();
+    native
+        .required_capabilities
+        .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
+    let defaults = PluginRuntimeLimits::default();
+    assert_eq!(
+        provider_invocation_limits(&defaults, &ordinary).timeout_ms,
+        Some(300_000)
+    );
+    assert_eq!(
+        provider_invocation_limits(&defaults, &native).timeout_ms,
+        Some(1_800_000)
+    );
+    let explicit = PluginRuntimeLimits {
+        invoke_timeout_ms: Some(42_000),
+        ..defaults
+    };
+    assert_eq!(
+        provider_invocation_limits(&explicit, &native).timeout_ms,
+        Some(42_000)
+    );
+}
+
+#[test]
 fn c2_runtime_stage_receipt_is_metadata_only() {
     let mut metadata = json!({});
     attach_runtime_stage_timing(&mut metadata, 3, 7).unwrap();

@@ -2642,7 +2642,7 @@ fn recovery_receipt_is_parsed_from_the_shared_details_key_on_both_paths() {
 }
 
 #[test]
-fn terminal_websocket_receipt_may_report_a_socketless_failure() {
+fn socketless_websocket_receipt_requires_no_physical_reconnect_claim() {
     let epoch = TransportEpoch::new(149).unwrap();
     // A failure observed before any socket existed reports the real terminal
     // outcome without fabricating an incarnation.
@@ -2659,11 +2659,37 @@ fn terminal_websocket_receipt_may_report_a_socketless_failure() {
     let details = json!({ RECOVERY_RECEIPT_WIRE_KEY: &socketless });
     assert!(recovery_receipt_from_details(&details).unwrap().is_some());
 
-    // A recoverable WebSocket receipt still has to name the socket it intends to
-    // reconnect on.
+    // A logical retry starts a new invocation and makes no physical socket claim.
+    let logical_retry = ProviderRecoveryReceipt {
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::LogicalInvocationRetry,
+        ..socketless.clone()
+    };
+    logical_retry.validate().unwrap();
+    logical_retry
+        .validate_against(&ProviderRecoveryDirective {
+            policy: RecoveryPolicy::NativeOpaque {
+                budget: RecoveryBudget {
+                    max_inner_attempts: 2,
+                    absolute_deadline_unix_ms: 100,
+                },
+            },
+            transport_epoch: epoch,
+            initial_commit_level: CommitLevel::LifecycleOnly,
+            cursor_provenance: None,
+        })
+        .unwrap();
+    assert_eq!(
+        recovery_receipt_from_details(&json!({ RECOVERY_RECEIPT_WIRE_KEY: &logical_retry }))
+            .unwrap(),
+        Some(logical_retry)
+    );
+
+    // Physical reconnect or rebuild still has to name its socket.
     for disposition in [
         RecoveryDisposition::SameEpochReconnect,
-        RecoveryDisposition::LogicalInvocationRetry,
+        RecoveryDisposition::OneFullContextRebuild,
     ] {
         let invalid = ProviderRecoveryReceipt {
             socket_incarnation: None,

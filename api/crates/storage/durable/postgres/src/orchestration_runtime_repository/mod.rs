@@ -45,11 +45,11 @@ use control_plane_contracts::{
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReleaseRuntimeEventDeliveryInput, ReplaceApplicationRunTraceProjectionInput,
-        ReserveCreditInput, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
-        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, RollbackLegacyRuntimeShadowResult,
-        RuntimeContextContentVersion, RuntimeEventDeliveryClaim, SettleCreditInput,
-        ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
+        ReleaseRuntimeEventDeliveryInput, RenewResumeClaimInput,
+        ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
+        ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
+        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, RuntimeEventDeliveryClaim,
+        SettleCreditInput, ToolCallbackRoundDisposition, UpdateCallbackTaskPayloadsInput,
         UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
         UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
         UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
@@ -565,6 +565,10 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AcquireResumeClaimInput,
     ) -> Result<AcquireResumeClaimOutput> {
         PgControlPlaneStore::acquire_resume_claim(self, input).await
+    }
+
+    async fn renew_resume_claim(&self, input: &RenewResumeClaimInput) -> Result<bool> {
+        PgControlPlaneStore::renew_resume_claim(self, input).await
     }
 
     async fn finish_resume_claim(
@@ -1904,7 +1908,7 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         .await
     }
 
-    async fn reclaim_semantic_callback_resume_attempt(
+    async fn reclaim_expired_callback_resume_attempt(
         &self,
         attempt_id: Uuid,
         response_payload: Value,
@@ -1926,7 +1930,12 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
             update flow_run_callback_resume_attempts a set status = 'processing', updated_at = now(), completed_at = null
             where a.id = $1
               and a.source = 'openai_responses'
-              and a.response_payload ? 'responses_continuation'
+              and (a.response_payload ? 'responses_continuation' or exists (
+                  select 1 from flow_run_callback_tasks task
+                  where task.id = a.callback_task_id
+                    and task.callback_kind = 'llm_tool_calls'
+                    and task.status = 'completed'
+              ))
               and (a.status = 'received' or (a.status = 'processing' and a.updated_at <= now() - interval '5 minutes'))
               and not exists (select 1 from flow_run_resume_claims c where c.callback_task_id = a.callback_task_id
                               and c.status = 'processing' and c.lease_expires_at > now())

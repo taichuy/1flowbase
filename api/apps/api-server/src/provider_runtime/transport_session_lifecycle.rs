@@ -119,6 +119,7 @@ struct LifecycleCommand {
     overall_deadline: TransportInstant,
     next_due: TransportInstant,
     attempts: u8,
+    deferred_while_inflight: bool,
     state: CloseTaskState,
     last_blocker: Option<&'static str>,
     first_control_failure: Option<&'static str>,
@@ -801,7 +802,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                 if let Some(existing) = pending.iter_mut().find(|task| task.fence == command.fence)
                 {
                     // Drain -> Close / logical termination upgrades the same physical task.
-                    // It never renews the original deadline, attempts, or exhausted state.
+                    // A started control budget, attempts, and exhausted state are retained.
                     if command.command.action == ProviderTransportSessionAction::Close {
                         existing.command.action = ProviderTransportSessionAction::Close;
                     }
@@ -831,6 +832,33 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             }
             let snapshot = self.registry.lock().await.safe_snapshot();
             let now = snapshot.observed_at;
+            if !task.terminal_close
+                && task.command.action == ProviderTransportSessionAction::Drain
+                && task.attempts == 0
+            {
+                match drain_disposition(&snapshot, &task.fence) {
+                    DrainDisposition::Stale => continue,
+                    DrainDisposition::Defer => {
+                        // No control command can run while the current invocation owns
+                        // the socket. Start its bounded close budget once it finishes.
+                        task.deferred_while_inflight = true;
+                        retained.push_back(task);
+                        continue;
+                    }
+                    DrainDisposition::Ready => {}
+                }
+            }
+            if task.deferred_while_inflight && task.attempts == 0 {
+                let logical_ttl = snapshot
+                    .sessions
+                    .iter()
+                    .find(|session| session.fence == task.fence)
+                    .map(|session| session.logical_ttl)
+                    .unwrap_or(CONTROL_OVERALL_DEADLINE);
+                task.overall_deadline =
+                    transport_add(now, CONTROL_OVERALL_DEADLINE.min(logical_ttl));
+                task.deferred_while_inflight = false;
+            }
             if now >= task.overall_deadline || task.attempts >= CONTROL_MAX_ATTEMPTS {
                 task.state = CloseTaskState::Exhausted;
                 task.last_blocker = Some("provider_physical_connection_close_exhausted");
@@ -1122,6 +1150,7 @@ fn lifecycle_command(
         overall_deadline,
         next_due: now,
         attempts: 0,
+        deferred_while_inflight: false,
         state: CloseTaskState::Pending,
         last_blocker: None,
         first_control_failure: None,

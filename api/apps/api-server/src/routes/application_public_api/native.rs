@@ -75,6 +75,7 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
+    .with_network_egress(Arc::new(state.network_egress_http_clients()))
 }
 
 pub(crate) async fn public_mcp_runtime_invoker_for_actor(
@@ -158,6 +159,7 @@ pub(crate) struct ApplicationNativeRunDependencies {
     pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
     pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub(crate) network_egress: Arc<crate::network_egress_client::NetworkEgressHttpClientResolver>,
     pub(crate) provider_secret_master_key: String,
     pub(crate) model_billing_require_provider_usage: bool,
     pub(crate) api_node_id: String,
@@ -283,7 +285,8 @@ pub(crate) fn native_runtime_service(
         ApiProviderRuntime::new_with_activity(
             dependencies.provider_runtime.clone(),
             dependencies.runtime_activity.clone(),
-        ),
+        )
+        .with_network_egress(dependencies.network_egress.clone()),
         dependencies.runtime_engine.clone(),
         dependencies.provider_secret_master_key.clone(),
         dependencies.provider_transport_store.clone(),
@@ -717,6 +720,11 @@ pub(crate) fn service_error(error: anyhow::Error) -> NativeApiError {
         error.downcast_ref::<control_plane::errors::ControlPlaneError>()
     {
         return NativeApiError::new(StatusCode::CONFLICT, name, error.to_string());
+    }
+    if let Some(control_plane::errors::ControlPlaneError::UpstreamUnavailable(name)) =
+        error.downcast_ref::<control_plane::errors::ControlPlaneError>()
+    {
+        return NativeApiError::new(StatusCode::SERVICE_UNAVAILABLE, name, error.to_string());
     }
     if let Some(control_plane::errors::ControlPlaneError::InvalidInput(name)) =
         error.downcast_ref::<control_plane::errors::ControlPlaneError>()

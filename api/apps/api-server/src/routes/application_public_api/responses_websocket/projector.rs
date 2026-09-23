@@ -166,6 +166,27 @@ impl ResponsesWebSocketProjector {
         Ok(frames)
     }
 
+    pub(crate) fn progress_heartbeat(
+        &mut self,
+        run: &NativeRunResult,
+    ) -> Result<Option<String>, ResponsesWebSocketProjectionError> {
+        if self.state != ProjectionState::Streaming {
+            return Ok(None);
+        }
+        let mut response = response_snapshot(
+            run,
+            &self.model,
+            self.previous_response_id.as_deref(),
+            "in_progress",
+        );
+        response["output"] = json!(self.completed_output_items);
+        Ok(self
+            .serialize(vec![
+                json!({"type": "response.in_progress", "response": response}),
+            ])?
+            .pop())
+    }
+
     pub(crate) fn has_terminal(&self) -> bool {
         self.state == ProjectionState::Terminal
     }
