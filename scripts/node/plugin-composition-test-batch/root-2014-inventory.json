@@ -4,8 +4,8 @@
   "configuration": "default_test_config + DEFAULT_PLUGIN_SET_PATH; no filesystem dropins; isolated PostgreSQL schema",
   "graph_fingerprint": "1bdfef58b57521b962a9b748e8cbca0077aa19ad30efc11a5b15c814f1898574",
   "registry_fingerprint": "sha256:de064deacae04e56fd2cf8df8a78f513b5afc6b1ec3929244f608608bba48598",
-  "definition_count": 457,
-  "binding_count": 481,
+  "definition_count": 455,
+  "binding_count": 477,
   "type_count": 188,
   "definitions": [
     "agent_flow.data_model_options.list",
