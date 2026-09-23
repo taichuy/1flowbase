@@ -337,20 +337,23 @@ impl PgControlPlaneStore {
         let recovery_history = map_recovery_history_record(recovery_row)?;
         match (input.resume_claim_id, input.resume_claim_token) {
             (Some(claim_id), Some(claim_token)) => {
-                let updated = sqlx::query(
+                let callback_task_id = sqlx::query_scalar::<_, Option<Uuid>>(
                     r#"
                     update flow_run_resume_claims
                        set status = 'succeeded', completed_at = now(), updated_at = now()
                      where id = $1 and claim_token = $2 and status = 'processing'
+                     returning callback_task_id
                     "#,
                 )
                 .bind(claim_id)
                 .bind(claim_token)
-                .execute(&mut *tx)
+                .fetch_optional(&mut *tx)
                 .await?;
-                if updated.rows_affected() != 1 {
-                    return Err(ControlPlaneError::Conflict("resume_claim_not_owned").into());
-                }
+                let callback_task_id = callback_task_id
+                    .ok_or(ControlPlaneError::Conflict("resume_claim_not_owned"))?;
+                // The business transition and its public resume receipt must
+                // commit together; the ingress future may already be gone.
+                settle_committed_callback_attempt(&mut tx, callback_task_id).await?;
             }
             (None, None) => {}
             _ => {

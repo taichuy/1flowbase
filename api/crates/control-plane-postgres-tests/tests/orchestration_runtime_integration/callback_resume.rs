@@ -348,6 +348,79 @@ async fn parked_tool_round_attempt_is_reacquired_by_exactly_one_delivery() {
     assert_eq!(winners, 1);
 }
 
+#[tokio::test]
+async fn completed_resume_claim_settles_callback_attempt_without_ingress_owner() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-09-23 09:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+    let wait = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
+    let callback_task_id = wait.callback_task.unwrap().id;
+    let payload = json!({"tool_results":[{"tool_call_id":"call-1-0","content":"ok"}]});
+    let attempt = store
+        .record_flow_run_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+            flow_run_id: run.id,
+            callback_task_id,
+            source: "openai_responses".into(),
+            response_payload: payload.clone(),
+            idempotency_key: format!("callback_task:{callback_task_id}"),
+        })
+        .await
+        .unwrap()
+        .attempt;
+    store
+        .complete_callback_task(&CompleteCallbackTaskInput {
+            callback_task_id,
+            response_payload: payload.clone(),
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let claim = store
+        .acquire_resume_claim(&AcquireResumeClaimInput {
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            checkpoint_id: wait.checkpoint.id,
+            callback_task_id: Some(callback_task_id),
+            kind: ResumeClaimKind::Callback,
+            request_payload: payload,
+        })
+        .await
+        .unwrap()
+        .claim;
+    store
+        .finish_resume_claim(&FinishResumeClaimInput {
+            claim_id: claim.id,
+            claim_token: claim.claim_token,
+            expected_generation: claim.generation,
+            status: ResumeClaimStatus::Succeeded,
+            error_payload: None,
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let settled = store
+        .get_flow_run_callback_resume_attempt_by_callback_task(callback_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(settled.id, attempt.id);
+    assert_eq!(
+        settled.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+    );
+    assert!(store
+        .park_flow_run_callback_resume_attempt(attempt.id)
+        .await
+        .unwrap()
+        .is_none());
+}
+
 fn tool_result(tool_call_id: &str, content: Value) -> ToolCallbackResultInput {
     ToolCallbackResultInput::from_payload(json!({
         "tool_call_id": tool_call_id,
@@ -534,6 +607,25 @@ async fn issue_1736_ac_004_resume_claim_records_running_between_consecutive_call
         reacquired_claim.claim.generation,
         first_claim.claim.generation + 1
     );
+    let attempt = store
+        .record_flow_run_callback_resume_attempt(&RecordFlowRunCallbackResumeAttemptInput {
+            flow_run_id: run.id,
+            callback_task_id: first_callback.id,
+            source: "openai_responses".into(),
+            response_payload: first_claim_input.request_payload.clone(),
+            idempotency_key: format!("callback_task:{}", first_callback.id),
+        })
+        .await
+        .unwrap()
+        .attempt;
+    store
+        .complete_callback_task(&CompleteCallbackTaskInput {
+            callback_task_id: first_callback.id,
+            response_payload: first_claim_input.request_payload.clone(),
+            completed_at: OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
 
     let second_wait = persist_callback_wait(
         &store,
@@ -548,6 +640,22 @@ async fn issue_1736_ac_004_resume_claim_records_running_between_consecutive_call
         )),
     )
     .await;
+    let settled_attempt = store
+        .get_flow_run_callback_resume_attempt_by_callback_task(first_callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        settled_attempt.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Succeeded,
+        "a committed next callback must settle its predecessor attempt even if ingress disappears"
+    );
+    assert_eq!(settled_attempt.id, attempt.id);
+    assert!(store
+        .park_flow_run_callback_resume_attempt(attempt.id)
+        .await
+        .unwrap()
+        .is_none());
     let second_callback = second_wait.callback_task.expect("second callback task");
     let second_claim = store
         .acquire_resume_claim(&AcquireResumeClaimInput {

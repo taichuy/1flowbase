@@ -32,6 +32,28 @@ fn map_resume_claim(row: &sqlx::postgres::PgRow) -> Result<ResumeClaimRecord> {
     })
 }
 
+async fn settle_committed_callback_attempt(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    callback_task_id: Option<Uuid>,
+) -> Result<()> {
+    let Some(callback_task_id) = callback_task_id else {
+        return Ok(());
+    };
+    sqlx::query(
+        r#"
+        update flow_run_callback_resume_attempts
+           set status = 'succeeded', error_payload = null,
+               completed_at = coalesce(completed_at, now()), updated_at = now(),
+               raw_json_payloads = raw_json_payloads - 'error_payload'
+         where callback_task_id = $1 and status in ('processing', 'received')
+        "#,
+    )
+    .bind(callback_task_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 const RESUME_CLAIM_COLUMNS: &str = r#"
     id, flow_run_id, checkpoint_id, callback_task_id, resume_kind, status,
     runtime_original_json(request_payload, flow_run_resume_claims.raw_json_payloads, 'request_payload') as request_payload, claim_token, generation, lease_expires_at, runtime_original_json(error_payload, flow_run_resume_claims.raw_json_payloads, 'error_payload') as error_payload, completed_at
@@ -256,6 +278,7 @@ impl PgControlPlaneStore {
         if input.status == ResumeClaimStatus::Processing {
             return Err(anyhow!("resume claim cannot finish as processing"));
         }
+        let mut tx = self.pool().begin().await?;
         let row = sqlx::query(&format!(
             "update flow_run_resume_claims set status = $4,\n                error_payload = case when status = 'processing' then ($5::jsonb -> 0) else error_payload end,\n                completed_at = coalesce(completed_at, $6),\n                updated_at = now(),\n                raw_json_payloads = (flow_run_resume_claims.raw_json_payloads - 'error_payload') || jsonb_strip_nulls(jsonb_build_object('error_payload', case when status = 'processing' then ($5::jsonb -> 1) else flow_run_resume_claims.raw_json_payloads -> 'error_payload' end))\n            where id = $1 and claim_token = $2 and generation = $3 and status in ('processing', $4) returning {RESUME_CLAIM_COLUMNS}"
         ))
@@ -265,11 +288,16 @@ impl PgControlPlaneStore {
         .bind(input.status.as_str())
         .bind(lossless_json_parameter(&(&input.error_payload)))
         .bind(input.completed_at)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?;
         let Some(row) = row else {
             return Err(ControlPlaneError::Conflict("resume_claim_not_owned").into());
         };
-        map_resume_claim(&row)
+        let claim = map_resume_claim(&row)?;
+        if input.status == ResumeClaimStatus::Succeeded {
+            settle_committed_callback_attempt(&mut tx, claim.callback_task_id).await?;
+        }
+        tx.commit().await?;
+        Ok(claim)
     }
 }
