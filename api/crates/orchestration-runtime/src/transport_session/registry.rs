@@ -250,6 +250,12 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     ) -> Result<(), RegistryError> {
         let now = self.clock.now();
         self.maintain_at(now);
+        if let Some(receipt) = self.tombstones.iter_mut().rev().find(|receipt| {
+            receipt.fence == lease.fence && receipt.unsettled_invocation.as_ref() == Some(lease)
+        }) {
+            receipt.unsettled_invocation = None;
+            return Err(RegistryError::NotFound);
+        }
         let target = completion.state();
         let config = self.config.clone();
         let record = self.record_mut(&lease.fence)?;
@@ -646,11 +652,19 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
     }
 
     fn maintain_at(&mut self, now: TransportInstant) {
-        while self.tombstones.front().is_some_and(|receipt| {
-            now.saturating_duration_since(receipt.terminated_at) >= self.config.tombstone_ttl
-        }) {
-            self.tombstones.pop_front();
-        }
+        self.tombstones.retain(|receipt| {
+            now.saturating_duration_since(receipt.terminated_at) < self.config.tombstone_ttl
+                || receipt
+                    .unsettled_invocation
+                    .as_ref()
+                    .is_some_and(|lease| now < lease.deadline())
+                || (receipt.kind
+                    == TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+                    && !receipt
+                        .closure_evidence
+                        .as_ref()
+                        .is_some_and(|evidence| evidence.local_released))
+        });
         let expired: Vec<_> = self
             .sessions
             .iter()
@@ -747,11 +761,15 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         now: TransportInstant,
     ) -> Option<TerminationReceipt> {
         let record = self.sessions.remove(session_id)?;
+        let fence = TransportFence {
+            session_id: session_id.clone(),
+            generation: record.physical.generation,
+        };
         let receipt = TerminationReceipt {
-            fence: TransportFence {
-                session_id: session_id.clone(),
-                generation: record.physical.generation,
-            },
+            unsettled_invocation: record.logical.invocation.map(|invocation| {
+                InvocationLease::new(fence.clone(), invocation.sequence, invocation.deadline)
+            }),
+            fence,
             owner_id: record.logical.owner_id,
             provider_id: record.logical.provider_id,
             runtime_target_id: record.physical.runtime_target_id,

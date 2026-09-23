@@ -538,11 +538,56 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                     }
                     fence
                 }
-            } else if let Some(receipt) = registry.tombstone(&session_id) {
-                return Err(
-                    self.recovery_admission_error(&receipt.fence, termination_code(receipt.kind))
-                );
             } else {
+                if let Some(receipt) = registry.tombstone(&session_id) {
+                    if receipt.kind
+                        != TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+                        || receipt
+                            .unsettled_invocation
+                            .as_ref()
+                            .is_some_and(|lease| now < lease.deadline())
+                    {
+                        return Err(self.recovery_admission_error(
+                            &receipt.fence,
+                            termination_code(receipt.kind),
+                        ));
+                    }
+                    if receipt.owner_id != owner_id
+                        || receipt.provider_id != provider_id
+                        || receipt.runtime_target_id != target
+                    {
+                        return Err(admission_error(
+                            "transport_session_evicted",
+                            admission_details(
+                                &session_id,
+                                Some(&receipt.fence),
+                                Some(receipt.previous_state),
+                                Some(false),
+                                scope_requested,
+                            ),
+                        ));
+                    }
+                    validate_fault_successor(recovery_directive.as_ref(), now)?;
+                    if self.close_task_exhausted(&receipt.fence) {
+                        return Err(self.recovery_admission_error(
+                            &receipt.fence,
+                            "provider_physical_connection_close_exhausted",
+                        ));
+                    }
+                    if !receipt
+                        .closure_evidence
+                        .as_ref()
+                        .is_some_and(|evidence| evidence.local_released)
+                    {
+                        return Err(self.recovery_admission_error(
+                            &receipt.fence,
+                            "provider_physical_connection_close_pending",
+                        ));
+                    }
+                    // The expired, completed generation remains as a diagnostic
+                    // tombstone. The new admission allocates a distinct bounded
+                    // generation, so delayed results cannot mutate the successor.
+                }
                 let fence = registry
                     .admit(AdmissionRequest {
                         session_id: session_id.clone(),

@@ -241,6 +241,47 @@ fn waiting_renewal_is_capped_by_the_logical_deadline() {
 }
 
 #[test]
+fn expired_inflight_tombstone_outlives_its_ttl_until_the_exact_lease_settles() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.logical_max_age = Duration::from_secs(1);
+    settings.tombstone_ttl = Duration::from_secs(2);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("retired-inflight")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(Some(10_000)))
+        .unwrap();
+    clock.advance(Duration::from_secs(3));
+    registry.maintain();
+    clock.advance(Duration::from_secs(2));
+    registry.maintain();
+    assert_eq!(
+        registry
+            .tombstone(&fence.session_id)
+            .unwrap()
+            .unsettled_invocation,
+        Some(lease.clone())
+    );
+    assert_eq!(
+        registry.finish_invocation(&lease, InvocationCompletion::IdleAffinity),
+        Err(RegistryError::NotFound)
+    );
+    assert!(registry
+        .tombstone(&fence.session_id)
+        .unwrap()
+        .unsettled_invocation
+        .is_none());
+    registry.maintain();
+    assert!(registry.tombstone(&fence.session_id).is_some());
+    registry
+        .record_closure_evidence(&fence, &released_evidence(&fence, 7))
+        .unwrap();
+    registry.maintain();
+    assert!(registry.tombstone(&fence.session_id).is_none());
+}
+
+#[test]
 fn every_non_terminal_state_has_a_finite_lease() {
     let states = [
         InvocationCompletion::WaitingTool,

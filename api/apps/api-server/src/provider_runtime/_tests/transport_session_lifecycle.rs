@@ -1615,3 +1615,6 @@ mod prewarm_handoff;
 
 #[path = "transport_session_lifecycle/invocation_handoff.rs"]
 mod invocation_handoff;
+
+#[path = "transport_session_lifecycle/logical_rollover.rs"]
+mod logical_rollover;

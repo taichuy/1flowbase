@@ -134,6 +134,9 @@ pub struct TerminationReceipt {
     pub provider_id: TransportProviderId,
     pub runtime_target_id: TransportRuntimeTargetId,
     pub previous_state: TransportSessionState,
+    /// The invocation that still owned this generation at termination. A
+    /// successor waits for this lease to finish or reach its own deadline.
+    pub unsettled_invocation: Option<InvocationLease>,
     pub kind: TerminationKind,
     pub terminated_at: TransportInstant,
     pub connection_age: Duration,
