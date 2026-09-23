@@ -939,6 +939,13 @@ pub struct ProviderNativeTransport {
     pub size_bytes: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderClientTransport {
+    Http,
+    Websocket,
+}
+
 impl std::fmt::Debug for ProviderNativeTransport {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -985,6 +992,9 @@ pub struct ProviderInvocationInput {
     pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_transport: Option<ProviderNativeTransport>,
+    /// Host-observed ingress transport, never derived from client-supplied headers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_transport: Option<ProviderClientTransport>,
     #[serde(default)]
     pub trace_context: BTreeMap<String, String>,
     #[serde(default)]

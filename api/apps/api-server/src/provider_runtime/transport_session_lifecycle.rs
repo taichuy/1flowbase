@@ -16,7 +16,7 @@ use orchestration_runtime::transport_session::{
 };
 use plugin_framework::{
     provider_contract::{
-        CommitLevel, CursorBinding, ProviderInvocationInput,
+        CommitLevel, CursorBinding, ProviderClientTransport, ProviderInvocationInput,
         ProviderInvocationTransportClassification, ProviderInvocationTransportOutcome,
         ProviderLogicalSessionState, ProviderRecoveryDirective, ProviderRuntimeError,
         ProviderRuntimeErrorKind, ProviderTransportClosureEvidence,
@@ -343,6 +343,15 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         context: &ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
         let connection_scope_id = take_transport_connection_scope(input);
+        if input.protocol == "openai_responses" {
+            input.client_transport = if connection_scope_id.is_some() {
+                Some(ProviderClientTransport::Websocket)
+            } else if input.native_transport.is_some() {
+                Some(ProviderClientTransport::Http)
+            } else {
+                None
+            };
+        }
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
         };
@@ -1277,21 +1286,33 @@ fn validate_fault_successor(
     Ok(())
 }
 
-/// Freeze the transport selected by the invocation configuration before calling
-/// the provider. Node selection wins over the provider-instance setting; `auto`
-/// starts with WS and requires a typed recovery receipt for HTTP fallback. This
-/// follows the paired OpenAI provider contract, never infers HTTP from metadata.
+/// Freeze the selected transport before calling the provider. The ingress
+/// transport is observed by the host, not inferred from client headers.
 fn selected_responses_transport(
     input: &ProviderInvocationInput,
 ) -> anyhow::Result<RecoveryTransport> {
     if input.operation == ProviderWireOperation::Compact {
         return Ok(RecoveryTransport::ProviderHttp);
     }
-    match input.model_parameters.get("use_responses_websocket") {
-        Some(serde_json::Value::Bool(true)) => return Ok(RecoveryTransport::AiNativeWebSocket),
-        Some(serde_json::Value::Bool(false)) => return Ok(RecoveryTransport::ProviderHttp),
+    match input.model_parameters.get("responses_transport_policy") {
+        Some(serde_json::Value::String(policy)) => match policy.as_str() {
+            "force_http_sse" => return Ok(RecoveryTransport::ProviderHttp),
+            "force_websocket" => return Ok(RecoveryTransport::AiNativeWebSocket),
+            "inherit" => {}
+            _ => return Err(transport_error("provider_transport_mode_invalid")),
+        },
         Some(_) => return Err(transport_error("provider_transport_mode_invalid")),
-        None => {}
+        None => match input.model_parameters.get("use_responses_websocket") {
+            Some(serde_json::Value::Bool(true)) => return Ok(RecoveryTransport::AiNativeWebSocket),
+            Some(serde_json::Value::Bool(false)) | None => {}
+            Some(_) => return Err(transport_error("provider_transport_mode_invalid")),
+        },
+    }
+    if let Some(client_transport) = input.client_transport {
+        return Ok(match client_transport {
+            ProviderClientTransport::Http => RecoveryTransport::ProviderHttp,
+            ProviderClientTransport::Websocket => RecoveryTransport::AiNativeWebSocket,
+        });
     }
     match input.provider_config.get("transport_mode") {
         None => Ok(RecoveryTransport::ProviderHttp),

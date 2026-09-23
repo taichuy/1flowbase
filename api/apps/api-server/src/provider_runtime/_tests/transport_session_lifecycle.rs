@@ -810,7 +810,7 @@ fn execution_mode_is_selected_from_input_not_missing_receipts() {
     input.provider_config = serde_json::json!({"transport_mode":"responses_websocket"});
     assert_eq!(
         selected_responses_transport(&input).unwrap(),
-        RecoveryTransport::ProviderHttp
+        RecoveryTransport::AiNativeWebSocket
     );
     input.model_parameters.clear();
     for mode in ["auto", "responses_websocket", "websocket", "ws", ""] {
@@ -848,6 +848,39 @@ fn execution_mode_is_selected_from_input_not_missing_receipts() {
     );
 }
 
+#[test]
+fn node_policy_follows_host_observed_client_transport_or_forces_selection() {
+    let mut input = invocation_input("policy-selection", ProviderWireOperation::Generate);
+    input.model_parameters.clear();
+    input.provider_config = serde_json::json!({"transport_mode":"http_sse"});
+    input.client_transport = Some(ProviderClientTransport::Websocket);
+    for (policy, expected) in [
+        ("inherit", RecoveryTransport::AiNativeWebSocket),
+        ("force_http_sse", RecoveryTransport::ProviderHttp),
+        ("force_websocket", RecoveryTransport::AiNativeWebSocket),
+    ] {
+        input.model_parameters.insert(
+            "responses_transport_policy".into(),
+            serde_json::json!(policy),
+        );
+        assert_eq!(selected_responses_transport(&input).unwrap(), expected);
+    }
+    input.client_transport = Some(ProviderClientTransport::Http);
+    input.model_parameters.insert(
+        "responses_transport_policy".into(),
+        serde_json::json!("inherit"),
+    );
+    assert_eq!(
+        selected_responses_transport(&input).unwrap(),
+        RecoveryTransport::ProviderHttp
+    );
+    input.model_parameters.insert(
+        "responses_transport_policy".into(),
+        serde_json::json!("invalid"),
+    );
+    assert!(selected_responses_transport(&input).is_err());
+}
+
 #[tokio::test]
 async fn selected_http_success_without_websocket_receipt_is_accepted() {
     let coordinator = TransportSessionCoordinator::new_with_clock(
@@ -860,11 +893,20 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
     input
         .model_parameters
         .insert("use_responses_websocket".into(), serde_json::json!(false));
+    input.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a","input":[]}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
     let prepared = coordinator
         .prepare("runtime-a", &mut input, &context(2_010_000))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(input.client_transport, Some(ProviderClientTransport::Http));
     assert_eq!(prepared.transport, RecoveryTransport::ProviderHttp);
     coordinator
         .finish(
@@ -1099,11 +1141,23 @@ async fn scoped_termination_matches_actual_model_fence_and_invocation_only() {
     let a = coordinator.open_connection_scope();
     let b = coordinator.open_connection_scope();
     let mut input_a = scope_input(&a, "model-a");
+    input_a.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a","input":[]}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
     let first = coordinator
         .prepare("runtime-a", &mut input_a, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(
+        input_a.client_transport,
+        Some(ProviderClientTransport::Websocket)
+    );
     assert!(!input_a
         .client_protocol_envelope
         .as_ref()
@@ -1112,15 +1166,16 @@ async fn scoped_termination_matches_actual_model_fence_and_invocation_only() {
         .contains_key(
             control_plane::orchestration_runtime::HOST_TRANSPORT_CONNECTION_SCOPE_HEADER
         ));
+    let mut input_b = scope_input(&b, "model-b");
     let second = coordinator
-        .prepare(
-            "runtime-a",
-            &mut scope_input(&b, "model-b"),
-            &context(2_100_000),
-        )
+        .prepare("runtime-a", &mut input_b, &context(2_100_000))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(
+        input_b.client_transport,
+        Some(ProviderClientTransport::Websocket)
+    );
     let mut notices = coordinator.subscribe();
     coordinator
         .registry

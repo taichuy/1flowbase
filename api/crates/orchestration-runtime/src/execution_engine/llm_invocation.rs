@@ -244,6 +244,7 @@ where
         model_parameters: model_parameters.values,
         client_protocol_envelope: protocol_context,
         native_transport: None,
+        client_transport: None,
         trace_context,
         run_context,
     };
