@@ -348,16 +348,33 @@ async fn application_runtime_routes_runtime_debug_artifact_full_load_returns_ori
     let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
     assert!(snapshot_payload["data"]["variable_cache"]["node-start"].is_null());
 
-    let detail = wait_for_run_detail_matching(
+    let _terminal_detail = wait_for_run_detail(
         &app,
         &cookie,
         &application_id,
         run_id,
         &["succeeded", "failed", "cancelled"],
-        |detail| detail["flow_run"]["input_payload"]["__runtime_debug_artifact"] == true,
-        "flow input debug artifact preview",
     )
     .await;
+    let snapshot_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/runs/{run_id}/debug-snapshot"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(snapshot_response.status(), StatusCode::OK);
+    let snapshot_body = to_bytes(snapshot_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
+    let detail = &snapshot_payload["data"];
     let preview = &detail["flow_run"]["input_payload"];
 
     assert_eq!(preview["__runtime_debug_artifact"], true);
