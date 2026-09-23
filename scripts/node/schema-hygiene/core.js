@@ -7,6 +7,8 @@ const {
   hasScopeColumn,
   hasScopeTimeIndex,
   platformReadinessForTable,
+  profileFindingsForTable,
+  profileForTable,
 } = require('./readiness.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance');
@@ -636,6 +638,25 @@ function parseAlterTableRenameColumn(table, action) {
   return true;
 }
 
+function findUnquotedUsingClause(typeDefinition) {
+  let quotedIdentifier = false;
+  for (let index = 0; index < typeDefinition.length; index += 1) {
+    const char = typeDefinition[index];
+    if (char === '"') {
+      if (quotedIdentifier && typeDefinition[index + 1] === '"') {
+        index += 1;
+      } else {
+        quotedIdentifier = !quotedIdentifier;
+      }
+      continue;
+    }
+    if (!quotedIdentifier && /\s/u.test(char) && /^\s+using\b/iu.test(typeDefinition.slice(index))) {
+      return index;
+    }
+  }
+  return undefined;
+}
+
 function parseAlterTableAlterColumn(table, action) {
   const match = /^alter\s+column\s+("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\s+([\s\S]+)$/iu.exec(action.trim());
   if (!match) {
@@ -666,6 +687,29 @@ function parseAlterTableAlterColumn(table, action) {
     return true;
   }
   if (/^drop\s+expression$/iu.test(operation)) {
+    return true;
+  }
+  const typeMatch = /^(?:set\s+data\s+)?type\s+([\s\S]+)$/iu.exec(operation);
+  if (typeMatch) {
+    let typeDefinition = typeMatch[1].trim();
+    const usingIndex = findUnquotedUsingClause(typeDefinition);
+    if (usingIndex !== undefined) {
+      const usingClause = typeDefinition.slice(usingIndex).trim();
+      if (!/^using\s+\S[\s\S]*$/iu.test(usingClause)) {
+        return false;
+      }
+      typeDefinition = typeDefinition.slice(0, usingIndex).trim();
+    }
+
+    const parsedColumn = parseColumnDefinition(`${columnName} ${typeDefinition}`);
+    if (!parsedColumn || parsedColumn.type.length === 0) {
+      return false;
+    }
+
+    column.type = parsedColumn.type;
+    table.jsonbColumns = table.columns
+      .filter((candidate) => /\bjsonb\b/iu.test(candidate.type))
+      .map((candidate) => candidate.name);
     return true;
   }
 
@@ -958,6 +1002,12 @@ function actionForRule(rule) {
   if (rule.startsWith('managed-table-')) {
     return 'Add the missing physical schema property or add a concrete, reasoned exemption for a bounded special table.';
   }
+  if (rule.startsWith('flow-run-owned-table-')) {
+    return 'Verify the non-null flow_runs owner reference, durable primary key, and flow_run_id-first access path.';
+  }
+  if (rule.startsWith('retired-archive-table-')) {
+    return 'Verify the retired archive retains its source table name and original JSON record.';
+  }
   if (rule.startsWith('postgres-migration-')) {
     return 'Give every PostgreSQL migration SQL file a unique leading version number before running sqlx migrations.';
   }
@@ -1076,19 +1126,6 @@ function applyPlatformReadinessExemption({ platformReadiness, exemption, tableFi
     severity: 'ok',
     reason: exemption.reason.trim(),
   };
-}
-
-function profileForTable(table, config) {
-  if (config.tableProfiles[table.name]) {
-    return config.tableProfiles[table.name];
-  }
-  if (config.registeredSystemTables.has(table.name)) {
-    return 'registered_system_table';
-  }
-  if (config.dynamicModelTablePatterns.some((pattern) => pattern.test(table.name))) {
-    return 'dynamic_model_table';
-  }
-  return 'managed_table';
 }
 
 function evaluateManagedTable(table, config, exemption) {
@@ -1231,6 +1268,11 @@ function evaluateSchemaHygiene({ inventory, config = {} }) {
       }));
     } else if (profile === 'dynamic_model_table') {
       tableFindings.push(...evaluateDynamicModelTable(table, exemption));
+    } else if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table') {
+      tableFindings.push(...profileFindingsForTable(table, profile).map((item) => finding({
+        ...item,
+        table,
+      })));
     } else {
       if (profile === 'registered_system_table') {
         tableFindings.push(...evaluateRegisteredSystemTableTemplate(table, normalizedConfig, exemption));

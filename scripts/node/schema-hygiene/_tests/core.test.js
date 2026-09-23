@@ -467,6 +467,58 @@ test('evaluateSchemaHygiene lets concrete profile exemptions surface readiness c
   assert.ok(unprofiled.findings.some((finding) => finding.rule === 'managed-table-scope-column'));
 });
 
+test('flow-run-owned table profile validates owner reference, row identity, and access index', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table flow_runs (
+      id uuid primary key,
+      scope_id uuid not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index flow_runs_scope_created_id
+      on flow_runs (scope_id, created_at, id);
+    create table trajectory_projection (
+      flow_run_id uuid not null references flow_runs(id),
+      event_id uuid primary key
+    );
+    create index trajectory_projection_flow_run_id
+      on trajectory_projection (flow_run_id);
+  `);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({
+    inventory,
+    config: { tableProfiles: { trajectory_projection: 'flow_run_owned_table' } },
+  });
+  const table = report.tables.find((candidate) => candidate.name === 'trajectory_projection');
+
+  assert.equal(table.profile, 'flow_run_owned_table');
+  assert.deepEqual(table.findings, []);
+  assert.equal(table.platformReadiness.requiredScopeId, false);
+  assert.equal(table.platformReadiness.severity, 'ok');
+});
+
+test('flow-run-owned table profile rejects missing owner constraints', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table flow_runs (id uuid primary key);
+    create table trajectory_projection (
+      flow_run_id uuid references flow_runs(id),
+      event_id uuid primary key
+    );
+  `);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({
+    inventory,
+    config: { tableProfiles: { trajectory_projection: 'flow_run_owned_table' } },
+  });
+  const table = report.tables.find((candidate) => candidate.name === 'trajectory_projection');
+
+  assert.deepEqual(
+    table.findings.map((finding) => finding.rule),
+    ['flow-run-owned-table-owner-column', 'flow-run-owned-table-owner-index']
+  );
+  assert.equal(table.platformReadiness.severity, 'error');
+});
+
 test('evaluateSchemaHygiene uses default generation declarations for complete tables', () => {
   const repoRoot = createRepoWithMigration(`
     create table scoped_events (
@@ -517,7 +569,7 @@ test('collectSchemaInventory reports unsupported table elements and alter action
     create table editable_table (
       id uuid primary key
     );
-    alter table editable_table alter column id type text;
+    alter table editable_table alter column id set statistics 1;
   `);
 
   const inventory = collectSchemaInventory({ repoRoot });
@@ -526,6 +578,43 @@ test('collectSchemaInventory reports unsupported table elements and alter action
     inventory.parseErrors.map((parseError) => parseError.rule),
     ['unsupported-table-element', 'unsupported-alter-table-action']
   );
+});
+
+test('collectSchemaInventory keeps USING words inside quoted type names', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table custom_type_rows (keyword_type text, spaced_type text, escaped_type text);
+    alter table custom_type_rows alter column keyword_type type "using";
+    alter table custom_type_rows alter column spaced_type type "custom using type";
+    alter table custom_type_rows alter column escaped_type type "custom ""using"" type";
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const table = inventory.tables.find((candidate) => candidate.name === 'custom_type_rows');
+
+  assert.deepEqual(inventory.parseErrors, []);
+  assert.equal(table.columns.find((column) => column.name === 'keyword_type').type, '"using"');
+  assert.equal(table.columns.find((column) => column.name === 'spaced_type').type, '"custom using type"');
+  assert.equal(table.columns.find((column) => column.name === 'escaped_type').type, '"custom ""using"" type"');
+});
+
+test('collectSchemaInventory applies altered column types with USING expressions', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table cost_snapshot (total_cost text);
+    alter table cost_snapshot rename column total_cost to cost_breakdown;
+    alter table cost_snapshot alter column cost_breakdown type jsonb using
+      case when cost_breakdown is not null
+        then jsonb_build_array(jsonb_build_object('total_cost', cost_breakdown)) end;
+    alter table cost_snapshot rename column cost_breakdown to total_cost;
+    alter table cost_snapshot alter column total_cost type numeric using
+      pg_temp.application_log_credit_total(total_cost);
+  `);
+
+  const inventory = collectSchemaInventory({ repoRoot });
+  const table = inventory.tables.find((candidate) => candidate.name === 'cost_snapshot');
+
+  assert.deepEqual(inventory.parseErrors, []);
+  assert.equal(table.columns.find((column) => column.name === 'total_cost').type, 'numeric');
+  assert.deepEqual(table.jsonbColumns, []);
 });
 
 test('collectSchemaInventory applies supported alter column nullability, default, and expression actions', () => {
@@ -555,7 +644,7 @@ test('collectSchemaInventory follows table renames without weakening unknown alt
       id uuid primary key
     );
     alter table catalog_rows rename to catalog_rows_archived;
-    alter table catalog_rows_archived alter column id type text;
+    alter table catalog_rows_archived alter column id set statistics 1;
   `);
 
   const inventory = collectSchemaInventory({ repoRoot });
@@ -1056,6 +1145,48 @@ test('default schema hygiene config declares remaining scoped readiness issue ta
   }
 });
 
+test('default schema hygiene validates flow-run-owned runtime tables by their real owner key', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory, config: loadConfig(repoRoot) });
+
+  for (const name of [
+    'application_run_trace_refresh_queue',
+    'native_trajectory_integrity',
+    'provider_protocol_trajectory_events',
+    'provider_semantic_trajectory_steps',
+  ]) {
+    const table = report.tables.find((candidate) => candidate.name === name);
+    assert.ok(table, `${name} must resolve from the migration inventory`);
+    assert.equal(table.profile, 'flow_run_owned_table');
+    assert.deepEqual(table.findings, []);
+    assert.equal(table.platformReadiness.hasFlowRunOwnerIndex, true);
+  }
+
+  assert.equal(report.tables.find((table) => table.name === 'client_trajectory_captures').profile, 'managed_table');
+  assert.equal(report.tables.find((table) => table.name === 'provider_protocol_capsules').profile, 'managed_table');
+  assert.equal(report.summary.errors, 0);
+});
+
+test('default schema hygiene preserves retired provider settings as a typed archive', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({ inventory, config: loadConfig(repoRoot) });
+  const archive = report.tables.find((table) => table.name === 'retired_host_infrastructure_settings');
+
+  assert.ok(archive, 'retired archive must resolve from the migration inventory');
+  assert.equal(inventory.tables.some((table) => table.name === 'host_infrastructure_provider_configs'), false);
+  assert.equal(archive.profile, 'retired_archive_table');
+  assert.deepEqual(archive.findings, []);
+  assert.deepEqual(archive.columns.map((column) => [column.name, column.type]), [
+    ['source_table', 'text'],
+    ['record', 'jsonb'],
+  ]);
+  assert.equal(archive.platformReadiness.requiredScopeId, false);
+  assert.equal(archive.platformReadiness.severity, 'ok');
+  assert.equal(report.summary.errors, 0);
+});
+
 test('default schema hygiene config declares issue 1075 system global scoped readiness tables', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const inventory = collectSchemaInventory({ repoRoot });
@@ -1068,7 +1199,6 @@ test('default schema hygiene config declares issue 1075 system global scoped rea
     'file_storages',
     'frontend_block_catalog',
     'host_extension_migrations',
-    'host_infrastructure_provider_configs',
     'js_dependency_registry',
     'node_contribution_registry',
     'permission_definitions',

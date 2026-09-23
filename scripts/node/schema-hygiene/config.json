@@ -1,6 +1,12 @@
 {
   "version": 1,
-  "tableProfiles": {},
+  "tableProfiles": {
+    "application_run_trace_refresh_queue": "flow_run_owned_table",
+    "native_trajectory_integrity": "flow_run_owned_table",
+    "provider_protocol_trajectory_events": "flow_run_owned_table",
+    "provider_semantic_trajectory_steps": "flow_run_owned_table",
+    "retired_host_infrastructure_settings": "retired_archive_table"
+  },
   "dynamicModelTablePatterns": [],
   "registeredSystemTables": [
     "users",
@@ -303,12 +309,6 @@
       "created_byGeneration": "host extension migration ledger rows are system bootstrap observations; actor fields remain nullable",
       "updated_byGeneration": "host extension migration ledger rows are system bootstrap observations; actor fields remain nullable",
       "writePathSource": "host extension migration repository writes SYSTEM_SCOPE_ID; database default and check constraint guard bootstrap paths"
-    },
-    "host_infrastructure_provider_configs": {
-      "category": "system_global",
-      "scopeGenerationSource": "SYSTEM_SCOPE_ID fixed host infrastructure provider config routing",
-      "backfillSource": "SYSTEM_SCOPE_ID",
-      "writePathSource": "host infrastructure config repository writes SYSTEM_SCOPE_ID; database default and check constraint guard bootstrap paths"
     },
     "js_dependency_registry": {
       "category": "system_global",

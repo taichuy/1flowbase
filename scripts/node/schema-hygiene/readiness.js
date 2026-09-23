@@ -31,6 +31,82 @@ function hasScopeTimeIndex(table) {
   });
 }
 
+function profileForTable(table, config) {
+  if (config.tableProfiles[table.name]) {
+    return config.tableProfiles[table.name];
+  }
+  if (config.registeredSystemTables.has(table.name)) {
+    return 'registered_system_table';
+  }
+  if (config.dynamicModelTablePatterns.some((pattern) => pattern.test(table.name))) {
+    return 'dynamic_model_table';
+  }
+  return 'managed_table';
+}
+
+function hasFlowRunOwnerReference(table) {
+  const owner = findColumn(table, 'flow_run_id');
+  return Boolean(owner && !owner.nullable && table.foreignKeys.some((foreignKey) => (
+    foreignKey.columns.length === 1
+      && foreignKey.columns[0] === 'flow_run_id'
+      && foreignKey.references.table === 'flow_runs'
+      && foreignKey.references.columns.length === 1
+      && foreignKey.references.columns[0] === 'id'
+  )));
+}
+
+function hasFlowRunOwnerIndex(table) {
+  return table.primaryKey?.columns[0] === 'flow_run_id'
+    || table.indexes.some((index) => index.columns[0] === 'flow_run_id');
+}
+
+function profileFindingsForTable(table, profile) {
+  if (profile === 'flow_run_owned_table') {
+    const findings = [];
+    if (!hasFlowRunOwnerReference(table)) {
+      findings.push({
+        rule: 'flow-run-owned-table-owner-column',
+        column: 'flow_run_id',
+        message: 'flow_run_owned_table requires a non-null flow_run_id foreign key to flow_runs(id)',
+      });
+    }
+    if (!table.primaryKey?.columns.length) {
+      findings.push({
+        rule: 'flow-run-owned-table-primary-key',
+        column: null,
+        message: 'flow_run_owned_table requires a primary key for durable row identity',
+      });
+    }
+    if (!hasFlowRunOwnerIndex(table)) {
+      findings.push({
+        rule: 'flow-run-owned-table-owner-index',
+        column: 'flow_run_id',
+        message: 'flow_run_owned_table requires a primary key or index led by flow_run_id',
+      });
+    }
+    return findings;
+  }
+
+  if (profile === 'retired_archive_table') {
+    return [
+      ['source_table', 'text'],
+      ['record', 'jsonb'],
+    ].flatMap(([columnName, type]) => {
+      const column = findColumn(table, columnName);
+      if (column && !column.nullable && column.type === type) {
+        return [];
+      }
+      return [{
+        rule: 'retired-archive-table-record-shape',
+        column: columnName,
+        message: `retired_archive_table requires a non-null ${columnName} ${type} column`,
+      }];
+    });
+  }
+
+  return [];
+}
+
 function columnReadiness(table, columnName) {
   const column = findColumn(table, columnName);
   return {
@@ -250,6 +326,36 @@ function platformReadinessForTable({ table, profile, config, tableFindings }) {
       reason: needsOwnerReviewReason,
     };
   }
+  if (profile === 'flow_run_owned_table' || profile === 'retired_archive_table') {
+    const invalid = tableFindings.some((item) => item.severity === 'error');
+    const flowRunOwned = profile === 'flow_run_owned_table';
+    return {
+      category: profile,
+      timeKey: null,
+      tieBreaker: null,
+      fields,
+      missingFields: tableFindings
+        .filter((item) => item.severity === 'error')
+        .map((item) => item.column || item.rule),
+      requiredScopeId: false,
+      routingKeyStatus: flowRunOwned ? 'flow_run_id' : 'not_applicable',
+      scopeGenerationSource: flowRunOwned
+        ? { status: invalid ? 'needs_owner_review' : 'derived', source: invalid ? null : 'flow_run_id -> flow_runs.id' }
+        : { status: 'not_required', source: 'retired archive data is not runtime-owned' },
+      backfillSource: null,
+      writePathSource: declaredSource(declaration.writePathSource),
+      hasScopeTimeIdIndex: false,
+      hasFlowRunOwnerIndex: flowRunOwned ? hasFlowRunOwnerIndex(table) : null,
+      recommendedActions: [invalid ? 'review_profile_contract' : 'no_action'],
+      severity: invalid ? 'error' : 'ok',
+      reason: invalid
+        ? 'specialized table ownership contract requires repair'
+        : flowRunOwned
+          ? 'run ownership, primary key, and run lookup index checks passed'
+          : 'retired archive record shape checks passed',
+    };
+  }
+
   const recommendedActions = recommendedActionsForTable({
     table,
     appendOnly,
@@ -288,5 +394,8 @@ module.exports = {
   hasColumn,
   hasScopeColumn,
   hasScopeTimeIndex,
+  hasFlowRunOwnerIndex,
   platformReadinessForTable,
+  profileFindingsForTable,
+  profileForTable,
 };
