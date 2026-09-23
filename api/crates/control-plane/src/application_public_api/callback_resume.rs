@@ -249,6 +249,13 @@ where
                 )? {
                     return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
                 }
+                if inference_recovery::is_terminal_transport_reissue(
+                    &context.flow_run,
+                    &recovery_callback,
+                    command,
+                )? {
+                    return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+                }
                 if context.flow_run.status != domain::FlowRunStatus::Failed {
                     let initial_run = self.native_result_for_flow_run(&context.flow_run).await?;
                     return Ok(PreparedPublishedCallbackResume::Resume {

@@ -258,6 +258,51 @@ pub(super) fn is_full_context_continuation(
     Ok(true)
 }
 
+/// A terminal Responses response cannot be resumed. A later create request may
+/// sample again from the same proven input without replaying the consumed tool
+/// callback or reopening the failed provider attempt. This is a protocol-level
+/// new response, not an AI Native recovery disposition.
+pub(super) fn is_terminal_transport_reissue(
+    flow: &domain::FlowRunRecord,
+    callback: &domain::CallbackTaskRecord,
+    command: &ResumePublishedCallbackCommand,
+) -> Result<bool> {
+    if flow.status != domain::FlowRunStatus::Failed
+        || callback.status != domain::CallbackTaskStatus::Completed
+        || callback.callback_kind != "llm_tool_calls"
+    {
+        return Ok(false);
+    }
+    let Some(error) = flow.error_payload.as_ref() else {
+        return Ok(false);
+    };
+    let audit = &error["ai_native_recovery"];
+    if error["error_code"] != "provider_transport_unavailable"
+        || audit["decision"] != "semantic_terminal"
+        || audit["provider_final_commit"] != "terminal"
+    {
+        return Ok(false);
+    }
+    let reject = || {
+        anyhow::Error::from(ControlPlaneError::Conflict(
+            "native_recovery_invalid_receipt",
+        ))
+    };
+    let directive: ProviderRecoveryDirective =
+        serde_json::from_value(audit["provider_directive"].clone()).map_err(|_| reject())?;
+    let receipt: ProviderRecoveryReceipt =
+        serde_json::from_value(audit["provider_inner_receipt"].clone()).map_err(|_| reject())?;
+    receipt.validate_against(&directive).map_err(|_| reject())?;
+    if receipt.commit_level != CommitLevel::Terminal
+        || receipt.disposition != RecoveryDisposition::TerminalInterruption
+        || receipt.reason != RecoveryReason::SemanticFailed
+    {
+        return Ok(false);
+    }
+    validate_context(flow, callback, command)?;
+    Ok(true)
+}
+
 /// Duplicates retain their original budget, but must still match the admitted context.
 pub(super) fn validate_context(
     flow: &domain::FlowRunRecord,

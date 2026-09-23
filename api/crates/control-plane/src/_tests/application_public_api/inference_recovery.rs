@@ -108,6 +108,18 @@ fn transport_failure() -> Value {
     }})
 }
 
+fn terminal_transport_failure() -> Value {
+    let mut failure = transport_failure();
+    failure["failed_after_first_token"] = json!(true);
+    failure["ai_native_recovery"]["decision"] = json!("semantic_terminal");
+    failure["ai_native_recovery"]["provider_final_commit"] = json!("terminal");
+    failure["ai_native_recovery"]["provider_inner_receipt"]["commit_level"] = json!("terminal");
+    failure["ai_native_recovery"]["provider_inner_receipt"]["disposition"] =
+        json!("terminal_interruption");
+    failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] = json!("semantic_failed");
+    failure
+}
+
 async fn fixture(failure: Option<Value>) -> Fixture {
     fixture_with_configuration(failure, None).await
 }
@@ -349,6 +361,47 @@ async fn exhausted_provider_inner_budget_keeps_uncommitted_native_recovery_avail
     };
     assert_eq!(grant.remaining_attempts, 2);
     f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn terminal_transport_failure_allows_new_responses_sampling_without_reconsuming_tools() {
+    let f = fixture(Some(terminal_transport_failure())).await;
+    assert!(matches!(
+        f.prepare(&f.command).await.unwrap(),
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory
+    ));
+    f.assert_receipt_unchanged();
+
+    let mut changed = f.command.clone();
+    let mut body = changed.native_transport.take().unwrap().into_wire_body();
+    body["input"][1]["encrypted_content"] = json!("changed");
+    changed.native_transport = Some(ProviderTransportPayload::openai_responses(body).unwrap());
+    assert_eq!(
+        f.prepare(&changed).await.unwrap_err().to_string(),
+        "conflict: native_recovery_history_mismatch"
+    );
+    f.assert_receipt_unchanged();
+}
+
+#[tokio::test]
+async fn terminal_transport_reissue_rejects_untrusted_or_non_transport_failure() {
+    for mutation in 0..5 {
+        let mut failure = terminal_transport_failure();
+        match mutation {
+            0 => failure["error_code"] = json!("provider_invalid_response"),
+            1 => failure["ai_native_recovery"]["decision"] = json!("non_reproducible"),
+            2 => failure["ai_native_recovery"]["provider_final_commit"] = json!("lifecycle_only"),
+            3 => failure["ai_native_recovery"]["provider_inner_receipt"] = Value::Null,
+            4 => {
+                failure["ai_native_recovery"]["provider_inner_receipt"]["reason"] =
+                    json!("protocol_error")
+            }
+            _ => unreachable!(),
+        }
+        let f = fixture(Some(failure)).await;
+        assert!(f.prepare(&f.command).await.is_err(), "mutation {mutation}");
+        f.assert_receipt_unchanged();
+    }
 }
 
 #[tokio::test]
