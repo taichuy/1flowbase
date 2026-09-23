@@ -3,8 +3,8 @@ use control_plane::capability_plugin_runtime::*;
 use control_plane::ports::{ProviderRuntimeInvocationOutput, ProviderRuntimePort};
 use control_plane_contracts::ports::{
     BillingRepository, CreateModelProviderInstanceInput, CreatePluginAssignmentInput,
-    CreditCommandInput, ModelProviderRepository, PluginRepository, UpsertPluginArtifactInstanceInput,
-    UpsertPluginInstallationInput,
+    CreditCommandInput, ModelProviderRepository, PluginRepository,
+    UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
 };
 use plugin_framework::provider_contract::{
     ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult,
