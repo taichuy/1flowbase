@@ -426,11 +426,13 @@ impl PgControlPlaneStore {
             return Ok(None);
         };
         let rows = sqlx::query(
-            r#"with scope_runs as materialized (
-                select id,log_context,raw_json_payloads from flow_runs where id=$1
+            r#"with scope_ids as materialized (
+                select id from flow_runs where id=$1
                 union
-                select f.id,f.log_context,f.raw_json_payloads from application_run_log_conversation_runs($2,$3::uuid) member
-                join flow_runs f on f.id=member.run_id
+                select run_id as id from application_run_log_conversation_runs($2,$3::uuid)
+            ), scope_runs as materialized (
+                select f.id,f.log_context
+                from scope_ids member join flow_runs f on f.id=member.id
             ), facts as (
                 select f.id as run_id,e.sequence,
                     'output:'||case when e.payload->'item'->>'call_id' is not null then 'tool'
@@ -443,7 +445,7 @@ impl PgControlPlaneStore {
                 union all
                 select f.id,-1000000+r.ordinality,
                     'result:'||coalesce(r.item->>'call_id',f.id::text||':'||r.ordinality),
-                    runtime_original_json(f.log_context, f.raw_json_payloads, 'log_context'), r.ordinality
+                    null::json as original, r.ordinality as result_ordinal
                 from scope_runs f cross join lateral jsonb_array_elements(
                     coalesce(f.log_context->'tool_results','[]'::jsonb)) with ordinality r(item,ordinality)
             )
@@ -455,28 +457,63 @@ impl PgControlPlaneStore {
         // JSONB is a searchable projection. Compare restored values here so a
         // real NUL and a literal escape remain different facts.
         let mut groups = std::collections::BTreeMap::<String, Vec<(Uuid, i64, Value)>>::new();
+        let mut result_rows = Vec::new();
         for row in rows {
-            let original: Value = row.try_get("original")?;
+            let run_id = row.try_get("run_id")?;
+            let sequence = row.try_get("sequence")?;
+            let source_key: String = row.try_get("source_key")?;
             let ordinal: Option<i64> = row.try_get("result_ordinal")?;
-            let item = match ordinal {
-                Some(ordinal) => ordinal
+            if let Some(ordinal) = ordinal {
+                result_rows.push((run_id, sequence, source_key, ordinal));
+            } else {
+                let original: Value = row.try_get("original")?;
+                let item = original.get("item").cloned().ok_or_else(|| {
+                    anyhow!("native log fact projection does not match its original")
+                })?;
+                groups
+                    .entry(source_key)
+                    .or_default()
+                    .push((run_id, sequence, item));
+            }
+        }
+        if !result_rows.is_empty() {
+            let run_ids = result_rows
+                .iter()
+                .map(|(run_id, _, _, _)| *run_id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            // PostgreSQL JSON cannot extract a member containing U+0000. Transfer
+            // each original context once, then select its results in serde_json.
+            let contexts = sqlx::query(
+                "select id,runtime_original_json(log_context,raw_json_payloads,'log_context') as original from flow_runs where id=any($1)",
+            )
+            .bind(&run_ids)
+            .fetch_all(&mut **tx)
+            .await?
+            .into_iter()
+            .map(|row| Ok((row.try_get("id")?, row.try_get("original")?)))
+            .collect::<Result<std::collections::BTreeMap<Uuid, Value>>>()?;
+            for (run_id, sequence, source_key, ordinal) in result_rows {
+                let item = ordinal
                     .checked_sub(1)
                     .and_then(|index| usize::try_from(index).ok())
                     .and_then(|index| {
-                        original
-                            .get("tool_results")
-                            .and_then(Value::as_array)
-                            .and_then(|results| results.get(index))
-                    }),
-                None => original.get("item"),
+                        contexts
+                            .get(&run_id)?
+                            .get("tool_results")?
+                            .as_array()?
+                            .get(index)
+                    })
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow!("native log fact projection does not match its original")
+                    })?;
+                groups
+                    .entry(source_key)
+                    .or_default()
+                    .push((run_id, sequence, item));
             }
-            .cloned()
-            .ok_or_else(|| anyhow!("native log fact projection does not match its original"))?;
-            groups.entry(row.try_get("source_key")?).or_default().push((
-                row.try_get("run_id")?,
-                row.try_get("sequence")?,
-                item,
-            ));
         }
         let mut facts = Vec::new();
         for (key, candidates) in groups {

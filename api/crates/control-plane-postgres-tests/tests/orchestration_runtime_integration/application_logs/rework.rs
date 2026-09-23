@@ -62,7 +62,7 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
         }
         input.application_run_log_context.as_mut().unwrap().prompt =
             Some(json!({"role":"user","content":"same question"}));
-        input.application_run_log_context.as_mut().unwrap().tool_results=(0..i.min(3)).map(|n|json!({"type":"custom_tool_call_output","call_id":format!("call-{n}"),"output":format!("result-{n}")})).collect();
+        input.application_run_log_context.as_mut().unwrap().tool_results=(0..i.min(3)).map(|n|json!({"type":"custom_tool_call_output","call_id":format!("call-{n}"),"output":if n == 1 { format!("result-{n}\0literal\\u0000") } else { format!("result-{n}") }})).collect();
         let created =
             ApplicationPublishedFlowRunRepository::create_published_flow_run(&store, &input)
                 .await
@@ -265,6 +265,17 @@ async fn issue_2032_rework_original_logs_collect_calls_without_merging_user_task
             .count(),
         3,
         "full history resends do not duplicate tool results"
+    );
+    let exact_result: serde_json::Value = sqlx::query_scalar(
+        "select runtime_original_json(native_message,raw_json_payloads,'native_message') from application_run_conversation_message_items where flow_run_id=$1 and source_item_key='result:call-1'",
+    )
+    .bind(ids[2])
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        exact_result["_source_item"]["output"],
+        json!("result-1\0literal\\u0000")
     );
     assert!(projected.iter().any(|item| item["phase"] == "final_answer"));
     assert_eq!(
