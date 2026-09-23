@@ -143,6 +143,8 @@ API_COOKIE_SECURE=false
 
 Bookworm API 镜像与 Linux 的 `node scripts/node/dev-up.js` 默认在启动前设置 `MALLOC_ARENA_MAX=8`，限制 glibc 分配区数量，减少长会话临时分配后保留的空闲堆页。它不是 RSS 上限，也不改变业务缓存或请求超时；非 glibc 分配器不受此参数控制。更低的值可能进一步降低内存，但增加线程间锁竞争，应按实际并发负载验证。
 
+API 进程在 Linux/glibc 下每 60 秒检查一次 RSS；超过 1 GiB 时调用 `malloc_trim(0)` 归还已空闲的 arena 页。它只归还分配器中的空闲页，不释放仍被请求、缓存或 worker 持有的数据。长会话验证中可对照 `idle allocator pages reclaimed` 的回收前后 RSS；若回收后仍持续增长，需继续排查存活对象。
+
 开发启动允许 API `.env`、shell 环境、service override 依次覆盖默认值。容器可用 `docker run -e MALLOC_ARENA_MAX=...`，或在 Compose 的 `api.environment` 中显式覆盖；仅向 Compose 插值用的 `.env` 添加字段不会自动传入容器。设为 `0` 可恢复 glibc 自身的 arena 上限策略。直接运行二进制或 `cargo run` 时，需自行在进程启动前设置环境；应用启动后再加载 dotenv 不能可靠配置已初始化的分配器。
 
 ### 部署 External npm Pack

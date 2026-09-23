@@ -16,9 +16,13 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = TcpListener::bind(addr).await?;
     let (app, runtime_host) = app_and_runtime_host_from_env().await?;
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    let allocator_reclaimer = api_server::host_infrastructure::spawn_allocator_reclaimer();
     let served = axum::serve(listener, app)
         .with_graceful_shutdown(api_server::shutdown_signal())
         .await;
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    allocator_reclaimer.abort();
     runtime_host.stop().await?;
     served?;
 

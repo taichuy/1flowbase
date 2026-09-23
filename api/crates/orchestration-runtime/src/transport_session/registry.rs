@@ -668,7 +668,21 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
         let expired: Vec<_> = self
             .sessions
             .iter()
-            .filter_map(|(id, record)| expired_kind(record, now).map(|kind| (id.clone(), kind)))
+            .filter_map(|(id, record)| {
+                let kind = expired_kind(record, now)?;
+                if kind == TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+                    && record
+                        .logical
+                        .invocation
+                        .as_ref()
+                        .is_some_and(|invocation| now < invocation.deadline)
+                {
+                    // The fixed session lifetime closes admission, while the
+                    // separate task deadline bounds the already admitted call.
+                    return None;
+                }
+                Some((id.clone(), kind))
+            })
             .collect();
         for (session_id, kind) in expired {
             let record = &self.sessions[&session_id];

@@ -11,6 +11,45 @@ fn two_hour_config() -> TransportRegistryConfig {
 }
 
 #[tokio::test]
+async fn two_hour_rollover_does_not_close_an_active_provider_call() {
+    let clock = FakeClock::new(2_000_000);
+    let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        runtime.clone(),
+        two_hour_config(),
+        clock.clone(),
+    )
+    .unwrap();
+    let mut input = invocation_input("long-active-call", ProviderWireOperation::Generate);
+    let running = coordinator
+        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .await
+        .unwrap()
+        .unwrap();
+    let old_generation = running.lease.fence.generation.get();
+
+    clock.advance(Duration::from_secs(2 * 60 * 60));
+    coordinator.maintain_and_dispatch().await;
+    assert!(
+        runtime.commands().is_empty(),
+        "Close cannot overtake the active call"
+    );
+    assert!(coordinator.safe_snapshot().await.tombstones.is_empty());
+
+    coordinator
+        .finish(running, &successful_output(old_generation))
+        .await
+        .unwrap();
+    assert_eq!(runtime.commands().len(), 1);
+    let next = coordinator
+        .prepare("runtime-a", &mut input, &context(10_000_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(next.lease.fence.generation.get() > old_generation);
+}
+
+#[tokio::test]
 async fn completed_session_gets_a_new_bounded_generation_after_two_hours() {
     let clock = FakeClock::new(2_000_000);
     let runtime = Arc::new(FakeTransportRuntime::new([
@@ -98,14 +137,11 @@ async fn expired_inflight_session_cannot_admit_a_parallel_successor() {
         .await
         .err()
         .unwrap();
-    assert!(reason(error).contains("transport_logical_deadline_exceeded"));
+    assert!(reason(error).contains("transport_session_busy"));
     let snapshot = coordinator.safe_snapshot().await;
-    assert!(snapshot.sessions.is_empty());
-    assert_eq!(snapshot.tombstones[0].fence, first.lease.fence);
-    assert_eq!(
-        snapshot.tombstones[0].unsettled_invocation,
-        Some(first.lease.clone())
-    );
+    assert_eq!(snapshot.sessions.len(), 1);
+    assert!(snapshot.sessions[0].inflight);
+    assert!(snapshot.tombstones.is_empty());
 
     // The ordinary five-minute diagnostic TTL must not erase an invocation
     // that can still finish under its separate task deadline.
@@ -116,12 +152,12 @@ async fn expired_inflight_session_cannot_admit_a_parallel_successor() {
         .await
         .err()
         .unwrap();
-    assert!(reason(error).contains("transport_logical_deadline_exceeded"));
+    assert!(reason(error).contains("transport_session_busy"));
     let old_generation = first.lease.fence.generation.get();
-    assert!(coordinator
+    coordinator
         .finish(first, &successful_output(old_generation))
         .await
-        .is_err());
+        .unwrap();
     let next = coordinator
         .prepare("runtime-a", &mut input, &context(10_000_000))
         .await
@@ -151,7 +187,7 @@ async fn expired_inflight_session_can_roll_over_at_its_task_deadline() {
             .err()
             .unwrap()
     )
-    .contains("transport_logical_deadline_exceeded"));
+    .contains("transport_session_busy"));
 
     // The old invocation's own deadline arrives before the tombstone TTL.
     clock.advance(Duration::from_secs(100));

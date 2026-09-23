@@ -742,6 +742,9 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         registry
             .finish_invocation(&prepared.lease, completion)
             .map_err(map_registry_use_error)?;
+        // A logical lifetime may have elapsed while this call was in flight.
+        // Close its generation only after the invocation has settled.
+        registry.maintain();
         drop(registry);
         // Successful orphaned completion clears inflight without a StateChanged
         // event. Notify independently of lifecycle commands so it cannot strand
@@ -781,11 +784,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
         lease: &InvocationLease,
         primary: Option<PrimaryTransportFailure>,
     ) {
-        let result = self
-            .registry
-            .lock()
-            .await
-            .finish_invocation(lease, InvocationCompletion::Faulted);
+        let result = {
+            let mut registry = self.registry.lock().await;
+            let result = registry.finish_invocation(lease, InvocationCompletion::Faulted);
+            registry.maintain();
+            result
+        };
         if let Err(error) = result {
             tracing::warn!(%error, generation = lease.fence.generation.get(),
                 "failed invocation did not change a stale or closed transport session");

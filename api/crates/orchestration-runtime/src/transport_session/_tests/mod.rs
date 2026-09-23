@@ -241,6 +241,46 @@ fn waiting_renewal_is_capped_by_the_logical_deadline() {
 }
 
 #[test]
+fn logical_expiry_waits_for_inflight_invocation_before_terminating() {
+    let clock = FakeClock::default();
+    let mut settings = config(1);
+    settings.logical_max_age = Duration::from_secs(1);
+    settings.physical_max_age = Duration::from_secs(20);
+    settings.physical_soft_drain_age = Duration::from_secs(15);
+    let mut registry = TransportSessionRegistry::new(clock.clone(), settings).unwrap();
+    let fence = registry.admit(request("logical-inflight")).unwrap();
+    registry.activate(&fence).unwrap();
+    let lease = registry
+        .begin_invocation(&fence, invocation_request(Some(10_000)))
+        .unwrap();
+    registry.drain_events();
+
+    clock.advance(Duration::from_secs(2));
+    registry.maintain();
+    assert_eq!(registry.safe_snapshot().sessions.len(), 1);
+    assert!(registry.tombstone(&fence.session_id).is_none());
+    assert!(
+        registry.drain_events().is_empty(),
+        "active request must keep its delivery"
+    );
+    assert_eq!(
+        registry.begin_invocation(&fence, invocation_request(Some(10_000))),
+        Err(RegistryError::InflightExists)
+    );
+
+    registry
+        .finish_invocation(&lease, InvocationCompletion::IdleAffinity)
+        .unwrap();
+    registry.maintain();
+    let receipt = registry.tombstone(&fence.session_id).unwrap();
+    assert_eq!(
+        receipt.kind,
+        TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+    );
+    assert!(receipt.unsettled_invocation.is_none());
+}
+
+#[test]
 fn expired_inflight_tombstone_outlives_its_ttl_until_the_exact_lease_settles() {
     let clock = FakeClock::default();
     let mut settings = config(1);
@@ -255,6 +295,10 @@ fn expired_inflight_tombstone_outlives_its_ttl_until_the_exact_lease_settles() {
     clock.advance(Duration::from_secs(3));
     registry.maintain();
     clock.advance(Duration::from_secs(2));
+    registry.maintain();
+    assert!(registry.tombstone(&fence.session_id).is_none());
+    // The task deadline is the upper bound if the admitted call never settles.
+    clock.advance(Duration::from_secs(5));
     registry.maintain();
     assert_eq!(
         registry
@@ -277,6 +321,7 @@ fn expired_inflight_tombstone_outlives_its_ttl_until_the_exact_lease_settles() {
     registry
         .record_closure_evidence(&fence, &released_evidence(&fence, 7))
         .unwrap();
+    clock.advance(Duration::from_secs(2));
     registry.maintain();
     assert!(registry.tombstone(&fence.session_id).is_none());
 }

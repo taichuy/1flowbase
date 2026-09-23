@@ -1,3 +1,5 @@
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod allocator_reclaim;
 mod cache_store_activation;
 mod contracts;
 mod local;
@@ -9,6 +11,8 @@ use std::{collections::BTreeMap, sync::Arc};
 use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use allocator_reclaim::spawn_allocator_reclaimer;
 #[cfg(test)]
 pub(crate) use cache_store_activation::CacheStoreActivationFactoryRegistry;
 pub use contracts::{
