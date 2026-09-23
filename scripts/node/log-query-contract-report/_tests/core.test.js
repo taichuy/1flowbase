@@ -45,6 +45,54 @@ function endpointConfig(contract) {
   };
 }
 
+function monitoringEndpointConfig(contract) {
+  const config = endpointConfig(contract);
+  config.endpoints[0].extraSources = [
+    {
+      file: 'api/src/logs.rs',
+      functionName: 'application_run_monitoring_logs_query',
+      includeStr: 'queries/monitoring.sql',
+    },
+  ];
+  return config;
+}
+
+function createMonitoringRepo(sql) {
+  const repoRoot = createRepoWithSource(`
+    async fn list_logs() {
+      visible_application(actor, application_id).await;
+      let started_from = default_started_from(&query);
+    }
+
+    async fn list_logs_page() {}
+
+    fn application_run_monitoring_logs_query() -> &'static str {
+      include_str!("queries/monitoring.sql")
+    }
+  `);
+  writeFile(repoRoot, 'api/src/queries/monitoring.sql', sql);
+  return repoRoot;
+}
+
+function monitoringContract() {
+  return {
+    scope: {
+      patterns: [
+        'visible_application\\(actor, application_id\\)',
+        'where\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)?application_id\\s*=\\s*\\$1',
+      ],
+    },
+    time: {
+      patterns: [
+        'default_started_from\\(&query\\)',
+        '(?:[A-Za-z_][A-Za-z0-9_]*\\.)?started_at\\s*>=\\s*\\$2',
+      ],
+    },
+    cursor: { patterns: ['with monitoring_logs as'] },
+    limit: { patterns: ['limit 10'] },
+  };
+}
+
 test('collectLogQueryContractReport fails missing query dimensions without exemption', () => {
   const repoRoot = createRepoWithSource(`
     async fn list_logs() {
@@ -223,6 +271,70 @@ test('writeLogQueryContractReports writes JSON and Markdown under tmp/test-gover
   const markdown = formatLogQueryContractMarkdown(result.report);
   assert.match(markdown, /# Log Query Contract Report/u);
   assert.match(markdown, /logs/u);
+});
+
+test('monitoring contract scans qualified predicates from its included SQL', () => {
+  const repoRoot = createMonitoringRepo(`
+    with monitoring_logs as (
+      select t.application_id, t.started_at
+      from application_run_logs t
+      where t.application_id = $1
+        and t.started_at >= $2
+    )
+    select * from monitoring_logs
+    limit 10
+  `);
+
+  const report = collectLogQueryContractReport({
+    repoRoot,
+    config: monitoringEndpointConfig(monitoringContract()),
+  });
+
+  assert.equal(report.status, 'passed');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'scope').status, 'compliant');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'time').status, 'compliant');
+});
+
+test('monitoring contract still fails when included SQL omits application scope', () => {
+  const repoRoot = createMonitoringRepo(`
+    with monitoring_logs as (
+      select t.application_id, t.started_at
+      from application_run_logs t
+      where t.started_at >= $2
+    )
+    select * from monitoring_logs
+    limit 10
+  `);
+
+  const report = collectLogQueryContractReport({
+    repoRoot,
+    config: monitoringEndpointConfig(monitoringContract()),
+  });
+
+  assert.equal(report.status, 'failed');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'scope').status, 'failed');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'time').status, 'compliant');
+});
+
+test('monitoring contract still fails when included SQL omits the time bound', () => {
+  const repoRoot = createMonitoringRepo(`
+    with monitoring_logs as (
+      select t.application_id, t.started_at
+      from application_run_logs t
+      where t.application_id = $1
+    )
+    select * from monitoring_logs
+    limit 10
+  `);
+
+  const report = collectLogQueryContractReport({
+    repoRoot,
+    config: monitoringEndpointConfig(monitoringContract()),
+  });
+
+  assert.equal(report.status, 'failed');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'scope').status, 'compliant');
+  assert.equal(report.endpoints[0].dimensions.find((dimension) => dimension.dimension === 'time').status, 'failed');
 });
 
 test('default config covers issue-required log query families and passes current repo', () => {

@@ -81,7 +81,8 @@
         },
         {
           "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
-          "functionName": "application_run_monitoring_logs_query"
+          "functionName": "application_run_monitoring_logs_query",
+          "includeStr": "application_run_logs/monitoring_tasks.sql"
         },
         {
           "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
@@ -94,7 +95,7 @@
           "patterns": [
             "Path\\(id\\): Path<Uuid>",
             "visible_application\\(actor, application_id\\)",
-            "where application_id = \\$1"
+            "where\\s+(?:[A-Za-z_][A-Za-z0-9_]*\\.)?application_id\\s*=\\s*\\$1"
           ]
         },
         "time": {
@@ -103,7 +104,7 @@
             "default_started_from\\(&query\\)",
             "monitoring_time_range_days",
             "filter\\(\\|days\\| \\*days > 0\\)",
-            "started_at >= \\$2"
+            "(?:[A-Za-z_][A-Za-z0-9_]*\\.)?started_at\\s*>=\\s*\\$2"
           ]
         },
         "cursor": {
