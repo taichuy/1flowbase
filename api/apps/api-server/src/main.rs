@@ -9,6 +9,14 @@ use tokio::net::TcpListener;
 async fn main() -> anyhow::Result<()> {
     init_tracing();
 
+    // Both host metrics and the console process list scan all visible PIDs.
+    // sysinfo otherwise retains one /proc/<pid>/stat descriptor per PID in
+    // each sampler, so a busy development host can leave thousands open.
+    #[cfg(target_os = "linux")]
+    if !sysinfo::set_open_files_limit(128) {
+        tracing::warn!("could not bound sysinfo process stat descriptor cache");
+    }
+
     let addr: SocketAddr = parse_bind_addr(
         std::env::var("API_SERVER_ADDR").ok().as_deref(),
         DEFAULT_API_SERVER_ADDR,
