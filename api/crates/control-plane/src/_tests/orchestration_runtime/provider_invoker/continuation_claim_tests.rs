@@ -398,3 +398,53 @@ async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
         ));
     }
 }
+
+#[test]
+fn sparse_completed_output_indexes_keep_a_provable_native_history() {
+    use crate::application_public_api::compat::openai::history::{
+        completed_history, prove_full_context_input,
+    };
+
+    let user = json!({"role":"user","content":"run a long task"});
+    let first_call =
+        json!({"type":"function_call","call_id":"call_first","name":"exec","arguments":"{}"});
+    let previous = completed_history(&json!({"input":[user]}), None, &[first_call.clone()])
+        .unwrap()
+        .unwrap();
+    let first_result = json!({"type":"function_call_output","call_id":"call_first","output":"ok"});
+    let reasoning =
+        json!({"type":"reasoning","id":"rs_next","summary":[],"encrypted_content":"opaque"});
+    let next_call =
+        json!({"type":"function_call","call_id":"call_next","name":"exec","arguments":"{}"});
+    let mut slots = std::collections::BTreeMap::from([
+        (0, Some(reasoning.clone())),
+        (2, Some(next_call.clone())),
+    ]);
+    let ordered = completed_native_output_items(&slots).expect("sparse completed items are valid");
+    assert_eq!(ordered, [reasoning.clone(), next_call.clone()]);
+
+    let history = completed_history(
+        &json!({"previous_response_id":"resp_first","input":[first_result]}),
+        Some(&previous),
+        &ordered,
+    )
+    .unwrap()
+    .expect("the completed response must retain history evidence");
+    let full_context = json!([
+        user,
+        first_call,
+        first_result,
+        reasoning,
+        next_call,
+        {"type":"function_call_output","call_id":"call_next","output":"done"},
+        {"role":"user","content":"continue with refreshed tools"}
+    ]);
+    prove_full_context_input(&full_context, &history, &["call_next".into()])
+        .expect("a later configuration refresh can prove the predecessor history");
+
+    slots.insert(1, None);
+    assert!(
+        completed_native_output_items(&slots).is_none(),
+        "an announced but unfinished item cannot establish history"
+    );
+}

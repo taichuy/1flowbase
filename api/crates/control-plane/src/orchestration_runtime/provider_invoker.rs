@@ -26,6 +26,14 @@ const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
+fn completed_native_output_items(
+    items: &std::collections::BTreeMap<usize, Option<Value>>,
+) -> Option<Vec<Value>> {
+    // The provider's output_index orders items but can skip positions. The canonical
+    // stream writer validates each Added/Done pair; every observed slot must close.
+    items.values().cloned().collect()
+}
+
 pub(super) fn committed_tool_delivery_candidate(
     node_id: &str,
     node_run_id: Uuid,
@@ -1001,20 +1009,23 @@ where
                 let items = native_output_items
                     .lock()
                     .map_err(|_| anyhow!("native output history lock poisoned"))?;
-                // Every announced slot must close, and completed indexes must be contiguous.
+                // Every announced slot must close. Sparse provider indexes still
+                // preserve output order in this BTreeMap.
                 if invocation_error.is_none()
                     && matches!(output.result.finish_reason,
                         Some(plugin_framework::provider_contract::ProviderFinishReason::Stop
                         | plugin_framework::provider_contract::ProviderFinishReason::ToolCall
                         | plugin_framework::provider_contract::ProviderFinishReason::McpCall))
-                    && items.keys().copied().eq(0..items.len())
-                    && items.values().all(Option::is_some)
                 {
-                    crate::application_public_api::compat::openai::history::completed_history(
-                        transport.wire_body(),
-                        self.native_history.as_ref(),
-                        &items.values().flatten().cloned().collect::<Vec<_>>(),
-                    )?
+                    if let Some(output_items) = completed_native_output_items(&items) {
+                        crate::application_public_api::compat::openai::history::completed_history(
+                            transport.wire_body(),
+                            self.native_history.as_ref(),
+                            &output_items,
+                        )?
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
