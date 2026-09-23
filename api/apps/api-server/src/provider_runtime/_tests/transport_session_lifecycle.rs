@@ -1618,3 +1618,6 @@ mod invocation_handoff;
 
 #[path = "transport_session_lifecycle/logical_rollover.rs"]
 mod logical_rollover;
+
+#[path = "transport_session_lifecycle/orphan_rollover.rs"]
+mod orphan_rollover;

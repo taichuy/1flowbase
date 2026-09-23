@@ -658,12 +658,16 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
                     .unsettled_invocation
                     .as_ref()
                     .is_some_and(|lease| now < lease.deadline())
-                || (receipt.kind
-                    == TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
-                    && !receipt
-                        .closure_evidence
-                        .as_ref()
-                        .is_some_and(|evidence| evidence.local_released))
+                // Recoverable tombstones cannot disappear while their old
+                // physical generation might still accept work.
+                || (matches!(
+                    receipt.kind,
+                    TerminationKind::DeadlineExceeded(DeadlineKind::LogicalAbsolute)
+                        | TerminationKind::OwnerOrphaned
+                ) && !receipt
+                    .closure_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.local_released))
         });
         let expired: Vec<_> = self
             .sessions

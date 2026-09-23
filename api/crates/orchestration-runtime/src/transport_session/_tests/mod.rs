@@ -585,7 +585,7 @@ fn owner_disconnect_marks_inflight_session_orphaned_and_finish_cannot_revive_it(
 }
 
 #[test]
-fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
+fn orphan_expiry_keeps_tombstone_until_physical_release() {
     let clock = FakeClock::default();
     let mut settings = config(1);
     settings.orphan_grace = Duration::from_secs(1);
@@ -612,6 +612,14 @@ fn orphan_expiry_has_a_stable_typed_tombstone_until_ttl_cleanup() {
     assert_eq!(snapshot.tombstones.len(), 1);
 
     clock.advance(Duration::from_secs(2));
+    registry.maintain();
+    assert!(
+        registry.tombstone(&session).is_some(),
+        "an orphaned generation stays fenced until physical release is proven"
+    );
+    registry
+        .record_closure_evidence(&fence, &released_evidence(&fence, 7))
+        .unwrap();
     registry.maintain();
     assert!(registry.tombstone(&session).is_none());
 }
