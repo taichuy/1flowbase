@@ -433,10 +433,39 @@ async fn ac_003_005_builtin_frontstage_tools_are_discoverable_and_callable() {
     )
     .await;
     assert_eq!(patch["result"]["isError"], json!(false), "{patch}");
+    let receipt = &patch["result"]["structuredContent"];
+    assert_eq!(receipt["block_id"], json!(block_id));
+    assert_eq!(receipt["page_id"], json!(page_id));
+    assert_ne!(receipt["source_revision"], json!(revision));
+    assert_eq!(receipt["applied_edits"], json!(1));
+    assert_eq!(receipt["changes"][0]["old_text"], json!("beta"));
+    assert_eq!(receipt["changes"][0]["new_text"], json!("changed"));
+
+    let updated_read = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":209,
+            "method":"tools/call",
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_read_block_source_fragment","arguments":{"page_id":page_id,"block_id":block_id,"start_line":2,"line_count":1,"max_chars":20}}}
+        }),
+    )
+    .await;
     assert_eq!(
-        patch["result"]["structuredContent"]["source_code"],
-        json!("alpha\nchanged\ngamma"),
-        "{patch}"
+        updated_read["result"]["isError"],
+        json!(false),
+        "{updated_read}"
+    );
+    assert_eq!(
+        updated_read["result"]["structuredContent"]["source_fragment"],
+        json!("changed\n"),
+        "{updated_read}"
+    );
+    assert_eq!(
+        updated_read["result"]["structuredContent"]["source_revision"],
+        receipt["source_revision"]
     );
 
     let contract_list = call_mcp_instance(

@@ -265,7 +265,7 @@ pub(crate) fn route_assembly_with_interface_operations(
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
-    let assembly = ConsoleRouteAssembly::new()
+    ConsoleRouteAssembly::new()
         .route(
             "/settings/host-infrastructure/memory",
             console_get(
@@ -349,8 +349,7 @@ pub(crate) fn route_assembly_with_interface_operations(
                 clear_host_infrastructure_cache_domain,
                 ConsoleOperation("host_infrastructure.cache.domain.clear".to_string()),
             ),
-        );
-    assembly
+        )
 }
 
 #[utoipa::path(

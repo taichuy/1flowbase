@@ -326,6 +326,12 @@ async fn application_runtime_routes_trace_tree_and_node_last_run_do_not_material
 
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     seed_large_runtime_read_payloads(&pool, flow_run_id, node_run_id).await;
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        flow_run_id,
+    )
+    .await;
     let before = runtime_read_payload_snapshot(&pool, flow_run_id).await;
 
     let trace_tree_uri = format!(

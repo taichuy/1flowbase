@@ -4,8 +4,8 @@
   "configuration": "default_test_config + DEFAULT_PLUGIN_SET_PATH; no filesystem dropins; isolated PostgreSQL schema",
   "graph_fingerprint": "1bdfef58b57521b962a9b748e8cbca0077aa19ad30efc11a5b15c814f1898574",
   "registry_fingerprint": "sha256:de064deacae04e56fd2cf8df8a78f513b5afc6b1ec3929244f608608bba48598",
-  "definition_count": 457,
-  "binding_count": 481,
+  "definition_count": 455,
+  "binding_count": 477,
   "type_count": 188,
   "definitions": [
     "agent_flow.data_model_options.list",
@@ -944,10 +944,56 @@
     "ws.console.assistant.runs.command.v1"
   ],
   "approvedAddedDefinitions": [
-    "ui_management.plugin_settings_page.view"
+    "applications.runtime.client-trajectory.list",
+    "applications.runtime.client-trajectory.section.get",
+    "applications.runtime.run.payload.get",
+    "applications.runtime.run.trajectory.list",
+    "applications.runtime.trajectory.body.get",
+    "applications.runtime.trajectory.list",
+    "applications.runtime.workflow-trajectory.body.get",
+    "applications.runtime.workflow-trajectory.list",
+    "billing.pricing_catalog.sync",
+    "network_egress_proxies.get",
+    "network_egress_proxies.update",
+    "system.runtime_process.terminate",
+    "system.runtime_processes.view",
+    "system_backups.catalog",
+    "system_templates.catalog",
+    "system_templates.export",
+    "system_templates.install",
+    "system_templates.preview",
+    "ui_management.plugin_settings_page.view",
+    "ui_management.templates.delete"
   ],
   "approvedAddedBindings": [
-    "http.console.ui-management.plugin-settings-page.get.v1"
+    "http.console.applications.runtime.client-trajectory.list.v1",
+    "http.console.applications.runtime.client-trajectory.section.get.v1",
+    "http.console.applications.runtime.run.payload.get.v1",
+    "http.console.applications.runtime.run.trajectory.list.v1",
+    "http.console.applications.runtime.trajectory.body.get.v1",
+    "http.console.applications.runtime.trajectory.list.v1",
+    "http.console.applications.runtime.workflow-trajectory.body.get.v1",
+    "http.console.applications.runtime.workflow-trajectory.list.v1",
+    "http.console.frontstage.blocks.code-replace.post.v1",
+    "http.console.frontstage.blocks.code-search.get.v1",
+    "http.console.network-egress-proxies.get.v1",
+    "http.console.network-egress-proxies.update.v1",
+    "http.console.settings.billing.pricing-catalog.sync.v1",
+    "http.console.settings.system-backups.catalog.get.v1",
+    "http.console.settings.system-templates.catalog.v1",
+    "http.console.settings.system-templates.export.v1",
+    "http.console.settings.system-templates.install.v1",
+    "http.console.settings.system-templates.preview.v1",
+    "http.console.system.runtime-processes.get.v1",
+    "http.console.system.runtime-profile.process-terminate.post.v1",
+    "http.console.ui-management.plugin-settings-page.get.v1",
+    "http.console.ui-management.templates.delete.delete.v1"
   ],
-  "evidence": "E00 frozen input; no second export. Candidate equality preserves all input IDs plus the explicit R2 page read."
+  "approvedRemovedDefinitions": [
+    "ui_management.templates.archive"
+  ],
+  "approvedRemovedBindings": [
+    "http.console.ui-management.templates.archive.put.v1"
+  ],
+  "evidence": "E00 frozen input; no second export. Candidate equality applies source-proven additions and the archive-to-delete replacement as explicit deltas."
 }

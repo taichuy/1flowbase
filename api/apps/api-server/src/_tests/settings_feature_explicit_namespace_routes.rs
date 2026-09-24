@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 const AUTH_CENTER_FEATURE: &str = "settings_feature.access.system.auth-center";
+const HOST_INFRASTRUCTURE_FEATURE: &str = "settings_feature.access.system.host-infrastructure";
 const MEMORY_OBSERVATION_FEATURE: &str = "settings_feature.access.system.memory-observation";
 const APPLICATIONS_FEATURE: &str = "settings_feature.access.system.applications";
 const DOCS_FEATURE: &str = "settings_feature.access.system.docs";
@@ -71,6 +72,7 @@ async fn register_feature_permissions(database_url: &str) {
         .store;
     let definitions = [
         (AUTH_CENTER_FEATURE, "system.auth-center"),
+        (HOST_INFRASTRUCTURE_FEATURE, "system.host-infrastructure"),
         (MEMORY_OBSERVATION_FEATURE, "system.memory-observation"),
         (APPLICATIONS_FEATURE, "system.applications"),
         (DOCS_FEATURE, "system.docs"),
@@ -229,7 +231,7 @@ async fn explicit_settings_features_authorize_representative_routes_and_writes()
         &root_cookie,
         &root_csrf,
         "host-infrastructure-feature-actor",
-        MEMORY_OBSERVATION_FEATURE,
+        HOST_INFRASTRUCTURE_FEATURE,
     )
     .await;
     let cache_clear = app

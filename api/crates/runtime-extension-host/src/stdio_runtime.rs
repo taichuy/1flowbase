@@ -126,13 +126,13 @@ struct ProviderWorkerProcess {
 }
 
 #[derive(Clone)]
-struct StreamingCallContext {
-    required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-    diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-    protocol_observation:
+pub(crate) struct StreamingCallContext {
+    pub(crate) required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    pub(crate) diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+    pub(crate) protocol_observation:
         Option<Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
-    event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-    host_calls: Option<ProviderHostCallContext>,
+    pub(crate) event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+    pub(crate) host_calls: Option<ProviderHostCallContext>,
 }
 
 #[derive(Debug, Clone)]
@@ -315,11 +315,13 @@ impl ProviderWorker {
         self.call_streaming_with_limits_and_host_calls(
             request,
             timeout_limits,
-            required_live_events,
-            diagnostic_live_events,
-            None,
-            event_observer,
-            None,
+            StreamingCallContext {
+                required_live_events,
+                diagnostic_live_events,
+                protocol_observation: None,
+                event_observer,
+                host_calls: None,
+            },
         )
         .await
     }
@@ -328,13 +330,7 @@ impl ProviderWorker {
         &mut self,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        protocol_observation: Option<
-            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
-        >,
-        event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        host_calls: Option<ProviderHostCallContext>,
+        context: StreamingCallContext,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let timeout_ms = provider_invocation_timeout_ms(timeout_limits);
         // Lives outside the cancellable future: timeout and every secondary `?`
@@ -342,18 +338,7 @@ impl ProviderWorker {
         let mut outcome = ProviderStreamOutcome::default();
         match tokio::time::timeout(
             Duration::from_millis(timeout_ms),
-            self.call_streaming_inner(
-                request,
-                timeout_limits,
-                StreamingCallContext {
-                    required_live_events,
-                    diagnostic_live_events,
-                    protocol_observation,
-                    event_observer,
-                    host_calls,
-                },
-                &mut outcome,
-            ),
+            self.call_streaming_inner(request, timeout_limits, context, &mut outcome),
         )
         .await
         {

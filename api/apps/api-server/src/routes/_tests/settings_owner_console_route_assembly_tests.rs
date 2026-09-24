@@ -89,6 +89,11 @@ fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
         &[
             (
                 "GET",
+                "/api/console/settings/ui-management/plugin-settings-page",
+                "authenticated",
+            ),
+            (
+                "GET",
                 "/api/console/settings/ui-management/templates",
                 "ui_management.templates.list",
             ),

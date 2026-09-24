@@ -172,10 +172,7 @@ async fn primary_failure_and_control_blocker_are_retained_without_provider_body(
         .into());
     coordinator.finish(failed, &primary).await.unwrap();
     assert!(
-        primary
-            .unwrap_err()
-            .to_string()
-            .contains("never-log-private-provider-body"),
+        matches!(primary, Err(error) if error.to_string().contains("never-log-private-provider-body")),
         "original caller error must remain intact"
     );
     let blocked = coordinator

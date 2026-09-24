@@ -14,8 +14,7 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<control_plane::ports::ClientTrajectoryPage, ApiError> {
         self.visible_trajectory_run(actor, application_id, run_id)
             .await?;
-        Ok(self
-            .store
+        self.store
             .client_trajectory_filtered_page(
                 run_id,
                 query.node_run_id,
@@ -33,7 +32,7 @@ impl ApplicationRuntimeReadsAdapter {
                 } else {
                     ApiError::from(error)
                 }
-            })?)
+            })
     }
     pub(super) async fn client_trajectory_section(
         &self,
@@ -66,8 +65,7 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ProviderTrajectoryPage, ApiError> {
         self.visible_trajectory_run(actor, application_id, run_id)
             .await?;
-        Ok(self
-            .store
+        self.store
             .provider_trajectory_filtered_page(
                 run_id,
                 None,
@@ -85,7 +83,7 @@ impl ApplicationRuntimeReadsAdapter {
                 } else {
                     ApiError::from(error)
                 }
-            })?)
+            })
     }
     pub(super) async fn run_payload(
         &self,
@@ -139,8 +137,7 @@ impl ApplicationRuntimeReadsAdapter {
     ) -> Result<ProviderTrajectoryPage, ApiError> {
         self.visible_trajectory_run(actor, application_id, run_id)
             .await?;
-        Ok(self
-            .store
+        self.store
             .provider_trajectory_filtered_page(
                 run_id,
                 Some(node_run_id),
@@ -158,7 +155,7 @@ impl ApplicationRuntimeReadsAdapter {
                 } else {
                     ApiError::from(error)
                 }
-            })?)
+            })
     }
 
     pub(super) async fn trajectory_body(

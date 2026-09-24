@@ -2,6 +2,8 @@ mod native_responses;
 use super::fixtures::{write_test_capability_package, write_test_provider_package};
 use super::*;
 
+type ToolCallbackInboxEntry = (String, Option<(String, serde_json::Value)>);
+
 #[derive(Default)]
 struct InMemoryOrchestrationRuntimeState {
     console_policies: Vec<domain::RoleConsolePolicy>,
@@ -12,7 +14,7 @@ struct InMemoryOrchestrationRuntimeState {
     node_runs_by_id: HashMap<Uuid, domain::NodeRunRecord>,
     checkpoints_by_id: HashMap<Uuid, domain::CheckpointRecord>,
     callback_tasks_by_id: HashMap<Uuid, domain::CallbackTaskRecord>,
-    tool_callback_inbox_by_round: HashMap<Uuid, Vec<(String, Option<(String, serde_json::Value)>)>>,
+    tool_callback_inbox_by_round: HashMap<Uuid, Vec<ToolCallbackInboxEntry>>,
     debug_variable_cache_entries_by_key:
         HashMap<(Uuid, Uuid, Uuid, String, String), DebugVariableCacheEntry>,
     events_by_flow_run_id: HashMap<Uuid, Vec<domain::RunEventRecord>>,

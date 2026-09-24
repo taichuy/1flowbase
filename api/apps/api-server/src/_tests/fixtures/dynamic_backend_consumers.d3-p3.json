@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 371,
+  "projected_interface_count": 384,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -334,6 +334,18 @@
       "Export application run archive"
     ],
     [
+      "list_client_trajectory",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/client-trajectory",
+      "List client trajectory"
+    ],
+    [
+      "get_client_trajectory_section",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/client-trajectory/:step_id",
+      "Get client trajectory section"
+    ],
+    [
       "list_application_run_conversation_messages",
       "GET",
       "/api/console/applications/:id/logs/runs/:run_id/conversation/messages",
@@ -358,10 +370,28 @@
       "Get application run node last run"
     ],
     [
+      "list_provider_trajectory",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory",
+      "List provider trajectory"
+    ],
+    [
+      "get_provider_trajectory_body",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id",
+      "Get provider trajectory body"
+    ],
+    [
       "get_application_run_overview",
       "GET",
       "/api/console/applications/:id/logs/runs/:run_id/overview",
       "Get application run overview"
+    ],
+    [
+      "get_run_payload",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/payloads/:section",
+      "Get run payload"
     ],
     [
       "get_application_run_resume_timeline",
@@ -404,6 +434,24 @@
       "GET",
       "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/tool-callbacks/:tool_call_id/content",
       "Get application run trace tool callback content"
+    ],
+    [
+      "list_run_trajectory",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/trajectory",
+      "List run trajectory"
+    ],
+    [
+      "list_workflow_trajectory",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory",
+      "List workflow trajectory"
+    ],
+    [
+      "get_workflow_trajectory_body",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory/:event_id",
+      "Get workflow trajectory body"
     ],
     [
       "get_application_run_monitoring_report",
@@ -1018,6 +1066,12 @@
       "List system backups"
     ],
     [
+      "system_backups.catalog",
+      "GET",
+      "/api/console/settings/system-backups/catalog",
+      "System backups catalog"
+    ],
+    [
       "system_backups.status",
       "GET",
       "/api/console/settings/system-backups/jobs/status/:backup_job_id",
@@ -1040,6 +1094,12 @@
       "GET",
       "/api/console/settings/system-backups/:backup_set_id/download",
       "System backups download"
+    ],
+    [
+      "system_templates.catalog",
+      "GET",
+      "/api/console/settings/system-templates/catalog",
+      "List portable template resources"
     ],
     [
       "ui_management.components.list",
@@ -2000,6 +2060,24 @@
       "POST",
       "/api/console/settings/system-backups/:backup_set_id/verify",
       "System backups verify"
+    ],
+    [
+      "system_templates.export",
+      "POST",
+      "/api/console/settings/system-templates/export",
+      "Export selected portable definitions"
+    ],
+    [
+      "system_templates.install",
+      "POST",
+      "/api/console/settings/system-templates/install",
+      "Install portable template resources"
+    ],
+    [
+      "system_templates.preview",
+      "POST",
+      "/api/console/settings/system-templates/preview",
+      "Preview portable template installation"
     ],
     [
       "ui_management.components.create",

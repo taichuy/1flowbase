@@ -248,8 +248,10 @@ mod tests {
     #[test]
     fn projects_provider_logical_session_and_physical_generation_without_payload_fields() {
         let clock = FixedClock(TransportInstant::from_millis(10_000));
-        let mut config = TransportRegistryConfig::default();
-        config.invocation_default = Duration::from_secs(30);
+        let config = TransportRegistryConfig {
+            invocation_default: Duration::from_secs(30),
+            ..Default::default()
+        };
         let mut registry = TransportSessionRegistry::new(clock, config).unwrap();
         let fence = registry
             .admit(AdmissionRequest {

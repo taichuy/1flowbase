@@ -814,7 +814,7 @@ async fn dispatch_response_for_endpoint(
                     return Ok(OpenAiResponseDispatch::Http(Json(response).into_response()));
                 }
                 Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { recovery }) => {
-                    inference_recovery = recovery;
+                    inference_recovery = recovery.map(|grant| *grant);
                 }
                 Err(error)
                     if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>

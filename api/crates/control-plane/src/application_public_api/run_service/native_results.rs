@@ -153,7 +153,12 @@ fn native_operation_terminal(
     output_payload: &Value,
 ) -> Option<NativeOperationTerminal> {
     let operation = unique_start_operation(run_input_payload)?;
-    let terminal = NativeOperationTerminal::from_payload(output_payload).ok()??;
+    let mut terminal_payload = output_payload.clone();
+    // Responses round evidence is application metadata attached beside the durable terminal.
+    if let Some(payload) = terminal_payload.as_object_mut() {
+        payload.remove("responses_round");
+    }
+    let terminal = NativeOperationTerminal::from_payload(&terminal_payload).ok()??;
     match (&operation, &terminal) {
         (AiNativeOperation::CountTokens, NativeOperationTerminal::CountTokens(_)) => Some(terminal),
         (
@@ -186,6 +191,45 @@ fn unique_start_operation(run_input_payload: &Value) -> Option<AiNativeOperation
 #[allow(clippy::items_after_test_module)]
 mod operation_terminal_tests {
     use super::*;
+
+    #[test]
+    fn durable_compact_terminal_allows_attached_responses_round_evidence() {
+        let terminal = json!({
+            "semantic_terminal": "compact",
+            "result": {
+                "result_type": "completed_opaque_compaction_item",
+                "operation": "compact",
+                "profile": "responses_compaction_v2",
+                "response_id": "resp_compact",
+                "compaction_item": {
+                    "id": "compact_item",
+                    "type": "compaction",
+                    "encrypted_content": "opaque"
+                },
+                "encrypted_content": "opaque"
+            },
+            "responses_round": { "response_id": "resp_round" }
+        });
+        let operation = json!({
+            "node-start": { "operation": {
+                "kind": "compact",
+                "profile": "responses_compaction_v2"
+            }}
+        });
+
+        let projected = native_operation_terminal(&operation, &terminal).unwrap();
+        let NativeOperationTerminal::Compact(receipt) = projected else {
+            panic!("the matching compact terminal should be projected");
+        };
+        assert_eq!(
+            receipt.profile(),
+            ProviderCompactProfile::ResponsesCompactionV2
+        );
+        assert_eq!(
+            serde_json::to_value(receipt.result()).unwrap()["response_id"],
+            "resp_compact"
+        );
+    }
 
     #[test]
     fn durable_terminal_requires_matching_frozen_start_operation() {

@@ -967,8 +967,10 @@ async fn idle_release_admits_new_call_after_90_seconds_without_replaying_expired
     for elapsed in [89, 90, 91] {
         let clock = FakeClock::new(2_000_000);
         let runtime = Arc::new(FakeTransportRuntime::new([AckBehavior::Matching(true)]));
-        let mut config = TransportRegistryConfig::default();
-        config.logical_max_age = Duration::from_secs(200);
+        let config = TransportRegistryConfig {
+            logical_max_age: Duration::from_secs(200),
+            ..Default::default()
+        };
         let coordinator =
             TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
                 .unwrap();

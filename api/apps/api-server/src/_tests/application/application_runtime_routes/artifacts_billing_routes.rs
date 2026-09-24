@@ -158,29 +158,6 @@ async fn seed_answer_only_application(
     application_id
 }
 
-async fn wait_for_run_detail_matching(
-    app: &axum::Router,
-    cookie: &str,
-    application_id: &str,
-    run_id: &str,
-    expected_statuses: &[&str],
-    mut matches_detail: impl FnMut(&Value) -> bool,
-    reason: &str,
-) -> Value {
-    let mut last_detail = Value::Null;
-    for _ in 0..200 {
-        let detail =
-            wait_for_run_detail(app, cookie, application_id, run_id, expected_statuses).await;
-        if matches_detail(&detail) {
-            return detail;
-        }
-        last_detail = detail;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-
-    panic!("timed out waiting for {reason}: {last_detail}");
-}
-
 async fn wait_for_flow_run_status_in_database(
     pool: &sqlx::PgPool,
     flow_run_id: Uuid,
@@ -348,16 +325,33 @@ async fn application_runtime_routes_runtime_debug_artifact_full_load_returns_ori
     let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
     assert!(snapshot_payload["data"]["variable_cache"]["node-start"].is_null());
 
-    let detail = wait_for_run_detail_matching(
+    let _terminal_detail = wait_for_run_detail(
         &app,
         &cookie,
         &application_id,
         run_id,
         &["succeeded", "failed", "cancelled"],
-        |detail| detail["flow_run"]["input_payload"]["__runtime_debug_artifact"] == true,
-        "flow input debug artifact preview",
     )
     .await;
+    let snapshot_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/runs/{run_id}/debug-snapshot"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(snapshot_response.status(), StatusCode::OK);
+    let snapshot_body = to_bytes(snapshot_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
+    let detail = &snapshot_payload["data"];
     let preview = &detail["flow_run"]["input_payload"];
 
     assert_eq!(preview["__runtime_debug_artifact"], true);
@@ -460,20 +454,40 @@ async fn application_runtime_routes_batch_resolves_runtime_debug_artifacts() {
     let payload: Value = serde_json::from_slice(&body).unwrap();
     let run_id = payload["data"]["flow_run"]["id"].as_str().unwrap();
 
-    let detail = wait_for_run_detail_matching(
+    let terminal_detail = wait_for_run_detail(
         &app,
         &cookie,
         &application_id,
         run_id,
         &["succeeded", "failed", "cancelled"],
-        |detail| {
-            detail["flow_run"]["input_payload"]["__runtime_debug_artifact"] == true
-                && detail["flow_run"]["output_payload"]["answer"]["__runtime_debug_artifact"]
-                    == true
-        },
-        "flow input and output artifact previews",
     )
     .await;
+    assert_eq!(terminal_detail["flow_run"]["status"], json!("succeeded"));
+    let snapshot = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/runs/{run_id}/debug-snapshot"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    let snapshot_body = to_bytes(snapshot.into_body(), usize::MAX).await.unwrap();
+    let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
+    let detail = &snapshot_payload["data"];
+    assert_eq!(
+        detail["flow_run"]["input_payload"]["__runtime_debug_artifact"],
+        true
+    );
+    assert_eq!(
+        detail["flow_run"]["output_payload"]["answer"]["__runtime_debug_artifact"],
+        true
+    );
     let input_artifact_ref = detail["flow_run"]["input_payload"]["artifact_ref"]
         .as_str()
         .expect("flow input artifact ref should exist");
@@ -584,7 +598,8 @@ async fn application_runtime_routes_batch_resolves_runtime_debug_artifacts() {
 #[tokio::test]
 async fn application_runtime_routes_flow_output_offloads_answer_field_without_compressing_sys_env()
 {
-    let app = test_app().await;
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let answer_text = format!("answer:{}", "A".repeat(3_000));
     let application_id = seed_answer_only_application(&app, &cookie, &csrf, &answer_text).await;
@@ -619,27 +634,50 @@ async fn application_runtime_routes_flow_output_offloads_answer_field_without_co
     let payload: Value = serde_json::from_slice(&body).unwrap();
     let run_id = payload["data"]["flow_run"]["id"].as_str().unwrap();
 
-    let detail = wait_for_run_detail_matching(
+    let terminal_detail = wait_for_run_detail(
         &app,
         &cookie,
         &application_id,
         run_id,
         &["succeeded", "failed", "cancelled"],
-        |detail| {
-            let has_answer_node = detail["nodes"]
-                .as_array()
-                .and_then(|node_runs| {
-                    node_runs
-                        .iter()
-                        .find(|node_run| node_run["node_id"] == json!("node-answer"))
-                })
-                .is_some();
-            detail["flow_run"]["output_payload"]["answer"]["__runtime_debug_artifact"] == true
-                && has_answer_node
-        },
-        "flow output artifact preview and answer trace node",
     )
     .await;
+    assert_eq!(terminal_detail["flow_run"]["status"], json!("succeeded"));
+    let snapshot = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/runs/{run_id}/debug-snapshot"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    let snapshot_body = to_bytes(snapshot.into_body(), usize::MAX).await.unwrap();
+    let snapshot_payload: Value = serde_json::from_slice(&snapshot_body).unwrap();
+    let detail = &snapshot_payload["data"];
+    assert_eq!(
+        detail["flow_run"]["output_payload"]["answer"]["__runtime_debug_artifact"],
+        true
+    );
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(run_id).unwrap(),
+    )
+    .await;
+    let trace_detail =
+        wait_for_run_detail(&app, &cookie, &application_id, run_id, &["succeeded"]).await;
+    assert!(trace_detail["nodes"]
+        .as_array()
+        .and_then(|nodes| nodes
+            .iter()
+            .find(|node| node["node_id"] == json!("node-answer")))
+        .is_some());
 
     assert_eq!(detail["flow_run"]["status"], json!("succeeded"));
     let flow_output = &detail["flow_run"]["output_payload"];
@@ -681,7 +719,7 @@ async fn application_runtime_routes_flow_output_offloads_answer_field_without_co
     assert_eq!(flow_output["sys"]["workflow_run_id"], json!(run_id));
     assert_eq!(flow_output["env"], json!({}));
 
-    let answer_trace_node_id = detail["nodes"]
+    let answer_trace_node_id = trace_detail["nodes"]
         .as_array()
         .expect("trace nodes should be an array")
         .iter()
@@ -720,7 +758,8 @@ async fn application_runtime_routes_flow_output_offloads_answer_field_without_co
 #[tokio::test]
 async fn application_runtime_routes_waiting_run_detail_reads_persisted_llm_rounds_as_plain_payload()
 {
-    let (app, database_url) = test_app_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
@@ -758,6 +797,12 @@ async fn application_runtime_routes_waiting_run_detail_reads_persisted_llm_round
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     wait_for_flow_run_status_in_database(&pool, flow_run_id, "waiting_human").await;
 
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        flow_run_id,
+    )
+    .await;
     wait_for_run_detail(&app, &cookie, &application_id, run_id, &["waiting_human"]).await;
     let llm_last_run = app
         .clone()

@@ -132,10 +132,6 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     },
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "the typed read output is projected immediately into the console response"
-)]
 pub(crate) enum ApplicationRuntimeReadsOutput {
     WorkflowTrajectoryPage(control_plane::ports::WorkflowTrajectoryPage),
     WorkflowTrajectoryBody(control_plane::ports::WorkflowTrajectoryBody),

@@ -116,7 +116,7 @@ fn successful_empty_prewarm_then_incremental_round_matches_full_history() {
     let first = completed_history(
         &json!({"previous_response_id":"resp_warm","input":[]}),
         Some(&warm),
-        &[call.clone()],
+        std::slice::from_ref(&call),
     )
     .unwrap()
     .unwrap();

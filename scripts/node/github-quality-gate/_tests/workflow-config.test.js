@@ -941,6 +941,62 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
+test("API-server quality-gate shards build and export the real SDK worker fixtures", () => {
+  const workflow = readQualityGateWorkflow();
+  const singleScope = workflow.slice(
+    workflow.indexOf("  single-scope-gate:\n"),
+    workflow.indexOf("  repo-tooling-gate:\n"),
+  );
+  const backendMatrix = workflow.slice(
+    workflow.indexOf("  repo-backend-gate:\n"),
+    workflow.indexOf("  backend-consistency-gate:\n"),
+  );
+
+  for (const [job, scope, target] of [
+    [singleScope, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target"],
+    [backendMatrix, "matrix.scope", "rust-backend/${{ matrix.scope }}/target"],
+  ]) {
+    const stepStart = job.indexOf("      - name: Build API server worker fixtures\n");
+    const actionStart = job.indexOf("      - uses: ./.github/actions/quality-gate\n", stepStart);
+    assert.ok(
+      stepStart >= 0 && actionStart > stepStart,
+      "fixture build must precede the quality gate action",
+    );
+
+    const step = job.slice(stepStart, actionStart);
+    assert.ok(
+      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') }}"),
+    );
+    assert.ok(
+      step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),
+    );
+    assert.match(
+      step,
+      /cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_hook_worker[\s\S]*cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_event_worker/u,
+    );
+    assert.match(
+      step,
+      /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker"[\s\S]*strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker"[\s\S]*MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
+    );
+  }
+});
+
+test("API-server coverage shards build, strip and export managed SDK fixtures", () => {
+  const workflow = readQualityGateWorkflow();
+  const coverage = workflow.slice(
+    workflow.indexOf("  coverage-backend-api-server-sharded:\n"),
+    workflow.indexOf("  coverage-backend-api-server-sharded-merge:\n"),
+  );
+  const fixtureStart = coverage.indexOf("      - name: Build API server coverage worker fixtures\n");
+  const actionStart = coverage.indexOf("      - uses: ./.github/actions/quality-gate\n", fixtureStart);
+  assert.ok(fixtureStart >= 0 && actionStart > fixtureStart);
+  const step = coverage.slice(fixtureStart, actionStart);
+  assert.match(step, /CARGO_TARGET_DIR: \$\{\{ github\.workspace \}\}\/tmp\/quality-gate-cache\/rust-coverage\/api-server-shadow\/target/u);
+  assert.match(step, /cargo build[\s\S]*managed_hook_worker[\s\S]*cargo build[\s\S]*managed_event_worker/u);
+  assert.match(step, /strip --strip-debug[\s\S]*managed_hook_worker[\s\S]*strip --strip-debug[\s\S]*managed_event_worker/u);
+  assert.match(step, /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR/u);
+});
+
 test("container image workflows keep vulnerability findings as warnings", () => {
   const publishWorkflow = readContainerImagesWorkflow();
   const qualityGateWorkflow = readQualityGateWorkflow();

@@ -113,9 +113,17 @@ where
             .await?
     };
     let mut candidates = candidates.into_iter();
-    let callback = candidates
-        .next()
-        .ok_or(ControlPlaneError::Conflict("native_tool_output_unknown"))?;
+    let Some(callback) = candidates.next() else {
+        let compact_trigger_is_final = input
+            .last()
+            .and_then(|item| item.get("type"))
+            .and_then(Value::as_str)
+            == Some("compaction_trigger");
+        if compact_trigger_is_final {
+            return Ok(None);
+        }
+        return Err(ControlPlaneError::Conflict("native_tool_output_unknown").into());
+    };
     if candidates.next().is_some() {
         return Err(ControlPlaneError::Conflict("native_tool_output_ambiguous_round").into());
     }

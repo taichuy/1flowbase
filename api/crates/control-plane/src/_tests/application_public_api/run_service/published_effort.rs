@@ -102,7 +102,19 @@ async fn increment_published_effort_admission_uses_snapshot_and_preserves_explic
             .unwrap_err(),
         NativeRunValidationError::UnknownModel
     );
-    assert_eq!(repository.flow_run_count(), 4);
+    let alias_payload = run(
+        &repository,
+        &token,
+        "provider/model:any-public-string",
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        alias_payload["sys"]["requested_model_id"],
+        "provider/model:any-public-string"
+    );
+    assert_eq!(repository.flow_run_count(), 5);
     assert_eq!(repository.editor_state_read_count(), 0);
     let active = repository
         .load_active_application_publication(application.id)

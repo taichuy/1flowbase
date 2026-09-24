@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_root() {
+async fn application_runtime_routes_trace_tree_preserves_repeated_llm_node_runs_at_root() {
     let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -130,6 +130,13 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     .await
     .unwrap();
 
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        flow_run_uuid,
+    )
+    .await;
+
     let trace_tree = app
         .clone()
         .oneshot(
@@ -148,19 +155,27 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     let trace_tree_payload: Value = serde_json::from_slice(&trace_tree_body).unwrap();
     let root_nodes = trace_tree_payload["data"]["nodes"].as_array().unwrap();
 
-    assert_eq!(
-        root_nodes.len(),
-        1,
-        "trace root should expose one display node for repeated LLM node runs"
-    );
-    assert_eq!(root_nodes[0]["node_id"], json!("node-llm"));
-    assert_eq!(root_nodes[0]["status"], json!("waiting_callback"));
-    let trace_node_id = root_nodes[0]["trace_node_id"].as_str().unwrap();
-    Uuid::parse_str(trace_node_id).expect("trace_node_id is deterministic UUID");
-    assert!(root_nodes[0]["stable_locator"]
-        .as_str()
-        .unwrap()
-        .contains("/node_group:"));
+    assert_eq!(root_nodes.len(), 2);
+    let completed_run = root_nodes
+        .iter()
+        .find(|node| node["status"] == json!("succeeded"))
+        .expect("the first LLM execution should remain visible");
+    let waiting_run = root_nodes
+        .iter()
+        .find(|node| node["status"] == json!("waiting_callback"))
+        .expect("the waiting LLM execution should remain visible");
+    for node in [completed_run, waiting_run] {
+        assert_eq!(node["node_id"], json!("node-llm"));
+        Uuid::parse_str(node["trace_node_id"].as_str().unwrap())
+            .expect("trace_node_id is deterministic UUID");
+        assert!(node["stable_locator"].as_str().unwrap().contains("/node:"));
+        assert!(!node["stable_locator"]
+            .as_str()
+            .unwrap()
+            .contains("/node_group:"));
+    }
+    assert_ne!(completed_run["trace_node_id"], waiting_run["trace_node_id"]);
+    let trace_node_id = waiting_run["trace_node_id"].as_str().unwrap();
 
     let content = app
         .clone()
@@ -199,48 +214,54 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
         json!("call_policy")
     );
 
-    let tools = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/logs/runs/{flow_run_id}/trace-tree/nodes?parent_trace_node_id={trace_node_id}"
-                ))
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(tools.status(), StatusCode::OK);
-    let tools_body = to_bytes(tools.into_body(), usize::MAX).await.unwrap();
-    let tools_payload: Value = serde_json::from_slice(&tools_body).unwrap();
-    let tool_group_id = tools_payload["data"]["items"][0]["trace_node_id"]
-        .as_str()
-        .unwrap();
-    let tool_callbacks = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/logs/runs/{flow_run_id}/trace-tree/nodes?parent_trace_node_id={tool_group_id}"
-                ))
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(tool_callbacks.status(), StatusCode::OK);
-    let tool_callbacks_body = to_bytes(tool_callbacks.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let tool_callbacks_payload: Value = serde_json::from_slice(&tool_callbacks_body).unwrap();
-    let tool_callback_aliases = tool_callbacks_payload["data"]["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|callback| callback["node_alias"].as_str().unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(tool_callback_aliases, vec!["lookup_weather", "read_policy"]);
+    for (root, expected_alias) in [
+        (completed_run, "lookup_weather"),
+        (waiting_run, "read_policy"),
+    ] {
+        let root_trace_node_id = root["trace_node_id"].as_str().unwrap();
+        let tools = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/applications/{application_id}/logs/runs/{flow_run_id}/trace-tree/nodes?parent_trace_node_id={root_trace_node_id}"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tools.status(), StatusCode::OK);
+        let tools_body = to_bytes(tools.into_body(), usize::MAX).await.unwrap();
+        let tools_payload: Value = serde_json::from_slice(&tools_body).unwrap();
+        let tool_group_id = tools_payload["data"]["items"][0]["trace_node_id"]
+            .as_str()
+            .unwrap();
+        let tool_callbacks = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/applications/{application_id}/logs/runs/{flow_run_id}/trace-tree/nodes?parent_trace_node_id={tool_group_id}"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tool_callbacks.status(), StatusCode::OK);
+        let tool_callbacks_body = to_bytes(tool_callbacks.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let tool_callbacks_payload: Value = serde_json::from_slice(&tool_callbacks_body).unwrap();
+        let tool_callback_aliases = tool_callbacks_payload["data"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|callback| callback["node_alias"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(tool_callback_aliases, vec![expected_alias]);
+    }
 }

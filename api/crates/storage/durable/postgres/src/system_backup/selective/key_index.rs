@@ -106,10 +106,7 @@ impl KeyIndex {
         }
         let mut raw = Vec::with_capacity(bytes as usize);
         file.read_to_end(&mut raw)?;
-        let mut keys = raw
-            .chunks_exact(32)
-            .map(|chunk| <[u8; 32]>::try_from(chunk).expect("fixed key"))
-            .collect::<Vec<_>>();
+        let mut keys = raw.as_chunks::<32>().0.to_vec();
         keys.sort_unstable();
         keys.dedup();
         let found = keys.binary_search(&digest).is_ok();

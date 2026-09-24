@@ -49,6 +49,13 @@ async fn application_runtime_routes_start_debug_run_and_resume_waiting_human() {
         payload["data"]["flow_run"]["status"].as_str(),
         Some("running")
     );
+    wait_for_run_detail(&app, &cookie, &application_id, run_id, &["waiting_human"]).await;
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(run_id).unwrap(),
+    )
+    .await;
     let detail =
         wait_for_run_detail(&app, &cookie, &application_id, run_id, &["waiting_human"]).await;
     let cache_entries = state

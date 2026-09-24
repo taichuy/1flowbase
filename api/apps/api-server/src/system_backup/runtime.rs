@@ -134,6 +134,7 @@ impl SystemBackupRuntime {
         .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn open_with_postgres_toolchain(
         store: MainDurableStore,
         file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,

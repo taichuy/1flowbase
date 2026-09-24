@@ -56,6 +56,21 @@ function functionContext(source, functionName) {
   );
 }
 
+function includeStringContext(repoRoot, sourceSpec, context) {
+  if (!sourceSpec.includeStr) {
+    return '';
+  }
+
+  const escapedPath = sourceSpec.includeStr.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const includePattern = new RegExp(`\\binclude_str!\\s*\\(\\s*"${escapedPath}"\\s*\\)`, 'u');
+  if (!includePattern.test(context)) {
+    return '';
+  }
+
+  const includedPath = path.join(path.dirname(sourceSpec.file || ''), sourceSpec.includeStr);
+  return resolveSource(repoRoot, includedPath).text;
+}
+
 function regexMatches(text, pattern) {
   return new RegExp(pattern, 'u').test(text);
 }
@@ -117,11 +132,14 @@ function endpointContext(repoRoot, endpoint) {
   const repositoryContext = functionContext(repositorySource, endpoint.repository?.functionName);
   const extraSources = (endpoint.extraSources || []).map((sourceSpec) => {
     const source = resolveSource(repoRoot, sourceSpec.file || '');
+    const functionName = sourceSpec.functionName || '';
+    const context = functionContext(source, functionName);
+    const includedContext = includeStringContext(repoRoot, sourceSpec, context);
     return {
       source,
-      functionName: sourceSpec.functionName || '',
-      functionFound: Boolean(findFunctionMatch(source, sourceSpec.functionName)),
-      context: functionContext(source, sourceSpec.functionName),
+      functionName,
+      functionFound: Boolean(findFunctionMatch(source, functionName)),
+      context: [context, includedContext].filter(Boolean).join('\n'),
     };
   });
 
