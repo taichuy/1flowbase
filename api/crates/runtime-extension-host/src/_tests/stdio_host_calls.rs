@@ -17,7 +17,7 @@ use extension_package_runtime::{
     PluginRuntimeLimits,
 };
 
-use crate::stdio_runtime::{ProviderHostCallContext, ProviderWorker};
+use crate::stdio_runtime::{ProviderHostCallContext, ProviderWorker, StreamingCallContext};
 
 #[derive(Default)]
 struct CapturingPluginDataPort {
@@ -88,11 +88,13 @@ async fn pdp_003_009_host_calls_use_trusted_binding_and_correlated_results() {
                 timeout_ms: Some(2_000),
                 ..Default::default()
             },
-            None,
-            None,
-            None,
-            None,
-            Some(host_call_context(Arc::clone(&port))),
+            StreamingCallContext {
+                required_live_events: None,
+                diagnostic_live_events: None,
+                protocol_observation: None,
+                event_observer: None,
+                host_calls: Some(host_call_context(Arc::clone(&port))),
+            },
         )
         .await
         .unwrap();
@@ -118,11 +120,13 @@ async fn pdp_009_duplicate_and_unknown_call_ids_fail_closed() {
                     timeout_ms: Some(2_000),
                     ..Default::default()
                 },
-                None,
-                None,
-                None,
-                None,
-                Some(host_call_context(port)),
+                StreamingCallContext {
+                    required_live_events: None,
+                    diagnostic_live_events: None,
+                    protocol_observation: None,
+                    event_observer: None,
+                    host_calls: Some(host_call_context(port)),
+                },
             )
             .await
             .unwrap_err();
@@ -142,11 +146,13 @@ async fn pdp_008_cancel_deadline_and_worker_crash_clear_active_host_calls() {
                     timeout_ms: Some(2_000),
                     ..Default::default()
                 },
-                None,
-                None,
-                None,
-                None,
-                Some(host_call_context(Arc::clone(&port))),
+                StreamingCallContext {
+                    required_live_events: None,
+                    diagnostic_live_events: None,
+                    protocol_observation: None,
+                    event_observer: None,
+                    host_calls: Some(host_call_context(Arc::clone(&port))),
+                },
             )
             .await;
         assert_eq!(result.is_ok(), mode == "cancel");
@@ -165,11 +171,13 @@ async fn pdp_008_cancel_deadline_and_worker_crash_clear_active_host_calls() {
                 timeout_ms: Some(2_000),
                 ..Default::default()
             },
-            None,
-            None,
-            None,
-            None,
-            Some(context),
+            StreamingCallContext {
+                required_live_events: None,
+                diagnostic_live_events: None,
+                protocol_observation: None,
+                event_observer: None,
+                host_calls: Some(context),
+            },
         )
         .await
         .is_ok());

@@ -167,6 +167,13 @@ async fn application_runtime_routes_trace_tree_excludes_llm_tool_calls_as_trace_
     .await
     .unwrap();
 
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(flow_run_id).unwrap(),
+    )
+    .await;
+
     let trace_tree = app
         .clone()
         .oneshot(

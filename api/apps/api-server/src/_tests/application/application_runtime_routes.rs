@@ -720,6 +720,20 @@ async fn seed_human_input_application(
     application_id
 }
 
+async fn rebuild_trace_projection_for_test(
+    state: &crate::app_state::ApiState,
+    application_id: Uuid,
+    flow_run_id: Uuid,
+) {
+    crate::workers::trace_projection::rebuild_trace_projection(
+        &state.store,
+        application_id,
+        flow_run_id,
+    )
+    .await
+    .expect("trace projection should rebuild from the seeded source");
+}
+
 async fn wait_for_run_detail(
     app: &axum::Router,
     cookie: &str,

@@ -68,6 +68,13 @@ async fn application_runtime_routes_trace_node_content_offloads_route_provider_e
     .await
     .unwrap();
 
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(flow_run_id).unwrap(),
+    )
+    .await;
+
     let trace_tree = load_trace_tree_payload(&app, &cookie, &application_id, flow_run_id).await;
     let llm_trace_node_id = trace_tree["data"]["nodes"]
         .as_array()
@@ -271,6 +278,13 @@ async fn application_runtime_routes_trace_tree_paginates_high_fan_out_children()
     )
     .await
     .unwrap();
+
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(flow_run_id).unwrap(),
+    )
+    .await;
 
     let trace_tree = app
         .clone()

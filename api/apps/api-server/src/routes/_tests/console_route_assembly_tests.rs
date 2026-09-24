@@ -440,6 +440,46 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "applications.update",
             ),
             (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/client-trajectory",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/client-trajectory/:step_id",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/workflow-trajectory/:event_id",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/trajectory",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/payloads/:section",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory",
+                "applications.view",
+            ),
+            (
+                "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_run_id/trajectory/:event_id",
+                "applications.view",
+            ),
+            (
                 "POST",
                 "/api/console/applications/:id/orchestration/debug-runs",
                 "applications.run",

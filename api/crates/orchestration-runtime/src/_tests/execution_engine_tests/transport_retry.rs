@@ -17,7 +17,7 @@ struct SequencedTransportInvoker {
 /// path, where the typed recovery receipt must travel inside the error's
 /// `provider_details` exactly as the real provider worker emits it.
 enum ScriptedAttempt {
-    Output(ProviderInvocationOutput),
+    Output(Box<ProviderInvocationOutput>),
     Error {
         kind: ProviderRuntimeErrorKind,
         disposition: RecoveryDisposition,
@@ -101,7 +101,7 @@ impl ProviderInvoker for SequencedTransportInvoker {
             .pop_front()
             .ok_or_else(|| anyhow::anyhow!("unexpected provider attempt"))?;
         let mut output = match attempt {
-            ScriptedAttempt::Output(output) => output,
+            ScriptedAttempt::Output(output) => *output,
             ScriptedAttempt::Error {
                 kind,
                 disposition,
@@ -247,7 +247,11 @@ fn provider_error_output(
 fn sequenced_invoker(
     outputs: impl IntoIterator<Item = ProviderInvocationOutput>,
 ) -> (SequencedTransportInvoker, Arc<Mutex<Vec<String>>>) {
-    scripted_invoker(outputs.into_iter().map(ScriptedAttempt::Output))
+    scripted_invoker(
+        outputs
+            .into_iter()
+            .map(|output| ScriptedAttempt::Output(Box::new(output))),
+    )
 }
 
 fn scripted_invoker(
@@ -467,7 +471,9 @@ async fn err_path_typed_logical_retry_receipt_authorizes_one_bounded_retry() {
             CommitLevel::LifecycleOnly,
             Some(6),
         ),
-        ScriptedAttempt::Output(final_provider_output("recovered via err path".to_string())),
+        ScriptedAttempt::Output(Box::new(final_provider_output(
+            "recovered via err path".to_string(),
+        ))),
     ]);
 
     let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
@@ -514,7 +520,9 @@ async fn err_path_corrupt_receipt_is_invalid_not_retryable() {
                 "reason": "transport_disconnected",
             })),
         },
-        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+        ScriptedAttempt::Output(Box::new(final_provider_output(
+            "must not execute".to_string(),
+        ))),
     ]);
 
     let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
@@ -543,7 +551,9 @@ async fn err_path_terminal_socketless_receipt_stops_without_replay() {
             CommitLevel::Terminal,
             None,
         ),
-        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+        ScriptedAttempt::Output(Box::new(final_provider_output(
+            "must not execute".to_string(),
+        ))),
     ]);
 
     let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)
@@ -583,7 +593,9 @@ async fn err_path_without_any_receipt_reports_missing_typed_receipt() {
         ScriptedAttempt::ErrorWithoutDetails {
             kind: ProviderRuntimeErrorKind::ProviderTransportUnavailable,
         },
-        ScriptedAttempt::Output(final_provider_output("must not execute".to_string())),
+        ScriptedAttempt::Output(Box::new(final_provider_output(
+            "must not execute".to_string(),
+        ))),
     ]);
 
     let outcome = start_flow_debug_run(&plan, &json!({"node-start":{"query":"hello"}}), &invoker)

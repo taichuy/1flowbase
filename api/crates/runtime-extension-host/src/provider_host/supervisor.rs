@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
-    provider_contract::{ProviderStdioRequest, ProviderStreamEvent},
+    provider_contract::ProviderStdioRequest,
     PluginRuntimeLimits,
 };
 use serde::Serialize;
@@ -250,27 +250,13 @@ impl ProviderWorkerSupervisor {
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
-        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
-        protocol_observation: Option<
-            Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
-        >,
-        event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-        host_calls: Option<crate::stdio_runtime::ProviderHostCallContext>,
+        context: crate::stdio_runtime::StreamingCallContext,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let lease = self.admit()?;
         let mut worker = self.worker.lock().await;
         self.ensure_lease_can_dispatch(&worker)?;
         let result = worker
-            .call_streaming_with_limits_and_host_calls(
-                request,
-                timeout_limits,
-                required_live_events,
-                diagnostic_live_events,
-                protocol_observation,
-                event_observer,
-                host_calls,
-            )
+            .call_streaming_with_limits_and_host_calls(request, timeout_limits, context)
             .await;
         if result.is_err() && worker.last_cleanup_receipt().is_some() {
             // Stdio retires only broken streams. A provider error drained through
@@ -629,11 +615,13 @@ exit 7
                     input: json!({}),
                 },
                 &limits(),
-                None,
-                None,
-                None,
-                None,
-                None,
+                crate::stdio_runtime::StreamingCallContext {
+                    required_live_events: None,
+                    diagnostic_live_events: None,
+                    protocol_observation: None,
+                    event_observer: None,
+                    host_calls: None,
+                },
             )
             .await;
         std::fs::remove_file(path).unwrap();

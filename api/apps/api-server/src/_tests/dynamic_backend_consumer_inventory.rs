@@ -97,15 +97,25 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         // must remain visible verbatim until that catalog publishes matching translations.
         let backend_owned_extension_uninstall = interface.summary
             == "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data";
-        // Login-entry metadata, runtime process management, lifecycle delivery, contribution
-        // authorization, and price catalog summaries were added after the pinned 2.0.9 release.
-        // Keep the current backend contract; new translations require an official release,
-        // not edits to the immutable embedded artifact. Template deletion likewise awaits
-        // an official translation release; its current backend description remains visible.
+        // Keep backend contracts unchanged when the pinned official seed lacks their translations;
+        // coverage can advance with an official catalog release, not by editing the immutable seed.
         let pending_official_catalog_release = matches!(
             interface.authorization_operation_id.as_deref(),
             Some(
                 "ui_management.templates.delete"
+                    | "list_client_trajectory"
+                    | "get_client_trajectory_section"
+                    | "list_provider_trajectory"
+                    | "get_provider_trajectory_body"
+                    | "get_run_payload"
+                    | "list_run_trajectory"
+                    | "list_workflow_trajectory"
+                    | "get_workflow_trajectory_body"
+                    | "system_backups.catalog"
+                    | "system_templates.catalog"
+                    | "system_templates.export"
+                    | "system_templates.install"
+                    | "system_templates.preview"
                     | "billing.pricing_catalog.sync"
                     | "auth_center.login_entries.delete"
                     | "auth_center.login_entries.create"

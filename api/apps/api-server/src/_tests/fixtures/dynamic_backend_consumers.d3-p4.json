@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 82,
+  "count": 80,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -51,11 +51,6 @@
       "category": "settings_feature_label",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "File management"
-    },
-    {
-      "category": "settings_feature_label",
-      "path": "api/crates/access-control/src/settings_features.rs",
-      "key": "Infrastructure"
     },
     {
       "category": "settings_feature_label",
@@ -136,11 +131,6 @@
       "category": "settings_policy_group",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "File management operations"
-    },
-    {
-      "category": "settings_policy_group",
-      "path": "api/crates/access-control/src/settings_features.rs",
-      "key": "Host infrastructure operations"
     },
     {
       "category": "settings_policy_group",

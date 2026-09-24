@@ -941,6 +941,46 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
 });
 
+test("API-server quality-gate shards build and export the real SDK worker fixtures", () => {
+  const workflow = readQualityGateWorkflow();
+  const singleScope = workflow.slice(
+    workflow.indexOf("  single-scope-gate:\n"),
+    workflow.indexOf("  repo-tooling-gate:\n"),
+  );
+  const backendMatrix = workflow.slice(
+    workflow.indexOf("  repo-backend-gate:\n"),
+    workflow.indexOf("  backend-consistency-gate:\n"),
+  );
+
+  for (const [job, scope, target] of [
+    [singleScope, "inputs.scope", "rust-single-backend/${{ inputs.scope }}/target"],
+    [backendMatrix, "matrix.scope", "rust-backend/${{ matrix.scope }}/target"],
+  ]) {
+    const stepStart = job.indexOf("      - name: Build API server worker fixtures\n");
+    const actionStart = job.indexOf("      - uses: ./.github/actions/quality-gate\n", stepStart);
+    assert.ok(
+      stepStart >= 0 && actionStart > stepStart,
+      "fixture build must precede the quality gate action",
+    );
+
+    const step = job.slice(stepStart, actionStart);
+    assert.ok(
+      step.includes("if: ${{ startsWith(" + scope + ", 'repo-backend-test-api-server-') }}"),
+    );
+    assert.ok(
+      step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target),
+    );
+    assert.match(
+      step,
+      /cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_hook_worker[\s\S]*cargo build --locked --manifest-path api\/Cargo\.toml -p runtime-extension-sdk --example managed_event_worker/u,
+    );
+    assert.match(
+      step,
+      /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
+    );
+  }
+});
+
 test("container image workflows keep vulnerability findings as warnings", () => {
   const publishWorkflow = readContainerImagesWorkflow();
   const qualityGateWorkflow = readQualityGateWorkflow();

@@ -182,7 +182,7 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
     );
     assert_eq!(registry.definitions().len(), 458);
     assert_eq!(registry.bindings().len(), 482);
-    assert_eq!(registry.managed_contracts().count(), 188);
+    assert_eq!(registry.managed_contracts().count(), 185);
     let mut ids = BTreeSet::new();
     for descriptor in registry.managed_contracts() {
         assert!(ids.insert(descriptor.contract.clone()));
@@ -714,7 +714,7 @@ async fn root_2014_r3_probe_complete_contract_compilation() {
         total.elapsed().as_millis(),
         peak
     );
-    assert_eq!(count, 188);
+    assert_eq!(count, 185);
     assert_eq!(
         seen_large,
         required_large.into_iter().map(str::to_owned).collect()

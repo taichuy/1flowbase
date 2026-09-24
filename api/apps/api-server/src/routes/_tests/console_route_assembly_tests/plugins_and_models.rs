@@ -149,6 +149,36 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
             ),
             (
                 "GET",
+                "/api/console/settings/extension-center/installed/:installation_id/managed-execution",
+                "extension_center.managed_execution.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",
+                "extension_center.lifecycle_deliveries.resume"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",
+                "extension_center.managed_executions.retire"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+                "extension_center.contribution_authorizations.grant"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+                "extension_center.contribution_authorizations.revoke"
+            ),
+            (
+                "GET",
+                "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+                "extension_center.contribution_authorizations.view"
+            ),
+            (
+                "GET",
                 "/api/console/settings/extension-center/installed",
                 "extension_center.installed.view"
             ),

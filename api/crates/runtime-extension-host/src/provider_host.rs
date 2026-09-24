@@ -50,7 +50,7 @@ use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
     call_executable, call_executable_streaming, ProviderHostCallContext,
     ProviderWorkerCleanupReason, ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
-    DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
+    StreamingCallContext, DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
 
 use self::supervisor::ProviderWorkerSupervisor;
@@ -1046,8 +1046,7 @@ impl ProviderHost {
             required_live_events,
             diagnostic_live_events,
             None,
-            None,
-            None,
+            (None, None),
         )
     }
 
@@ -1060,12 +1059,15 @@ impl ProviderHost {
         protocol_observation: Option<
             Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>,
         >,
-        principal: Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
-        plugin_data: Option<Arc<dyn PluginDataPort>>,
+        host_call_inputs: (
+            Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
+            Option<Arc<dyn PluginDataPort>>,
+        ),
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
         let loaded = self.loaded_package(plugin_id)?.clone();
+        let (principal, plugin_data) = host_call_inputs;
         let host_calls = match (principal, plugin_data) {
             (Some(principal), Some(plugin_data)) => {
                 build_host_call_context(&loaded, &input, principal, plugin_data)?
@@ -1270,11 +1272,13 @@ impl ProviderHost {
                     .call_streaming_with_limits_and_host_calls(
                         &request,
                         &invocation_limits,
-                        required_live_events,
-                        diagnostic_live_events,
-                        protocol_observation,
-                        event_observer,
-                        host_calls,
+                        StreamingCallContext {
+                            required_live_events,
+                            diagnostic_live_events,
+                            protocol_observation,
+                            event_observer,
+                            host_calls,
+                        },
                     )
                     .await
             }

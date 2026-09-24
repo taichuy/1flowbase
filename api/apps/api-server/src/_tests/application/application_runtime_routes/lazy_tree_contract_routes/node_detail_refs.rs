@@ -44,6 +44,13 @@ async fn application_runtime_routes_trace_node_detail_ref_loads_node_run_payload
     .await
     .unwrap();
 
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(flow_run_id).unwrap(),
+    )
+    .await;
+
     let trace_tree = app
         .clone()
         .oneshot(
@@ -188,6 +195,13 @@ async fn application_runtime_routes_trace_node_detail_offloads_provider_events()
     )
     .await
     .unwrap();
+
+    rebuild_trace_projection_for_test(
+        &state,
+        Uuid::parse_str(&application_id).unwrap(),
+        Uuid::parse_str(flow_run_id).unwrap(),
+    )
+    .await;
 
     let trace_tree = load_trace_tree_payload(&app, &cookie, &application_id, flow_run_id).await;
     let llm_trace_node_id = trace_tree["data"]["nodes"]

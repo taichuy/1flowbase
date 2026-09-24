@@ -148,7 +148,7 @@ fn ac_004_answer_node_truth_trace_hides_legacy_waiting_snapshots() {
             .iter()
             .filter_map(|node| node.node_type.as_deref())
             .collect::<Vec<_>>(),
-        vec!["start", "llm", "answer"]
+        vec!["start", "llm", "llm", "llm", "answer"]
     );
     let answer = top_level_node_runs
         .iter()
@@ -993,7 +993,6 @@ fn builder_projects_intercepted_route_tool_callback_status() {
 fn builder_merges_callback_task_tools_with_internal_route_tools() {
     let flow_run_id = Uuid::now_v7();
     let callback_node_run_id = Uuid::now_v7();
-    let route_node_run_id = Uuid::now_v7();
     let callback_task_id = Uuid::now_v7();
     let now = OffsetDateTime::UNIX_EPOCH;
     let ordinary_tool_calls = json!([
@@ -1036,70 +1035,53 @@ fn builder_merges_callback_task_tools_with_internal_route_tools() {
     let detail = domain::ApplicationRunDetail {
         native_messages: Vec::new(),
         flow_run: flow_run(flow_run_id, now),
-        node_runs: vec![
-            domain::NodeRunRecord {
-                id: callback_node_run_id,
-                flow_run_id,
-                node_id: "node-llm".to_string(),
-                node_type: "llm".to_string(),
-                node_alias: "Main LLM".to_string(),
-                status: domain::NodeRunStatus::Succeeded,
-                input_payload: json!({ "prompt": "prepare context" }),
-                output_payload: json!({ "tool_calls": ordinary_tool_calls }),
-                error_payload: None,
-                metrics_payload: json!({}),
-                debug_payload: json!({}),
-                started_at: now,
-                finished_at: Some(now + time::Duration::seconds(5)),
-            },
-            domain::NodeRunRecord {
-                id: route_node_run_id,
-                flow_run_id,
-                node_id: "node-llm".to_string(),
-                node_type: "llm".to_string(),
-                node_alias: "Main LLM".to_string(),
-                status: domain::NodeRunStatus::Succeeded,
-                input_payload: json!({ "prompt": "review latest commits" }),
-                output_payload: json!({ "answer": "review complete" }),
-                error_payload: None,
-                metrics_payload: json!({}),
-                debug_payload: json!({
-                    "llm_rounds": [
-                        {
-                            "round_index": 3,
-                            "assistant": {
-                                "tool_calls": [
-                                    {
-                                        "id": "call-problem-review",
-                                        "name": "problem_review"
-                                    }
-                                ]
-                            },
-                            "tool_results": [
+        node_runs: vec![domain::NodeRunRecord {
+            id: callback_node_run_id,
+            flow_run_id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "Main LLM".to_string(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: json!({ "prompt": "review latest commits" }),
+            output_payload: json!({ "tool_calls": ordinary_tool_calls }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({
+                "llm_rounds": [
+                    {
+                        "round_index": 3,
+                        "assistant": {
+                            "tool_calls": [
                                 {
-                                    "tool_call_id": "call-problem-review",
-                                    "name": "problem_review",
-                                    "content": "problem review result"
+                                    "id": "call-problem-review",
+                                    "name": "problem_review"
                                 }
                             ]
-                        }
-                    ],
-                    "visible_internal_llm_tool_trace": [
-                        {
-                            "kind": "visible_internal_llm_tool_trace",
-                            "route_kind": "fusion",
-                            "tool_call_id": "call-problem-review",
-                            "tool_name": "problem_review",
-                            "status": "succeeded",
-                            "route_model": "gemini-3-flash",
-                            "branch_traces": branch_traces
-                        }
-                    ]
-                }),
-                started_at: now + time::Duration::seconds(6),
-                finished_at: Some(now + time::Duration::seconds(12)),
-            },
-        ],
+                        },
+                        "tool_results": [
+                            {
+                                "tool_call_id": "call-problem-review",
+                                "name": "problem_review",
+                                "content": "problem review result"
+                            }
+                        ]
+                    }
+                ],
+                "visible_internal_llm_tool_trace": [
+                    {
+                        "kind": "visible_internal_llm_tool_trace",
+                        "route_kind": "fusion",
+                        "tool_call_id": "call-problem-review",
+                        "tool_name": "problem_review",
+                        "status": "succeeded",
+                        "route_model": "gemini-3-flash",
+                        "branch_traces": branch_traces
+                    }
+                ]
+            }),
+            started_at: now,
+            finished_at: Some(now + time::Duration::seconds(12)),
+        }],
         checkpoints: Vec::new(),
         callback_tasks: vec![domain::CallbackTaskRecord {
             id: callback_task_id,

@@ -108,7 +108,11 @@ fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
         )
         .await;
 
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
+        if status != StatusCode::OK {
+            let payload = response_json(response).await;
+            panic!("unexpected compact response status {status}: {payload}");
+        }
         assert_eq!(
             response
                 .headers()
@@ -158,7 +162,11 @@ fn root_1998_f9_root_alias_compact_stream_preserves_completed_projection() {
             Some(codex_turn_metadata("responses_compaction_v2")),
         )
         .await;
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
+        if status != StatusCode::OK {
+            let payload = response_json(response).await;
+            panic!("unexpected root alias response status {status}: {payload}");
+        }
         assert_eq!(
             response.headers().get("content-type").unwrap(),
             "text/event-stream"
@@ -224,7 +232,11 @@ fn root_1998_f9_stale_callback_with_compact_trigger_falls_through_to_unary_compa
             None,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
+        if status != StatusCode::OK {
+            let payload = response_json(response).await;
+            panic!("unexpected compact response status {status}: {payload}");
+        }
         assert_eq!(
             response.headers().get("content-type").unwrap(),
             "text/event-stream"
@@ -259,8 +271,13 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         .await;
         let mut initial = responses_body(false);
         initial["tools"] = json!([{
-            "type": "function", "name": "lookup_inventory",
-            "parameters": {"type": "object", "properties": {"sku": {"type": "string"}}}
+            "type": "function", "name": "lookup_inventory", "strict": true,
+            "parameters": {
+                "type": "object",
+                "properties": {"sku": {"type": "string"}},
+                "required": ["sku"],
+                "additionalProperties": false
+            }
         }]);
         let response = post_openai_responses(&app, "/v1/responses", &token, initial, None).await;
         let status = response.status();
@@ -294,7 +311,11 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
             None,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
+        if status != StatusCode::OK {
+            let payload = response_json(response).await;
+            panic!("unexpected live callback response status {status}: {payload}");
+        }
         assert_eq!(
             response.headers().get("content-type").unwrap(),
             "text/event-stream"
@@ -332,10 +353,15 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
 
 fn mixed_callback_compact_body(call_id: &str) -> Value {
     let mut body = v2_compaction_body(true);
-    body["input"].as_array_mut().unwrap().extend([
+    let input = body["input"].as_array_mut().unwrap();
+    let trigger = input
+        .pop()
+        .expect("V2 compaction body should end with its trigger");
+    input.extend([
         json!({"type": "function_call", "call_id": call_id, "name": "lookup_inventory", "arguments": "{\"sku\":\"sku_123\"}"}),
         json!({"type": "function_call_output", "call_id": call_id, "output": {"stock": 7}}),
     ]);
+    input.push(trigger);
     body
 }
 
