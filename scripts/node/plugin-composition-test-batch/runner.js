@@ -91,6 +91,7 @@ try {
       requireCommand(`build-${example}`, 'cargo', ['build', ...cargoProfileArgs, '--locked', '--manifest-path', 'api/Cargo.toml', '-p', 'runtime-extension-sdk', '--example', example]);
       env[variable] = path.join(env.CARGO_TARGET_DIR, 'debug/examples', example);
       fs.accessSync(env[variable], fs.constants.X_OK);
+      requireCommand(`strip-debug-${example}`, 'strip', ['--strip-debug', env[variable]]);
       identity(env[variable]);
     } catch (error) { delete env[variable]; report.blockers.push(error.message); }
   }

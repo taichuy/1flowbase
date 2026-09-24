@@ -210,6 +210,8 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
@@ -600,6 +602,8 @@ jobs:
           set -euo pipefail
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
           echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
           echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
@@ -849,6 +853,18 @@ jobs:
           restore-keys: |
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
+      - name: Build API server coverage worker fixtures
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_hook_worker
+          cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_hook_worker"
+          strip --strip-debug "$CARGO_TARGET_DIR/debug/examples/managed_event_worker"
+          echo "MANAGED_HOOK_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_hook_worker" >> "$GITHUB_ENV"
+          echo "MANAGED_EVENT_WORKER_FIXTURE=$CARGO_TARGET_DIR/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target

@@ -976,9 +976,25 @@ test("API-server quality-gate shards build and export the real SDK worker fixtur
     );
     assert.match(
       step,
-      /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
+      /strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker"[\s\S]*strip --strip-debug "\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker"[\s\S]*MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_hook_worker[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR\/debug\/examples\/managed_event_worker/u,
     );
   }
+});
+
+test("API-server coverage shards build, strip and export managed SDK fixtures", () => {
+  const workflow = readQualityGateWorkflow();
+  const coverage = workflow.slice(
+    workflow.indexOf("  coverage-backend-api-server-sharded:\n"),
+    workflow.indexOf("  coverage-backend-api-server-sharded-merge:\n"),
+  );
+  const fixtureStart = coverage.indexOf("      - name: Build API server coverage worker fixtures\n");
+  const actionStart = coverage.indexOf("      - uses: ./.github/actions/quality-gate\n", fixtureStart);
+  assert.ok(fixtureStart >= 0 && actionStart > fixtureStart);
+  const step = coverage.slice(fixtureStart, actionStart);
+  assert.match(step, /CARGO_TARGET_DIR: \$\{\{ github\.workspace \}\}\/tmp\/quality-gate-cache\/rust-coverage\/api-server-shadow\/target/u);
+  assert.match(step, /cargo build[\s\S]*managed_hook_worker[\s\S]*cargo build[\s\S]*managed_event_worker/u);
+  assert.match(step, /strip --strip-debug[\s\S]*managed_hook_worker[\s\S]*strip --strip-debug[\s\S]*managed_event_worker/u);
+  assert.match(step, /MANAGED_HOOK_WORKER_FIXTURE=\$CARGO_TARGET_DIR[\s\S]*MANAGED_EVENT_WORKER_FIXTURE=\$CARGO_TARGET_DIR/u);
 });
 
 test("container image workflows keep vulnerability findings as warnings", () => {

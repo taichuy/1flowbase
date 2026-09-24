@@ -138,8 +138,16 @@ pub(crate) fn admit_published_model_parameters(
     };
     let selected = extract_agent_model_catalog_from_start_node(document)
         .into_iter()
-        .find(|model| model.id == model_id)
-        .ok_or(NativeRunValidationError::UnknownModel)?;
+        .find(|model| model.id == model_id);
+    let Some(selected) = selected else {
+        if parameters.is_none() {
+            return Ok(PublishedModelAdmission {
+                parameters: None,
+                defaulted_effort: None,
+            });
+        }
+        return Err(NativeRunValidationError::UnknownModel);
+    };
     let mut effective = parameters.cloned();
     let mut defaulted_effort = None;
     if let Some(reasoning) = &selected.reasoning {
