@@ -1,6 +1,6 @@
 use super::ClientTrajectoryFrameKind;
 use serde_json::Value;
-// Match the HTTP Responses Bytes extractor's Axum default request limit.
+// This best-effort diagnostic budget is independent of the larger Responses ingress limit.
 // SSE/WS values remain individually bounded; whole sessions are not accumulated.
 pub(super) const AGGREGATE_BYTES: usize = 2 * 1024 * 1024;
 /// Byte-based framing preserves partial UTF-8 until a complete JSON/SSE value exists.

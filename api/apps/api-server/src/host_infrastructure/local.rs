@@ -27,7 +27,7 @@ const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
 const PROVIDER_REQUEST_LOG_QUEUE_CAPACITY: usize = 10_000;
 const LOCAL_CACHE_MAX_CAPACITY: u64 = 10_000;
 const PROVIDER_TRANSPORT_RETENTION: Duration = Duration::minutes(15);
-const PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
+const PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES: usize = crate::RESPONSES_REQUEST_MAX_BYTES;
 const LOCAL_INFRASTRUCTURE_CONTRACTS: &[&str] = &[
     "storage-ephemeral",
     "session-store",

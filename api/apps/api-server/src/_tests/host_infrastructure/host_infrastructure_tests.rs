@@ -28,6 +28,24 @@ fn local_infra_host_provides_required_defaults() {
     assert!(registry.runtime_event_stream().is_some());
 }
 
+#[tokio::test]
+async fn responses_transport_handoff_accepts_a_valid_payload_larger_than_two_mebibytes() {
+    use control_plane::ports::{ProviderTransportPayload, ProviderTransportSlotId};
+
+    let registry = crate::host_infrastructure::build_local_host_infrastructure();
+    let store = registry.provider_transport_store();
+    let slot = ProviderTransportSlotId::for_flow_run(uuid::Uuid::now_v7());
+    let payload = ProviderTransportPayload::openai_responses(serde_json::json!({
+        "model": "gpt-test",
+        "input": "x".repeat(2 * 1024 * 1024 + 1024)
+    }))
+    .unwrap();
+    assert!(payload.size_bytes() > 2 * 1024 * 1024);
+
+    store.put(slot, payload.clone()).await.unwrap();
+    assert_eq!(store.consume(slot).await.unwrap(), payload);
+}
+
 #[test]
 fn local_infra_host_default_provider_source_matches_builtin_extension_id() {
     let registry = crate::host_infrastructure::build_local_host_infrastructure();

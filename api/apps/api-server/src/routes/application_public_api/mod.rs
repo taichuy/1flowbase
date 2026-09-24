@@ -19,7 +19,7 @@ pub(crate) mod workflow_extension_interface;
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{extract::DefaultBodyLimit, handler::Handler, Router};
 
 use crate::app_state::ApiState;
 
@@ -77,7 +77,10 @@ pub(crate) fn compatible_route_assembly(
         )
         .route(
             "/responses",
-            crate::external_route_assembly::post(openai::create_response),
+            crate::external_route_assembly::post(
+                openai::create_response
+                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
+            ),
         )
         .route(
             "/v1/models",
@@ -89,12 +92,17 @@ pub(crate) fn compatible_route_assembly(
         )
         .route(
             "/v1/responses",
-            crate::external_route_assembly::get(responses_websocket::upgrade)
-                .post(openai::create_response),
+            crate::external_route_assembly::get(responses_websocket::upgrade).post(
+                openai::create_response
+                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
+            ),
         )
         .route(
             "/v1/responses/compact",
-            crate::external_route_assembly::post(openai::create_response_compact),
+            crate::external_route_assembly::post(
+                openai::create_response_compact
+                    .layer(DefaultBodyLimit::max(crate::RESPONSES_REQUEST_MAX_BYTES)),
+            ),
         )
         .route(
             "/v1/chat/completions/models",

@@ -137,6 +137,30 @@ fn openai_responses_accepts_blocking_text_input() {
 }
 
 #[test]
+fn responses_http_admits_a_request_larger_than_two_mebibytes_for_protocol_validation() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
+        let token = setup_published_app(&app, "Large Responses Request App").await;
+        let mut body = responses_body(false);
+        body["input"] = json!("x".repeat(2 * 1024 * 1024 + 1024));
+        body["model"] = Value::Null;
+
+        let response = post_json(
+            &app,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            body,
+        )
+        .await;
+
+        let status = response.status();
+        let payload = response_json(response).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{payload}");
+        assert_eq!(payload["error"]["type"], json!("invalid_request_error"));
+    });
+}
+
+#[test]
 fn codex_responses_store_false_crosses_the_request_boundary() {
     run_compat_route_test(|| async {
         let app = test_app().await;
