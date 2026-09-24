@@ -3,7 +3,10 @@ use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    io::{self, Write},
+};
 
 #[path = "history/canonical.rs"]
 mod canonical;
@@ -57,15 +60,16 @@ impl History {
             CURRENT_VERSION => normalize_item(item)?,
             _ => anyhow::bail!("native_history_version_unsupported"),
         };
-        let bytes = serde_json::to_vec(&canonical_json(&item))?;
+        let mut byte_count = ByteCounter(0);
+        write_canonical_json(&item, &mut byte_count)?;
         let mut hash = Sha256::new();
         hash.update(format!(
             "1flowbase.responses.history.item.v{}\0",
             self.version
         ));
         hash.update(self.digest.as_bytes());
-        hash.update((bytes.len() as u64).to_be_bytes());
-        hash.update(bytes);
+        hash.update((byte_count.0 as u64).to_be_bytes());
+        write_canonical_json(&item, &mut DigestWriter(&mut hash))?;
         self.digest = format!("{:x}", hash.finalize());
         self.item_count += 1;
         Ok(())
@@ -91,14 +95,18 @@ pub(crate) fn completed_history(
     } else {
         History::empty(CURRENT_VERSION)
     };
-    let input = match body.get("input") {
-        Some(Value::Array(items)) => items.clone(),
-        Some(Value::String(text)) => vec![
-            json!({"type":"message","role":"user","content":[{"type":"input_text","text":text}]}),
-        ],
+    match body.get("input") {
+        Some(Value::Array(items)) => {
+            for item in items {
+                history.append(item)?;
+            }
+        }
+        Some(Value::String(text)) => {
+            history.append(&json!({"type":"message","role":"user","content":[{"type":"input_text","text":text}]}))?;
+        }
         _ => return Ok(None),
-    };
-    for item in input.iter().chain(output) {
+    }
+    for item in output {
         history.append(item)?;
     }
     Ok(Some(serde_json::to_value(history)?))
@@ -197,19 +205,64 @@ pub(crate) fn prove_full_context_input<'a>(
     Ok(proof)
 }
 
-fn canonical_json(value: &Value) -> Value {
-    match value {
-        Value::Object(object) => Value::Object(
-            object
-                .iter()
-                .map(|(k, v)| (k.clone(), canonical_json(v)))
-                .collect::<std::collections::BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Array(items) => Value::Array(items.iter().map(canonical_json).collect()),
-        value => value.clone(),
+struct ByteCounter(usize);
+
+impl Write for ByteCounter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len())
+            .ok_or_else(|| io::Error::other("native_history_item_size_overflow"))?;
+        Ok(bytes.len())
     }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct DigestWriter<'a>(&'a mut Sha256);
+
+impl Write for DigestWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn write_canonical_json(value: &Value, out: &mut impl Write) -> Result<()> {
+    match value {
+        Value::Object(object) => {
+            out.write_all(b"{")?;
+            let mut keys = object.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            for (index, key) in keys.into_iter().enumerate() {
+                if index > 0 {
+                    out.write_all(b",")?;
+                }
+                serde_json::to_writer(&mut *out, key)?;
+                out.write_all(b":")?;
+                write_canonical_json(&object[key], out)?;
+            }
+            out.write_all(b"}")?;
+        }
+        Value::Array(items) => {
+            out.write_all(b"[")?;
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.write_all(b",")?;
+                }
+                write_canonical_json(item, out)?;
+            }
+            out.write_all(b"]")?;
+        }
+        _ => serde_json::to_writer(out, value)?,
+    }
+    Ok(())
 }
 
 #[cfg(test)]

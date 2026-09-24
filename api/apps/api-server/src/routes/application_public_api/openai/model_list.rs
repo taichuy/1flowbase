@@ -48,12 +48,27 @@ pub(super) fn to_codex_model_list_response(models: Vec<OpenAiCompatibleModel>) -
 fn codex_model_metadata(model: OpenAiCompatibleModel) -> Value {
     let display_name = model.name.clone().unwrap_or_else(|| model.id.clone());
     let max_context_window = model.max_context_window.or(model.context_window);
+    let default_reasoning_level = model
+        .reasoning
+        .as_ref()
+        .and_then(|reasoning| reasoning.default_effort.as_deref());
+    let supported_reasoning_levels = model
+        .reasoning
+        .as_ref()
+        .map(|reasoning| {
+            reasoning
+                .supported_efforts
+                .iter()
+                .map(|effort| json!({"effort": effort, "description": effort}))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     json!({
         "slug": model.id,
         "display_name": display_name,
         "description": null,
-        "default_reasoning_level": null,
-        "supported_reasoning_levels": [],
+        "default_reasoning_level": default_reasoning_level,
+        "supported_reasoning_levels": supported_reasoning_levels,
         "shell_type": "shell_command",
         "visibility": "list",
         "supported_in_api": true,

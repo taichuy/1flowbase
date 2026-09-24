@@ -419,8 +419,7 @@ fn translate_indexed_response_request(
     metadata.set_responses_transport_requirement(transport_requirement);
     if !uses_native_transport {
         metadata.set_responses_configuration_digest(
-            ProviderTransportPayload::openai_responses(request.clone())
-                .and_then(|payload| payload.configuration_digest())
+            ProviderTransportPayload::openai_responses_configuration_digest(&request)
                 .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?,
         );
         metadata.set_responses_input_history(
@@ -435,32 +434,33 @@ fn translate_indexed_response_request(
         ),
         operation,
     );
-    if uses_native_transport {
-        let payload = ProviderTransportPayload::openai_responses(request.clone())
-            .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
-        metadata.set_provider_transport_payload(payload);
-    }
     let execution = native_execution(
         response_max_output_tokens(object, &mut report)?,
         openai_reasoning(object, false, &mut report)?,
         operation,
     );
+    let inputs = openai_inputs(
+        object,
+        match transport_requirement {
+            crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible => {
+                super::OpenAiToolMapping::ResponsesSemantic
+            }
+            crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough => {
+                super::OpenAiToolMapping::ResponsesNative
+            }
+        },
+        &mut report,
+    )?;
+    if uses_native_transport || matches!(operation, domain::AiNativeOperation::Compact(_)) {
+        let payload = ProviderTransportPayload::openai_responses(request)
+            .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?;
+        metadata.set_provider_transport_payload(payload);
+    }
     let request = NativeRunRequest {
         query,
         system: system.map(NativePromptBlock::text).into_iter().collect(),
         model: Some(model),
-        inputs: openai_inputs(
-            object,
-            match transport_requirement {
-                crate::application_public_api::native::ResponsesTransportRequirement::SemanticCompatible => {
-                    super::OpenAiToolMapping::ResponsesSemantic
-                }
-                crate::application_public_api::native::ResponsesTransportRequirement::NativePassthrough => {
-                    super::OpenAiToolMapping::ResponsesNative
-                }
-            },
-            &mut report,
-        )?,
+        inputs,
         history,
         attachments: Vec::new(),
         conversation,

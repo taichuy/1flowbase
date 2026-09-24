@@ -307,6 +307,14 @@ async fn increment_published_default_reaches_native_wire_and_callback_configurat
         assert_eq!(sealed.wire_body()["input"], body["input"]);
         assert_eq!(sealed.affinity(), Some(&affinity));
         assert_eq!(
+            NativeExecutionModelParameters::configuration_digest_with_published_reasoning_default(
+                &flow.input_payload,
+                &body,
+            )
+            .unwrap(),
+            sealed.configuration_digest().unwrap()
+        );
+        assert_eq!(
             sealed.size_bytes(),
             serde_json::to_vec(sealed.wire_body()).unwrap().len()
         );
@@ -364,6 +372,14 @@ async fn increment_published_default_reaches_native_wire_and_callback_configurat
         assert_eq!(
             resumed_payload.configuration_digest().unwrap(),
             sealed.configuration_digest().unwrap()
+        );
+        assert_eq!(
+            NativeExecutionModelParameters::configuration_digest_with_published_reasoning_default(
+                &flow.input_payload,
+                &resumed,
+            )
+            .unwrap(),
+            resumed_payload.configuration_digest().unwrap()
         );
         assert_eq!(
             resumed_payload.wire_body()["previous_response_id"],

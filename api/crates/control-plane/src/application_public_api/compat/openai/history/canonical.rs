@@ -9,8 +9,6 @@ use anyhow::Result;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
 enum ItemKind {
     Message,
     FunctionCall,
@@ -18,11 +16,27 @@ enum ItemKind {
     FunctionCallOutput,
     CustomToolCallOutput,
     Reasoning,
-    #[serde(alias = "compaction_summary")]
     Compaction,
     ContextCompaction,
-    #[serde(other)]
     Extension,
+}
+
+fn item_kind(object: &Map<String, Value>) -> Result<ItemKind> {
+    let kind = object
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("native_history_item_invalid"))?;
+    Ok(match kind {
+        "message" => ItemKind::Message,
+        "function_call" => ItemKind::FunctionCall,
+        "custom_tool_call" => ItemKind::CustomToolCall,
+        "function_call_output" => ItemKind::FunctionCallOutput,
+        "custom_tool_call_output" => ItemKind::CustomToolCallOutput,
+        "reasoning" => ItemKind::Reasoning,
+        "compaction" | "compaction_summary" => ItemKind::Compaction,
+        "context_compaction" => ItemKind::ContextCompaction,
+        _ => ItemKind::Extension,
+    })
 }
 
 // Typed, optional tracking fields. Flatten keeps every unrecognized field;
@@ -102,8 +116,7 @@ pub(super) fn normalize_item(item: &Value) -> Result<Value> {
     {
         object.insert("type".into(), json!("message"));
     }
-    let kind: ItemKind = serde_json::from_value(Value::Object(object.clone()))
-        .map_err(|_| anyhow::anyhow!("native_history_item_invalid"))?;
+    let kind = item_kind(object)?;
     if matches!(kind, ItemKind::Extension) {
         return Ok(item);
     }

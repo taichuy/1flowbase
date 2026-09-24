@@ -3,7 +3,8 @@ use crate::application_public_api::{
     ApplicationPublicApiTestHarness, ApplicationPublicApiTestRepository,
 };
 use control_plane_contracts::{
-    application_public_runtime::ApplicationPublishedFlowRunRepository, ports::CreateFlowRunInput,
+    application_public_runtime::ApplicationPublishedFlowRunRepository,
+    ports::{CreateFlowRunInput, ProviderTransportPayload},
 };
 use time::OffsetDateTime;
 use uuid::Uuid;

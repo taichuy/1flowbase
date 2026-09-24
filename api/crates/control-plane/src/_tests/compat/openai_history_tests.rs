@@ -12,6 +12,30 @@ fn seed() -> (Value, Vec<Value>) {
 }
 
 #[test]
+fn completed_history_v2_digest_matches_frozen_nested_wire_vector() {
+    let body = json!({"input": [{"role": "user", "content": "line\n\"雪\""}]});
+    let output = [json!({"type": "future_item", "opaque": {"z": 1, "a": "x"}})];
+    let proof = completed_history(&body, None, &output).unwrap().unwrap();
+    assert_eq!(proof["item_count"], 2);
+    assert_eq!(
+        proof["digest"],
+        "a233467c7b28f741f92a18af8cf1e9608b9b2562e436a7a10f4fe521a50924f7"
+    );
+}
+
+#[test]
+fn v2_item_kind_rejects_non_text_type_and_keeps_future_extensions() {
+    assert_eq!(
+        normalize_item(&json!({"type": 42, "opaque": "value"}))
+            .unwrap_err()
+            .to_string(),
+        "native_history_item_invalid"
+    );
+    let future = json!({"type": "future_item", "opaque": {"z": 1}});
+    assert_eq!(normalize_item(&future).unwrap(), future);
+}
+
+#[test]
 fn complete_history_accepts_exact_context_and_rejects_semantic_changes() {
     let (input, output) = seed();
     let history = completed_history(&json!({"input":input}), None, &output)

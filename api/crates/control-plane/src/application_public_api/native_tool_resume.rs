@@ -3,10 +3,7 @@ pub use semantic::{correlate_semantic_responses_callback, VerifiedResponsesConti
 use std::collections::BTreeSet;
 
 use anyhow::Result;
-use control_plane_contracts::{
-    application_public_runtime::ApplicationPublishedRunControlRepository,
-    ports::ProviderTransportPayload,
-};
+use control_plane_contracts::application_public_runtime::ApplicationPublishedRunControlRepository;
 use domain::{CallbackTaskRecord, CallbackTaskStatus, FlowRunStatus};
 use serde_json::{json, Value};
 
@@ -174,11 +171,6 @@ where
             return Err(ControlPlaneError::Conflict("native_tool_output_response_mismatch").into());
         }
     }
-    let transport =
-        super::native::NativeExecutionModelParameters::seal_published_reasoning_default(
-            &flow_run.input_payload,
-            ProviderTransportPayload::openai_responses(request.clone())?,
-        )?;
     // A response cursor proves delta causality. Without one, a request carrying
     // history/context must prove the predecessor prefix; comparing user messages
     // conflates a complete history with a delta and rejects valid context updates.
@@ -191,7 +183,8 @@ where
             &call_id_list,
         )
         .is_ok();
-    let digest = transport.configuration_digest()?;
+    let digest = super::native::NativeExecutionModelParameters::
+        configuration_digest_with_published_reasoning_default(&flow_run.input_payload, request)?;
     if metadata.get("configuration_digest").and_then(Value::as_str) != Some(digest.as_str()) {
         // A full next sampling request may refresh tools or generation options. It must
         // still prove this round's complete history and retain the frozen model route.

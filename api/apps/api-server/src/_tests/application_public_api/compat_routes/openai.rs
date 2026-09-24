@@ -521,6 +521,18 @@ fn openai_models_with_client_version_returns_codex_model_metadata() {
         assert_eq!(payload["models"][0]["max_context_window"], json!(128000));
         assert_eq!(payload["models"][0]["max_output_tokens"], json!(32000));
         assert_eq!(
+            payload["models"][0]["default_reasoning_level"],
+            json!("medium")
+        );
+        assert_eq!(
+            payload["models"][0]["supported_reasoning_levels"],
+            json!([
+                {"effort": "low", "description": "low"},
+                {"effort": "medium", "description": "medium"},
+                {"effort": "high", "description": "high"}
+            ])
+        );
+        assert_eq!(
             payload["models"][0]["auto_compact_token_limit"],
             json!(110000)
         );

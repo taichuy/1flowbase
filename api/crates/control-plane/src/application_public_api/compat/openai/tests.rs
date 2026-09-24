@@ -1194,8 +1194,8 @@ fn issue_2039_v2_compaction_keeps_opaque_codex_history_out_of_native_state() {
             {"type":"compaction_trigger"}
         ]
     });
-    let translated = translate_response_request_with_context(
-        request,
+    let mut translated = translate_response_request_with_context(
+        request.clone(),
         OpenAiResponsesRequestContext::responses(),
     )
     .expect("Codex V2 compaction history should be accepted as provider-opaque input");
@@ -1207,6 +1207,15 @@ fn issue_2039_v2_compaction_keeps_opaque_codex_history_out_of_native_state() {
     assert!(translated.request.query.is_empty());
     assert!(translated.request.history.is_empty());
     assert!(translated.request.system.is_empty());
+    assert_eq!(
+        translated
+            .request
+            .metadata
+            .take_provider_transport_payload()
+            .unwrap()
+            .wire_body(),
+        &request
+    );
 }
 
 #[test]

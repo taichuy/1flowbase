@@ -220,16 +220,9 @@ impl NativeExecutionModelParameters {
         input_payload: &Value,
         payload: crate::ports::ProviderTransportPayload,
     ) -> anyhow::Result<crate::ports::ProviderTransportPayload> {
-        let Some(default) = input_payload
-            .get("sys")
-            .and_then(|sys| sys.get(PUBLISHED_REASONING_DEFAULT_EFFORT))
-        else {
+        let Some(default) = Self::frozen_published_reasoning_default(input_payload)? else {
             return Ok(payload);
         };
-        let default = default
-            .as_str()
-            .filter(|value| valid_reasoning_effort(value))
-            .ok_or_else(|| anyhow::anyhow!("invalid_frozen_published_reasoning_default"))?;
         if payload
             .wire_body()
             .get("reasoning")
@@ -240,6 +233,42 @@ impl NativeExecutionModelParameters {
         }
         let affinity = payload.affinity().cloned();
         let mut body = payload.into_wire_body();
+        Self::insert_published_reasoning_default(&mut body, default)?;
+        let sealed = crate::ports::ProviderTransportPayload::openai_responses(body)?;
+        Ok(match affinity {
+            Some(affinity) => sealed.with_affinity(affinity),
+            None => sealed,
+        })
+    }
+
+    pub(crate) fn configuration_digest_with_published_reasoning_default(
+        input_payload: &Value,
+        wire_body: &Value,
+    ) -> anyhow::Result<String> {
+        let Some(default) = Self::frozen_published_reasoning_default(input_payload)? else {
+            return crate::ports::ProviderTransportPayload::openai_responses_configuration_digest(
+                wire_body,
+            );
+        };
+        crate::ports::ProviderTransportPayload::
+            openai_responses_configuration_digest_with_reasoning_default(wire_body, default)
+    }
+
+    fn frozen_published_reasoning_default(input_payload: &Value) -> anyhow::Result<Option<&str>> {
+        let Some(default) = input_payload
+            .get("sys")
+            .and_then(|sys| sys.get(PUBLISHED_REASONING_DEFAULT_EFFORT))
+        else {
+            return Ok(None);
+        };
+        let default = default
+            .as_str()
+            .filter(|value| valid_reasoning_effort(value))
+            .ok_or_else(|| anyhow::anyhow!("invalid_frozen_published_reasoning_default"))?;
+        Ok(Some(default))
+    }
+
+    fn insert_published_reasoning_default(body: &mut Value, default: &str) -> anyhow::Result<()> {
         let body_object = body
             .as_object_mut()
             .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
@@ -253,11 +282,7 @@ impl NativeExecutionModelParameters {
             .as_object_mut()
             .ok_or_else(|| anyhow::anyhow!("provider_transport_reasoning_must_be_object"))?;
         reasoning.insert("effort".to_owned(), Value::String(default.to_owned()));
-        let sealed = crate::ports::ProviderTransportPayload::openai_responses(body)?;
-        Ok(match affinity {
-            Some(affinity) => sealed.with_affinity(affinity),
-            None => sealed,
-        })
+        Ok(())
     }
 
     pub(crate) fn needs_default_effort(&self) -> bool {

@@ -323,7 +323,7 @@ fn openai_responses_ingress_subtracts_typed_codex_header_and_body_semantics() {
 }
 
 #[test]
-fn issue_2039_compact_route_attaches_the_exact_opaque_provider_body() {
+fn issue_2039_compact_translation_retains_the_exact_opaque_provider_body() {
     let wire_body = json!({
         "model":"gpt-compatible",
         "input":[
@@ -341,10 +341,6 @@ fn issue_2039_compact_route_attaches_the_exact_opaque_provider_body() {
     )
     .expect("V2 compaction should translate");
     let mut request = translated.request;
-    let operation = *request.execution.execution_operation();
-
-    attach_compact_provider_transport_payload(&mut request, operation, wire_body.clone())
-        .expect("Compact route should attach provider transport");
 
     let payload = request
         .metadata

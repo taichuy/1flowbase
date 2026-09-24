@@ -1,4 +1,8 @@
-use std::fmt;
+use std::{
+    fmt,
+    io::{self, Write},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use extension_contracts::provider_contract::ProtocolContextEnvelope;
@@ -122,9 +126,7 @@ pub struct ProviderProtocolContextValue {
 
 impl ProviderProtocolContextValue {
     pub fn new(value: Value) -> anyhow::Result<Self> {
-        let encoded = serde_json::to_vec(&value)?;
-        let mut canonical = Vec::new();
-        write_canonical_json(&value, &mut canonical)?;
+        let (digest, size_bytes) = canonical_digest_and_size(&value)?;
         let source_protocol = value
             .get("source_protocol")
             .and_then(Value::as_str)
@@ -138,8 +140,8 @@ impl ProviderProtocolContextValue {
             .map(str::to_string);
         Ok(Self {
             value,
-            digest: format!("sha256:{:x}", Sha256::digest(&canonical)),
-            size_bytes: encoded.len(),
+            digest,
+            size_bytes,
             source_protocol,
         })
     }
@@ -471,7 +473,7 @@ pub trait ProviderProtocolCapsuleStore: Send + Sync {
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProviderTransportPayload {
     protocol: ProviderTransportProtocol,
-    wire_body: Value,
+    wire_body: Arc<Value>,
     digest: String,
     size_bytes: usize,
     affinity: Option<ProviderTransportAffinity>,
@@ -484,15 +486,12 @@ impl ProviderTransportPayload {
             wire_body.is_object(),
             "provider_transport_payload_must_be_object"
         );
-        let encoded = serde_json::to_vec(&wire_body)?;
-        let mut canonical = Vec::new();
-        write_canonical_json(&wire_body, &mut canonical)?;
-        let digest = format!("sha256:{:x}", Sha256::digest(&canonical));
+        let (digest, size_bytes) = canonical_digest_and_size(&wire_body)?;
         Ok(Self {
             protocol: ProviderTransportProtocol::OpenAiResponses,
-            wire_body,
+            wire_body: Arc::new(wire_body),
             digest,
-            size_bytes: encoded.len(),
+            size_bytes,
             affinity: None,
             native_history: None,
         })
@@ -511,8 +510,7 @@ impl ProviderTransportPayload {
             self.protocol == ProviderTransportProtocol::OpenAiResponses,
             "provider_continuation_protocol_mismatch"
         );
-        let body = self
-            .wire_body
+        let body = Arc::make_mut(&mut self.wire_body)
             .as_object_mut()
             .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
         body.insert(
@@ -521,11 +519,9 @@ impl ProviderTransportPayload {
         );
         self.affinity = Some(continuation.affinity);
         self.native_history = continuation.native_history;
-        let encoded = serde_json::to_vec(&self.wire_body)?;
-        let mut canonical = Vec::new();
-        write_canonical_json(&self.wire_body, &mut canonical)?;
-        self.digest = format!("sha256:{:x}", Sha256::digest(&canonical));
-        self.size_bytes = encoded.len();
+        let (digest, size_bytes) = canonical_digest_and_size(&self.wire_body)?;
+        self.digest = digest;
+        self.size_bytes = size_bytes;
         Ok(self)
     }
 
@@ -543,7 +539,7 @@ impl ProviderTransportPayload {
     }
 
     pub fn into_wire_body(self) -> Value {
-        self.wire_body
+        Arc::try_unwrap(self.wire_body).unwrap_or_else(|shared| (*shared).clone())
     }
 
     pub fn digest(&self) -> &str {
@@ -555,36 +551,64 @@ impl ProviderTransportPayload {
         let Some(input) = self.wire_body.get("input").and_then(Value::as_array) else {
             return Ok(None);
         };
-        let messages: Vec<_> = input
+        let mut messages = input
             .iter()
             .filter(|item| item.get("role").and_then(Value::as_str) == Some("user"))
-            .cloned()
-            .collect();
-        if messages.is_empty() {
+            .peekable();
+        if messages.peek().is_none() {
             return Ok(None);
         }
-        let mut canonical = Vec::new();
-        write_canonical_json(&Value::Array(messages), &mut canonical)?;
-        Ok(Some(format!("sha256:{:x}", Sha256::digest(canonical))))
+        let mut writer = DigestWriter::new();
+        writer.write_all(b"[")?;
+        for (index, message) in messages.enumerate() {
+            if index > 0 {
+                writer.write_all(b",")?;
+            }
+            write_canonical_json(message, &mut writer)?;
+        }
+        writer.write_all(b"]")?;
+        Ok(Some(writer.finish().0))
     }
 
     pub fn configuration_digest(&self) -> anyhow::Result<String> {
-        let mut configuration = self.wire_body.clone();
-        if let Some(body) = configuration.as_object_mut() {
-            for field in [
-                "input",
-                "previous_response_id",
-                "stream",
-                "stream_options",
-                "client_metadata",
-                "metadata",
-            ] {
-                body.remove(field);
-            }
+        Self::openai_responses_configuration_digest(&self.wire_body)
+    }
+
+    pub fn openai_responses_configuration_digest(wire_body: &Value) -> anyhow::Result<String> {
+        let mut writer = DigestWriter::new();
+        if let Some(body) = wire_body.as_object() {
+            write_canonical_object(body, CONFIGURATION_OMITTED_FIELDS, None, &mut writer)?;
+        } else {
+            write_canonical_json(wire_body, &mut writer)?;
         }
-        let mut canonical = Vec::new();
-        write_canonical_json(&configuration, &mut canonical)?;
-        Ok(format!("sha256:{:x}", Sha256::digest(&canonical)))
+        Ok(writer.finish().0)
+    }
+
+    pub fn openai_responses_configuration_digest_with_reasoning_default(
+        wire_body: &Value,
+        default: &str,
+    ) -> anyhow::Result<String> {
+        let body = wire_body
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("provider_transport_payload_must_be_object"))?;
+        let mut reasoning = match body.get("reasoning") {
+            Some(Value::Object(reasoning)) if reasoning.contains_key("effort") => {
+                return Self::openai_responses_configuration_digest(wire_body);
+            }
+            Some(Value::Object(reasoning)) => reasoning.clone(),
+            Some(Value::Null) | None => serde_json::Map::new(),
+            _ => anyhow::bail!("provider_transport_reasoning_must_be_object"),
+        };
+        reasoning.insert("effort".to_owned(), Value::String(default.to_owned()));
+        let reasoning = Value::Object(reasoning);
+        let mut writer = DigestWriter::new();
+        write_canonical_object(
+            body,
+            CONFIGURATION_OMITTED_FIELDS,
+            Some(("reasoning", &reasoning)),
+            &mut writer,
+        )?;
+        Ok(writer.finish().0)
     }
 
     pub const fn size_bytes(&self) -> usize {
@@ -596,36 +620,105 @@ impl ProviderTransportPayload {
     }
 }
 
-fn write_canonical_json(value: &Value, out: &mut Vec<u8>) -> serde_json::Result<()> {
-    match value {
-        Value::Object(object) => {
-            out.push(b'{');
-            let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort_unstable();
-            for (index, key) in keys.into_iter().enumerate() {
-                if index > 0 {
-                    out.push(b',');
-                }
-                serde_json::to_writer(&mut *out, key)?;
-                out.push(b':');
-                write_canonical_json(&object[key], out)?;
-            }
-            out.push(b'}');
-            Ok(())
+const CONFIGURATION_OMITTED_FIELDS: &[&str] = &[
+    "input",
+    "previous_response_id",
+    "stream",
+    "stream_options",
+    "client_metadata",
+    "metadata",
+];
+
+struct DigestWriter {
+    hash: Sha256,
+    bytes: usize,
+}
+
+impl DigestWriter {
+    fn new() -> Self {
+        Self {
+            hash: Sha256::new(),
+            bytes: 0,
         }
+    }
+
+    fn finish(self) -> (String, usize) {
+        (format!("sha256:{:x}", self.hash.finalize()), self.bytes)
+    }
+}
+
+impl Write for DigestWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| io::Error::other("provider_transport_payload_size_overflow"))?;
+        self.hash.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn canonical_digest_and_size(value: &Value) -> anyhow::Result<(String, usize)> {
+    let mut writer = DigestWriter::new();
+    write_canonical_json(value, &mut writer)?;
+    // Sorting object members changes their order, not their serialized byte count.
+    Ok(writer.finish())
+}
+
+fn write_canonical_json(value: &Value, out: &mut impl Write) -> anyhow::Result<()> {
+    match value {
+        Value::Object(object) => write_canonical_object(object, &[], None, out),
         Value::Array(values) => {
-            out.push(b'[');
+            out.write_all(b"[")?;
             for (index, item) in values.iter().enumerate() {
                 if index > 0 {
-                    out.push(b',');
+                    out.write_all(b",")?;
                 }
                 write_canonical_json(item, out)?;
             }
-            out.push(b']');
+            out.write_all(b"]")?;
             Ok(())
         }
-        _ => serde_json::to_writer(out, value),
+        _ => Ok(serde_json::to_writer(out, value)?),
     }
+}
+
+fn write_canonical_object(
+    object: &serde_json::Map<String, Value>,
+    omitted: &[&str],
+    override_field: Option<(&str, &Value)>,
+    out: &mut impl Write,
+) -> anyhow::Result<()> {
+    out.write_all(b"{")?;
+    let mut keys = object
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !omitted.contains(key))
+        .collect::<Vec<_>>();
+    if let Some((key, _)) = override_field {
+        if !object.contains_key(key) {
+            keys.push(key);
+        }
+    }
+    keys.sort_unstable();
+    for (index, key) in keys.into_iter().enumerate() {
+        if index > 0 {
+            out.write_all(b",")?;
+        }
+        serde_json::to_writer(&mut *out, key)?;
+        out.write_all(b":")?;
+        let value = override_field
+            .filter(|(overridden_key, _)| *overridden_key == key)
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| &object[key]);
+        write_canonical_json(value, out)?;
+    }
+    out.write_all(b"}")?;
+    Ok(())
 }
 
 impl fmt::Debug for ProviderTransportPayload {

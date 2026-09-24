@@ -1,4 +1,5 @@
 use super::*;
+use crate::ports::ProviderTransportPayload;
 use domain::orchestration::ResponsesContinuation;
 use uuid::Uuid;
 
@@ -185,8 +186,7 @@ pub async fn correlate_semantic_responses_callback<R: ApplicationPublishedRunCon
     if !remaining.is_empty() {
         return Err(ControlPlaneError::Conflict("responses_tool_output_incomplete_round").into());
     }
-    let digest =
-        ProviderTransportPayload::openai_responses(request.clone())?.configuration_digest()?;
+    let digest = ProviderTransportPayload::openai_responses_configuration_digest(request)?;
     if run
         .input_payload
         .pointer("/sys/responses_configuration_digest")
