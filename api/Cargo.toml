@@ -86,3 +86,9 @@ debug = "line-tables-only"
 
 [profile.test]
 debug = 1
+
+# Managed hook admission hashes installed worker bytes inside the invocation's
+# 1 s observer finalization budget. Keep that SHA-256 path representative of
+# optimized production hashing even when the rest of the test binary is debug.
+[profile.test.package.sha2]
+opt-level = 3
