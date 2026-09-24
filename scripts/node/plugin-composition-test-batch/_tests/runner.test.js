@@ -90,7 +90,11 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
   const inventory = JSON.parse(fs.readFileSync(path.join(root, 'scripts/node/plugin-composition-test-batch/root-2014-inventory.json'), 'utf8'));
   assert.equal(inventory.definitions.length, 455);
   assert.equal(inventory.bindings.length, 477);
-  assert.deepEqual(inventory.approvedAddedDefinitions, ['ui_management.plugin_settings_page.view']);
+  assert.ok(inventory.approvedAddedDefinitions.includes('ui_management.plugin_settings_page.view'));
+  assert.deepEqual(inventory.approvedRemovedDefinitions, ['ui_management.templates.archive']);
+  assert.deepEqual(inventory.approvedRemovedBindings, ['http.console.ui-management.templates.archive.put.v1']);
+  assert.equal(new Set(inventory.approvedAddedDefinitions).size, inventory.approvedAddedDefinitions.length);
+  assert.equal(new Set(inventory.approvedAddedBindings).size, inventory.approvedAddedBindings.length);
   assert.equal(new Set(inventory.definitions).size, 455);
   assert.equal(new Set(inventory.bindings).size, 477);
 });

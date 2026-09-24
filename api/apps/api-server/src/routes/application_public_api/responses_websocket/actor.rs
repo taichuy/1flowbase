@@ -377,7 +377,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
                         if !terminal_delivered {
-                            send_transport_terminal(&mut sender, &notice.code, true, capture.as_mut()).await;
+                            send_transport_terminal(&mut sender, notice.code, true, capture.as_mut()).await;
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,
@@ -405,7 +405,7 @@ pub(super) async fn run_observed_connection_loop<F, Fut>(
                 notice = receive_termination(&mut terminations) => {
                     if let Some(notice) = notice {
                         if !terminal_delivered {
-                            send_transport_terminal(&mut sender, &notice.code, false, None).await;
+                            send_transport_terminal(&mut sender, notice.code, false, None).await;
                         }
                         finish_server_close(&mut sender, &mut receiver, Some(CloseFrame {
                             code: 1011,

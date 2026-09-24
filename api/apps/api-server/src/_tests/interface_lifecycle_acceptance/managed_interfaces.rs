@@ -157,31 +157,45 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         "/../../../scripts/node/plugin-composition-test-batch/root-2014-inventory.json"
     )))
     .unwrap();
-    let expected = |baseline: &str, added: &str| -> BTreeSet<String> {
-        inventory[baseline]
+    let expected = |baseline: &str, added: &str, removed: &str| -> BTreeSet<String> {
+        let mut ids = inventory[baseline]
             .as_array()
             .unwrap()
             .iter()
-            .chain(inventory[added].as_array().unwrap())
             .map(|id| id.as_str().unwrap().to_string())
-            .collect()
+            .collect::<BTreeSet<_>>();
+        for id in inventory[removed].as_array().unwrap() {
+            assert!(ids.remove(id.as_str().unwrap()));
+        }
+        for id in inventory[added].as_array().unwrap() {
+            assert!(ids.insert(id.as_str().unwrap().to_string()));
+        }
+        ids
     };
     assert_eq!(
         registry
             .definitions()
             .map(|definition| definition.interface_id().as_str().to_string())
             .collect::<BTreeSet<_>>(),
-        expected("definitions", "approvedAddedDefinitions")
+        expected(
+            "definitions",
+            "approvedAddedDefinitions",
+            "approvedRemovedDefinitions"
+        )
     );
     assert_eq!(
         registry
             .bindings()
             .map(|binding| binding.binding_id().as_str().to_string())
             .collect::<BTreeSet<_>>(),
-        expected("bindings", "approvedAddedBindings")
+        expected(
+            "bindings",
+            "approvedAddedBindings",
+            "approvedRemovedBindings"
+        )
     );
-    assert_eq!(registry.definitions().len(), 458);
-    assert_eq!(registry.bindings().len(), 482);
+    assert_eq!(registry.definitions().len(), 474);
+    assert_eq!(registry.bindings().len(), 498);
     assert_eq!(registry.managed_contracts().count(), 185);
     let mut ids = BTreeSet::new();
     for descriptor in registry.managed_contracts() {

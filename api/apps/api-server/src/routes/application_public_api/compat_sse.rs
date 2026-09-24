@@ -91,7 +91,7 @@ pub(crate) enum CompatibleResumeAdmission {
     Resume(Box<CompatibleResumePlan>),
     StartNewTurnFromHistory {
         recovery: Option<
-            control_plane::application_public_api::callback_resume::NativeInferenceRecoveryGrant,
+            Box<control_plane::application_public_api::callback_resume::NativeInferenceRecoveryGrant>,
         >,
     },
 }
@@ -372,7 +372,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         }
         PreparedPublishedCallbackResume::RecoverInference { grant } => {
             CompatibleResumeAdmission::StartNewTurnFromHistory {
-                recovery: Some(*grant),
+                recovery: Some(grant),
             }
         }
     })

@@ -397,7 +397,7 @@ async fn selective_preflight_reports_missing_unselected_identity_parent() {
 
 #[tokio::test]
 async fn selective_immutable_conflict_blocks_all_selected_changes() {
-    use control_plane_contracts::ports::{ApplicationRepository, CreateApplicationInput};
+    use control_plane_contracts::ports::CreateApplicationInput;
     let (db, actor) = fixture().await;
     let repo = PgSelectiveBackupRepository::new(db.clone());
     let tenant = Uuid::now_v7();

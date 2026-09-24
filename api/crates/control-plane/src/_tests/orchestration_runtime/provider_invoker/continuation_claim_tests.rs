@@ -366,7 +366,7 @@ async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
         let history = completed_history(
             transport.wire_body(),
             invoker.native_history.as_ref(),
-            &[call.clone()],
+            std::slice::from_ref(&call),
         )
         .unwrap()
         .unwrap();

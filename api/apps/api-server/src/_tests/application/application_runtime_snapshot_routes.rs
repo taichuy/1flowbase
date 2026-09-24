@@ -546,7 +546,6 @@ async fn debug_node_preview_persists_variable_cache_as_snapshot_source() {
     )
     .await;
     let application_uuid = Uuid::parse_str(&application_id).unwrap();
-    let flow_run_id = Uuid::parse_str(preview["data"]["flow_run"]["id"].as_str().unwrap()).unwrap();
 
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     let persisted_value: serde_json::Value = sqlx::query_scalar(
@@ -564,8 +563,9 @@ async fn debug_node_preview_persists_variable_cache_as_snapshot_source() {
     .unwrap();
     assert_eq!(persisted_value, json!("reply:durable preview cache"));
 
-    sqlx::query("delete from flow_runs where id = $1")
-        .bind(flow_run_id)
+    // Mirror the run cleanup performed by application deletion, while retaining the app for GET.
+    sqlx::query("delete from flow_runs where application_id = $1")
+        .bind(application_uuid)
         .execute(&pool)
         .await
         .unwrap();
@@ -613,8 +613,9 @@ async fn debug_flow_run_persists_variable_cache_as_snapshot_source() {
     let persisted_value = wait_for_cache_value(&pool, application_uuid, "node-llm", "text").await;
     assert_eq!(persisted_value, json!("reply:durable flow cache"));
 
-    sqlx::query("delete from flow_runs where id = $1")
-        .bind(flow_run_id)
+    // Mirror the run cleanup performed by application deletion, while retaining the app for GET.
+    sqlx::query("delete from flow_runs where application_id = $1")
+        .bind(application_uuid)
         .execute(&pool)
         .await
         .unwrap();

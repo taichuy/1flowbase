@@ -5,6 +5,7 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
+use control_plane_contracts::application_public_runtime::ApplicationPublishedRunControlRepository;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -178,6 +179,13 @@ fn root_1998_f9_root_alias_compact_stream_preserves_completed_projection() {
                 .to_vec(),
         )
         .unwrap();
+        assert!(
+            body.lines().any(|line| line == "event: response.completed"),
+            "response.completed missing; observed events: {:?}",
+            body.lines()
+                .filter_map(|line| line.strip_prefix("event: "))
+                .collect::<Vec<_>>()
+        );
         let completed = sse_json_event(&body, "response.completed");
         assert_eq!(completed["response"]["id"], "resp-v2-canary");
         assert_eq!(completed["response"]["output"].as_array().unwrap().len(), 1);
@@ -259,9 +267,6 @@ fn root_1998_f9_stale_callback_with_compact_trigger_falls_through_to_unary_compa
 #[test]
 fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_priority() {
     run_compat_route_test(|| async {
-        use control_plane::application_public_api::callback_tool_ids::decode_openai_callback_tool_call_id;
-        use control_plane::ports::OrchestrationRuntimeRepository;
-
         let (app, state) = test_app_with_state().await;
         let token = setup_compact_published_app(
             &app,
@@ -279,7 +284,8 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
                 "additionalProperties": false
             }
         }]);
-        let response = post_openai_responses(&app, "/v1/responses", &token, initial, None).await;
+        let response =
+            post_openai_responses(&app, "/v1/responses", &token, initial.clone(), None).await;
         let status = response.status();
         let created = response_json(response).await;
         assert_eq!(status, StatusCode::OK, "{created}");
@@ -290,24 +296,37 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
             .find(|item| item["type"] == "function_call")
             .expect("provider must create a live callback");
         let call_id = call["call_id"].as_str().unwrap();
-        let (task_id, original_id) = decode_openai_callback_tool_call_id(call_id).unwrap();
-        assert_eq!(original_id, "call_inventory");
+        assert_eq!(call_id, "call_inventory");
+        let actor = control_plane::application_public_api::api_keys::ApplicationApiKeyService::new(
+            state.store.clone(),
+        )
+        .authenticate_bearer_token(&token)
+        .await
+        .expect("published API key should resolve its actor");
+        let callbacks = state
+            .store
+            .find_native_responses_callbacks_by_response_id(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                created["id"].as_str().unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(
-            state
-                .store
-                .get_callback_task(task_id)
-                .await
-                .unwrap()
-                .unwrap()
-                .status,
-            domain::CallbackTaskStatus::Pending
+            callbacks.len(),
+            1,
+            "response should identify one live callback"
         );
+        let callback_task_id = callbacks[0].id;
+        assert_eq!(callbacks[0].status, domain::CallbackTaskStatus::Pending);
         let before = flow_run_count(state.as_ref()).await;
         let response = post_openai_responses(
             &app,
             "/v1/responses",
             &token,
-            mixed_callback_compact_body(call_id),
+            live_callback_compact_resume_body(initial, call_id, created["id"].as_str().unwrap()),
             None,
         )
         .await;
@@ -328,9 +347,13 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         )
         .unwrap();
         let completed = sse_json_event(&body, "response.completed");
-        assert_eq!(
+        assert_ne!(
             completed["response"]["id"], created["id"],
-            "resume must retain the same run"
+            "resume must create a new response round"
+        );
+        assert_eq!(
+            completed["response"]["previous_response_id"], created["id"],
+            "resume response must link to the pending callback round"
         );
         assert!(body.contains("callback resume completed"), "{body}");
         assert!(
@@ -341,7 +364,7 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
         assert_eq!(
             state
                 .store
-                .get_callback_task(task_id)
+                .get_published_callback_task(callback_task_id)
                 .await
                 .unwrap()
                 .unwrap()
@@ -362,6 +385,16 @@ fn mixed_callback_compact_body(call_id: &str) -> Value {
         json!({"type": "function_call_output", "call_id": call_id, "output": {"stock": 7}}),
     ]);
     input.push(trigger);
+    body
+}
+
+fn live_callback_compact_resume_body(mut body: Value, call_id: &str, response_id: &str) -> Value {
+    body["stream"] = json!(true);
+    body["previous_response_id"] = json!(response_id);
+    body["input"] = json!([
+        {"type": "function_call_output", "call_id": call_id, "output": {"stock": 7}},
+        {"type": "compaction_trigger"}
+    ]);
     body
 }
 
@@ -697,6 +730,12 @@ fn write_compact_provider_fixture(root: &std::path::Path, mode: CompactFixtureMo
         "  capabilities:\n    - config.validate\n",
         "  capabilities:\n    - config.validate\n    - models.list\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n    - responses.native_output.v1\n",
     );
+    if matches!(mode, CompactFixtureMode::LiveCallback) {
+        manifest = manifest.replace(
+            "    - responses.native_output.v1\n",
+            "    - responses.native_output.v1\n    - native_continuation_supported\n",
+        );
+    }
     fs::write(root.join("manifest.yaml"), manifest)
         .expect("Compact fixture manifest should declare both Compact capabilities");
     fs::write(
@@ -749,15 +788,42 @@ switch (request.method) {
   case 'invoke': {
     const input = request.input ?? {};
     if (input.operation !== 'compact' && input.provider_config?.test_compact_mode === 'live_callback') {
-      const resumed = (input.messages ?? []).some(message => message.role === 'tool');
+      const resumed = Boolean(
+        input.previous_response_id
+        || input.native_transport?.wire_body?.previous_response_id
+      )
+        || (input.messages ?? []).some(message => message.role === 'tool');
       const call = { id: 'call_inventory', name: 'lookup_inventory', arguments: { sku: 'sku_123' } };
+      const toolItem = {
+        id: 'item_inventory', type: 'function_call', status: 'completed',
+        call_id: call.id, name: call.name, arguments: JSON.stringify(call.arguments)
+      };
+      const toolMessage = {
+        id: 'msg_inventory_request', type: 'message', role: 'assistant',
+        status: 'completed', content: [{ type: 'output_text', text: 'need inventory' }]
+      };
       const usage = { input_tokens: 5, output_tokens: 7, total_tokens: 12 };
+      const message = {
+        id: 'msg_callback_resume', type: 'message', role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: 'callback resume completed' }]
+      };
       const lines = resumed
-        ? [{ type: 'text_delta', delta: 'callback resume completed' }]
-        : [{ type: 'tool_call_commit', call }];
+        ? [
+            { type: 'output_item', phase: 'added', output_index: 0, item: { ...message, status: 'in_progress', content: [] } },
+            { type: 'text_delta', delta: 'callback resume completed' },
+            { type: 'output_item', phase: 'done', output_index: 0, item: message }
+          ]
+        : [
+            { type: 'output_item', phase: 'added', output_index: 0, item: { ...toolMessage, status: 'in_progress', content: [] } },
+            { type: 'output_item', phase: 'added', output_index: 1, item: { ...toolItem, status: 'in_progress', arguments: '' } },
+            { type: 'output_item', phase: 'done', output_index: 0, item: toolMessage },
+            { type: 'output_item', phase: 'done', output_index: 1, item: toolItem }
+          ];
       lines.push({ type: 'finish', reason: resumed ? 'stop' : 'tool_call' });
       lines.push({ type: 'result', result: {
         final_content: resumed ? 'callback resume completed' : 'need inventory',
+        response_id: resumed ? 'resp_fixture_callback_resume' : 'resp_fixture_callback_initial',
         tool_calls: resumed ? [] : [call], usage,
         finish_reason: resumed ? 'stop' : 'tool_call'
       } });

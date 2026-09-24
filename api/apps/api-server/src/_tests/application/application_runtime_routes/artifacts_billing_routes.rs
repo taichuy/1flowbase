@@ -719,7 +719,7 @@ async fn application_runtime_routes_flow_output_offloads_answer_field_without_co
     assert_eq!(flow_output["sys"]["workflow_run_id"], json!(run_id));
     assert_eq!(flow_output["env"], json!({}));
 
-    let answer_trace_node_id = detail["nodes"]
+    let answer_trace_node_id = trace_detail["nodes"]
         .as_array()
         .expect("trace nodes should be an array")
         .iter()
