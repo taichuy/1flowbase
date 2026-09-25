@@ -21,6 +21,7 @@ import {
   Input,
   Progress,
   Segmented,
+  Splitter,
   Table,
   Tabs,
   Tag,
@@ -42,6 +43,10 @@ import type {
   SettingsSystemRuntimeProcessList,
   SettingsSystemRuntimeProfile
 } from '../api/system-runtime';
+import {
+  persistProcessTreeSplitRatio,
+  readProcessTreeSplitRatio
+} from '../lib/process-tree-split-ratio';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import {
   RuntimeMetricsChart,
@@ -56,6 +61,22 @@ const MAX_HISTORY_POINTS = 60;
 const MAX_CONSECUTIVE_FAILURES = 3;
 const PRIMARY_SERVICE_TARGET_ID = 'api-server';
 const PROCESS_TABLE_PAGE_SIZE = 50;
+
+function useNarrowProcessTreeLayout() {
+  const [narrow, setNarrow] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 767px)').matches
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setNarrow(media.matches);
+    media.addEventListener('change', update);
+    update();
+    return () => media.removeEventListener('change', update);
+  }, []);
+  return narrow;
+}
 
 type RuntimeTarget = SettingsSystemRuntimeProfile['runtime_targets'][number];
 type RuntimeMetrics = NonNullable<RuntimeTarget['metrics']>;
@@ -271,8 +292,7 @@ function processColumns(
       key: 'cpu_usage_percent',
       width: 110,
       defaultSortOrder: 'descend',
-      sorter: (left, right) =>
-        left.cpu_usage_percent - right.cpu_usage_percent,
+      sorter: (left, right) => left.cpu_usage_percent - right.cpu_usage_percent,
       render: (value: number) => formatPercent(value)
     },
     {
@@ -371,6 +391,16 @@ function collectProcessTreeKeys(nodes: BackendProcessTreeNode[]): string[] {
 
 export function SystemRuntimePanel() {
   const pageVisible = usePageVisibility();
+  const narrowProcessTreeLayout = useNarrowProcessTreeLayout();
+  const [processTreeSplitRatio, setProcessTreeSplitRatio] = useState(
+    readProcessTreeSplitRatio
+  );
+  const saveProcessTreeSplitRatio = useCallback((sizes: number[]) => {
+    const ratio = persistProcessTreeSplitRatio(sizes);
+    if (ratio !== null) {
+      setProcessTreeSplitRatio(ratio);
+    }
+  }, []);
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const consecutiveFailuresRef = useRef(0);
@@ -524,7 +554,9 @@ export function SystemRuntimePanel() {
     null
   );
   useEffect(() => {
-    const keys = collectProcessTreeKeys(buildBackendProcessTree(backendProcesses));
+    const keys = collectProcessTreeKeys(
+      buildBackendProcessTree(backendProcesses)
+    );
     setExpandedTreeKeys((current) =>
       Array.from(new Set([...current, ...keys]))
     );
@@ -609,8 +641,17 @@ export function SystemRuntimePanel() {
       aria-label={i18nText('settings', 'auto.process_tree')}
     >
       {backendTreeData.length > 0 ? (
-        <div className="system-runtime-panel__process-tree-layout">
-          <div className="system-runtime-panel__process-tree-panel">
+        <Splitter
+          key={narrowProcessTreeLayout ? 'vertical' : 'horizontal'}
+          className="system-runtime-panel__process-tree-layout"
+          orientation={narrowProcessTreeLayout ? 'vertical' : 'horizontal'}
+          onResizeEnd={saveProcessTreeSplitRatio}
+        >
+          <Splitter.Panel
+            className="system-runtime-panel__process-tree-panel"
+            defaultSize={`${processTreeSplitRatio}%`}
+            min="20%"
+          >
             <Tree
               className="system-runtime-panel__process-tree"
               selectedKeys={
@@ -628,8 +669,12 @@ export function SystemRuntimePanel() {
               }}
               treeData={backendTreeData}
             />
-          </div>
-          <div className="system-runtime-panel__process-detail-panel">
+          </Splitter.Panel>
+          <Splitter.Panel
+            className="system-runtime-panel__process-detail-panel"
+            defaultSize={`${100 - processTreeSplitRatio}%`}
+            min="20%"
+          >
             {selectedProcess ? (
               <>
                 <Descriptions
@@ -693,9 +738,7 @@ export function SystemRuntimePanel() {
                     {
                       key: 'cpu',
                       label: i18nText('settings', 'auto.process_column_cpu'),
-                      children: formatPercent(
-                        selectedProcess.cpu_usage_percent
-                      )
+                      children: formatPercent(selectedProcess.cpu_usage_percent)
                     },
                     {
                       key: 'memory',
@@ -714,23 +757,17 @@ export function SystemRuntimePanel() {
                   </Button>
                 ) : (
                   <Typography.Text type="secondary">
-                    {i18nText(
-                      'settings',
-                      'auto.process_detail_not_terminable'
-                    )}
+                    {i18nText('settings', 'auto.process_detail_not_terminable')}
                   </Typography.Text>
                 )}
               </>
             ) : (
               <Empty
-                description={i18nText(
-                  'settings',
-                  'auto.process_detail_empty'
-                )}
+                description={i18nText('settings', 'auto.process_detail_empty')}
               />
             )}
-          </div>
-        </div>
+          </Splitter.Panel>
+        </Splitter>
       ) : (
         <Empty description={i18nText('settings', 'auto.process_tree_empty')} />
       )}
@@ -822,7 +859,8 @@ export function SystemRuntimePanel() {
                         <span>
                           {i18nText('settings', 'auto.shared_memory')}{' '}
                           {formatBytes(
-                            metrics.memory.cgroup_composition.shared_memory_bytes
+                            metrics.memory.cgroup_composition
+                              .shared_memory_bytes
                           )}
                         </span>
                       ) : null}
@@ -938,10 +976,7 @@ export function SystemRuntimePanel() {
           allowClear
           aria-label={i18nText('settings', 'auto.process_search_placeholder')}
           className="system-runtime-panel__process-search"
-          placeholder={i18nText(
-            'settings',
-            'auto.process_search_placeholder'
-          )}
+          placeholder={i18nText('settings', 'auto.process_search_placeholder')}
           value={processQuery}
           onChange={(event) => setProcessQuery(event.target.value)}
         />

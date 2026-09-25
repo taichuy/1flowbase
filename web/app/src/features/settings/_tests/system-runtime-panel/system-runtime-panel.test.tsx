@@ -57,6 +57,7 @@ vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
+import { persistProcessTreeSplitRatio } from '../../lib/process-tree-split-ratio';
 
 function runtimeMetrics(
   cpuUsagePercent: number | null,
@@ -260,6 +261,9 @@ function renderPanel() {
 
 describe('SystemRuntimePanel', () => {
   beforeEach(async () => {
+    window.localStorage.removeItem(
+      '1flowbase.settings.process_tree_split_ratio'
+    );
     await appI18n.changeLanguage('zh_Hans');
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
@@ -333,9 +337,7 @@ describe('SystemRuntimePanel', () => {
     renderPanel();
 
     await screen.findByText('资源监控');
-    expect(
-      screen.getByText('/ · 16.0 GB / 64.0 GB')
-    ).toBeInTheDocument();
+    expect(screen.getByText('/ · 16.0 GB / 64.0 GB')).toBeInTheDocument();
   });
 
   test('ac_003 polls every two seconds and pauses while hidden', async () => {
@@ -375,8 +377,9 @@ describe('SystemRuntimePanel', () => {
   });
 
   test('AC-1993-005 keeps available runtime content visible during a background refresh', async () => {
-    let resolveRefresh: ((profile: ReturnType<typeof runtimeProfile>) => void) |
-      undefined;
+    let resolveRefresh:
+      | ((profile: ReturnType<typeof runtimeProfile>) => void)
+      | undefined;
     systemRuntimeApi.fetchSettingsSystemRuntimeProfile
       .mockResolvedValueOnce(runtimeProfile())
       .mockImplementationOnce(
@@ -647,9 +650,7 @@ describe('SystemRuntimePanel', () => {
     const detail = within(detailPanel as HTMLElement);
     expect(detail.getByText('api-server')).toBeInTheDocument();
     expect(detail.getByText('1442117')).toBeInTheDocument();
-    expect(
-      detail.getByText('./target/debug/api-server')
-    ).toBeInTheDocument();
+    expect(detail.getByText('./target/debug/api-server')).toBeInTheDocument();
     expect(detail.getByText('32.0 MB')).toBeInTheDocument();
     expect(
       detail.getByRole('button', { name: /结\s*束/u })
@@ -667,5 +668,47 @@ describe('SystemRuntimePanel', () => {
     await waitFor(() => {
       expect(treePanel).toHaveTextContent('c:2.95% · m:64.0 MB');
     });
+  });
+
+  test('defaults the process tree splitter to 4:6 and restores a saved ratio', async () => {
+    const view = renderPanel();
+    const treePanel = await waitFor(() => {
+      const panel = document.querySelector(
+        '.system-runtime-panel__process-tree-panel'
+      );
+      expect(panel).not.toBeNull();
+      return panel as HTMLElement;
+    });
+    expect(treePanel.style.flexBasis).toMatch(/^(40%|512px)$/);
+    expect(screen.getByRole('separator')).toHaveAttribute(
+      'aria-orientation',
+      'vertical'
+    );
+
+    view.unmount();
+    window.localStorage.setItem(
+      '1flowbase.settings.process_tree_split_ratio',
+      '55'
+    );
+    renderPanel();
+    const restoredTreePanel = await waitFor(() => {
+      const panel = document.querySelector(
+        '.system-runtime-panel__process-tree-panel'
+      );
+      expect(panel).not.toBeNull();
+      return panel as HTMLElement;
+    });
+    expect(restoredTreePanel.style.flexBasis).toMatch(/^(55%|704px)$/);
+  });
+
+  test('persists a completed split as a percentage and rejects missing dimensions', () => {
+    expect(persistProcessTreeSplitRatio([640, 640])).toBe(50);
+    expect(
+      window.localStorage.getItem('1flowbase.settings.process_tree_split_ratio')
+    ).toBe('50');
+    expect(persistProcessTreeSplitRatio([0, 0])).toBeNull();
+    expect(
+      window.localStorage.getItem('1flowbase.settings.process_tree_split_ratio')
+    ).toBe('50');
   });
 });

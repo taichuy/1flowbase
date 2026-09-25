@@ -32,15 +32,13 @@
 }
 
 .system-runtime-panel__process-tree-layout {
-  display: flex;
-  gap: 24px;
-  min-height: 420px;
+  height: 420px;
+  min-width: 0;
 }
 
 .system-runtime-panel__process-tree-panel {
-  flex: 0 0 320px;
   min-width: 0;
-  max-height: 460px;
+  min-height: 0;
   padding: 12px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
@@ -49,8 +47,8 @@
 }
 
 .system-runtime-panel__process-detail-panel {
-  flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -59,6 +57,7 @@
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--bg-surface);
+  overflow: auto;
 }
 
 .system-runtime-panel__process-detail {
@@ -218,14 +217,7 @@
   }
 
   .system-runtime-panel__process-tree-layout {
-    display: grid;
-    gap: 16px;
-    min-height: 0;
-  }
-
-  .system-runtime-panel__process-tree-panel {
-    flex: none;
-    max-height: 280px;
+    height: 640px;
   }
 
   .system-runtime-panel__metric-strip {
