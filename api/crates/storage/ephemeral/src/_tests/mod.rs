@@ -5,5 +5,7 @@ mod moka_cache_store_tests;
 mod moka_rate_limit_store_tests;
 mod moka_session_store_tests;
 mod provider_transport_store_tests;
+mod published_plan_cache_tests;
+mod published_publication_cache_tests;
 mod session_store_tests;
 mod wakeup_signal_tests;

@@ -157,6 +157,9 @@ pub(crate) fn native_runtime_invoker_factory(
 pub(crate) struct ApplicationNativeRunDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    pub(crate) published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    pub(crate) published_publication_cache:
+        Arc<dyn control_plane::ports::PublishedPublicationCache>,
     pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
     pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     pub(crate) network_egress: Arc<crate::network_egress_client::NetworkEgressHttpClientResolver>,
@@ -185,6 +188,8 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
         Box::pin(async move {
             ApplicationNativeRunService::new(dependencies.store.clone())
                 .with_last_used_cache(dependencies.cache_store.clone())
+                .with_published_plan_cache(dependencies.published_plan_cache.clone())
+                .with_published_publication_cache(dependencies.published_publication_cache.clone())
                 .create_native_run_for_actor(actor, input.request, input.protocol)
                 .await
                 .map(ApplicationNativeRunOutput)
@@ -203,6 +208,8 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
         Box::pin(async move {
             let run = ApplicationNativeRunService::new(dependencies.store.clone())
                 .with_last_used_cache(dependencies.cache_store.clone())
+                .with_published_plan_cache(dependencies.published_plan_cache.clone())
+                .with_published_publication_cache(dependencies.published_publication_cache.clone())
                 .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
                 .await
                 .map_err(native_error)
@@ -233,6 +240,8 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
                 include_workflow_events(&input.request).map_err(ApplicationNativeRunTargetError)?;
             let run = ApplicationNativeRunService::new(dependencies.store.clone())
                 .with_last_used_cache(dependencies.cache_store.clone())
+                .with_published_plan_cache(dependencies.published_plan_cache.clone())
+                .with_published_publication_cache(dependencies.published_publication_cache.clone())
                 .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
                 .await
                 .map_err(native_error)

@@ -349,6 +349,8 @@ pub(crate) fn production_interface_contributions(
         crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
             store: state.store.clone(),
             cache_store: state.infrastructure.cache_store(),
+            published_plan_cache: state.infrastructure.published_plan_cache(),
+            published_publication_cache: state.infrastructure.published_publication_cache(),
             runtime_engine: state.runtime_engine.clone(),
             provider_runtime: state.provider_runtime.clone(),
             network_egress: Arc::new(state.network_egress_http_clients()),
@@ -1735,6 +1737,7 @@ pub(crate) fn production_interface_contributions(
                     state.provider_install_root.clone(),
                     Arc::clone(&state.file_storage_registry),
                     state.infrastructure.cache_store(),
+                    state.infrastructure.published_plan_cache(),
                     state.infrastructure.task_queue(),
                     Arc::clone(&state.runtime_event_stream),
                 ),

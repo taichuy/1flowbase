@@ -8,6 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
+use control_plane::ports::{PublishedPlanCache, PublishedPublicationCache};
 
 #[cfg(test)]
 pub(crate) use cache_store_activation::CacheStoreActivationFactoryRegistry;
@@ -37,6 +38,8 @@ pub struct HostInfrastructureRegistry {
     providers: BTreeMap<String, RegisteredInfrastructureProvider>,
     session_store: Option<Arc<dyn SessionStore>>,
     cache_store: Option<Arc<dyn CacheStore>>,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
+    published_publication_cache: Option<Arc<dyn PublishedPublicationCache>>,
     provider_transport_store: Option<Arc<dyn ProviderTransportStore>>,
     distributed_lock: Option<Arc<dyn DistributedLock>>,
     event_bus: Option<Arc<dyn EventBus>>,
@@ -91,6 +94,23 @@ impl HostInfrastructureRegistry {
 
     pub fn set_cache_store(&mut self, cache_store: Arc<dyn CacheStore>) {
         self.cache_store = Some(cache_store);
+        self.published_plan_cache =
+            Some(Arc::new(storage_ephemeral::MokaPublishedPlanCache::new()));
+        self.published_publication_cache = Some(Arc::new(
+            storage_ephemeral::MokaPublishedPublicationCache::new(),
+        ));
+    }
+
+    pub fn published_plan_cache(&self) -> Arc<dyn PublishedPlanCache> {
+        self.published_plan_cache
+            .clone()
+            .expect("published plan cache must be activated with cache-store")
+    }
+
+    pub fn published_publication_cache(&self) -> Arc<dyn PublishedPublicationCache> {
+        self.published_publication_cache
+            .clone()
+            .expect("published publication cache must be activated with cache-store")
     }
 
     pub fn registered_cache_store(&self) -> Option<Arc<dyn CacheStore>> {

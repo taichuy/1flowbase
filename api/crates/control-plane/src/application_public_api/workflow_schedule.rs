@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
@@ -19,7 +21,8 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         ApplicationCompiledPlanRepository, ApplicationPublicationRepository, ApplicationRepository,
-        ReplaceWorkflowScheduleTriggerInput, TaskQueue, WorkflowScheduleTriggerRepository,
+        PublishedPlanCache, ReplaceWorkflowScheduleTriggerInput, TaskQueue,
+        WorkflowScheduleTriggerRepository,
     },
 };
 
@@ -64,6 +67,7 @@ pub struct WorkflowScheduleDispatchResult {
 
 pub struct WorkflowScheduleTriggerService<R> {
     repository: R,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
 }
 
 impl<R> WorkflowScheduleTriggerService<R>
@@ -71,7 +75,15 @@ where
     R: ApplicationRepository + WorkflowScheduleTriggerRepository,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            published_plan_cache: None,
+        }
+    }
+
+    pub fn with_published_plan_cache(mut self, cache: Arc<dyn PublishedPlanCache>) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
     }
 
     pub async fn get_trigger(
@@ -143,7 +155,8 @@ where
         R: ApplicationPublicationRepository
             + ApplicationCompiledPlanRepository
             + ApplicationPublishedFlowRunRepository
-            + Clone,
+            + Clone
+            + 'static,
     {
         let scheduled_at = now_utc
             .replace_second(0)
@@ -199,7 +212,8 @@ where
         R: ApplicationPublicationRepository
             + ApplicationCompiledPlanRepository
             + ApplicationPublishedFlowRunRepository
-            + Clone,
+            + Clone
+            + 'static,
     {
         let Some(trigger) = self
             .repository
@@ -269,7 +283,11 @@ where
             .replace_nanosecond(0)
             .expect("zero nanoseconds is always valid");
         let idempotency_key = schedule_idempotency_key(trigger.application_id, scheduled_at);
-        let invoked = WorkflowInvocationService::new(self.repository.clone())
+        let mut invocation = WorkflowInvocationService::new(self.repository.clone());
+        if let Some(cache) = &self.published_plan_cache {
+            invocation = invocation.with_published_plan_cache(cache.clone());
+        }
+        let invoked = invocation
             .invoke(InvokeWorkflowCommand {
                 actor_user_id: trigger.updated_by,
                 publication,

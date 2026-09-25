@@ -134,6 +134,7 @@ struct WorkflowExtensionAdapter {
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     cache_store: Arc<dyn CacheStore>,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
 }
@@ -149,6 +150,7 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
         let actor = actor.clone();
         Box::pin(async move {
             let run = WorkflowExtensionRunService::new(dependencies.store.clone())
+                .with_published_plan_cache(dependencies.published_plan_cache.clone())
                 .create_run(CreateWorkflowExtensionRunCommand {
                     actor,
                     principal,
@@ -211,6 +213,7 @@ pub(crate) fn workflow_extension_port(
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     cache_store: Arc<dyn CacheStore>,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
 ) -> Arc<dyn WorkflowExtensionPort> {
@@ -226,6 +229,7 @@ pub(crate) fn workflow_extension_port(
         provider_install_root,
         file_storage_registry,
         cache_store,
+        published_plan_cache,
         task_queue,
         runtime_event_stream,
     })

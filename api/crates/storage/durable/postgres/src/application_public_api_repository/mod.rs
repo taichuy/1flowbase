@@ -6,10 +6,11 @@ use control_plane_contracts::{
         WorkflowScheduleTriggerRecord,
     },
     ports::{
-        ApplicationApiMappingRepository, ApplicationPublicationRepository,
-        CreateApplicationPublicationVersionInput, DeactivateApplicationPublicationsInput,
-        ReplaceApplicationApiMappingInput, ReplaceWorkflowScheduleTriggerInput,
-        SetApplicationApiEnabledInput, WorkflowScheduleTriggerRepository,
+        ActiveApplicationPublication, ApplicationApiMappingRepository,
+        ApplicationPublicationRepository, CreateApplicationPublicationVersionInput,
+        DeactivateApplicationPublicationsInput, ReplaceApplicationApiMappingInput,
+        ReplaceWorkflowScheduleTriggerInput, SetApplicationApiEnabledInput,
+        WorkflowScheduleTriggerRepository,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -245,6 +246,22 @@ impl WorkflowScheduleTriggerRepository for PgControlPlaneStore {
 
 #[async_trait]
 impl ApplicationPublicationRepository for PgControlPlaneStore {
+    async fn load_active_application_publication_identity(
+        &self,
+        application_id: Uuid,
+    ) -> Result<Option<ActiveApplicationPublication>> {
+        let row = sqlx::query(
+            "select id, compiled_plan_id, api_enabled from application_publication_versions where active and application_id = $1",
+        )
+        .bind(application_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|row| ActiveApplicationPublication {
+            publication_id: row.get("id"),
+            compiled_plan_id: row.get("compiled_plan_id"),
+            api_enabled: row.get("api_enabled"),
+        }))
+    }
     async fn create_active_application_publication_version(
         &self,
         input: &CreateApplicationPublicationVersionInput,

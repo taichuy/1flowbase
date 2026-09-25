@@ -493,6 +493,8 @@ impl AssistantWebSocketCommandAdapter {
         }
         let execution = prepare_assistant_execution(
             &self.dependencies.store,
+            &self.dependencies.published_plan_cache,
+            &self.dependencies.published_publication_cache,
             &request_headers,
             principal.actor(),
             request,

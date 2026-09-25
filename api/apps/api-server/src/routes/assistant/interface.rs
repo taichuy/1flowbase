@@ -525,6 +525,8 @@ impl ConsoleServerStreamPort<AssistantRunInput, AssistantRunStreamEvent, Assista
         Box::pin(async move {
             let execution = prepare_assistant_execution(
                 &dependencies.store,
+                &dependencies.published_plan_cache,
+                &dependencies.published_publication_cache,
                 &input.headers,
                 &actor,
                 input.body,

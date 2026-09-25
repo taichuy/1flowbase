@@ -672,6 +672,36 @@ async fn application_public_api_repository_publication_insert_uses_real_foreign_
     assert_eq!(publication.document_snapshot, document);
     assert_eq!(active.id, publication.id);
     assert!(stored_api_enabled);
+    let identity = ApplicationPublicationRepository::load_active_application_publication_identity(
+        &store,
+        application_id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(identity.publication_id, publication.id);
+    assert_eq!(identity.compiled_plan_id, publication.compiled_plan_id);
+    assert!(identity.api_enabled);
+
+    ApplicationPublicationRepository::set_application_api_enabled(
+        &store,
+        &SetApplicationApiEnabledInput {
+            actor_user_id,
+            application_id,
+            api_enabled: false,
+        },
+    )
+    .await
+    .unwrap();
+    let disabled = ApplicationPublicationRepository::load_active_application_publication_identity(
+        &store,
+        application_id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(disabled.publication_id, publication.id);
+    assert!(!disabled.api_enabled);
 }
 
 #[tokio::test]

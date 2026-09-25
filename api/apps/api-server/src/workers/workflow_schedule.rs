@@ -187,7 +187,8 @@ async fn run_workflow_schedule_dispatch_loop(state: Arc<ApiState>) {
             }
         };
         let task_queue = state.infrastructure.registered_task_queue();
-        let service = WorkflowScheduleTriggerService::new(state.store.clone());
+        let service = WorkflowScheduleTriggerService::new(state.store.clone())
+            .with_published_plan_cache(state.infrastructure.published_plan_cache());
         match service
             .dispatch_due_schedules(OffsetDateTime::now_utc(), task_queue.as_deref())
             .await

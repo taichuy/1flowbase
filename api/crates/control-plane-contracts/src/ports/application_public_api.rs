@@ -1,10 +1,54 @@
 use super::*;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::application_public_api::{
     ApplicationApiMappingConfig, ApplicationApiMappingDraft,
     ApplicationPublicationJsDependencySnapshot, ApplicationPublicationVersionRecord,
     WorkflowScheduleTriggerRecord,
 };
+
+pub type PublishedPlanLoader = Box<
+    dyn FnOnce() -> Pin<
+            Box<dyn Future<Output = anyhow::Result<Option<domain::CompiledPlanRecord>>> + Send>,
+        > + Send,
+>;
+
+pub type PublishedPublicationLoader = Box<
+    dyn FnOnce() -> Pin<
+            Box<
+                dyn Future<Output = anyhow::Result<Option<ApplicationPublicationVersionRecord>>>
+                    + Send,
+            >,
+        > + Send,
+>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveApplicationPublication {
+    pub publication_id: Uuid,
+    pub compiled_plan_id: Uuid,
+    pub api_enabled: bool,
+}
+
+#[async_trait]
+pub trait PublishedPublicationCache: Send + Sync {
+    /// The publication row ID is reused on republish; the compiled plan ID is new.
+    async fn get_or_load(
+        &self,
+        compiled_plan_id: Uuid,
+        loader: PublishedPublicationLoader,
+    ) -> anyhow::Result<Option<Arc<ApplicationPublicationVersionRecord>>>;
+}
+
+/// Cache only immutable compiled plans, keyed by their publication-bound ID.
+/// The caller must still resolve the active publication from durable storage.
+#[async_trait]
+pub trait PublishedPlanCache: Send + Sync {
+    async fn get_or_load(
+        &self,
+        compiled_plan_id: Uuid,
+        loader: PublishedPlanLoader,
+    ) -> anyhow::Result<Option<Arc<domain::CompiledPlanRecord>>>;
+}
 
 #[derive(Debug, Clone)]
 pub struct ReplaceApplicationApiMappingInput {
@@ -92,6 +136,20 @@ pub trait WorkflowScheduleTriggerRepository: Send + Sync {
 
 #[async_trait]
 pub trait ApplicationPublicationRepository: Send + Sync {
+    async fn load_active_application_publication_identity(
+        &self,
+        application_id: Uuid,
+    ) -> anyhow::Result<Option<ActiveApplicationPublication>> {
+        Ok(self
+            .load_active_application_publication(application_id)
+            .await?
+            .map(|publication| ActiveApplicationPublication {
+                publication_id: publication.id,
+                compiled_plan_id: publication.compiled_plan_id,
+                api_enabled: publication.api_enabled,
+            }))
+    }
+
     async fn create_active_application_publication_version(
         &self,
         input: &CreateApplicationPublicationVersionInput,

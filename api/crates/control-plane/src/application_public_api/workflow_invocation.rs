@@ -1,10 +1,12 @@
 use serde_json::{json, Value};
+use std::sync::Arc;
 use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::{
     publications::ApplicationPublicationVersionRecord,
+    published_plan::load_published_plan,
     run_service::{
         public_freeze_workflow_run_input_environment, ApplicationPublishedFlowRunRepository,
         WorkflowRunTriggerContext,
@@ -12,7 +14,10 @@ use super::{
 };
 use crate::{
     flow_run_title::build_flow_run_title,
-    ports::{ApplicationCompiledPlanRepository, ApplicationRepository, CreateFlowRunInput},
+    ports::{
+        ApplicationCompiledPlanRepository, ApplicationRepository, CreateFlowRunInput,
+        PublishedPlanCache,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -45,12 +50,13 @@ pub struct InvokeWorkflowCommand {
 #[derive(Debug, Clone)]
 pub struct WorkflowInvocationResult {
     pub flow_run: domain::FlowRunRecord,
-    pub compiled_plan: domain::CompiledPlanRecord,
+    pub compiled_plan: Arc<domain::CompiledPlanRecord>,
     pub created: bool,
 }
 
 pub struct WorkflowInvocationService<R> {
     repository: R,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
 }
 
 #[derive(Debug, Error)]
@@ -67,10 +73,20 @@ impl<R> WorkflowInvocationService<R>
 where
     R: ApplicationRepository
         + ApplicationCompiledPlanRepository
-        + ApplicationPublishedFlowRunRepository,
+        + ApplicationPublishedFlowRunRepository
+        + Clone
+        + 'static,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            published_plan_cache: None,
+        }
+    }
+
+    pub fn with_published_plan_cache(mut self, cache: Arc<dyn PublishedPlanCache>) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
     }
 
     pub async fn invoke(
@@ -78,12 +94,14 @@ where
         command: InvokeWorkflowCommand,
     ) -> std::result::Result<WorkflowInvocationResult, WorkflowInvocationError> {
         let publication = command.publication;
-        let compiled_plan = self
-            .repository
-            .get_application_compiled_plan(publication.compiled_plan_id)
-            .await
-            .map_err(WorkflowInvocationError::Repository)?
-            .ok_or(WorkflowInvocationError::CompiledPlanUnavailable)?;
+        let compiled_plan = load_published_plan(
+            &self.repository,
+            self.published_plan_cache.as_ref(),
+            publication.compiled_plan_id,
+        )
+        .await
+        .map_err(WorkflowInvocationError::Repository)?
+        .ok_or(WorkflowInvocationError::CompiledPlanUnavailable)?;
         let environment_variables = self
             .repository
             .list_application_environment_variables(

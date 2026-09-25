@@ -43,6 +43,8 @@ pub enum NativeRunValidationError {
 pub struct ApplicationNativeRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
+    published_publication_cache: Option<Arc<dyn PublishedPublicationCache>>,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
 }
 
@@ -57,18 +59,34 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + Clone,
+        + Clone
+        + 'static,
 {
     pub fn new(repository: R) -> Self {
         Self {
             repository,
             last_used_cache: None,
+            published_plan_cache: None,
+            published_publication_cache: None,
             runtime_event_stream: None,
         }
     }
 
     pub fn with_last_used_cache(mut self, cache: Arc<dyn CacheStore>) -> Self {
         self.last_used_cache = Some(cache);
+        self
+    }
+
+    pub fn with_published_plan_cache(mut self, cache: Arc<dyn PublishedPlanCache>) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
+    }
+
+    pub fn with_published_publication_cache(
+        mut self,
+        cache: Arc<dyn PublishedPublicationCache>,
+    ) -> Self {
+        self.published_publication_cache = Some(cache);
         self
     }
 
@@ -287,7 +305,13 @@ where
     }
 
     fn published_run_service(&self) -> ApplicationPublishedRunService<R> {
-        let service = ApplicationPublishedRunService::new(self.repository.clone());
+        let mut service = ApplicationPublishedRunService::new(self.repository.clone());
+        if let Some(cache) = &self.published_plan_cache {
+            service = service.with_published_plan_cache(cache.clone());
+        }
+        if let Some(cache) = &self.published_publication_cache {
+            service = service.with_published_publication_cache(cache.clone());
+        }
         match &self.last_used_cache {
             Some(cache) => service.with_last_used_cache(cache.clone()),
             None => service,

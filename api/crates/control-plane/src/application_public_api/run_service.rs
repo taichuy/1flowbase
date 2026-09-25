@@ -19,6 +19,8 @@ use super::{
     },
     protocol_translation::TranslationProtocol,
     publications::ApplicationPublicationVersionRecord,
+    published_plan::load_published_plan,
+    published_publication::load_active_publication,
 };
 mod conversation_history;
 mod native_results;
@@ -30,7 +32,8 @@ use crate::{
     flow_run_title::build_flow_run_title,
     ports::{
         ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
-        ApplicationRepository, AuthRepository, CacheStore, CreateFlowRunInput,
+        ApplicationRepository, AuthRepository, CacheStore, CreateFlowRunInput, PublishedPlanCache,
+        PublishedPublicationCache,
     },
     state_transition::ensure_flow_run_transition,
 };
@@ -79,6 +82,8 @@ pub struct CreateAssistantRunCommand {
 pub struct ApplicationPublishedRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
+    published_publication_cache: Option<Arc<dyn PublishedPublicationCache>>,
 }
 
 impl<R> ApplicationPublishedRunService<R>
@@ -92,17 +97,33 @@ where
         + ApplicationPublishedRunControlRepository
         + ApplicationPublishedCallbackAttemptRepository
         + ApplicationPublicConversationRepository
-        + Clone,
+        + Clone
+        + 'static,
 {
     pub fn new(repository: R) -> Self {
         Self {
             repository,
             last_used_cache: None,
+            published_plan_cache: None,
+            published_publication_cache: None,
         }
     }
 
     pub fn with_last_used_cache(mut self, cache: Arc<dyn CacheStore>) -> Self {
         self.last_used_cache = Some(cache);
+        self
+    }
+
+    pub fn with_published_plan_cache(mut self, cache: Arc<dyn PublishedPlanCache>) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
+    }
+
+    pub fn with_published_publication_cache(
+        mut self,
+        cache: Arc<dyn PublishedPublicationCache>,
+    ) -> Self {
+        self.published_publication_cache = Some(cache);
         self
     }
 
@@ -144,18 +165,23 @@ where
                 application.application_type == domain::ApplicationType::AgentFlow
             })
             .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
-        let publication = self
-            .repository
-            .load_active_application_publication(command.application_id)
-            .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
-            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
-        let compiled_plan = self
-            .repository
-            .get_application_compiled_plan(publication.compiled_plan_id)
-            .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
-            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let publication = load_active_publication(
+            &self.repository,
+            self.published_publication_cache.as_ref(),
+            command.application_id,
+        )
+        .await
+        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .ok_or(NativeRunValidationError::ApplicationNotPublished)?
+        .snapshot;
+        let compiled_plan = load_published_plan(
+            &self.repository,
+            self.published_plan_cache.as_ref(),
+            publication.compiled_plan_id,
+        )
+        .await
+        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
         let user_message =
             AssistantUserMessage::new(command.request.query.clone(), command.page_references);
         command.request.query = user_message
@@ -312,12 +338,14 @@ where
             .bind_conversation(actor.application_id, actor.api_key_id, client_request)
             .await?;
 
-        let compiled_plan = self
-            .repository
-            .get_application_compiled_plan(publication.compiled_plan_id)
-            .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
-            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let compiled_plan = load_published_plan(
+            &self.repository,
+            self.published_plan_cache.as_ref(),
+            publication.compiled_plan_id,
+        )
+        .await
+        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+        .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
         if let Some(grant) = &recovery {
             let plan: orchestration_runtime::compiled_plan::CompiledPlan =
                 serde_json::from_value(compiled_plan.plan.clone())
@@ -557,18 +585,21 @@ where
     async fn load_enabled_publication(
         &self,
         actor: &ApplicationApiKeyActor,
-    ) -> std::result::Result<ApplicationPublicationVersionRecord, NativeRunValidationError> {
-        let publication = self
-            .repository
-            .load_active_application_publication(actor.application_id)
-            .await
-            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?;
+    ) -> std::result::Result<Arc<ApplicationPublicationVersionRecord>, NativeRunValidationError>
+    {
+        let publication = load_active_publication(
+            &self.repository,
+            self.published_publication_cache.as_ref(),
+            actor.application_id,
+        )
+        .await
+        .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?;
         let Some(publication) = publication.filter(|publication| publication.api_enabled) else {
             self.append_denied_audit(actor, "application_not_published")
                 .await;
             return Err(NativeRunValidationError::ApplicationNotPublished);
         };
-        Ok(publication)
+        Ok(publication.snapshot)
     }
 
     async fn append_denied_audit(&self, actor: &ApplicationApiKeyActor, reason: &str) {

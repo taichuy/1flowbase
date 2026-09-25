@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -25,7 +26,7 @@ use crate::{
     application_public_api::ensure_application_view_permission,
     ports::{
         ApplicationCompiledPlanRepository, ApplicationPublicationRepository, ApplicationRepository,
-        AuthRepository,
+        AuthRepository, PublishedPlanCache,
     },
 };
 
@@ -103,6 +104,7 @@ pub struct WorkflowExtensionRunResult {
 
 pub struct WorkflowExtensionRunService<R> {
     repository: R,
+    published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
 }
 
 impl<R> WorkflowExtensionRunService<R>
@@ -112,10 +114,19 @@ where
         + ApplicationPublicationRepository
         + ApplicationCompiledPlanRepository
         + ApplicationPublishedFlowRunRepository
-        + Clone,
+        + Clone
+        + 'static,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            published_plan_cache: None,
+        }
+    }
+
+    pub fn with_published_plan_cache(mut self, cache: Arc<dyn PublishedPlanCache>) -> Self {
+        self.published_plan_cache = Some(cache);
+        self
     }
 
     pub async fn create_run(
@@ -176,7 +187,11 @@ where
                 .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
         let response_mode = extension.response_mode;
         let api_key_id = command.principal.api_key_id();
-        let invoked = WorkflowInvocationService::new(self.repository.clone())
+        let mut invocation = WorkflowInvocationService::new(self.repository.clone());
+        if let Some(cache) = &self.published_plan_cache {
+            invocation = invocation.with_published_plan_cache(cache.clone());
+        }
+        let invoked = invocation
             .invoke(InvokeWorkflowCommand {
                 actor_user_id: command.actor.user_id,
                 publication: publication.clone(),

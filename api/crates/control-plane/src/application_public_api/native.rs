@@ -34,7 +34,7 @@ use crate::flow_run_title::build_flow_run_title;
 use crate::ports::{
     ApiKeyRepository, ApplicationCompiledPlanRepository, ApplicationPublicationRepository,
     ApplicationRepository, AuthRepository, CacheStore, ProviderProtocolContextValue,
-    RuntimeEventDurability, RuntimeEventStream,
+    PublishedPlanCache, PublishedPublicationCache, RuntimeEventDurability, RuntimeEventStream,
 };
 
 mod compaction;

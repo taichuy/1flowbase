@@ -9,8 +9,8 @@ mod wakeup_signal;
 pub use control_plane_contracts::ports::LeaseStore;
 pub use kv_store::EphemeralKvStore;
 pub use local::{
-    MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue, MokaCacheStore, MokaRateLimitStore,
-    MokaSessionStore,
+    MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue, MokaCacheStore, MokaPublishedPlanCache,
+    MokaPublishedPublicationCache, MokaRateLimitStore, MokaSessionStore,
 };
 pub use memory::MemoryLeaseStore;
 pub use memory::MemorySessionStore;

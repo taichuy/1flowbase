@@ -15,6 +15,8 @@ pub mod native;
 pub mod native_tool_resume;
 pub mod protocol_translation;
 pub mod publications;
+mod published_plan;
+mod published_publication;
 pub mod published_workflow_operation;
 pub mod run_service;
 pub mod workflow_extension;

@@ -295,6 +295,8 @@ pub(crate) struct AssistantRunDependencies {
     provider_install_root: String,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     cache_store: Arc<dyn CacheStore>,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    published_publication_cache: Arc<dyn control_plane::ports::PublishedPublicationCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
     conversation_events: Arc<conversation_events::AssistantConversationEventHub>,
@@ -351,6 +353,8 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
         provider_install_root: state.provider_install_root.clone(),
         file_storage_registry: state.file_storage_registry.clone(),
         cache_store: state.infrastructure.cache_store(),
+        published_plan_cache: state.infrastructure.published_plan_cache(),
+        published_publication_cache: state.infrastructure.published_publication_cache(),
         task_queue: state.infrastructure.task_queue(),
         runtime_event_stream: state.runtime_event_stream.clone(),
         conversation_events: state.assistant_conversation_events.clone(),
@@ -866,8 +870,15 @@ pub(crate) async fn execute_assistant_run(
     body: StartAssistantRunBody,
     headers: HeaderMap,
 ) -> Result<AssistantRunResponse, ApiError> {
-    let execution =
-        prepare_assistant_execution(&dependencies.store, &headers, principal.actor(), body).await?;
+    let execution = prepare_assistant_execution(
+        &dependencies.store,
+        &dependencies.published_plan_cache,
+        &dependencies.published_publication_cache,
+        &headers,
+        principal.actor(),
+        body,
+    )
+    .await?;
     let mcp_runtime_invoker = Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
             dependencies
@@ -1066,6 +1077,8 @@ pub(crate) fn abort_assistant_execution_in(
 
 pub(super) async fn prepare_assistant_execution(
     store: &MainDurableStore,
+    published_plan_cache: &Arc<dyn control_plane::ports::PublishedPlanCache>,
+    published_publication_cache: &Arc<dyn control_plane::ports::PublishedPublicationCache>,
     headers: &HeaderMap,
     actor: &domain::ActorContext,
     body: StartAssistantRunBody,
@@ -1159,6 +1172,8 @@ pub(super) async fn prepare_assistant_execution(
     let execution = assistant_execution(&preference)?;
     let inputs = NativeObject::default();
     let flow_run = ApplicationPublishedRunService::new(store.clone())
+        .with_published_plan_cache(published_plan_cache.clone())
+        .with_published_publication_cache(published_publication_cache.clone())
         .create_assistant_run(CreateAssistantRunCommand {
             actor_user_id: actor.user_id,
             workspace_id: actor.current_workspace_id,
