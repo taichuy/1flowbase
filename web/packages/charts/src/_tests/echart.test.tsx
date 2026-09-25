@@ -34,6 +34,20 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(chart.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('adds a unit to tooltip values through the trusted chart renderer', () => {
+    render(
+      <EChart
+        option={{ tooltip: { trigger: 'axis' }, series: [] }}
+        tooltipValueUnit="MB"
+      />
+    );
+
+    const option = chart.setOption.mock.calls[0]?.[0] as {
+      tooltip?: { valueFormatter?: (value: number) => string };
+    };
+    expect(option.tooltip?.valueFormatter?.(526.31)).toBe('526.31 MB');
+  });
+
   it('bridges data clicks and removes listeners when the handler changes', () => {
     const handler = vi.fn();
     const view = render(

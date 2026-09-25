@@ -194,6 +194,7 @@ export function RuntimeMetricsChart({
       ariaLabel={i18nText('settings', 'auto.runtime_metrics_chart')}
       className="system-runtime-panel__chart"
       option={option}
+      tooltipValueUnit={kind === 'process_memory' ? 'MB' : undefined}
     />
   );
 }

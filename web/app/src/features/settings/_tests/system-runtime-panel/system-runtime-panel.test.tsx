@@ -544,6 +544,7 @@ describe('SystemRuntimePanel', () => {
         ) as
         | {
             yAxis?: { name?: string };
+            tooltip?: { valueFormatter?: (value: number) => string };
             series?: Array<{
               name?: string;
               data?: unknown[];
@@ -552,6 +553,7 @@ describe('SystemRuntimePanel', () => {
         | undefined;
 
       expect(option?.yAxis?.name).toBe('MB');
+      expect(option?.tooltip?.valueFormatter?.(320)).toBe('320 MB');
       expect(option?.series?.map((series) => series.name)).toEqual([
         'API Server 进程树',
         'API Server 根进程 RSS'

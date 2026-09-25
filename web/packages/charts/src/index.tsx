@@ -45,6 +45,7 @@ export interface EChartProps {
   readonly className?: string;
   readonly option: EChartOption;
   readonly style?: CSSProperties;
+  readonly tooltipValueUnit?: string;
 }
 
 export function EChart({
@@ -52,7 +53,8 @@ export function EChart({
   className,
   option,
   style,
-  onDataClick
+  onDataClick,
+  tooltipValueUnit
 }: EChartProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
@@ -83,14 +85,23 @@ export function EChart({
       ...option,
       tooltip:
         option.tooltip && typeof option.tooltip === 'object'
-          ? { ...option.tooltip, renderMode: 'richText' }
+          ? {
+              ...option.tooltip,
+              renderMode: 'richText',
+              ...(tooltipValueUnit
+                ? {
+                    valueFormatter: (value: unknown) =>
+                      `${value} ${tooltipValueUnit}`
+                  }
+                : {})
+            }
           : option.tooltip
     };
     chartRef.current?.setOption(safeOption, {
       notMerge: true,
       lazyUpdate: true
     });
-  }, [option]);
+  }, [option, tooltipValueUnit]);
 
   useEffect(() => {
     const chart = chartRef.current;
