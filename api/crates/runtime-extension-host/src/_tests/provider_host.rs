@@ -22,6 +22,9 @@ use tokio::time::sleep;
 use crate::package_loader::PackageLoader;
 use crate::stdio_runtime::ProviderWorkerLifecycleState;
 
+#[path = "provider_host/deadline.rs"]
+mod deadline;
+
 #[test]
 fn invocation_timeout_does_not_derive_from_physical_generation_deadline() {
     let limits = PluginRuntimeLimits {
@@ -69,6 +72,46 @@ fn native_responses_stream_has_longer_default_without_overriding_package_limit()
     assert_eq!(
         provider_invocation_limits(&explicit, &native).timeout_ms,
         Some(42_000)
+    );
+}
+
+#[test]
+fn execution_deadline_bounds_both_admission_and_provider_execution() {
+    let now = tokio::time::Instant::now();
+    let defaults = PluginRuntimeLimits::default();
+    let mut native = invocation_input("fixture-model");
+    native
+        .required_capabilities
+        .insert(ProviderInvocationCapability::ResponsesNativePassthrough);
+    let configured = provider_invocation_limits(&defaults, &native);
+    let deadline = now + Duration::from_secs(30);
+    assert_eq!(
+        limit_provider_invocation_to_deadline(configured.clone(), Some(deadline), now).timeout_ms,
+        Some(30_000)
+    );
+    assert_eq!(
+        limit_provider_invocation_to_deadline(
+            configured.clone(),
+            Some(deadline),
+            now + Duration::from_secs(12)
+        )
+        .timeout_ms,
+        Some(18_000),
+        "time spent in admission must reduce the same execution budget"
+    );
+    assert_eq!(
+        limit_provider_invocation_to_deadline(
+            configured.clone(),
+            Some(deadline),
+            now + Duration::from_secs(31)
+        )
+        .timeout_ms,
+        Some(0)
+    );
+    assert_eq!(
+        limit_provider_invocation_to_deadline(configured, None, now).timeout_ms,
+        Some(1_800_000),
+        "calls without a principal deadline retain their configured budget"
     );
 }
 

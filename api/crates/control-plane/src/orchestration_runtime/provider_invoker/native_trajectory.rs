@@ -780,9 +780,7 @@ fn invocation_purpose(
         ProviderWireOperation::Compact => "compact",
         ProviderWireOperation::CountTokens => "unknown",
         ProviderWireOperation::Generate => {
-            if input.native_transport.as_ref().is_some_and(|transport| {
-                transport.wire_body.get("generate").and_then(Value::as_bool) == Some(false)
-            }) {
+            if super::is_responses_prewarm(input) {
                 "prewarm"
             } else if context.is_some_and(|context| context.is_resume) {
                 "tool_resume"
