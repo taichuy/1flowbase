@@ -1,5 +1,4 @@
-import AntdApp from 'antd/es/app';
-import ConfigProvider from 'antd/es/config-provider';
+import { App as AntdApp, ConfigProvider } from 'antd';
 import type { PropsWithChildren } from 'react';
 
 import { emeraldLightTheme } from './theme';

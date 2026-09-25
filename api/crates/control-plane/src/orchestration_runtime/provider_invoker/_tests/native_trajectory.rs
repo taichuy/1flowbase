@@ -508,7 +508,7 @@ fn workflow_purpose_uses_actual_operation_and_segment_facts() {
     assert_eq!(invocation_purpose(&input, None), "generate");
     assert_eq!(invocation_purpose(&input, Some(&context)), "tool_resume");
     input.native_transport = Some(ProviderNativeTransport {
-        protocol: "openai.responses".into(),
+        protocol: "openai_responses".into(),
         digest: "digest".into(),
         size_bytes: 20,
         wire_body: json!({"generate":false}),
