@@ -865,6 +865,9 @@ describe('RolePermissionPanel', () => {
     expect(
       within(drawer).queryByRole('checkbox', { name: '选择 Read records' })
     ).not.toBeInTheDocument();
+    expect(
+      within(drawer).getByRole('checkbox', { name: '全选开关项' }).closest('th')
+    ).not.toBeNull();
 
     fireEvent.click(
       within(drawer).getByRole('checkbox', { name: '选择 Create record' })

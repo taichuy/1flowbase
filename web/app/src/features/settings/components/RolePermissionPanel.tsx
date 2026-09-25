@@ -1424,33 +1424,6 @@ export function RolePermissionPanel({
               ) : null}
               {simpleDetailOperations.length > 0 ? (
                 <Space wrap size="small">
-                  <Checkbox
-                    aria-label={i18nText(
-                      'settings',
-                      'auto.select_all_switch_operations'
-                    )}
-                    checked={allSimpleDetailOperationsSelected}
-                    indeterminate={
-                      selectedConsoleOperationIds.length > 0 &&
-                      !allSimpleDetailOperationsSelected
-                    }
-                    disabled={
-                      !canManageRoles ||
-                      !selectedRole?.is_editable ||
-                      replaceConsolePolicyMutation.isPending
-                    }
-                    onChange={(event) =>
-                      setSelectedConsoleOperationIds(
-                        event.target.checked
-                          ? simpleDetailOperations.map(
-                              (operation) => operation.operation_id
-                            )
-                          : []
-                      )
-                    }
-                  >
-                    {i18nText('settings', 'auto.select_all_switch_operations')}
-                  </Checkbox>
                   <Button
                     disabled={
                       selectedConsoleOperationIds.length === 0 ||
@@ -1485,40 +1458,71 @@ export function RolePermissionPanel({
                     display_key: displayKey
                   }))}
                 columns={[
-                  {
-                    key: 'selection',
-                    width: 48,
-                    render: (
-                      _: unknown,
-                      operation: ConsolePolicyCatalogGroup['operations'][number]
-                    ) =>
-                      operation.full_profile.kind === 'simple' ? (
-                        <Checkbox
-                          aria-label={i18nText(
-                            'settings',
-                            'auto.select_operation',
-                            { value1: operation.summary }
-                          )}
-                          checked={selectedConsoleOperationIds.includes(
-                            operation.operation_id
-                          )}
-                          disabled={
-                            !canManageRoles ||
-                            !selectedRole?.is_editable ||
-                            replaceConsolePolicyMutation.isPending
-                          }
-                          onChange={(event) =>
-                            setSelectedConsoleOperationIds((current) =>
-                              event.target.checked
-                                ? [...current, operation.operation_id]
-                                : current.filter(
-                                    (id) => id !== operation.operation_id
+                  ...(simpleDetailOperations.length > 0
+                    ? [
+                        {
+                          key: 'selection',
+                          width: 48,
+                          title: (
+                            <Checkbox
+                              aria-label={i18nText(
+                                'settings',
+                                'auto.select_all_switch_operations'
+                              )}
+                              checked={allSimpleDetailOperationsSelected}
+                              indeterminate={
+                                selectedConsoleOperationIds.length > 0 &&
+                                !allSimpleDetailOperationsSelected
+                              }
+                              disabled={
+                                !canManageRoles ||
+                                !selectedRole?.is_editable ||
+                                replaceConsolePolicyMutation.isPending
+                              }
+                              onChange={(event) =>
+                                setSelectedConsoleOperationIds(
+                                  event.target.checked
+                                    ? simpleDetailOperations.map(
+                                        (operation) => operation.operation_id
+                                      )
+                                    : []
+                                )
+                              }
+                            />
+                          ),
+                          render: (
+                            _: unknown,
+                            operation: ConsolePolicyCatalogGroup['operations'][number]
+                          ) =>
+                            operation.full_profile.kind === 'simple' ? (
+                              <Checkbox
+                                aria-label={i18nText(
+                                  'settings',
+                                  'auto.select_operation',
+                                  { value1: operation.summary }
+                                )}
+                                checked={selectedConsoleOperationIds.includes(
+                                  operation.operation_id
+                                )}
+                                disabled={
+                                  !canManageRoles ||
+                                  !selectedRole?.is_editable ||
+                                  replaceConsolePolicyMutation.isPending
+                                }
+                                onChange={(event) =>
+                                  setSelectedConsoleOperationIds((current) =>
+                                    event.target.checked
+                                      ? [...current, operation.operation_id]
+                                      : current.filter(
+                                          (id) => id !== operation.operation_id
+                                        )
                                   )
-                            )
-                          }
-                        />
-                      ) : null
-                  },
+                                }
+                              />
+                            ) : null
+                        }
+                      ]
+                    : []),
                   {
                     title: i18nText('settings', 'auto.operation'),
                     key: 'operation',
