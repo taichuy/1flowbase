@@ -37,6 +37,24 @@
   overflow-y: auto;
 }
 
+.role-permission-detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.role-permission-detail-toolbar__search {
+  flex: 0 1 240px;
+  min-width: 180px;
+}
+
+.role-permission-detail-toolbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
 @media (max-width: 767px) {
   .role-permission-layout {
     flex-direction: column;

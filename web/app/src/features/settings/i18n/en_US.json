@@ -114,6 +114,7 @@
     "permission_policy_save": "Save permission configuration",
     "select_all_switch_operations": "Select all switches",
     "select_operation": "Select {{value1}}",
+    "search_operation_path": "Search path",
     "enable_selected_operations": "Enable selected",
     "disable_selected_operations": "Disable selected",
     "permission_policy_updated_successfully": "Permission configuration updated",

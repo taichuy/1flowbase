@@ -114,6 +114,7 @@
     "permission_policy_save": "保存权限配置",
     "select_all_switch_operations": "全选开关项",
     "select_operation": "选择 {{value1}}",
+    "search_operation_path": "搜索路径",
     "enable_selected_operations": "启用所选",
     "disable_selected_operations": "关闭所选",
     "permission_policy_updated_successfully": "权限配置已更新",

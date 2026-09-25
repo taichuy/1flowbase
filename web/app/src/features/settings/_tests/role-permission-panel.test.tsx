@@ -73,7 +73,10 @@ vi.mock('../api/data-models', () => dataModelsApi);
 
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
-import { appI18n, loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../shared/i18n/app-i18n';
 import type { RolePermissionTab } from '../components/RolePermissionPanel';
 let RolePermissionPanel: typeof import('../components/RolePermissionPanel').RolePermissionPanel;
 import {
@@ -128,7 +131,9 @@ function renderPanel(canManageRoles = true) {
   return render(
     <AppProviders>
       <ConfigProvider locale={zhCN}>
-        <App><RolePermissionPanelHarness /></App>
+        <App>
+          <RolePermissionPanelHarness />
+        </App>
       </ConfigProvider>
     </AppProviders>
   );
@@ -287,7 +292,8 @@ describe('RolePermissionPanel', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await loadApplicationI18nResources();
-    ({ RolePermissionPanel } = await import('../components/RolePermissionPanel'));
+    ({ RolePermissionPanel } =
+      await import('../components/RolePermissionPanel'));
     await appI18n.changeLanguage('zh_Hans');
     resetAuthStore();
     authenticate();
@@ -818,7 +824,7 @@ describe('RolePermissionPanel', () => {
               summary: 'Delete record',
               description: null,
               order: 3,
-              route: { method: 'DELETE', path: '/api/console/test' },
+              route: { method: 'DELETE', path: '/api/console/other' },
               full_profile: { kind: 'simple', enabled: true },
               allowed_row_scopes: [],
               authorization: { kind: 'simple' }
@@ -854,7 +860,10 @@ describe('RolePermissionPanel', () => {
     });
     const initialWidth = Number(resizeHandle.getAttribute('aria-valuenow'));
     fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', String(initialWidth + 40));
+    expect(resizeHandle).toHaveAttribute(
+      'aria-valuenow',
+      String(initialWidth + 40)
+    );
     const enableSelected = within(drawer).getByRole('button', {
       name: '启用所选'
     });
@@ -905,6 +914,34 @@ describe('RolePermissionPanel', () => {
     expect(enableSelected).toBeDisabled();
     expect(disableSelected).toBeDisabled();
 
+    const pathSearch = within(drawer).getByRole('textbox', {
+      name: '搜索路径'
+    });
+    fireEvent.change(pathSearch, { target: { value: 'Create record' } });
+    expect(within(drawer).queryByText('Create record')).not.toBeInTheDocument();
+    fireEvent.change(pathSearch, { target: { value: 'OTHER' } });
+    expect(within(drawer).queryByText('Create record')).not.toBeInTheDocument();
+    expect(within(drawer).getByText('Delete record')).toBeInTheDocument();
+    fireEvent.click(
+      within(drawer).getByRole('checkbox', { name: '全选开关项' })
+    );
+    fireEvent.click(enableSelected);
+    fireEvent.change(pathSearch, { target: { value: '' } });
+    expect(enableSelected).toBeDisabled();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Create record' })
+    ).not.toBeChecked();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Delete record' })
+    ).toBeChecked();
+    fireEvent.click(
+      within(drawer).getByRole('checkbox', { name: '选择 Delete record' })
+    );
+    fireEvent.click(disableSelected);
+    expect(
+      within(drawer).getByRole('switch', { name: 'Delete record' })
+    ).not.toBeChecked();
+
     fireEvent.click(
       within(drawer).getByRole('button', { name: '保存权限配置' })
     );
@@ -934,9 +971,7 @@ describe('RolePermissionPanel', () => {
       );
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: '详细配置 批量操作' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '详细配置 批量操作' }));
     expect(
       within(await screen.findByRole('dialog')).getByRole('button', {
         name: '启用所选'
@@ -1268,13 +1303,15 @@ describe('RolePermissionPanel', () => {
     expect(screen.queryByText(/pgr3083h/)).not.toBeInTheDocument();
 
     const savedRoutes = await rolesApi.fetchSettingsRoleFrontstageRoutes();
-    rolesApi.replaceSettingsRoleFrontstageRoutes.mockImplementation(async () => {
-      rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
-        ...savedRoutes,
-        checked_page_ids: ['child-page'],
-        checked_tab_ids: ['child-tab']
-      });
-    });
+    rolesApi.replaceSettingsRoleFrontstageRoutes.mockImplementation(
+      async () => {
+        rolesApi.fetchSettingsRoleFrontstageRoutes.mockResolvedValue({
+          ...savedRoutes,
+          checked_page_ids: ['child-page'],
+          checked_tab_ids: ['child-tab']
+        });
+      }
+    );
     rolesApi.fetchSettingsRoleFrontstageRoutes.mockClear();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
@@ -1289,31 +1326,47 @@ describe('RolePermissionPanel', () => {
         'csrf-123'
       );
     });
-    await waitFor(() => expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled()
+    );
     expect(screen.getByRole('checkbox', { name: /工作台/ })).toBeChecked();
   });
 
   test('AC-003 permission catalog failure is explicit and can be retried', async () => {
-    permissionsApi.fetchSettingsConsolePolicyCatalog.mockRejectedValue(new Error('forbidden'));
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockRejectedValue(
+      new Error('forbidden')
+    );
     renderPanel(false);
-    expect(await screen.findByRole('alert')).toHaveTextContent('权限数据加载失败');
-    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(consolePolicyCatalog([]));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '权限数据加载失败'
+    );
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
+      consolePolicyCatalog([])
+    );
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
-    expect(await screen.findByRole('tab', { name: '动态路由' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('tab', { name: '动态路由' })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
     expect(rolesApi.replaceSettingsRoleFrontstageRoutes).not.toHaveBeenCalled();
   });
 
   test('AC-004 failed route save reloads and restores the persisted selection', async () => {
-    rolesApi.replaceSettingsRoleFrontstageRoutes.mockRejectedValue(new Error('forbidden'));
+    rolesApi.replaceSettingsRoleFrontstageRoutes.mockRejectedValue(
+      new Error('forbidden')
+    );
     renderPanel();
     fireEvent.click(await screen.findByRole('tab', { name: '动态路由' }));
     rolesApi.fetchSettingsRoleFrontstageRoutes.mockClear();
     fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
     await screen.findByText('权限配置更新失败');
-    await waitFor(() => expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: /工作台/ })).not.toBeChecked());
+    await waitFor(() =>
+      expect(rolesApi.fetchSettingsRoleFrontstageRoutes).toHaveBeenCalled()
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /工作台/ })).not.toBeChecked()
+    );
   });
 
   test('submits auto_grant_new_permissions and is_default_member_role from the create and edit dialogs', async () => {

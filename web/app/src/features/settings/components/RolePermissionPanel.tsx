@@ -216,7 +216,9 @@ export function RolePermissionPanel({
     FALLBACK_APP_LOCALE;
   const backendSettingsTabLabel = i18nText('settings', 'auto.backend_setting');
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const workspaceId = useAuthStore((state) => state.actor?.current_workspace_id);
+  const workspaceId = useAuthStore(
+    (state) => state.actor?.current_workspace_id
+  );
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
 
@@ -234,6 +236,8 @@ export function RolePermissionPanel({
   } | null>(null);
   const [selectedConsoleOperationIds, setSelectedConsoleOperationIds] =
     useState<string[]>([]);
+  const [consoleOperationPathQuery, setConsoleOperationPathQuery] =
+    useState('');
 
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -388,10 +392,14 @@ export function RolePermissionPanel({
       );
     },
     onSuccess: () => {
-      messageApi.success(i18nText('settings', 'auto.dynamic_route_permissions_updated'));
+      messageApi.success(
+        i18nText('settings', 'auto.dynamic_route_permissions_updated')
+      );
     },
     onError: () => {
-      messageApi.error(i18nText('settings', 'auto.permission_policy_update_failed'));
+      messageApi.error(
+        i18nText('settings', 'auto.permission_policy_update_failed')
+      );
     },
     onSettled: async (_, __, input) => {
       await Promise.all([
@@ -506,6 +514,7 @@ export function RolePermissionPanel({
       const policyGroup = policyGroupForCatalogGroup(catalogGroup);
 
       setSelectedConsoleOperationIds([]);
+      setConsoleOperationPathQuery('');
       setConsolePolicyDetail({
         catalogGroup,
         policyGroup: {
@@ -571,9 +580,18 @@ export function RolePermissionPanel({
     consolePolicyDetail?.catalogGroup.operations.filter(
       (operation) => operation.full_profile.kind === 'simple'
     ) ?? [];
+  const filteredDetailOperations =
+    consolePolicyDetail?.catalogGroup.operations.filter((operation) =>
+      operation.route.path
+        .toLowerCase()
+        .includes(consoleOperationPathQuery.trim().toLowerCase())
+    ) ?? [];
+  const visibleSimpleDetailOperations = filteredDetailOperations.filter(
+    (operation) => operation.full_profile.kind === 'simple'
+  );
   const allSimpleDetailOperationsSelected =
-    simpleDetailOperations.length > 0 &&
-    simpleDetailOperations.every((operation) =>
+    visibleSimpleDetailOperations.length > 0 &&
+    visibleSimpleDetailOperations.every((operation) =>
       selectedConsoleOperationIds.includes(operation.operation_id)
     );
 
@@ -814,7 +832,8 @@ export function RolePermissionPanel({
           checkable
           checkStrictly
           disabled={
-            !canManageRoles || !selectedRole?.is_editable ||
+            !canManageRoles ||
+            !selectedRole?.is_editable ||
             replaceFrontstageRoutesMutation.isPending
           }
           checkedKeys={displayedCheckedRouteIds}
@@ -1168,17 +1187,25 @@ export function RolePermissionPanel({
                       {i18nText('settings', 'auto.loading_permission_data')}
                     </div>
                   ) : consolePolicyCatalogQuery.isError ||
-                    roleConsolePolicyQuery.isError || roleFrontstageRoutesQuery.isError ? (
+                    roleConsolePolicyQuery.isError ||
+                    roleFrontstageRoutesQuery.isError ? (
                     <Alert
                       type="error"
                       showIcon
-                      title={i18nText('settings', 'auto.permission_data_load_failed')}
+                      title={i18nText(
+                        'settings',
+                        'auto.permission_data_load_failed'
+                      )}
                       action={
-                        <Button onClick={() => {
-                          void consolePolicyCatalogQuery.refetch();
-                          void roleConsolePolicyQuery.refetch();
-                          void roleFrontstageRoutesQuery.refetch();
-                        }}>{i18nText('settings', 'auto.retry_permission_data')}</Button>
+                        <Button
+                          onClick={() => {
+                            void consolePolicyCatalogQuery.refetch();
+                            void roleConsolePolicyQuery.refetch();
+                            void roleFrontstageRoutesQuery.refetch();
+                          }}
+                        >
+                          {i18nText('settings', 'auto.retry_permission_data')}
+                        </Button>
                       }
                     />
                   ) : (
@@ -1389,7 +1416,10 @@ export function RolePermissionPanel({
           minWidth={480}
           maxWidth={1200}
           destroyOnClose
-          resizeLabel={i18nText('settings', 'auto.resize_permission_policy_drawer')}
+          resizeLabel={i18nText(
+            'settings',
+            'auto.resize_permission_policy_drawer'
+          )}
           footer={
             <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button
@@ -1422,36 +1452,56 @@ export function RolePermissionPanel({
                   {consolePolicyDetail.catalogGroup.description}
                 </Typography.Paragraph>
               ) : null}
-              {simpleDetailOperations.length > 0 ? (
-                <Space wrap size="small">
-                  <Button
-                    disabled={
-                      selectedConsoleOperationIds.length === 0 ||
-                      !canManageRoles ||
-                      !selectedRole?.is_editable ||
-                      replaceConsolePolicyMutation.isPending
-                    }
-                    onClick={() => updateSelectedConsoleOperations(true)}
-                  >
-                    {i18nText('settings', 'auto.enable_selected_operations')}
-                  </Button>
-                  <Button
-                    disabled={
-                      selectedConsoleOperationIds.length === 0 ||
-                      !canManageRoles ||
-                      !selectedRole?.is_editable ||
-                      replaceConsolePolicyMutation.isPending
-                    }
-                    onClick={() => updateSelectedConsoleOperations(false)}
-                  >
-                    {i18nText('settings', 'auto.disable_selected_operations')}
-                  </Button>
-                </Space>
-              ) : null}
+              <div className="role-permission-detail-toolbar">
+                <Input
+                  className="role-permission-detail-toolbar__search"
+                  aria-label={i18nText(
+                    'settings',
+                    'auto.search_operation_path'
+                  )}
+                  placeholder={i18nText(
+                    'settings',
+                    'auto.search_operation_path'
+                  )}
+                  prefix={<SearchOutlined />}
+                  value={consoleOperationPathQuery}
+                  onChange={(event) => {
+                    setConsoleOperationPathQuery(event.target.value);
+                    setSelectedConsoleOperationIds([]);
+                  }}
+                  allowClear
+                />
+                {simpleDetailOperations.length > 0 ? (
+                  <div className="role-permission-detail-toolbar__actions">
+                    <Button
+                      disabled={
+                        selectedConsoleOperationIds.length === 0 ||
+                        !canManageRoles ||
+                        !selectedRole?.is_editable ||
+                        replaceConsolePolicyMutation.isPending
+                      }
+                      onClick={() => updateSelectedConsoleOperations(true)}
+                    >
+                      {i18nText('settings', 'auto.enable_selected_operations')}
+                    </Button>
+                    <Button
+                      disabled={
+                        selectedConsoleOperationIds.length === 0 ||
+                        !canManageRoles ||
+                        !selectedRole?.is_editable ||
+                        replaceConsolePolicyMutation.isPending
+                      }
+                      onClick={() => updateSelectedConsoleOperations(false)}
+                    >
+                      {i18nText('settings', 'auto.disable_selected_operations')}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
               <Table
                 rowKey="display_key"
                 pagination={false}
-                dataSource={[...consolePolicyDetail.catalogGroup.operations]
+                dataSource={[...filteredDetailOperations]
                   .sort((left, right) => left.order - right.order)
                   .map((operation, displayKey) => ({
                     ...operation,
@@ -1471,10 +1521,15 @@ export function RolePermissionPanel({
                               )}
                               checked={allSimpleDetailOperationsSelected}
                               indeterminate={
-                                selectedConsoleOperationIds.length > 0 &&
-                                !allSimpleDetailOperationsSelected
+                                visibleSimpleDetailOperations.some(
+                                  (operation) =>
+                                    selectedConsoleOperationIds.includes(
+                                      operation.operation_id
+                                    )
+                                ) && !allSimpleDetailOperationsSelected
                               }
                               disabled={
+                                visibleSimpleDetailOperations.length === 0 ||
                                 !canManageRoles ||
                                 !selectedRole?.is_editable ||
                                 replaceConsolePolicyMutation.isPending
@@ -1482,7 +1537,7 @@ export function RolePermissionPanel({
                               onChange={(event) =>
                                 setSelectedConsoleOperationIds(
                                   event.target.checked
-                                    ? simpleDetailOperations.map(
+                                    ? visibleSimpleDetailOperations.map(
                                         (operation) => operation.operation_id
                                       )
                                     : []
