@@ -345,13 +345,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
         let connection_scope_id = take_transport_connection_scope(input);
         if input.protocol == "openai_responses" {
-            input.client_transport = if connection_scope_id.is_some() {
-                Some(ProviderClientTransport::Websocket)
-            } else if input.native_transport.is_some() {
-                Some(ProviderClientTransport::Http)
-            } else {
-                None
-            };
+            // HTTP Responses can continue a provider WebSocket session. An HTTP
+            // carrier is not an upstream transport policy; leave that choice to
+            // the node/provider configuration unless ingress is a WebSocket.
+            input.client_transport = connection_scope_id
+                .as_ref()
+                .map(|_| ProviderClientTransport::Websocket);
         }
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);

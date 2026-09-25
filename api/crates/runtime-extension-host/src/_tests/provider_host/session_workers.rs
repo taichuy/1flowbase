@@ -218,6 +218,10 @@ async fn bounded_capacity_wait_cancel_deadline_and_release_reuse() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("admission deadline"));
+    assert!(
+        matches!(error, PluginFrameworkError::RuntimeContract { error }
+        if error.kind == ProviderRuntimeErrorKind::ProviderTransportAdmissionFailed)
+    );
     assert_eq!(dispatches(&package).len(), 1);
     let mut loaded = host.loaded_package(&id).unwrap().clone();
     loaded.package.manifest.runtime.limits.invoke_timeout_ms = Some(3000);

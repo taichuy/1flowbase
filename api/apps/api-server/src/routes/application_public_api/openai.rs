@@ -85,7 +85,7 @@ pub(crate) fn responses_transport_owner_id(
     principal: &interface_runtime::ApplicationPrincipal,
     headers: &HeaderMap,
 ) -> Result<String, OpenAiRouteError> {
-    session_context::responses_session_identity(principal, headers)
+    session_context::responses_session_identity(principal, headers, None)
 }
 
 /// A Generate or tool-resume turn accepted by the same ingress used by HTTP
@@ -648,6 +648,10 @@ async fn dispatch_response_for_endpoint(
     let previous_flow_run_id = previous_response
         .as_ref()
         .map(|previous| previous.flow_run_id);
+    let previous_session_identity = previous_response
+        .as_ref()
+        .and_then(|previous| previous.session_identity.as_deref())
+        .map(str::to_owned);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
     let mut inference_recovery = None;
     if endpoint == OpenAiResponsesEndpoint::Responses && !is_local_summary {
@@ -856,6 +860,7 @@ async fn dispatch_response_for_endpoint(
             &mut request.client_protocol_envelope,
             principal.principal(),
             &headers,
+            previous_session_identity.as_deref(),
         )?;
     }
     // Keep socket ownership outside the canonical envelope and its durable/ephemeral
@@ -1434,24 +1439,29 @@ async fn load_previous_response_context_for_actor(
         }
     };
     ensure_previous_response_is_usable(&run)?;
+    let provider_continuation = state
+        .infrastructure
+        .provider_transport_store()
+        .get_continuation(ProviderContinuationSlotId::for_response_round(
+            run.id,
+            run_id_from_response_id(response_id)?,
+        ))
+        .await
+        .map_err(|_| {
+            OpenAiRouteError::Native(native::NativeApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "provider_continuation_lookup_failed",
+                "Provider continuation storage is temporarily unavailable",
+            ))
+        })?;
     Ok(Some(LoadedOpenAiPreviousResponseContext {
         flow_run_id: run.id,
+        session_identity: provider_continuation
+            .as_ref()
+            .and_then(|continuation| continuation.session_identity())
+            .map(str::to_owned),
         translation: OpenAiPreviousResponseContext {
-            provider_continuation: state
-                .infrastructure
-                .provider_transport_store()
-                .get_continuation(ProviderContinuationSlotId::for_response_round(
-                    run.id,
-                    run_id_from_response_id(response_id)?,
-                ))
-                .await
-                .map_err(|_| {
-                    OpenAiRouteError::Native(native::NativeApiError::new(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "provider_continuation_lookup_failed",
-                        "Provider continuation storage is temporarily unavailable",
-                    ))
-                })?,
+            provider_continuation,
             response_id: response_id.to_string(),
             external_user: string_value(&run.metadata, "external_user"),
             external_conversation_id: string_value(&run.metadata, "external_conversation_id"),
@@ -1473,6 +1483,7 @@ fn ensure_previous_response_is_usable(run: &NativeRunResult) -> Result<(), OpenA
 
 struct LoadedOpenAiPreviousResponseContext {
     flow_run_id: Uuid,
+    session_identity: Option<String>,
     translation: OpenAiPreviousResponseContext,
 }
 

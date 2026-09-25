@@ -252,7 +252,11 @@ async fn continuation_claim_is_atomic_and_expiry_and_terminal_cleanup_are_bounde
         "openai_responses",
         "gpt-fixture",
     );
-    let continuation = ProviderContinuation::new("provider-response-id", affinity.clone()).unwrap();
+    let sealed_identity = "a".repeat(64);
+    let continuation = ProviderContinuation::new("provider-response-id", affinity.clone())
+        .unwrap()
+        .with_session_identity(Some(&sealed_identity))
+        .unwrap();
     store
         .put_continuation(round_slot, continuation)
         .await
@@ -272,6 +276,7 @@ async fn continuation_claim_is_atomic_and_expiry_and_terminal_cleanup_are_bounde
         .find_map(Result::ok)
         .expect("one claimant owns the continuation");
     assert_eq!(claimed.response_id(), "provider-response-id");
+    assert_eq!(claimed.session_identity(), Some(sealed_identity.as_str()));
     assert!(claimed.matches_affinity(&affinity));
 
     let original = ProviderProtocolContextSlotId::for_original_flow_run(flow_run_id);

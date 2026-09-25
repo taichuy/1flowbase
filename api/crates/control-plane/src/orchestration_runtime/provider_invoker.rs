@@ -940,6 +940,20 @@ where
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
+        let sealed_session_identity = input
+            .client_protocol_envelope
+            .as_ref()
+            .filter(|envelope| envelope.source_protocol == "openai_responses")
+            .and_then(|envelope| envelope.headers.get("session-id"))
+            .and_then(|values| match values.as_slice() {
+                [identity]
+                    if identity.len() == 64
+                        && identity.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+                {
+                    Some(identity.clone())
+                }
+                _ => None,
+            });
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -1091,6 +1105,7 @@ where
                     runtime,
                     output.result.response_id.as_deref(),
                     history,
+                    sealed_session_identity.as_deref(),
                 )
                 .await
             {
@@ -1870,7 +1885,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         response_id: Option<&str>,
     ) -> Result<()> {
-        self.stage_provider_continuation_with_history(runtime, response_id, None)
+        self.stage_provider_continuation_with_history(runtime, response_id, None, None)
             .await
     }
 
@@ -1879,6 +1894,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         response_id: Option<&str>,
         history: Option<Value>,
+        session_identity: Option<&str>,
     ) -> Result<()> {
         let Some(response_id) = response_id.filter(|value| !value.trim().is_empty()) else {
             return Ok(());
@@ -1901,7 +1917,8 @@ where
                 &runtime.model,
             ),
         )?
-        .with_native_history(history);
+        .with_native_history(history)
+        .with_session_identity(session_identity)?;
         store
             .put_continuation(
                 crate::ports::ProviderContinuationSlotId::for_response_round(
