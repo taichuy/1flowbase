@@ -6,7 +6,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Drawer,
   Form,
   Input,
   Modal,
@@ -54,6 +53,7 @@ import {
   type SettingsRoleFrontstageRoutes
 } from '../api/roles';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
+import { ResizableDrawer } from '../../../shared/ui/resizable-drawer/ResizableDrawer';
 import { i18nText } from '../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
@@ -1372,21 +1372,24 @@ export function RolePermissionPanel({
           </Form>
         </Modal>
 
-        <Drawer
+        <ResizableDrawer
           title={
             consolePolicyDetail
               ? i18nText('settings', 'auto.permission_policy_detail_title', {
                   value1: consolePolicyDetail.catalogGroup.label
                 })
-              : undefined
+              : null
           }
           open={Boolean(consolePolicyDetail)}
           onClose={() => {
             setConsolePolicyDetail(null);
             setSelectedConsoleOperationIds([]);
           }}
-          size={640}
-          destroyOnHidden
+          defaultWidth={640}
+          minWidth={480}
+          maxWidth={1200}
+          destroyOnClose
+          resizeLabel={i18nText('settings', 'auto.resize_permission_policy_drawer')}
           footer={
             <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button
@@ -1612,7 +1615,7 @@ export function RolePermissionPanel({
               />
             </Space>
           ) : null}
-        </Drawer>
+        </ResizableDrawer>
       </div>
     </SettingsSectionSurface>
   );

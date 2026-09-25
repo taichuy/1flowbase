@@ -110,6 +110,7 @@
     "permission_policy_details": "详细配置 {{value1}}",
     "permission_policy_details_text": "详细配置",
     "permission_policy_detail_title": "{{value1}} 详细配置",
+    "resize_permission_policy_drawer": "调整权限详情抽屉宽度",
     "permission_policy_save": "保存权限配置",
     "select_all_switch_operations": "全选开关项",
     "select_operation": "选择 {{value1}}",

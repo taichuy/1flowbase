@@ -849,6 +849,12 @@ describe('RolePermissionPanel', () => {
       await screen.findByRole('button', { name: '详细配置 批量操作' })
     );
     const drawer = await screen.findByRole('dialog');
+    const resizeHandle = within(drawer).getByRole('separator', {
+      name: '调整权限详情抽屉宽度'
+    });
+    const initialWidth = Number(resizeHandle.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', String(initialWidth + 40));
     const enableSelected = within(drawer).getByRole('button', {
       name: '启用所选'
     });

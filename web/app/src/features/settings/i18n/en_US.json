@@ -110,6 +110,7 @@
     "permission_policy_details": "Configure {{value1}}",
     "permission_policy_details_text": "Details",
     "permission_policy_detail_title": "{{value1}} details",
+    "resize_permission_policy_drawer": "Resize permission details drawer",
     "permission_policy_save": "Save permission configuration",
     "select_all_switch_operations": "Select all switches",
     "select_operation": "Select {{value1}}",
