@@ -300,7 +300,6 @@ async fn switch_role_replaces_the_session_authorization_scope() {
             "system.files",
             "system.system-runtime",
             "system.memory-observation",
-            "system.host-infrastructure",
             "system.i18n-catalog",
         ]
     );

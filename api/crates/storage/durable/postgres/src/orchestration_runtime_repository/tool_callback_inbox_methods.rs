@@ -4,7 +4,7 @@ impl PgControlPlaneStore {
         input: &CommitToolCallbackResultsInput,
     ) -> Result<CommitToolCallbackResultsOutput> {
         if input.results.is_empty() {
-            return Err(anyhow!("tool callback results cannot be empty"));
+            return Err(ControlPlaneError::InvalidInput("tool_results").into());
         }
         let mut submitted = std::collections::BTreeSet::new();
         if input

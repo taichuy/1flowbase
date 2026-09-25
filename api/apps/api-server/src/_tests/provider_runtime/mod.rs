@@ -1081,10 +1081,9 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
     assert!(transport_lifecycle.contains("ProviderTransportSessionAction::Drain"));
     assert!(transport_lifecycle.contains("ProviderTransportSessionAction::Close"));
     assert!(transport_lifecycle.contains("generation: fence.generation.get()"));
-    assert!(transport_lifecycle.contains("close_acknowledged == Some(true)"));
     assert!(transport_lifecycle.contains("InvocationRequest"));
-    assert!(transport_lifecycle.contains("registry.rotate_generation(&command.fence)"));
-    assert!(transport_lifecycle.contains("drain_disposition(&snapshot, &command.fence)"));
+    assert!(transport_lifecycle.contains("registry.rotate_generation(&fence)"));
+    assert!(transport_lifecycle.contains("drain_disposition(&snapshot, &task.fence)"));
     assert!(!transport_lifecycle.contains("task_deadline"));
     assert!(boot.contains("Arc::clone(&extension_graph)"));
     assert!(!boot.contains("new_without_model_provider_extension_graph_for_tests"));

@@ -5,9 +5,13 @@ use crate::extension_bus::{production_interface_contributions, InterfaceContribu
 #[tokio::test]
 async fn eil_f03_production_modules_publish_additive_registry_contributions() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
-    let mut collector = InterfaceContributionCollector::new(
-        GraphFingerprint::new("eil-f03-production-contributions").unwrap(),
-    );
+    let graph_fingerprint = state
+        .extension_boot_snapshot
+        .as_ref()
+        .expect("test API state must publish an extension boot snapshot")
+        .fingerprint();
+    let mut collector =
+        InterfaceContributionCollector::new(GraphFingerprint::new(graph_fingerprint).unwrap());
     for contribution in production_interface_contributions(&state).unwrap() {
         collector.add(contribution).unwrap();
     }
@@ -22,9 +26,13 @@ async fn eil_f03_production_modules_publish_additive_registry_contributions() {
 async fn eil_f03_duplicate_module_contribution_fails_before_registry_publish() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let contribution = production_interface_contributions(&state).unwrap()[0].clone();
-    let mut collector = InterfaceContributionCollector::new(
-        GraphFingerprint::new("eil-f03-duplicate-contribution").unwrap(),
-    );
+    let graph_fingerprint = state
+        .extension_boot_snapshot
+        .as_ref()
+        .expect("test API state must publish an extension boot snapshot")
+        .fingerprint();
+    let mut collector =
+        InterfaceContributionCollector::new(GraphFingerprint::new(graph_fingerprint).unwrap());
     collector.add(contribution.clone()).unwrap();
 
     let error = collector.add(contribution).unwrap_err();
@@ -38,12 +46,16 @@ async fn eil_f03_duplicate_module_contribution_fails_before_registry_publish() {
 async fn eil_f03_conflicting_compiled_snapshot_fails_closed() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let contribution = production_interface_contributions(&state).unwrap()[0].clone();
+    let graph_fingerprint = state
+        .extension_boot_snapshot
+        .as_ref()
+        .expect("test API state must publish an extension boot snapshot")
+        .fingerprint();
     let conflicting = contribution
         .clone()
         .with_test_contribution_id("fixture.conflicting-snapshot");
-    let mut collector = InterfaceContributionCollector::new(
-        GraphFingerprint::new("eil-f03-conflicting-snapshot").unwrap(),
-    );
+    let mut collector =
+        InterfaceContributionCollector::new(GraphFingerprint::new(graph_fingerprint).unwrap());
     collector.add(contribution).unwrap();
     collector.add(conflicting).unwrap();
 

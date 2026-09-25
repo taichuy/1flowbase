@@ -11,8 +11,13 @@ use crate::{
 #[tokio::test]
 async fn eil_f05a_native_reads_publish_unique_frozen_plans() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let graph_fingerprint = state
+        .extension_boot_snapshot
+        .as_ref()
+        .expect("test API state must publish an extension boot snapshot")
+        .fingerprint();
     let mut collector =
-        InterfaceContributionCollector::new(GraphFingerprint::new("eil-f05a-native-read").unwrap());
+        InterfaceContributionCollector::new(GraphFingerprint::new(graph_fingerprint).unwrap());
     for contribution in production_interface_contributions(&state).unwrap() {
         collector.add(contribution).unwrap();
     }

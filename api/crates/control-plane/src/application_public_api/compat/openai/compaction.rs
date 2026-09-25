@@ -122,9 +122,11 @@ impl OpenAiResponsesRequestContext {
     }
 
     pub(crate) fn captured_codex_turn_metadata(&self) -> Option<&Value> {
-        (self.metadata_source == CodexTurnMetadataSource::Header)
-            .then(|| self.captured_codex_turn_metadata.as_ref())
-            .flatten()
+        if self.metadata_source == CodexTurnMetadataSource::Header {
+            self.captured_codex_turn_metadata.as_ref()
+        } else {
+            None
+        }
     }
 }
 

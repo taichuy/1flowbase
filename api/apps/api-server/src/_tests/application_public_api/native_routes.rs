@@ -609,58 +609,6 @@ async fn native_get_run_exposes_pending_llm_required_action() {
 }
 
 #[tokio::test]
-async fn native_resume_rejects_missing_llm_tool_result_without_consuming_task() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_native_app(
-        &app,
-        state.as_ref(),
-        "Native Resume Missing Tool Result App",
-    )
-    .await;
-    let mut body = native_run_body(json!("provider/model:any-public-string"));
-    body["response_mode"] = json!("manual");
-
-    let created = post_native_run(&app, &token, body).await;
-    assert_eq!(created.status(), StatusCode::CREATED);
-    let created_payload = response_json(created).await;
-    let run_id = Uuid::parse_str(created_payload["data"]["id"].as_str().unwrap()).unwrap();
-    let callback_task = seed_pending_llm_callback(state.as_ref(), run_id).await;
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/agent/v1/runs/{run_id}/resume"))
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "callback_task_id": callback_task.id,
-                        "response_payload": {
-                            "tool_results": []
-                        }
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let payload = response_json(response).await;
-    assert_eq!(payload["code"], json!("tool_results"));
-    let stored_task = state
-        .store
-        .get_callback_task(callback_task.id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored_task.status, domain::CallbackTaskStatus::Pending);
-}
-
-#[tokio::test]
 async fn native_tool_resume_reports_terminal_conflict_without_duplicate_failure_timeline() {
     let (app, state) = test_app_with_state().await;
     let token =

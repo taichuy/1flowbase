@@ -1527,7 +1527,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &crate::ports::CommitToolCallbackResultsInput,
     ) -> Result<crate::ports::CommitToolCallbackResultsOutput> {
         if input.results.is_empty() {
-            return Err(anyhow::anyhow!("tool callback results cannot be empty"));
+            return Err(crate::errors::ControlPlaneError::InvalidInput("tool_results").into());
         }
         let mut submitted = std::collections::BTreeSet::new();
         if input

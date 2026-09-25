@@ -103,11 +103,17 @@ where
                 .response_payload
                 .get("tool_results")
                 .and_then(Value::as_array)
-                .ok_or_else(|| anyhow!("llm tool callback response requires tool_results"))?
+                .ok_or(ControlPlaneError::InvalidInput("tool_results"))?
                 .iter()
                 .cloned()
-                .map(ToolCallbackResultInput::from_payload)
-                .collect::<Result<Vec<_>>>()?;
+                .map(|payload| {
+                    ToolCallbackResultInput::from_payload(payload)
+                        .map_err(|_| ControlPlaneError::InvalidInput("tool_results"))
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if results.is_empty() {
+                return Err(ControlPlaneError::InvalidInput("tool_results").into());
+            }
             let committed = self
                 .repository
                 .commit_tool_callback_results(&CommitToolCallbackResultsInput {
@@ -617,7 +623,7 @@ mod resume_claim_heartbeat_tests {
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     Ok(())
                 },
-                || std::future::pending::<Result<bool>>(),
+                std::future::pending::<Result<bool>>,
                 std::time::Duration::from_millis(10),
             ),
         )

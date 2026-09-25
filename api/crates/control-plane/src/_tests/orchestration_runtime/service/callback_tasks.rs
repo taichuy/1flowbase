@@ -1124,6 +1124,7 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
             ..ProviderInvocationResult::default()
         },
     ]);
+    let service = std::sync::Arc::new(service);
     let seeded = service.seed_application_with_flow("Support Agent").await;
     let detail = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
@@ -1146,6 +1147,33 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
         .await
         .unwrap();
     let callback_task_id = waiting_detail.callback_tasks[0].id;
+
+    let empty_results = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            responses_continuation: None,
+            transport_connection_scope: None,
+            observation_context: None,
+            native_transport: None,
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id,
+            response_payload: json!({ "tool_results": [] }),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        empty_results.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(&crate::errors::ControlPlaneError::InvalidInput(
+            "tool_results"
+        ))
+    );
+    assert_eq!(
+        service
+            .callback_task_for_tests(callback_task_id)
+            .await
+            .status,
+        domain::CallbackTaskStatus::Pending
+    );
 
     let partial_payload = json!({
         "tool_results": [
@@ -1232,12 +1260,15 @@ async fn complete_llm_tool_callback_accepts_partial_replay_conflict_and_single_a
         callback_task_id,
         response_payload: final_payload.clone(),
     };
-    let (left, right) = tokio::join!(
-        service.complete_callback_task(command()),
-        service.complete_callback_task(command())
-    );
-    let left = left.unwrap();
-    let right = right.unwrap();
+    let left_service = std::sync::Arc::clone(&service);
+    let right_service = std::sync::Arc::clone(&service);
+    let left_command = command();
+    let right_command = command();
+    let left = tokio::spawn(async move { left_service.complete_callback_task(left_command).await });
+    let right =
+        tokio::spawn(async move { right_service.complete_callback_task(right_command).await });
+    let left = left.await.unwrap().unwrap();
+    let right = right.await.unwrap().unwrap();
     assert!(matches!(
         (left.flow_run.status, right.flow_run.status),
         (

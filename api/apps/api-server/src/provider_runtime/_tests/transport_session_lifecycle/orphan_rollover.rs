@@ -7,9 +7,11 @@ async fn orphaned_tombstone_requires_release_then_admits_same_owner_on_new_socke
         AckBehavior::Matching(false),
         AckBehavior::Matching(true),
     ]));
-    let mut config = TransportRegistryConfig::default();
-    config.orphan_grace = Duration::from_secs(1);
-    config.idle_affinity_lease = Duration::from_secs(1);
+    let config = TransportRegistryConfig {
+        orphan_grace: Duration::from_secs(1),
+        idle_affinity_lease: Duration::from_secs(1),
+        ..Default::default()
+    };
     let coordinator =
         TransportSessionCoordinator::new_with_clock(runtime.clone(), config, clock.clone())
             .unwrap();
