@@ -13,7 +13,7 @@ async function buildBackend(service, { runPhaseImpl = runPhase, logImpl = log } 
   if (env.CARGO_INCREMENTAL === undefined && config.incremental !== undefined) env.CARGO_INCREMENTAL = config.incremental ? '1' : '0';
   const cargo = resolveCommandPath('cargo') || 'cargo';
   let executable;
-  const args = ['build', '-p', 'api-server', '--bin', 'api-server', '--message-format=json-render-diagnostics'];
+  const args = ['build', '-p', 'api-server', '--bin', 'api-server', '--features', 'tikv-jemallocator/stats', '--message-format=json-render-diagnostics'];
   logImpl(`Rust build: cargo=${cargo}; jobs<=${env.CARGO_BUILD_JOBS}; incremental=${env.CARGO_INCREMENTAL ?? 'Cargo default'}`);
   await runPhaseImpl(cargo, args, {
     cwd: service.cwd, env, signal: service.signal,
