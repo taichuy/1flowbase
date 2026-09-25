@@ -33,7 +33,7 @@ impl TransportClock for FakeClock {
 
 fn config(capacity: usize) -> TransportRegistryConfig {
     TransportRegistryConfig {
-        capacity,
+        capacity: Some(capacity),
         tombstone_capacity: 4,
         tombstone_ttl: Duration::from_secs(300),
         event_capacity: 64,
@@ -47,6 +47,20 @@ fn config(capacity: usize) -> TransportRegistryConfig {
         fault_grace: Duration::from_secs(5),
         closing_grace: Duration::from_secs(2),
     }
+}
+
+#[test]
+fn default_registry_admits_more_than_legacy_fixed_session_ceiling() {
+    let mut registry =
+        TransportSessionRegistry::new(FakeClock::default(), TransportRegistryConfig::default())
+            .unwrap();
+    for index in 0..129 {
+        let fence = registry
+            .admit(request(&format!("session-{index}")))
+            .unwrap();
+        registry.activate(&fence).unwrap();
+    }
+    assert_eq!(registry.len(), 129);
 }
 
 fn session_id(value: &str) -> TransportSessionId {

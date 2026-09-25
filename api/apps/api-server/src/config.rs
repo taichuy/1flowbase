@@ -379,11 +379,12 @@ impl ApiConfig {
             )?,
             transport_session_registry:
                 orchestration_runtime::transport_session::TransportRegistryConfig {
-                    capacity: parse_positive_usize(
-                        "API_TRANSPORT_SESSION_CAPACITY",
-                        map.get("API_TRANSPORT_SESSION_CAPACITY"),
-                        128,
-                    )?,
+                    capacity: map
+                        .get("API_TRANSPORT_SESSION_CAPACITY")
+                        .map(|value| {
+                            parse_positive_usize("API_TRANSPORT_SESSION_CAPACITY", Some(value), 1)
+                        })
+                        .transpose()?,
                     tombstone_capacity: 256,
                     event_capacity: 512,
                     logical_max_age: parse_positive_duration_seconds(

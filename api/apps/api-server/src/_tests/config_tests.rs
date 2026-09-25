@@ -70,8 +70,16 @@ fn api_config_does_not_require_ephemeral_backend_env() {
         Duration::from_secs(50 * 60)
     );
     assert_eq!(transport.physical_max_age, Duration::from_secs(58 * 60));
-    assert_eq!(transport.capacity, 128);
+    assert_eq!(transport.capacity, None);
     assert_eq!(transport.tombstone_ttl, Duration::from_secs(5 * 60));
+}
+
+#[test]
+fn api_config_accepts_explicit_transport_session_capacity() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.push(("API_TRANSPORT_SESSION_CAPACITY", "256"));
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    assert_eq!(config.transport_session_registry.capacity, Some(256));
 }
 
 #[test]

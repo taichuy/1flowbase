@@ -394,6 +394,44 @@ async fn expired_closed_binding_is_pruned_without_evicting_active_worker() {
 }
 
 #[tokio::test]
+async fn retained_binding_history_does_not_reject_a_new_worker() {
+    let package = package();
+    let mut host = ProviderHost::default();
+    let id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+    lock_provider_worker_registry(&host.provider_workers)
+        .unwrap()
+        .session_capacity = SessionWorkerCapacity::for_test(2);
+    host.invoke_stream(&id, input("first", false))
+        .await
+        .unwrap();
+    host.transport_session_operation(&id, close("first"))
+        .unwrap()
+        .await
+        .unwrap();
+    {
+        let mut registry = lock_provider_worker_registry(&host.provider_workers).unwrap();
+        let binding = registry
+            .transport_bindings
+            .get(&(id.clone(), "first".into(), 7))
+            .unwrap()
+            .clone();
+        for index in 0..4095 {
+            registry.transport_bindings.insert(
+                (id.clone(), format!("historical-{index}"), 7),
+                binding.clone(),
+            );
+        }
+    }
+    host.invoke_stream(&id, input("fresh", false))
+        .await
+        .unwrap();
+    host.stop_all().await.unwrap();
+}
+
+#[tokio::test]
 async fn reload_and_unload_reject_old_prepared_unbound_stream_without_creating_worker() {
     let package = package();
     let mut host = ProviderHost::default();

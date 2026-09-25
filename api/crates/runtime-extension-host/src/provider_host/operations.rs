@@ -267,7 +267,6 @@ pub(super) fn merge_models(
     merged.into_values().collect()
 }
 
-pub(super) const TRANSPORT_BINDING_CAPACITY: usize = 4096;
 const TRANSPORT_BINDING_MAX_RETENTION: std::time::Duration =
     std::time::Duration::from_secs(24 * 60 * 60 + 60);
 
@@ -326,11 +325,6 @@ pub(super) fn bind_transport_worker_locked(
             ));
         }
     } else {
-        if registry.transport_bindings.len() >= TRANSPORT_BINDING_CAPACITY {
-            return Err(transport_binding_error(
-                "transport worker binding capacity exhausted",
-            ));
-        }
         let unix_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

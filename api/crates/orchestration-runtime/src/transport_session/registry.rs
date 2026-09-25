@@ -114,18 +114,20 @@ impl<C: TransportClock> TransportSessionRegistry<C> {
             return Err(RegistryError::DeadlineInPast);
         }
 
-        if self.sessions.len() >= self.config.capacity {
-            if let Some(session_id) = self.eviction_candidate() {
-                self.terminate_by_id(&session_id, TerminationKind::CapacityEvicted, now);
-            } else {
-                return Err(RegistryError::Capacity(CapacityRejection {
-                    capacity: self.config.capacity,
-                    active: self
-                        .sessions
-                        .values()
-                        .filter(|record| record.logical.state == TransportSessionState::Active)
-                        .count(),
-                }));
+        if let Some(capacity) = self.config.capacity {
+            if self.sessions.len() >= capacity {
+                if let Some(session_id) = self.eviction_candidate() {
+                    self.terminate_by_id(&session_id, TerminationKind::CapacityEvicted, now);
+                } else {
+                    return Err(RegistryError::Capacity(CapacityRejection {
+                        capacity,
+                        active: self
+                            .sessions
+                            .values()
+                            .filter(|record| record.logical.state == TransportSessionState::Active)
+                            .count(),
+                    }));
+                }
             }
         }
 

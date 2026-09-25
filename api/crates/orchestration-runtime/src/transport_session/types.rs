@@ -249,7 +249,7 @@ pub struct SafeSessionSnapshot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SafeRegistrySnapshot {
     pub observed_at: TransportInstant,
-    pub capacity: usize,
+    pub capacity: Option<usize>,
     pub tombstone_ttl: Duration,
     pub sessions: Vec<SafeSessionSnapshot>,
     pub tombstones: Vec<TerminationReceipt>,
@@ -257,7 +257,8 @@ pub struct SafeRegistrySnapshot {
 
 #[derive(Clone, Debug)]
 pub struct TransportRegistryConfig {
-    pub capacity: usize,
+    /// Optional explicit metadata bound; the default does not impose a session count ceiling.
+    pub capacity: Option<usize>,
     pub tombstone_capacity: usize,
     pub tombstone_ttl: Duration,
     pub event_capacity: usize,
@@ -275,7 +276,7 @@ pub struct TransportRegistryConfig {
 impl Default for TransportRegistryConfig {
     fn default() -> Self {
         Self {
-            capacity: 128,
+            capacity: None,
             tombstone_capacity: 256,
             tombstone_ttl: Duration::from_secs(5 * 60),
             event_capacity: 512,
@@ -306,7 +307,7 @@ impl TransportRegistryConfig {
             self.fault_grace,
             self.closing_grace,
         ];
-        if self.capacity == 0 || self.tombstone_capacity == 0 || self.event_capacity == 0 {
+        if self.capacity == Some(0) || self.tombstone_capacity == 0 || self.event_capacity == 0 {
             return Err(RegistryError::InvalidConfig);
         }
         if durations.iter().any(Duration::is_zero)

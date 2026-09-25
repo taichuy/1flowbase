@@ -152,13 +152,6 @@ pub(super) async fn select_worker(
                 if let Some(slot) =
                     capacity.try_acquire(loaded.package.manifest.runtime.limits.memory_bytes)?
                 {
-                    if registry.transport_bindings.len()
-                        >= super::operations::TRANSPORT_BINDING_CAPACITY
-                    {
-                        return Err(transport_binding_error(
-                            "transport worker binding capacity exhausted",
-                        ));
-                    }
                     let incarnation = *registry
                         .next_generation
                         .entry(plugin.to_owned())
