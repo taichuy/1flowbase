@@ -543,7 +543,10 @@ describe('SystemRuntimePanel', () => {
             candidate.series[0]?.name === 'API Server 进程树'
         ) as
         | {
-            yAxis?: { name?: string };
+            yAxis?: {
+              name?: string;
+              axisLabel?: { formatter?: (value: number) => string };
+            };
             tooltip?: { valueFormatter?: (value: number) => string };
             series?: Array<{
               name?: string;
@@ -553,6 +556,7 @@ describe('SystemRuntimePanel', () => {
         | undefined;
 
       expect(option?.yAxis?.name).toBe('MB');
+      expect(option?.yAxis?.axisLabel?.formatter?.(500)).toBe('500 MB');
       expect(option?.tooltip?.valueFormatter?.(320)).toBe('320 MB');
       expect(option?.series?.map((series) => series.name)).toEqual([
         'API Server 进程树',
@@ -613,7 +617,7 @@ describe('SystemRuntimePanel', () => {
   });
 
   test('ac_015 renders the backend process tree inside the resource monitor', async () => {
-    renderPanel();
+    const { queryClient } = renderPanel();
 
     await screen.findByText('资源监控');
 
@@ -631,6 +635,8 @@ describe('SystemRuntimePanel', () => {
       return element as HTMLElement;
     });
     expect(treePanel).toHaveTextContent('api-server');
+    expect(treePanel).toHaveTextContent('c:0.85%');
+    expect(treePanel).toHaveTextContent('m:32.0 MB');
     expect(treePanel).not.toHaveTextContent('1442117');
     expect(treePanel).not.toHaveTextContent('CPU');
 
@@ -648,5 +654,18 @@ describe('SystemRuntimePanel', () => {
     expect(
       detail.getByRole('button', { name: /结\s*束/u })
     ).toBeInTheDocument();
+
+    const updated = runtimeProcessList();
+    updated.processes[0]!.cpu_usage_percent = 2.95;
+    updated.processes[0]!.memory_bytes = 67_108_864;
+    act(() => {
+      queryClient.setQueryData(
+        systemRuntimeApi.settingsSystemRuntimeProcessesQueryKey,
+        updated
+      );
+    });
+    await waitFor(() => {
+      expect(treePanel).toHaveTextContent('c:2.95% · m:64.0 MB');
+    });
   });
 });

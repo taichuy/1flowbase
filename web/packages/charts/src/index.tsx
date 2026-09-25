@@ -46,6 +46,7 @@ export interface EChartProps {
   readonly option: EChartOption;
   readonly style?: CSSProperties;
   readonly tooltipValueUnit?: string;
+  readonly yAxisValueUnit?: string;
 }
 
 export function EChart({
@@ -54,7 +55,8 @@ export function EChart({
   option,
   style,
   onDataClick,
-  tooltipValueUnit
+  tooltipValueUnit,
+  yAxisValueUnit
 }: EChartProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
@@ -81,8 +83,28 @@ export function EChart({
   }, []);
 
   useEffect(() => {
+    const yAxis =
+      option.yAxis &&
+      typeof option.yAxis === 'object' &&
+      !Array.isArray(option.yAxis)
+        ? (option.yAxis as {
+            readonly axisLabel?: Record<string, unknown>;
+            readonly [key: string]: unknown;
+          })
+        : undefined;
     const safeOption = {
       ...option,
+      ...(yAxisValueUnit && yAxis
+        ? {
+            yAxis: {
+              ...yAxis,
+              axisLabel: {
+                ...yAxis.axisLabel,
+                formatter: (value: number) => `${value} ${yAxisValueUnit}`
+              }
+            }
+          }
+        : {}),
       tooltip:
         option.tooltip && typeof option.tooltip === 'object'
           ? {
@@ -101,7 +123,7 @@ export function EChart({
       notMerge: true,
       lazyUpdate: true
     });
-  }, [option, tooltipValueUnit]);
+  }, [option, tooltipValueUnit, yAxisValueUnit]);
 
   useEffect(() => {
     const chart = chartRef.current;

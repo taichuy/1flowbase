@@ -195,6 +195,7 @@ export function RuntimeMetricsChart({
       className="system-runtime-panel__chart"
       option={option}
       tooltipValueUnit={kind === 'process_memory' ? 'MB' : undefined}
+      yAxisValueUnit={kind === 'process_memory' ? 'MB' : undefined}
     />
   );
 }

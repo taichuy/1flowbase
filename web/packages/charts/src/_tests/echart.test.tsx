@@ -48,6 +48,21 @@ describe('@1flowbase/charts EChart (AC-PUB-004/005)', () => {
     expect(option.tooltip?.valueFormatter?.(526.31)).toBe('526.31 MB');
   });
 
+  it('adds a unit to numeric axis labels through the trusted chart renderer', () => {
+    render(
+      <EChart
+        option={{ yAxis: { type: 'value', axisLabel: { color: '#777' } }, series: [] }}
+        yAxisValueUnit="MB"
+      />
+    );
+
+    const option = chart.setOption.mock.calls[0]?.[0] as {
+      yAxis?: { axisLabel?: { color?: string; formatter?: (value: number) => string } };
+    };
+    expect(option.yAxis?.axisLabel?.color).toBe('#777');
+    expect(option.yAxis?.axisLabel?.formatter?.(500)).toBe('500 MB');
+  });
+
   it('bridges data clicks and removes listeners when the handler changes', () => {
     const handler = vi.fn();
     const view = render(

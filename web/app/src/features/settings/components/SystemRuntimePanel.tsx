@@ -117,6 +117,10 @@ function formatPercent(value: number | null | undefined) {
     : `${value.toFixed(2)}%`;
 }
 
+function formatMegabytes(value: number) {
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function formatStartedAt(seconds: number) {
   const date = new Date(seconds * 1000);
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -331,6 +335,10 @@ function buildBackendProcessTree(
       title: (
         <span className="system-runtime-panel__process-tree-title">
           <Typography.Text strong>{process.name}</Typography.Text>
+          <Typography.Text type="secondary">
+            c:{formatPercent(process.cpu_usage_percent)} · m:
+            {formatMegabytes(process.memory_bytes)}
+          </Typography.Text>
         </span>
       ),
       children: []
@@ -509,8 +517,7 @@ export function SystemRuntimePanel() {
     .join(',');
   const backendTreeData = useMemo(
     () => buildBackendProcessTree(backendProcesses),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [backendProcessIds]
+    [backendProcesses]
   );
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<string[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<number | null>(
