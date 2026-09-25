@@ -21,10 +21,10 @@ use control_plane::application_public_api::{
         merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
     },
     compat::openai::{
-        response_id_from_run_id, run_id_from_response_id, translate_chat_completion_request,
-        translate_response_envelope_with_context_and_previous, OpenAiCompatError,
-        OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
-        OpenAiResponsesEnvelope,
+        classify_response_envelope_operation, response_id_from_run_id, run_id_from_response_id,
+        translate_chat_completion_request, translate_response_envelope_with_decision_and_previous,
+        OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
+        OpenAiResponsesEndpoint, OpenAiResponsesEnvelope,
     },
     native::{
         ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
@@ -551,17 +551,6 @@ async fn dispatch_response_for_endpoint(
         .as_ref()
         .map(|credential| credential.source)
         .unwrap_or("frozen_websocket_principal");
-    let request_context = match compact::responses_request_context(&headers, endpoint) {
-        Ok(context) => context,
-        Err(error) => {
-            warn_openai_route_error(
-                route,
-                &error,
-                "openai responses Codex metadata validation failed",
-            );
-            return Err(error);
-        }
-    };
     let mut value = match parse_openai_json_body(body, TranslationProtocol::OpenAiResponses) {
         Ok(value) => value,
         Err(error) => {
@@ -640,6 +629,16 @@ async fn dispatch_response_for_endpoint(
         }
     };
     let application_actor = compatibility_interface::application_actor(principal.principal());
+    let request_context = compact::responses_request_context(
+        &headers,
+        endpoint,
+        responses_envelope.raw_body(),
+        delivery,
+    )?;
+    let operation_decision =
+        classify_response_envelope_operation(&responses_envelope, request_context)
+            .map_err(OpenAiRouteError::from)?;
+    let is_local_summary = operation_decision.is_local_summary();
     let previous_response = load_previous_response_context_for_actor(
         state.clone(),
         application_actor.clone(),
@@ -651,7 +650,7 @@ async fn dispatch_response_for_endpoint(
         .map(|previous| previous.flow_run_id);
     let previous_translation_context = previous_response.map(|previous| previous.translation);
     let mut inference_recovery = None;
-    if endpoint == OpenAiResponsesEndpoint::Responses {
+    if endpoint == OpenAiResponsesEndpoint::Responses && !is_local_summary {
         let encoded_resume = correlate_openai_responses_callback(
             responses_envelope.raw_body(),
             previous_response_id.as_deref(),
@@ -825,9 +824,9 @@ async fn dispatch_response_for_endpoint(
             }
         }
     }
-    let translated = match translate_response_envelope_with_context_and_previous(
+    let translated = match translate_response_envelope_with_decision_and_previous(
         responses_envelope,
-        request_context,
+        operation_decision,
         previous_translation_context,
     ) {
         Ok(translated) => translated,

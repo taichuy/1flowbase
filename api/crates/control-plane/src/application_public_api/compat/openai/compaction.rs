@@ -8,7 +8,9 @@ use crate::application_public_api::{
     },
 };
 
+use super::responses_index::OpenAiResponsesEnvelope;
 use super::OpenAiCompatError;
+use crate::application_public_api::protocol_translation::TranslationProtocol;
 
 /// The server-known endpoint that carried an OpenAI Responses request. This is
 /// deliberately not inferred from request text, headers such as User-Agent,
@@ -27,6 +29,64 @@ pub enum OpenAiResponsesEndpoint {
 pub struct OpenAiResponsesRequestContext {
     endpoint: OpenAiResponsesEndpoint,
     captured_codex_turn_metadata: Option<Value>,
+    metadata_source: CodexTurnMetadataSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CodexTurnMetadataSource {
+    Header,
+    ClientMetadata,
+}
+
+impl CodexTurnMetadataSource {
+    const fn report_path(self) -> &'static str {
+        match self {
+            Self::Header => "$.ingress.x-codex-turn-metadata",
+            Self::ClientMetadata => "$.client_metadata.x-codex-turn-metadata",
+        }
+    }
+}
+
+/// One authenticated turn's protocol decision. The same decision governs
+/// callback admission and translation, so the two paths cannot disagree.
+pub struct OpenAiResponsesOperationDecision {
+    operation: AiNativeOperation,
+    report: TranslationReport,
+    context: OpenAiResponsesRequestContext,
+}
+
+impl OpenAiResponsesOperationDecision {
+    pub fn is_local_summary(&self) -> bool {
+        self.operation == AiNativeOperation::Generate(domain::AiNativeGenerateProfile::LocalSummary)
+    }
+
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        AiNativeOperation,
+        TranslationReport,
+        OpenAiResponsesRequestContext,
+    ) {
+        (self.operation, self.report, self.context)
+    }
+}
+
+pub fn classify_response_envelope_operation(
+    envelope: &OpenAiResponsesEnvelope,
+    context: OpenAiResponsesRequestContext,
+) -> Result<OpenAiResponsesOperationDecision, OpenAiCompatError> {
+    // Capture already established the object shape and the input index.
+    let object = envelope
+        .raw_body()
+        .as_object()
+        .expect("captured Responses object");
+    let mut report = TranslationReport::new(TranslationProtocol::OpenAiResponses);
+    let operation = classify_response_operation(object, &context, &mut report)?;
+    Ok(OpenAiResponsesOperationDecision {
+        operation,
+        report,
+        context,
+    })
 }
 
 impl OpenAiResponsesRequestContext {
@@ -42,6 +102,7 @@ impl OpenAiResponsesRequestContext {
         Self {
             endpoint,
             captured_codex_turn_metadata: None,
+            metadata_source: CodexTurnMetadataSource::Header,
         }
     }
 
@@ -54,8 +115,16 @@ impl OpenAiResponsesRequestContext {
         self
     }
 
+    pub fn with_codex_turn_metadata_from_body(mut self, metadata: Value) -> Self {
+        self.captured_codex_turn_metadata = Some(metadata);
+        self.metadata_source = CodexTurnMetadataSource::ClientMetadata;
+        self
+    }
+
     pub(crate) fn captured_codex_turn_metadata(&self) -> Option<&Value> {
-        self.captured_codex_turn_metadata.as_ref()
+        (self.metadata_source == CodexTurnMetadataSource::Header)
+            .then(|| self.captured_codex_turn_metadata.as_ref())
+            .flatten()
     }
 }
 
@@ -92,7 +161,9 @@ pub(super) fn classify_response_operation(
         .as_ref()
         .map(parse_captured_codex_request_kind)
         .transpose()
-        .map_err(|error| classification_error(error, report))?;
+        .map_err(|error| {
+            classification_error(error, report, context.metadata_source.report_path())
+        })?;
     let has_compaction_trigger = input_has_compaction_trigger(object.get("input"));
 
     let profile = match (context.endpoint, request_kind, has_compaction_trigger) {
@@ -104,6 +175,7 @@ pub(super) fn classify_response_operation(
             return Err(classification_error(
                 CompactionIntentClassificationError::UnsupportedProfile,
                 report,
+                context.metadata_source.report_path(),
             ));
         }
         (
@@ -118,6 +190,7 @@ pub(super) fn classify_response_operation(
             return Err(classification_error(
                 CompactionIntentClassificationError::ContradictoryEvidence,
                 report,
+                context.metadata_source.report_path(),
             ));
         }
         (OpenAiResponsesEndpoint::ResponsesCompact, _, false) => {
@@ -152,6 +225,7 @@ pub(super) fn classify_response_operation(
             return Err(classification_error(
                 CompactionIntentClassificationError::ContradictoryEvidence,
                 report,
+                context.metadata_source.report_path(),
             ));
         }
         (
@@ -237,7 +311,7 @@ fn record_compaction_evidence(
     );
     if context.captured_codex_turn_metadata.is_some() {
         report.record(
-            "$.ingress.x-codex-turn-metadata",
+            context.metadata_source.report_path(),
             Some("$.execution.operation"),
             TranslationDecisionKind::Exact,
             None,
@@ -258,11 +332,12 @@ fn record_compaction_evidence(
 fn classification_error(
     error: CompactionIntentClassificationError,
     report: &mut TranslationReport,
+    metadata_source: &str,
 ) -> OpenAiCompatError {
     match error {
         CompactionIntentClassificationError::MalformedCodexMetadata => {
             report.record(
-                "$.ingress.x-codex-turn-metadata",
+                metadata_source,
                 None,
                 TranslationDecisionKind::Rejected,
                 Some("captured Codex turn metadata has no valid compaction shape"),
@@ -276,7 +351,7 @@ fn classification_error(
         }
         CompactionIntentClassificationError::UnsupportedProfile => {
             report.record(
-                "$.ingress.x-codex-turn-metadata.compaction.implementation",
+                &format!("{metadata_source}.compaction.implementation"),
                 None,
                 TranslationDecisionKind::Unsupported,
                 Some("Codex compaction implementation is not supported"),

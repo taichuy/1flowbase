@@ -10,7 +10,9 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use super::{OpenAiResponsesObject, OpenAiResponsesUsage, OpenAiRouteError};
+use super::{
+    OpenAiResponseDelivery, OpenAiResponsesObject, OpenAiResponsesUsage, OpenAiRouteError,
+};
 use crate::routes::application_public_api::native;
 
 const CODEX_TURN_METADATA_HEADER: &str = "x-codex-turn-metadata";
@@ -21,11 +23,38 @@ const CODEX_TURN_METADATA_HEADER: &str = "x-codex-turn-metadata";
 pub(super) fn responses_request_context(
     headers: &HeaderMap,
     endpoint: OpenAiResponsesEndpoint,
+    body: &Value,
+    delivery: OpenAiResponseDelivery,
 ) -> Result<OpenAiResponsesRequestContext, OpenAiRouteError> {
     let context = OpenAiResponsesRequestContext::new(endpoint);
+    let body_metadata = body
+        .get("client_metadata")
+        .and_then(|metadata| metadata.get(CODEX_TURN_METADATA_HEADER))
+        .map(|value| match value {
+            Value::String(value) => serde_json::from_str::<Value>(value).map_err(|_| {
+                invalid_codex_turn_metadata(
+                    "client_metadata Codex turn metadata must contain valid JSON",
+                )
+            }),
+            _ => Err(invalid_codex_turn_metadata(
+                "client_metadata Codex turn metadata must be JSON text",
+            )),
+        })
+        .transpose()?;
+    // The WebSocket handshake may predate this response.create frame. Codex's
+    // current turn metadata is carried in the frame's client_metadata.
+    if matches!(delivery, OpenAiResponseDelivery::TypedEvents) {
+        return Ok(match body_metadata {
+            Some(metadata) => context.with_codex_turn_metadata_from_body(metadata),
+            None => context,
+        });
+    }
     let mut values = headers.get_all(CODEX_TURN_METADATA_HEADER).iter();
     let Some(value) = values.next() else {
-        return Ok(context);
+        return Ok(match body_metadata {
+            Some(metadata) => context.with_codex_turn_metadata_from_body(metadata),
+            None => context,
+        });
     };
     if values.next().is_some() {
         return Err(invalid_codex_turn_metadata(
@@ -38,6 +67,11 @@ pub(super) fn responses_request_context(
     let metadata = serde_json::from_str::<Value>(value).map_err(|_| {
         invalid_codex_turn_metadata("x-codex-turn-metadata must contain valid JSON")
     })?;
+    if body_metadata.as_ref().is_some_and(|body| body != &metadata) {
+        return Err(invalid_codex_turn_metadata(
+            "Codex turn metadata header and client_metadata disagree",
+        ));
+    }
     Ok(context.with_captured_codex_turn_metadata(metadata))
 }
 

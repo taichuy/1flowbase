@@ -138,11 +138,14 @@ mod compaction;
 mod request_translation;
 
 use compaction::classify_response_operation;
-pub use compaction::{OpenAiResponsesEndpoint, OpenAiResponsesRequestContext};
+pub use compaction::{
+    classify_response_envelope_operation, OpenAiResponsesEndpoint,
+    OpenAiResponsesOperationDecision, OpenAiResponsesRequestContext,
+};
 pub use request_translation::{
     translate_chat_completion_request, translate_response_envelope_with_context_and_previous,
-    translate_response_request, translate_response_request_with_context,
-    translate_response_request_with_context_and_previous,
+    translate_response_envelope_with_decision_and_previous, translate_response_request,
+    translate_response_request_with_context, translate_response_request_with_context_and_previous,
 };
 pub use responses_index::OpenAiResponsesEnvelope;
 

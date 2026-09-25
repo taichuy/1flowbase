@@ -5,16 +5,17 @@ use plugin_framework::provider_contract::{NativeModelRequestContext, NativePromp
 use serde_json::{Map, Value};
 
 use super::{
-    chat_max_output_tokens, classify_response_operation, openai_inputs, openai_message_content,
-    openai_reasoning, response_max_output_tokens, response_stream_mode,
-    responses_compaction_v2_input_to_run_input, responses_input_to_native_run_input,
-    responses_native_input_to_run_input, responses_omitted_optional_tools,
-    responses_opaque_input_to_run_input, responses_previous_history,
-    responses_transport_requirement, system_from_parts, validate_chat_message_fields,
-    validate_chat_root_fields, validate_native_mcp_approval_continuation,
-    validate_native_responses_input, validate_response_transport_fields,
-    validate_responses_compaction_v2_input, validate_responses_input, OpenAiCompatError,
-    OpenAiPreviousResponseContext, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
+    chat_max_output_tokens, classify_response_envelope_operation, classify_response_operation,
+    openai_inputs, openai_message_content, openai_reasoning, response_max_output_tokens,
+    response_stream_mode, responses_compaction_v2_input_to_run_input,
+    responses_input_to_native_run_input, responses_native_input_to_run_input,
+    responses_omitted_optional_tools, responses_opaque_input_to_run_input,
+    responses_previous_history, responses_transport_requirement, system_from_parts,
+    validate_chat_message_fields, validate_chat_root_fields,
+    validate_native_mcp_approval_continuation, validate_native_responses_input,
+    validate_response_transport_fields, validate_responses_compaction_v2_input,
+    validate_responses_input, OpenAiCompatError, OpenAiPreviousResponseContext,
+    OpenAiResponsesOperationDecision, OpenAiResponsesRequestContext, OPENAI_CHAT_TYPED_ROOT_FIELDS,
     OPENAI_RESPONSES_OPTIONAL_TOOLS_CONTEXT_FIELD, OPENAI_RESPONSES_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
@@ -248,7 +249,16 @@ pub fn translate_response_request_with_context_and_previous(
             }
             OpenAiCompatError::invalid(error.param(), error.message()).with_report(report.clone())
         })?;
-    translate_indexed_response_request(request, request_index, context, previous_response, report)
+    let object = request.as_object().expect("indexed Responses object");
+    let operation = classify_response_operation(object, &context, &mut report)?;
+    translate_indexed_response_request(
+        request,
+        request_index,
+        operation,
+        context,
+        previous_response,
+        report,
+    )
 }
 
 pub fn translate_response_envelope_with_context_and_previous(
@@ -256,19 +266,31 @@ pub fn translate_response_envelope_with_context_and_previous(
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
 ) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
+    let decision = classify_response_envelope_operation(&envelope, context)?;
+    translate_response_envelope_with_decision_and_previous(envelope, decision, previous_response)
+}
+
+pub fn translate_response_envelope_with_decision_and_previous(
+    envelope: super::responses_index::OpenAiResponsesEnvelope,
+    decision: OpenAiResponsesOperationDecision,
+    previous_response: Option<OpenAiPreviousResponseContext>,
+) -> Result<TranslatedNativeRunRequest, OpenAiCompatError> {
     let (request, request_index) = envelope.into_parts();
+    let (operation, report, context) = decision.into_parts();
     translate_indexed_response_request(
         request,
         request_index,
+        operation,
         context,
         previous_response,
-        TranslationReport::new(TranslationProtocol::OpenAiResponses),
+        report,
     )
 }
 
 fn translate_indexed_response_request(
     request: Value,
     request_index: super::responses_index::ResponsesRequestIndex,
+    operation: AiNativeOperation,
     context: OpenAiResponsesRequestContext,
     previous_response: Option<OpenAiPreviousResponseContext>,
     mut report: TranslationReport,
@@ -309,7 +331,6 @@ fn translate_indexed_response_request(
     validate_response_transport_fields(object, transport_requirement, &mut report)?;
     let model = required_openai_string(object, "model", &mut report)?;
     let input = required_openai_value(object, "input", &mut report)?;
-    let operation = classify_response_operation(object, &context, &mut report)?;
     let is_v2_compaction = compaction_intent(operation)
         .is_some_and(|intent| intent.profile() == CompactionProfile::ResponsesCompactionV2);
     // Operation and representation are independent decisions. Codex local-summary

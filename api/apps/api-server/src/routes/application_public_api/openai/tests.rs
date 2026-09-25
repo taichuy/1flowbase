@@ -48,6 +48,70 @@ fn issue_2048_cancelled_previous_response_status_is_not_continuable() {
 }
 
 #[test]
+fn websocket_operation_uses_current_frame_metadata_instead_of_stale_handshake() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-codex-turn-metadata",
+        json!({"request_kind":"turn"}).to_string().parse().unwrap(),
+    );
+    let local_summary = json!({
+        "request_kind":"compaction", "compaction":{"implementation":"responses"}
+    });
+    let body = json!({
+        "model":"1flowbase", "input":"summarize",
+        "client_metadata":{"x-codex-turn-metadata":local_summary.to_string()}
+    });
+    let context = compact::responses_request_context(
+        &headers,
+        OpenAiResponsesEndpoint::Responses,
+        &body,
+        OpenAiResponseDelivery::TypedEvents,
+    )
+    .unwrap();
+    let envelope = OpenAiResponsesEnvelope::capture(body).unwrap();
+    assert!(classify_response_envelope_operation(&envelope, context)
+        .unwrap()
+        .is_local_summary());
+
+    let ordinary = json!({
+        "model":"1flowbase", "input":"please summarize",
+        "client_metadata":{"x-codex-turn-metadata":json!({"request_kind":"turn"}).to_string()}
+    });
+    let context = compact::responses_request_context(
+        &headers,
+        OpenAiResponsesEndpoint::Responses,
+        &ordinary,
+        OpenAiResponseDelivery::TypedEvents,
+    )
+    .unwrap();
+    let envelope = OpenAiResponsesEnvelope::capture(ordinary).unwrap();
+    assert!(!classify_response_envelope_operation(&envelope, context)
+        .unwrap()
+        .is_local_summary());
+}
+
+#[test]
+fn http_conflicting_codex_header_and_body_metadata_is_rejected() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-codex-turn-metadata",
+        json!({"request_kind":"turn"}).to_string().parse().unwrap(),
+    );
+    let body = json!({
+        "client_metadata":{"x-codex-turn-metadata":json!({
+            "request_kind":"compaction", "compaction":{"implementation":"responses"}
+        }).to_string()}
+    });
+    assert!(compact::responses_request_context(
+        &headers,
+        OpenAiResponsesEndpoint::Responses,
+        &body,
+        OpenAiResponseDelivery::Http,
+    )
+    .is_err());
+}
+
+#[test]
 fn issue_2048_low_budget_local_summary_keeps_one_opaque_responses_ingress_plan() {
     let wire_body = json!({
         "model":"1flowbase",

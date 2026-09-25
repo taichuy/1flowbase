@@ -16,6 +16,7 @@ use super::*;
 
 const V2_OPAQUE_CANARY: &str = "opaque-v2-canary-k3";
 const PRIVATE_TURN_MARKER: &str = "K3-CODEX-TURN-METADATA-MUST-NOT-PERSIST";
+const LOCAL_SUMMARY_PREFIX: &str = "changed-prefix-local-summary-canary";
 
 #[derive(Clone, Copy)]
 enum CompactFixtureMode {
@@ -371,6 +372,146 @@ fn root_1998_f9_live_callback_with_compact_trigger_preserves_stream_resume_prior
                 .status,
             domain::CallbackTaskStatus::Completed
         );
+    });
+}
+
+#[test]
+fn local_summary_with_pending_native_callback_starts_new_run_and_supersedes_predecessor() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "Local Summary Pending Callback App",
+            CompactFixtureMode::LiveCallback,
+        )
+        .await;
+        let thread_id = format!("thread-{}", Uuid::now_v7());
+        let turn_id = format!("turn-{}", Uuid::now_v7());
+        let normal_metadata = json!({
+            "thread_id": thread_id, "turn_id": turn_id, "request_kind": "turn"
+        });
+        let mut initial = responses_body(false);
+        initial["tools"] = json!([{
+            "type": "function", "name": "lookup_inventory", "strict": true,
+            "parameters": {
+                "type": "object", "properties": {"sku": {"type": "string"}},
+                "required": ["sku"], "additionalProperties": false
+            }
+        }]);
+        initial["client_metadata"] = json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "x-codex-turn-metadata": normal_metadata.to_string()
+        });
+        let initial_response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            initial.clone(),
+            Some(normal_metadata),
+        )
+        .await;
+        let initial_status = initial_response.status();
+        let created = response_json(initial_response).await;
+        assert_eq!(initial_status, StatusCode::OK, "{created}");
+        let call = created["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["type"] == "function_call")
+            .expect("first response should wait for a tool callback");
+        let call_id = call["call_id"].as_str().unwrap();
+        let actor = control_plane::application_public_api::api_keys::ApplicationApiKeyService::new(
+            state.store.clone(),
+        )
+        .authenticate_bearer_token(&token)
+        .await
+        .unwrap();
+        let callbacks = state
+            .store
+            .find_native_responses_callbacks_by_response_id(
+                actor.workspace_id,
+                actor.application_id,
+                actor.api_key_id,
+                actor.creator_user_id,
+                created["id"].as_str().unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callbacks.len(), 1);
+        let predecessor = &callbacks[0];
+        assert_eq!(predecessor.status, domain::CallbackTaskStatus::Pending);
+        let before = flow_run_count(state.as_ref()).await;
+
+        let summary_metadata = json!({
+            "thread_id": thread_id, "turn_id": turn_id, "request_kind": "compaction",
+            "compaction": {"implementation": "responses"}
+        });
+        let mut summary = initial;
+        summary["stream"] = json!(true);
+        summary["previous_response_id"] = created["id"].clone();
+        summary["input"] = json!([
+            {"type": "message", "role": "user", "content": LOCAL_SUMMARY_PREFIX},
+            {"type": "function_call", "call_id": call_id, "name": "lookup_inventory", "arguments": "{\"sku\":\"sku_123\"}"},
+            {"type": "function_call_output", "call_id": call_id, "output": {"stock": 7}}
+        ]);
+        summary["client_metadata"] = json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "x-codex-turn-metadata": summary_metadata.to_string()
+        });
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            summary,
+            Some(summary_metadata),
+        )
+        .await;
+        let status = response.status();
+        if status != StatusCode::OK {
+            panic!(
+                "local summary rejected with {status}: {}",
+                response_json(response).await
+            );
+        }
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(body.contains("event: response.completed"), "{body}");
+        assert!(body.contains("local summary raw input preserved"), "{body}");
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        let callback = state
+            .store
+            .get_published_callback_task(predecessor.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(callback.status, domain::CallbackTaskStatus::Cancelled);
+        let (status, reason): (String, Option<String>) =
+            sqlx::query_as("select status,error_payload->>'reason' from flow_runs where id=$1")
+                .bind(predecessor.flow_run_id)
+                .fetch_one(state.store.pool())
+                .await
+                .unwrap();
+        assert_eq!(status, "cancelled");
+        assert_eq!(reason.as_deref(), Some("local_summary_superseded"));
+        let resume_attempts: i64 = sqlx::query_scalar(
+            "select count(*) from flow_run_callback_resume_attempts where callback_task_id=$1",
+        )
+        .bind(predecessor.id)
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+        assert_eq!(resume_attempts, 0);
+        let request_kind: Option<String> = sqlx::query_scalar(
+            "select log_context->>'request_kind' from flow_runs where id<>$1 order by created_at desc,id desc limit 1",
+        ).bind(predecessor.flow_run_id).fetch_one(state.store.pool()).await.unwrap();
+        assert_eq!(request_kind.as_deref(), Some("compaction"));
     });
 }
 
@@ -788,6 +929,10 @@ switch (request.method) {
   case 'invoke': {
     const input = request.input ?? {};
     if (input.operation !== 'compact' && input.provider_config?.test_compact_mode === 'live_callback') {
+      const preservedSummaryInput = input.native_transport?.wire_body?.input?.[0]?.content
+        === 'changed-prefix-local-summary-canary';
+      const completionText = preservedSummaryInput
+        ? 'local summary raw input preserved' : 'callback resume completed';
       const resumed = Boolean(
         input.previous_response_id
         || input.native_transport?.wire_body?.previous_response_id
@@ -806,12 +951,12 @@ switch (request.method) {
       const message = {
         id: 'msg_callback_resume', type: 'message', role: 'assistant',
         status: 'completed',
-        content: [{ type: 'output_text', text: 'callback resume completed' }]
+        content: [{ type: 'output_text', text: completionText }]
       };
       const lines = resumed
         ? [
             { type: 'output_item', phase: 'added', output_index: 0, item: { ...message, status: 'in_progress', content: [] } },
-            { type: 'text_delta', delta: 'callback resume completed' },
+            { type: 'text_delta', delta: completionText },
             { type: 'output_item', phase: 'done', output_index: 0, item: message }
           ]
         : [
@@ -822,7 +967,7 @@ switch (request.method) {
           ];
       lines.push({ type: 'finish', reason: resumed ? 'stop' : 'tool_call' });
       lines.push({ type: 'result', result: {
-        final_content: resumed ? 'callback resume completed' : 'need inventory',
+        final_content: resumed ? completionText : 'need inventory',
         response_id: resumed ? 'resp_fixture_callback_resume' : 'resp_fixture_callback_initial',
         tool_calls: resumed ? [] : [call], usage,
         finish_reason: resumed ? 'stop' : 'tool_call'
