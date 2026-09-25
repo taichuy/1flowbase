@@ -329,6 +329,8 @@ pub struct ProviderContinuation {
     affinity: ProviderTransportAffinity,
     // Host-produced evidence; never read from the client wire body. Slot + affinity own it.
     native_history: Option<Value>,
+    // Host-sealed Responses session identity for headerless previous_response_id turns.
+    session_identity: Option<String>,
 }
 
 impl fmt::Debug for ProviderContinuation {
@@ -354,7 +356,23 @@ impl ProviderContinuation {
             response_id,
             affinity,
             native_history: None,
+            session_identity: None,
         })
+    }
+
+    pub fn with_session_identity(mut self, identity: Option<&str>) -> anyhow::Result<Self> {
+        if let Some(identity) = identity {
+            anyhow::ensure!(
+                identity.len() == 64 && identity.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "provider_continuation_session_identity_invalid"
+            );
+            self.session_identity = Some(identity.to_owned());
+        }
+        Ok(self)
+    }
+
+    pub fn session_identity(&self) -> Option<&str> {
+        self.session_identity.as_deref()
     }
 
     /// Attached only by the host after successful completion of the response round.

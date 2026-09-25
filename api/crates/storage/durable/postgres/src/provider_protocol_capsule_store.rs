@@ -220,14 +220,16 @@ impl PgProviderProtocolCapsuleStore {
             .get("response_id")
             .and_then(Value::as_str)
             .ok_or_else(|| anyhow::anyhow!("provider_protocol_capsule_invalid"))?;
-        ProviderContinuation::new(response_id, affinity).map(|continuation| {
-            continuation.with_native_history(
-                value
-                    .get("native_history")
-                    .filter(|value| !value.is_null())
-                    .cloned(),
-            )
-        })
+        ProviderContinuation::new(response_id, affinity)?
+            .with_session_identity(value.get("session_identity").and_then(Value::as_str))
+            .map(|continuation| {
+                continuation.with_native_history(
+                    value
+                        .get("native_history")
+                        .filter(|value| !value.is_null())
+                        .cloned(),
+                )
+            })
     }
 }
 
@@ -281,6 +283,7 @@ impl ProviderProtocolCapsuleStore for PgProviderProtocolCapsuleStore {
         let value = json!({
             "response_id": continuation.response_id(),
             "native_history": continuation.native_history(),
+            "session_identity": continuation.session_identity(),
             "affinity": {
                 "provider_instance_id": affinity.provider_instance_id(),
                 "provider_code": affinity.provider_code(),

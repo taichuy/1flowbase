@@ -890,6 +890,7 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
     )
     .unwrap();
     let mut input = invocation_input("selected-http", ProviderWireOperation::Generate);
+    input.provider_config = serde_json::json!({"transport_mode":"http_sse"});
     input
         .model_parameters
         .insert("use_responses_websocket".into(), serde_json::json!(false));
@@ -906,7 +907,7 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(input.client_transport, Some(ProviderClientTransport::Http));
+    assert_eq!(input.client_transport, None);
     assert_eq!(prepared.transport, RecoveryTransport::ProviderHttp);
     coordinator
         .finish(
@@ -921,6 +922,34 @@ async fn selected_http_success_without_websocket_receipt_is_accepted() {
         TransportSessionState::IdleAffinity
     );
     assert!(snapshot.tombstones.is_empty());
+}
+
+#[tokio::test]
+async fn http_responses_native_continuation_keeps_provider_websocket_choice() {
+    let coordinator = TransportSessionCoordinator::new_with_clock(
+        Arc::new(FakeTransportRuntime::new([])),
+        transport_config(),
+        FakeClock::new(2_000_000),
+    )
+    .unwrap();
+    let mut input = invocation_input("http-ws-continuation", ProviderWireOperation::Generate);
+    input.model_parameters.clear();
+    input.provider_config = serde_json::json!({"transport_mode":"responses_websocket"});
+    input.native_transport = Some(
+        plugin_framework::provider_contract::ProviderNativeTransport {
+            protocol: "openai_responses".into(),
+            wire_body: serde_json::json!({"model":"model-a","previous_response_id":"resp_previous","input":"next"}),
+            digest: "fixture".into(),
+            size_bytes: 0,
+        },
+    );
+    let prepared = coordinator
+        .prepare("runtime-a", &mut input, &context(2_010_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(input.client_transport, None);
+    assert_eq!(prepared.transport, RecoveryTransport::AiNativeWebSocket);
 }
 
 #[tokio::test]

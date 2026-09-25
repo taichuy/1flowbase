@@ -59,6 +59,22 @@ fn responses_transport_digests_and_size_preserve_wire_semantics() {
 }
 
 #[test]
+fn continuation_accepts_only_a_sealed_session_identity() {
+    let affinity =
+        ProviderTransportAffinity::new("provider-a", "openai", "openai_responses", "gpt-test");
+    let identity = "a".repeat(64);
+    let continuation = ProviderContinuation::new("resp_test", affinity.clone())
+        .unwrap()
+        .with_session_identity(Some(&identity))
+        .unwrap();
+    assert_eq!(continuation.session_identity(), Some(identity.as_str()));
+    assert!(ProviderContinuation::new("resp_test", affinity)
+        .unwrap()
+        .with_session_identity(Some("client-controlled-id"))
+        .is_err());
+}
+
+#[test]
 fn transport_clone_shares_large_wire_until_continuation_mutates_it() {
     let body = json!({"model": "gpt-test", "input": "x".repeat(1024 * 1024)});
     let original = ProviderTransportPayload::openai_responses(body.clone()).unwrap();

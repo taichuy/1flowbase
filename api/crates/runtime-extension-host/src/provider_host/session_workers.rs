@@ -1,25 +1,14 @@
 //! A trusted logical session owns its serial child across physical generations.
 //! Closed physical bindings stay fenced; dormant children retain provider-owned
-//! context until the existing binding deadline, reload, or capacity eviction.
-//! Only confirmed child exit returns one of the 64 Host-wide slots.
+//! context until the existing binding deadline, reload, or resource eviction.
+//! Only confirmed child exit returns its Host-wide memory reservation.
 use super::operations::{
     bind_transport_worker_locked, lock_provider_worker_registry, transport_binding_error,
 };
 use super::*;
 
-#[derive(Debug, Clone)]
-pub(super) struct SessionWorkerCapacity {
-    slots: Arc<Semaphore>,
-    changed: Arc<tokio::sync::Notify>,
-}
-impl Default for SessionWorkerCapacity {
-    fn default() -> Self {
-        Self {
-            slots: Arc::new(Semaphore::new(64)),
-            changed: Default::default(),
-        }
-    }
-}
+mod capacity;
+pub(super) use capacity::{SessionWorkerCapacity, SessionWorkerPermit};
 
 #[derive(Debug)]
 pub(super) struct LogicalSessionWorker {
@@ -51,7 +40,10 @@ impl Drop for LogicalSessionWorker {
 }
 
 pub(super) fn admission_timeout() -> PluginFrameworkError {
-    transport_binding_error("provider invocation admission deadline exceeded")
+    PluginFrameworkError::runtime(ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::ProviderTransportAdmissionFailed,
+        "provider invocation admission deadline exceeded",
+    ))
 }
 
 pub(super) fn epoch(workers: &ProviderWorkerRegistry, plugin: &str) -> FrameworkResult<u64> {
@@ -86,7 +78,6 @@ pub(super) async fn select_worker(
     let capacity = lock_provider_worker_registry(workers)?
         .session_capacity
         .clone();
-    let mut slot = None;
     loop {
         // Register before checking registry state: a concurrent Close must wake
         // admissions already waiting behind the all-active capacity boundary.
@@ -158,10 +149,9 @@ pub(super) async fn select_worker(
                     session.generation = directive.generation;
                     return Ok(worker);
                 }
-                if slot.is_none() {
-                    slot = capacity.slots.clone().try_acquire_owned().ok();
-                }
-                if let Some(slot) = slot.take() {
+                if let Some(slot) =
+                    capacity.try_acquire(loaded.package.manifest.runtime.limits.memory_bytes)?
+                {
                     if registry.transport_bindings.len()
                         >= super::operations::TRANSPORT_BINDING_CAPACITY
                     {
@@ -223,27 +213,19 @@ pub(super) async fn select_worker(
                         .retire()?;
                     tokio::spawn(cleanup_batch(workers.clone(), oldest.0, vec![worker]));
                 }
-            } else {
-                // Cleanup may return its permit just before removing the registry
-                // entry; wait for that removal instead of replacing it prematurely.
-                slot.take();
             }
         }
         let wait = async {
-            if retiring {
-                changed.await;
-                Ok(None)
-            } else {
-                tokio::select! {
-                    _ = &mut changed => Ok(None),
-                    permit = capacity.slots.clone().acquire_owned() => permit.map(Some)
-                        .map_err(|_| transport_binding_error("session worker capacity closed")),
-                }
+            // Memory outside this Host can become available without a worker
+            // notification. Poll it at a bounded interval while honoring Close.
+            tokio::select! {
+                _ = &mut changed => {},
+                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},
             }
         };
-        slot = tokio::time::timeout_at(deadline, wait)
+        tokio::time::timeout_at(deadline, wait)
             .await
-            .map_err(|_| admission_timeout())??;
+            .map_err(|_| admission_timeout())?;
     }
 }
 
@@ -603,15 +585,5 @@ async fn cleanup_batch(
     match failure {
         Some(error) => Err(error),
         None => Ok(last),
-    }
-}
-
-#[cfg(test)]
-impl SessionWorkerCapacity {
-    pub(super) fn for_test(capacity: usize) -> Self {
-        Self {
-            slots: Arc::new(Semaphore::new(capacity)),
-            changed: Default::default(),
-        }
     }
 }

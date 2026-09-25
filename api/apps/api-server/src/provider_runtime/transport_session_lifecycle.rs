@@ -345,13 +345,12 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
     ) -> anyhow::Result<Option<PreparedTransportInvocation>> {
         let connection_scope_id = take_transport_connection_scope(input);
         if input.protocol == "openai_responses" {
-            input.client_transport = if connection_scope_id.is_some() {
-                Some(ProviderClientTransport::Websocket)
-            } else if input.native_transport.is_some() {
-                Some(ProviderClientTransport::Http)
-            } else {
-                None
-            };
+            // HTTP Responses can continue a provider WebSocket session. An HTTP
+            // carrier is not an upstream transport policy; leave that choice to
+            // the node/provider configuration unless ingress is a WebSocket.
+            input.client_transport = connection_scope_id
+                .as_ref()
+                .map(|_| ProviderClientTransport::Websocket);
         }
         let Some(protocol_session_id) = protocol_session_id(input) else {
             return Ok(None);
@@ -388,6 +387,7 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             .map(TransportInstant::from_millis);
 
         let mut handoff_deadline = None;
+        let mut handoff_started_at = None;
         loop {
             // Register before observing state; completion between inspection and await
             // must wake this waiter. Never retain registry/dispatcher locks while waiting.
@@ -455,12 +455,20 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
                             && connection_scope.is_some()
                         {
                             let deadline = *handoff_deadline.get_or_insert_with(|| {
-                                tokio::time::Instant::now()
-                                    + handoff_wait_budget(now, invocation_deadline)
+                                let started_at = tokio::time::Instant::now();
+                                handoff_started_at = Some(started_at);
+                                started_at + handoff_wait_budget(now, invocation_deadline)
                             });
                             drop(registry);
                             drop(_dispatcher);
                             if tokio::time::timeout_at(deadline, changed).await.is_err() {
+                                tracing::warn!(
+                                    session_id = %session_id.as_str(),
+                                    handoff_wait_ms = handoff_started_at
+                                        .map(|started_at: tokio::time::Instant| started_at.elapsed().as_millis())
+                                        .unwrap_or(0),
+                                    "provider transport handoff timed out behind an orphaned invocation"
+                                );
                                 return Err(transport_error(
                                     "transport_invocation_deadline_exceeded",
                                 ));
@@ -655,6 +663,14 @@ impl<C: TransportClock + 'static> TransportSessionCoordinator<C> {
             // the same at successful exit as it is at admission entry.
             if handoff_deadline.is_none() {
                 self.dispatch_pending_events_locked().await;
+            }
+            if let Some(started_at) = handoff_started_at {
+                tracing::info!(
+                    session_id = %session_id.as_str(),
+                    generation = fence.generation.get(),
+                    handoff_wait_ms = started_at.elapsed().as_millis(),
+                    "provider transport handoff completed"
+                );
             }
             return Ok(Some(PreparedTransportInvocation {
                 lease,

@@ -100,7 +100,7 @@ pub(crate) struct ProviderWorkerSupervisor {
     admission: StdMutex<AdmissionState>,
     drained: Notify,
     quiesce_owner: Mutex<()>,
-    capacity_slot: StdMutex<Option<tokio::sync::OwnedSemaphorePermit>>,
+    capacity_slot: StdMutex<Option<super::session_workers::SessionWorkerPermit>>,
     worker: Mutex<ProviderWorker>,
     process_control: ProviderWorkerProcessControl,
     last_cleanup: StdMutex<Option<ProviderWorkerCleanupReceipt>>,
@@ -158,7 +158,7 @@ impl ProviderWorkerSupervisor {
         }))
     }
 
-    pub(super) fn retain_capacity(&self, slot: tokio::sync::OwnedSemaphorePermit) {
+    pub(super) fn retain_capacity(&self, slot: super::session_workers::SessionWorkerPermit) {
         *self.capacity_slot.lock().expect("capacity slot") = Some(slot);
     }
 

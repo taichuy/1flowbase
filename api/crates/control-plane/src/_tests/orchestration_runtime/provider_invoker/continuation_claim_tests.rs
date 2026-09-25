@@ -343,6 +343,7 @@ async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
             &issue_1743_runtime(provider_id),
             Some("resp_warm"),
             Some(warm),
+            None,
         )
         .await
         .unwrap();
@@ -379,6 +380,7 @@ async fn warmup_evidence_crosses_flow_then_extends_through_three_tool_rounds() {
                 &issue_1743_runtime(provider_id),
                 Some("resp_next"),
                 Some(history),
+                None,
             )
             .await
             .unwrap();

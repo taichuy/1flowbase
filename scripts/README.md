@@ -129,6 +129,7 @@ node scripts/node/dev-up.js stop
 - 开发环境启动 API 前，使用 Node.js 脚本将 `.env` 中的 root 密码同步到已存在的开发数据库，不会为此编译 Rust。
 - 前端依赖以 package manifests、lockfile、workspace 配置、patch 和安装状态生成本地凭据；未变化时跳过安装。首次启动或输入变化时执行 `pnpm install --frozen-lockfile`，失败不写凭据。手动修改依赖后先更新 lockfile。
 - 后端先执行 `cargo build`，成功后直接运行 Cargo 返回的 binary；复用 Cargo 增量缓存，不清理 target，也不在失败后运行旧产物。
+- 开发启动构建默认传入 `--features tikv-jemallocator/stats`。在 Linux GNU 环境中，`api-server` 因此编入 jemalloc 的 `stats.allocated` 等统计项；首次启用需要重新构建。无参数启动或显式 `restart` 会重建后端，`start` / `ensure` 复用健康服务时不会替换已运行的旧 binary。此设置仅属于 `dev-up` 构建，不改变其他 Cargo 或部署构建入口。
 - 后端编译不设置固定超时，持续等待成功、失败或用户取消；安装最多等待 3 分钟、后端运行就绪 30 秒、前端就绪 60 秒。长阶段每 5 秒输出阶段、耗时或日志路径；构建与运行日志分别为 `tmp/logs/api-server-build.log` 和 `tmp/logs/api-server.log`。
 - 后端构建读取 `.1flowbase.verify.local.json` 的 Cargo 并发/增量设置，并保留更低的 `CARGO_BUILD_JOBS`。Node 直接调用 PATH 中的 Cargo，不依赖 systemd。Linux 资源限制由 `apply-resource-limits.sh` 安装的 Cargo 包装器负责；受限包装器找不到用户 systemd manager 时直接报错，不静默绕过限制。Windows/macOS 保留原生 Cargo 调用与项目并发配置，系统内存配额由对应平台管理。
 - `api-server` 的 dev profile 使用 `line-tables-only` 调试信息，保留回溯文件名/行号，减少模块级调试元数据；依赖仍沿用原 profile，预热和启动读取同一 Cargo.toml，不清空 target。

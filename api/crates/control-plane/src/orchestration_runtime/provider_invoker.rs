@@ -23,6 +23,7 @@ mod protocol_observation;
 pub(super) use failover_queue::freeze_failover_queue_routes;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
+const RESPONSES_WEBSOCKET_PREWARM_MAX_MS: i64 = 30_000;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
@@ -104,18 +105,36 @@ fn seal_native_failure_binding(
     error
 }
 
+fn is_responses_prewarm(input: &ProviderInvocationInput) -> bool {
+    input.operation == plugin_framework::provider_contract::ProviderWireOperation::Generate
+        && input.native_transport.as_ref().is_some_and(|transport| {
+            transport.protocol == "openai_responses"
+                && transport.wire_body.get("generate").and_then(Value::as_bool) == Some(false)
+        })
+}
+
 fn provider_execution_deadline_unix_ms(
     input: &ProviderInvocationInput,
     now: OffsetDateTime,
+    transport_connection_scope: Option<&str>,
 ) -> i64 {
-    input
+    let task_deadline = input
         .run_context
         .get("task_deadline_unix_ms")
         .and_then(Value::as_i64)
         .unwrap_or_else(|| {
             i64::try_from((now + time::Duration::minutes(30)).unix_timestamp_nanos() / 1_000_000)
                 .unwrap_or(i64::MAX)
-        })
+        });
+    if transport_connection_scope.is_some() && is_responses_prewarm(input) {
+        // The client can abandon startup prewarm while its original Provider
+        // invocation is still running. Bound only this setup operation so a
+        // successor cannot wait behind an orphan for the ordinary 30-minute budget.
+        let now_ms = i64::try_from(now.unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX);
+        task_deadline.min(now_ms.saturating_add(RESPONSES_WEBSOCKET_PREWARM_MAX_MS))
+    } else {
+        task_deadline
+    }
 }
 
 #[cfg(test)]
@@ -934,12 +953,31 @@ where
         let native_responses_passthrough = input.required_capabilities.contains(
             &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
-        let deadline_unix_ms =
-            provider_execution_deadline_unix_ms(&input, OffsetDateTime::now_utc());
+        let deadline_unix_ms = provider_execution_deadline_unix_ms(
+            &input,
+            OffsetDateTime::now_utc(),
+            self.transport_connection_scope_override
+                .as_ref()
+                .and_then(|scope| scope.as_deref()),
+        );
         let flow_ms = bounded_timing_millis(provider_invoke_started.elapsed());
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
+        let sealed_session_identity = input
+            .client_protocol_envelope
+            .as_ref()
+            .filter(|envelope| envelope.source_protocol == "openai_responses")
+            .and_then(|envelope| envelope.headers.get("session-id"))
+            .and_then(|values| match values.as_slice() {
+                [identity]
+                    if identity.len() == 64
+                        && identity.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+                {
+                    Some(identity.clone())
+                }
+                _ => None,
+            });
         let invocation_result = self
             .runtime
             .invoke_stream_with_execution_context(
@@ -1091,6 +1129,7 @@ where
                     runtime,
                     output.result.response_id.as_deref(),
                     history,
+                    sealed_session_identity.as_deref(),
                 )
                 .await
             {
@@ -1870,7 +1909,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         response_id: Option<&str>,
     ) -> Result<()> {
-        self.stage_provider_continuation_with_history(runtime, response_id, None)
+        self.stage_provider_continuation_with_history(runtime, response_id, None, None)
             .await
     }
 
@@ -1879,6 +1918,7 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         response_id: Option<&str>,
         history: Option<Value>,
+        session_identity: Option<&str>,
     ) -> Result<()> {
         let Some(response_id) = response_id.filter(|value| !value.trim().is_empty()) else {
             return Ok(());
@@ -1901,7 +1941,8 @@ where
                 &runtime.model,
             ),
         )?
-        .with_native_history(history);
+        .with_native_history(history)
+        .with_session_identity(session_identity)?;
         store
             .put_continuation(
                 crate::ports::ProviderContinuationSlotId::for_response_round(

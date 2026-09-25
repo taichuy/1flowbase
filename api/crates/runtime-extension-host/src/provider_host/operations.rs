@@ -111,6 +111,24 @@ pub(super) fn provider_invocation_limits(
     invocation_limits
 }
 
+pub(super) fn limit_provider_invocation_to_deadline(
+    mut limits: PluginRuntimeLimits,
+    execution_deadline: Option<tokio::time::Instant>,
+    now: tokio::time::Instant,
+) -> PluginRuntimeLimits {
+    if let Some(deadline) = execution_deadline {
+        let remaining_ms =
+            u64::try_from(deadline.saturating_duration_since(now).as_millis()).unwrap_or(u64::MAX);
+        limits.timeout_ms = Some(
+            limits
+                .timeout_ms
+                .unwrap_or(DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS)
+                .min(remaining_ms),
+        );
+    }
+    limits
+}
+
 pub(super) fn provider_pool_key(input: &ProviderInvocationInput) -> String {
     format!(
         "provider_pool:v1:provider_instance={}:provider_code={}:protocol={}:model={}",

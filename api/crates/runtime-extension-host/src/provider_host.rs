@@ -282,6 +282,7 @@ struct PreparedProviderStreamInvocation {
     protocol_observation:
         Option<Arc<dyn runtime_core::runtime_backend::RuntimeProtocolObservationSink>>,
     host_calls: Option<ProviderHostCallContext>,
+    execution_deadline: Option<tokio::time::Instant>,
 }
 
 impl Drop for ActiveProviderInvocationLease {
@@ -1068,6 +1069,13 @@ impl ProviderHost {
     > {
         let loaded = self.loaded_package(plugin_id)?.clone();
         let (principal, plugin_data) = host_call_inputs;
+        let execution_deadline = principal.as_ref().and_then(|principal| {
+            let now_ms =
+                i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
+                    .unwrap_or(i64::MAX);
+            let remaining_ms = principal.deadline_unix_ms.saturating_sub(now_ms).max(0) as u64;
+            tokio::time::Instant::now().checked_add(std::time::Duration::from_millis(remaining_ms))
+        });
         let host_calls = match (principal, plugin_data) {
             (Some(principal), Some(plugin_data)) => {
                 build_host_call_context(&loaded, &input, principal, plugin_data)?
@@ -1097,6 +1105,7 @@ impl ProviderHost {
                 diagnostic_live_events,
                 protocol_observation,
                 host_calls,
+                execution_deadline,
             })
             .await
         })
@@ -1193,11 +1202,15 @@ impl ProviderHost {
             diagnostic_live_events,
             protocol_observation,
             host_calls,
+            execution_deadline,
         } = invocation;
 
         let queue_started = std::time::Instant::now();
-        let invocation_limits =
-            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input);
+        let invocation_limits = limit_provider_invocation_to_deadline(
+            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input),
+            execution_deadline,
+            tokio::time::Instant::now(),
+        );
         let deadline = tokio::time::Instant::now()
             + std::time::Duration::from_millis(
                 invocation_limits
@@ -1245,8 +1258,11 @@ impl ProviderHost {
             method: ProviderStdioMethod::Invoke,
             input: prepared_wire.wire_value,
         };
-        let invocation_limits =
-            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input);
+        let invocation_limits = limit_provider_invocation_to_deadline(
+            provider_invocation_limits(&loaded.package.manifest.runtime.limits, &input),
+            execution_deadline,
+            tokio::time::Instant::now(),
+        );
         let output = match loaded.package.manifest.execution_mode {
             PluginExecutionMode::ProcessPerCall => {
                 if host_calls.is_some() {
@@ -1489,9 +1505,10 @@ mod supervisor;
 
 use operations::{
     cache_failed_transport_closure, call_bound_transport_session, generic_count_tokens_fallback,
-    merge_models, normalize_balance, normalize_models, normalize_reset_credit_result,
-    normalize_usage_windows, provider_invocation_limits, provider_pool_key, provider_worker_handle,
-    record_provider_worker_cleanup, reset_credit_result_matches_operation,
+    limit_provider_invocation_to_deadline, merge_models, normalize_balance, normalize_models,
+    normalize_reset_credit_result, normalize_usage_windows, provider_invocation_limits,
+    provider_pool_key, provider_worker_handle, record_provider_worker_cleanup,
+    reset_credit_result_matches_operation,
 };
 
 #[cfg(test)]

@@ -10,7 +10,10 @@ fn provider_execution_inherits_available_task_deadline() {
         .run_context
         .insert("task_deadline_unix_ms".to_string(), Value::from(expected));
 
-    assert_eq!(provider_execution_deadline_unix_ms(&input, now), expected);
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, None),
+        expected
+    );
 }
 
 #[test]
@@ -19,7 +22,7 @@ fn provider_execution_defaults_to_thirty_minutes() {
     let input = ProviderInvocationInput::default();
 
     assert_eq!(
-        provider_execution_deadline_unix_ms(&input, now),
+        provider_execution_deadline_unix_ms(&input, now, None),
         now.unix_timestamp() * 1_000 + 30 * 60 * 1_000
     );
 }
@@ -82,7 +85,52 @@ fn provider_execution_does_not_refresh_expired_deadline() {
     input
         .run_context
         .insert("task_deadline_unix_ms".into(), Value::from(expired));
-    assert_eq!(provider_execution_deadline_unix_ms(&input, now), expired);
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, None),
+        expired
+    );
+}
+
+#[test]
+fn websocket_responses_prewarm_has_a_bounded_provider_deadline() {
+    let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
+    let now_ms = now.unix_timestamp() * 1_000;
+    let mut input = ProviderInvocationInput {
+        protocol: "openai_responses".into(),
+        native_transport: Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: "openai_responses".into(),
+                wire_body: json!({"generate": false, "input": []}),
+                digest: "fixture".into(),
+                size_bytes: 0,
+            },
+        ),
+        ..Default::default()
+    };
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, Some("websocket-owner")),
+        now_ms + 30_000
+    );
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, None),
+        now_ms + 30 * 60 * 1_000,
+        "HTTP Responses is not subject to the WebSocket startup budget"
+    );
+    input
+        .run_context
+        .insert("task_deadline_unix_ms".into(), Value::from(now_ms + 9_000));
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, Some("websocket-owner")),
+        now_ms + 9_000,
+        "an existing earlier task deadline still wins"
+    );
+    input.run_context.clear();
+    input.native_transport.as_mut().unwrap().wire_body = json!({"generate": true});
+    assert_eq!(
+        provider_execution_deadline_unix_ms(&input, now, Some("websocket-owner")),
+        now_ms + 30 * 60 * 1_000,
+        "ordinary Responses generation keeps its long budget"
+    );
 }
 
 #[test]

@@ -144,6 +144,8 @@ test('AC-003 build calls Cargo directly with no deadline and selects its reporte
   assert.equal(seen.options.timeoutMs, null);
   assert.ok(seen.args.includes('build'));
   assert.ok(!seen.args.includes('run'));
+  assert.ok(seen.args.includes('--features'));
+  assert.equal(seen.args[seen.args.indexOf('--features') + 1], 'tikv-jemallocator/stats');
   assert.equal(seen.options.env.CARGO_BUILD_JOBS, '1');
   assert.equal(seen.options.env.CARGO_MEMORY_BUDGET_ACTIVE, process.env.CARGO_MEMORY_BUDGET_ACTIVE);
   assert.equal(seen.options.cleanup, undefined);
