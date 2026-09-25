@@ -937,3 +937,12 @@ async fn semantic_ambiguous_round_maps_to_openai_conflict() {
     );
     assert_eq!(body["error"]["type"], "invalid_request_error");
 }
+
+#[test]
+fn invalid_callback_tool_results_map_to_bad_request() {
+    let error = native::service_error(
+        control_plane::errors::ControlPlaneError::InvalidInput("tool_results").into(),
+    );
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "tool_results");
+}

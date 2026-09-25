@@ -688,6 +688,19 @@ mod tests {
         calls: Arc<Mutex<Vec<CompletePublishedCallbackInput>>>,
     }
 
+    #[derive(Clone)]
+    struct InvalidToolResultsConsumer;
+
+    #[async_trait]
+    impl ApplicationPublishedCallbackConsumer for InvalidToolResultsConsumer {
+        async fn complete_published_callback(
+            &self,
+            _input: CompletePublishedCallbackInput,
+        ) -> Result<domain::FlowRunRecord> {
+            Err(ControlPlaneError::InvalidInput("tool_results").into())
+        }
+    }
+
     #[async_trait]
     impl ApplicationPublishedCallbackConsumer for PartialToolCallbackConsumer {
         async fn complete_published_callback(
@@ -874,6 +887,61 @@ mod tests {
             domain::CallbackTaskStatus::Completed
         );
         assert_eq!(consumer.calls.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_results_park_resume_attempt_without_consuming_callback() {
+        let (repository, _, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({"tool_calls":[{"id":"call_weather","name":"weather","arguments":{}}]}),
+        );
+        let service = ApplicationPublishedCallbackResumeService::new(
+            repository.clone(),
+            InvalidToolResultsConsumer,
+        );
+
+        let error = service
+            .resume_callback(resume_command(
+                &token,
+                run.id,
+                callback.id,
+                json!({"tool_results":[]}),
+            ))
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(&ControlPlaneError::InvalidInput("tool_results"))
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::CallbackTaskStatus::Pending
+        );
+        assert_eq!(
+            repository
+                .get_published_flow_run(run.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::FlowRunStatus::WaitingCallback
+        );
+        assert_eq!(
+            repository
+                .get_published_callback_resume_attempt(callback.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            domain::FlowRunCallbackResumeAttemptStatus::Received
+        );
     }
 
     // #2036: reserve is the pre-stream atomic admission boundary. Competing

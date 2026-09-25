@@ -678,10 +678,16 @@ where
                 if is_tool_round
                     && error
                         .downcast_ref::<ControlPlaneError>()
-                        .is_some_and(|error| matches!(error, ControlPlaneError::Conflict(_)))
+                        .is_some_and(|error| {
+                            matches!(
+                                error,
+                                ControlPlaneError::Conflict(_)
+                                    | ControlPlaneError::InvalidInput("tool_results")
+                            )
+                        })
                 {
-                    // A rejected partial result must not hold the round: park
-                    // the attempt so a correct delivery can still re-acquire it.
+                    // A rejected tool result must not consume the round: park
+                    // the attempt so a corrected delivery can re-acquire it.
                     if command.responses_continuation.is_none() {
                         let _ = self.park_tool_round_attempt(attempt).await;
                     }

@@ -754,8 +754,6 @@ pub(crate) fn service_error(error: anyhow::Error) -> NativeApiError {
 
 fn is_llm_tool_result_validation_error(message: &str) -> bool {
     [
-        "llm tool callback response requires tool_results",
-        "llm tool callback result is missing tool_call_id",
         "unexpected tool result for ",
         "duplicate tool result for ",
         "missing tool result for ",

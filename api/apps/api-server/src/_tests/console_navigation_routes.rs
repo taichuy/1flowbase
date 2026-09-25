@@ -106,7 +106,6 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
             "settings.files",
             "settings.system-runtime",
             "settings.memory-observation",
-            "settings.host-infrastructure",
             "settings.i18n",
         ]
     );

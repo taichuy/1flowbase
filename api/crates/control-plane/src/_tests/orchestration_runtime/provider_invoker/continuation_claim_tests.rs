@@ -408,9 +408,13 @@ fn sparse_completed_output_indexes_keep_a_provable_native_history() {
     let user = json!({"role":"user","content":"run a long task"});
     let first_call =
         json!({"type":"function_call","call_id":"call_first","name":"exec","arguments":"{}"});
-    let previous = completed_history(&json!({"input":[user]}), None, &[first_call.clone()])
-        .unwrap()
-        .unwrap();
+    let previous = completed_history(
+        &json!({"input":[user]}),
+        None,
+        std::slice::from_ref(&first_call),
+    )
+    .unwrap()
+    .unwrap();
     let first_result = json!({"type":"function_call_output","call_id":"call_first","output":"ok"});
     let reasoning =
         json!({"type":"reasoning","id":"rs_next","summary":[],"encrypted_content":"opaque"});
