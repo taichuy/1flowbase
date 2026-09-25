@@ -433,6 +433,7 @@ async fn native_wire_deltas_and_canonical_text_keep_order_with_paused_capacity_o
         .await
         .unwrap();
     let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+    assert!(stream.has_live_broadcast_for_tests(run_id).unwrap());
     // The subscriber stays paused until the complete production-ordered batch
     // is retained: each raw provider delta precedes its canonical text delta.
     for fragment in fragments {
@@ -473,6 +474,7 @@ async fn native_wire_deltas_and_canonical_text_keep_order_with_paused_capacity_o
         )
         .await
         .unwrap();
+    assert!(!stream.has_live_broadcast_for_tests(run_id).unwrap());
     let mut raw = Vec::new();
     let mut canonical = String::new();
     let mut seen = 0_i64;
@@ -667,6 +669,7 @@ async fn local_runtime_event_stream_rejects_append_after_close() {
         .close_run(run_id, RuntimeEventCloseReason::Finished)
         .await
         .unwrap();
+    assert!(!stream.has_live_broadcast_for_tests(run_id).unwrap());
 
     let err = stream.append(run_id, heartbeat()).await.unwrap_err();
     assert!(err.to_string().contains("runtime event stream is closed"));
@@ -715,11 +718,13 @@ async fn local_runtime_event_stream_open_run_reopens_closed_run_for_resume_phase
         .close_run(run_id, RuntimeEventCloseReason::WaitingCallback)
         .await
         .unwrap();
+    assert!(!stream.has_live_broadcast_for_tests(run_id).unwrap());
 
     stream
         .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
         .await
         .unwrap();
+    assert!(stream.has_live_broadcast_for_tests(run_id).unwrap());
     let resumed = stream.append(run_id, required_text_delta(1)).await.unwrap();
     let subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
 

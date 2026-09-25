@@ -49,7 +49,7 @@ impl RuntimeEventTerminalWriter for LocalRuntimeEventTerminalWriter {
 struct LocalRunEventStream {
     next_sequence: AtomicI64,
     ring: Mutex<RetainedRuntimeEvents>,
-    broadcaster: broadcast::Sender<RuntimeEventEnvelope>,
+    broadcaster: Mutex<Option<broadcast::Sender<RuntimeEventEnvelope>>>,
     closed_sender: watch::Sender<Option<RuntimeEventClosure>>,
     policy: RuntimeEventStreamPolicy,
     closed_at: Mutex<Option<OffsetDateTime>>,
@@ -82,6 +82,17 @@ impl LocalRuntimeEventStream {
             runs: Arc::new(Mutex::new(HashMap::new())),
             broadcast_capacity: broadcast_capacity.max(1),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
+        let run = self.run(run_id)?;
+        let has_broadcast = run
+            .broadcaster
+            .lock()
+            .expect("runtime event broadcaster lock poisoned")
+            .is_some();
+        Ok(has_broadcast)
     }
 
     fn run(&self, run_id: Uuid) -> Result<Arc<LocalRunEventStream>> {
@@ -194,7 +205,7 @@ impl LocalRunEventStream {
         ensure_ephemeral_payload_size(&event.payload)?;
         let run = self;
 
-        let (outcome, appended_event) = {
+        let outcome = {
             // `ring` is the stream's serialization point for append and close. Holding it for
             // the terminal scan, optional append, and closure prevents concurrent EOF recovery
             // retries from observing the same missing terminal.
@@ -212,30 +223,27 @@ impl LocalRunEventStream {
                 ));
             }
 
-            let (outcome, appended_event, close_reason) =
-                if let Some(existing_reason) = existing_terminal_reason {
-                    (
-                        AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
-                        None,
-                        existing_reason,
-                    )
-                } else {
-                    let sequence = run.next_sequence.load(Ordering::SeqCst);
-                    let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
-                    let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
-                    run.make_room_for(&mut ring, retained_bytes)?;
-                    run.next_sequence.store(sequence + 1, Ordering::SeqCst);
-                    *run.last_event_at
-                        .lock()
-                        .expect("runtime event last event lock poisoned") = envelope.occurred_at;
-                    ring.bytes = ring.bytes.saturating_add(retained_bytes);
-                    ring.events.push_back(envelope.clone());
-                    (
-                        AppendTerminalIfMissingAndCloseOutcome::Appended,
-                        Some(envelope),
-                        incoming_reason,
-                    )
-                };
+            let (outcome, close_reason) = if let Some(existing_reason) = existing_terminal_reason {
+                (
+                    AppendTerminalIfMissingAndCloseOutcome::ExistingTerminal,
+                    existing_reason,
+                )
+            } else {
+                let sequence = run.next_sequence.load(Ordering::SeqCst);
+                let envelope = RuntimeEventEnvelope::new(run_id, sequence, event);
+                let retained_bytes = LocalRunEventStream::retained_event_size(&envelope)?;
+                run.make_room_for(&mut ring, retained_bytes)?;
+                run.next_sequence.store(sequence + 1, Ordering::SeqCst);
+                *run.last_event_at
+                    .lock()
+                    .expect("runtime event last event lock poisoned") = envelope.occurred_at;
+                ring.bytes = ring.bytes.saturating_add(retained_bytes);
+                ring.events.push_back(envelope);
+                (
+                    AppendTerminalIfMissingAndCloseOutcome::Appended,
+                    incoming_reason,
+                )
+            };
 
             let final_sequence = run.next_sequence.load(Ordering::SeqCst) - 1;
             *run.closed_at
@@ -245,12 +253,10 @@ impl LocalRunEventStream {
                 reason: close_reason,
                 final_sequence,
             }));
-            (outcome, appended_event)
+            // Subscribers backfill the retained terminal when they observe closure.
+            run.release_live_broadcast();
+            outcome
         };
-
-        if let Some(envelope) = appended_event {
-            let _ = run.broadcaster.send(envelope);
-        }
         Ok(outcome)
     }
 
@@ -261,12 +267,39 @@ impl LocalRunEventStream {
         Self {
             next_sequence: AtomicI64::new(1),
             ring: Mutex::new(RetainedRuntimeEvents::default()),
-            broadcaster,
+            broadcaster: Mutex::new(Some(broadcaster)),
             closed_sender,
             policy,
             closed_at: Mutex::new(None),
             last_event_at: Mutex::new(now),
         }
+    }
+
+    fn subscribe_live(&self) -> broadcast::Receiver<RuntimeEventEnvelope> {
+        self.broadcaster
+            .lock()
+            .expect("runtime event broadcaster lock poisoned")
+            .as_ref()
+            .map(broadcast::Sender::subscribe)
+            .unwrap_or_else(|| broadcast::channel(1).1)
+    }
+
+    fn broadcast(&self, event: RuntimeEventEnvelope) {
+        if let Some(sender) = self
+            .broadcaster
+            .lock()
+            .expect("runtime event broadcaster lock poisoned")
+            .as_ref()
+        {
+            let _ = sender.send(event);
+        }
+    }
+
+    fn release_live_broadcast(&self) {
+        self.broadcaster
+            .lock()
+            .expect("runtime event broadcaster lock poisoned")
+            .take();
     }
 
     fn retention_duration(&self) -> TimeDuration {
@@ -496,7 +529,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             envelope
         };
 
-        let _ = run.broadcaster.send(envelope.clone());
+        run.broadcast(envelope.clone());
         Ok(envelope)
     }
 
@@ -520,7 +553,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 run_id,
                 run: Arc::clone(&run),
             });
-        let mut live_receiver = run.broadcaster.subscribe();
+        let mut live_receiver = run.subscribe_live();
         let closure = run.closed_sender.subscribe();
         let replay = run.replay_from_ring(from_sequence, usize::MAX)?;
         let mut last_sent_sequence = replay
@@ -531,6 +564,10 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             RuntimeEventReceiver::bounded_lanes(self.broadcast_capacity);
 
         if closure.borrow().is_some() {
+            // Close may have appended a terminal after the first replay snapshot.
+            // The closure is published while holding `ring`, so this second read
+            // includes every event through its final sequence.
+            let replay = run.replay_from_ring(from_sequence, usize::MAX)?;
             drop(required_sender);
             drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
@@ -544,6 +581,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
         let live_run = Arc::clone(&run);
         let mut closed_receiver = closure.clone();
         if closed_receiver.borrow().is_some() {
+            let replay = run.replay_from_ring(from_sequence, usize::MAX)?;
             drop(required_sender);
             drop(diagnostic_sender);
             return Ok(RuntimeEventSubscription {
@@ -603,7 +641,15 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                                     break;
                                 }
                             }
-                            Err(broadcast::error::RecvError::Closed) => break,
+                            Err(broadcast::error::RecvError::Closed) => {
+                                let _ = send_retained_after_sequence(
+                                    &live_run,
+                                    &required_sender,
+                                    &diagnostic_sender,
+                                    &mut last_sent_sequence,
+                                ).await;
+                                break;
+                            }
                         }
                     }
                 }
@@ -639,6 +685,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                 reason,
                 final_sequence,
             }));
+            run.release_live_broadcast();
         }
         Ok(())
     }
