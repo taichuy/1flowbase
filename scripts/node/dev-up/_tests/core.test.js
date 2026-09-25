@@ -1096,6 +1096,46 @@ test('manageDocker restart clears middleware port conflicts before bringing serv
   assert.deepEqual(composeCalls, [['down'], ['up', '-d']]);
 });
 
+test('default middleware start reuses a running PostgreSQL without calling Compose', async () => {
+  const calls = [];
+  await manageDocker('/repo-root', 'start', {
+    ensureMiddlewareEnvImpl() {},
+    getMiddlewareHostPortsImpl: () => [35432],
+    isPortOpenImpl: async () => true,
+    waitForPostgresReadyImpl: async (port) => calls.push(['ready', port]),
+    runMiddlewareComposeImpl: () => assert.fail('running database must not be recreated'),
+    logImpl: () => {},
+  });
+  assert.deepEqual(calls, [['ready', 35432]]);
+});
+
+test('default middleware start creates a missing PostgreSQL and waits until ready', async () => {
+  const calls = [];
+  await manageDocker('/repo-root', 'start', {
+    ensureMiddlewareEnvImpl() {},
+    getMiddlewareHostPortsImpl: () => [35432],
+    isPortOpenImpl: async () => false,
+    waitForPostgresReadyImpl: async (port) => calls.push(['ready', port]),
+    runMiddlewareComposeImpl(_repoRoot, args) {
+      calls.push(args);
+      return { status: 0 };
+    },
+    logImpl: () => {},
+  });
+  assert.deepEqual(calls, [['up', '-d'], ['ready', 35432]]);
+});
+
+test('default middleware start does not replace an occupied PostgreSQL port before readiness', async () => {
+  await assert.rejects(manageDocker('/repo-root', 'start', {
+    ensureMiddlewareEnvImpl() {},
+    getMiddlewareHostPortsImpl: () => [35432],
+    isPortOpenImpl: async () => true,
+    waitForPostgresReadyImpl: async () => { throw new Error('database is still starting'); },
+    runMiddlewareComposeImpl: () => assert.fail('occupied database port must not be replaced'),
+    logImpl: () => {},
+  }), /database is still starting/);
+});
+
 test('api-server example env files use workspace bootstrap naming', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const developmentExample = fs.readFileSync(

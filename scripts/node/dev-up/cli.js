@@ -5,6 +5,7 @@ function usage() {
   process.stdout.write(`Usage: node scripts/node/dev-up.js [options] [start|ensure|stop|status|restart]
 
 Default action: restart (rebuild and restart services from current sources)
+The default action reuses a running PostgreSQL or starts it when absent.
 
 Use start or ensure explicitly to reuse healthy services.
 

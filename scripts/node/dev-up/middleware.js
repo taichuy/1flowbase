@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const net = require('node:net');
 
 const { log } = require('./cli.js');
 const {
@@ -226,6 +227,39 @@ function getMiddlewareHostPorts(repoRoot) {
   });
 }
 
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    socket.setTimeout(500);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', () => resolve(false));
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForPostgresReady(port, {
+  runCommandImpl = runCommand,
+  timeoutMs = 30_000,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const result = runCommandImpl('pg_isready', ['-h', '127.0.0.1', '-p', String(port)], {
+      captureOutput: true,
+    });
+    if (result.error) throw result.error;
+    if (result.status === 0) return;
+    if (Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } while (true);
+  throw new Error(`PostgreSQL on 127.0.0.1:${port} did not become ready within ${timeoutMs / 1000}s`);
+}
+
 async function manageDocker(
   repoRoot,
   action,
@@ -234,6 +268,9 @@ async function manageDocker(
     runMiddlewareComposeImpl = runMiddlewareCompose,
     getMiddlewareHostPortsImpl = getMiddlewareHostPorts,
     clearPortConflictsImpl = clearPortConflicts,
+    isPortOpenImpl = isPortOpen,
+    waitForPostgresReadyImpl = waitForPostgresReady,
+    logImpl = log,
   } = {}
 ) {
   ensureMiddlewareEnvImpl(repoRoot);
@@ -260,6 +297,18 @@ async function manageDocker(
   if (action === 'restart') {
     runMiddlewareComposeImpl(repoRoot, ['down']);
     await clearPortConflictsImpl('docker middleware', getMiddlewareHostPortsImpl(repoRoot));
+  }
+
+  if (action === 'start' || action === 'ensure') {
+    const [postgresPort] = getMiddlewareHostPortsImpl(repoRoot);
+    if (await isPortOpenImpl(postgresPort)) {
+      await waitForPostgresReadyImpl(postgresPort);
+      logImpl(`PostgreSQL on port ${postgresPort} is running; skipping Docker middleware start`);
+      return;
+    }
+    runMiddlewareComposeImpl(repoRoot, ['up', '-d']);
+    await waitForPostgresReadyImpl(postgresPort);
+    return;
   }
 
   runMiddlewareComposeImpl(repoRoot, ['up', '-d']);
