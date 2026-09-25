@@ -232,6 +232,8 @@ export function RolePermissionPanel({
     catalogGroup: ConsolePolicyCatalogGroup;
     policyGroup: ConsolePolicyGroup;
   } | null>(null);
+  const [selectedConsoleOperationIds, setSelectedConsoleOperationIds] =
+    useState<string[]>([]);
 
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -503,6 +505,7 @@ export function RolePermissionPanel({
     (catalogGroup: ConsolePolicyCatalogGroup, forceCustom = false) => {
       const policyGroup = policyGroupForCatalogGroup(catalogGroup);
 
+      setSelectedConsoleOperationIds([]);
       setConsolePolicyDetail({
         catalogGroup,
         policyGroup: {
@@ -564,6 +567,43 @@ export function RolePermissionPanel({
     });
   };
 
+  const simpleDetailOperations =
+    consolePolicyDetail?.catalogGroup.operations.filter(
+      (operation) => operation.full_profile.kind === 'simple'
+    ) ?? [];
+  const allSimpleDetailOperationsSelected =
+    simpleDetailOperations.length > 0 &&
+    simpleDetailOperations.every((operation) =>
+      selectedConsoleOperationIds.includes(operation.operation_id)
+    );
+
+  const updateSelectedConsoleOperations = (enabled: boolean) => {
+    if (selectedConsoleOperationIds.length === 0) return;
+    const selectedIds = new Set(selectedConsoleOperationIds);
+    setConsolePolicyDetail((current) => {
+      if (!current) return current;
+      const simpleIds = new Set(
+        current.catalogGroup.operations
+          .filter((operation) => operation.full_profile.kind === 'simple')
+          .map((operation) => operation.operation_id)
+      );
+      const operations = materializeDetailPolicyOperations(
+        current.policyGroup,
+        current.catalogGroup
+      ).map((operation) =>
+        operation.kind === 'simple' &&
+        simpleIds.has(operation.operation_id) &&
+        selectedIds.has(operation.operation_id)
+          ? { ...operation, enabled }
+          : operation
+      );
+      return {
+        ...current,
+        policyGroup: { ...current.policyGroup, strategy: 'custom', operations }
+      };
+    });
+  };
+
   const saveConsolePolicyDetail = () => {
     if (!consolePolicyDetail) return;
     const nextGroups = replaceConsolePolicyGroup(
@@ -571,6 +611,7 @@ export function RolePermissionPanel({
       consolePolicyDetail.policyGroup
     );
     setConsolePolicyDetail(null);
+    setSelectedConsoleOperationIds([]);
     saveConsolePolicyGroups(nextGroups);
   };
 
@@ -1340,12 +1381,20 @@ export function RolePermissionPanel({
               : undefined
           }
           open={Boolean(consolePolicyDetail)}
-          onClose={() => setConsolePolicyDetail(null)}
+          onClose={() => {
+            setConsolePolicyDetail(null);
+            setSelectedConsoleOperationIds([]);
+          }}
           size={640}
           destroyOnHidden
           footer={
             <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button onClick={() => setConsolePolicyDetail(null)}>
+              <Button
+                onClick={() => {
+                  setConsolePolicyDetail(null);
+                  setSelectedConsoleOperationIds([]);
+                }}
+              >
                 {i18nText('settings', 'auto.cancel')}
               </Button>
               <Button
@@ -1370,6 +1419,59 @@ export function RolePermissionPanel({
                   {consolePolicyDetail.catalogGroup.description}
                 </Typography.Paragraph>
               ) : null}
+              {simpleDetailOperations.length > 0 ? (
+                <Space wrap size="small">
+                  <Checkbox
+                    aria-label={i18nText(
+                      'settings',
+                      'auto.select_all_switch_operations'
+                    )}
+                    checked={allSimpleDetailOperationsSelected}
+                    indeterminate={
+                      selectedConsoleOperationIds.length > 0 &&
+                      !allSimpleDetailOperationsSelected
+                    }
+                    disabled={
+                      !canManageRoles ||
+                      !selectedRole?.is_editable ||
+                      replaceConsolePolicyMutation.isPending
+                    }
+                    onChange={(event) =>
+                      setSelectedConsoleOperationIds(
+                        event.target.checked
+                          ? simpleDetailOperations.map(
+                              (operation) => operation.operation_id
+                            )
+                          : []
+                      )
+                    }
+                  >
+                    {i18nText('settings', 'auto.select_all_switch_operations')}
+                  </Checkbox>
+                  <Button
+                    disabled={
+                      selectedConsoleOperationIds.length === 0 ||
+                      !canManageRoles ||
+                      !selectedRole?.is_editable ||
+                      replaceConsolePolicyMutation.isPending
+                    }
+                    onClick={() => updateSelectedConsoleOperations(true)}
+                  >
+                    {i18nText('settings', 'auto.enable_selected_operations')}
+                  </Button>
+                  <Button
+                    disabled={
+                      selectedConsoleOperationIds.length === 0 ||
+                      !canManageRoles ||
+                      !selectedRole?.is_editable ||
+                      replaceConsolePolicyMutation.isPending
+                    }
+                    onClick={() => updateSelectedConsoleOperations(false)}
+                  >
+                    {i18nText('settings', 'auto.disable_selected_operations')}
+                  </Button>
+                </Space>
+              ) : null}
               <Table
                 rowKey="display_key"
                 pagination={false}
@@ -1380,6 +1482,40 @@ export function RolePermissionPanel({
                     display_key: displayKey
                   }))}
                 columns={[
+                  {
+                    key: 'selection',
+                    width: 48,
+                    render: (
+                      _: unknown,
+                      operation: ConsolePolicyCatalogGroup['operations'][number]
+                    ) =>
+                      operation.full_profile.kind === 'simple' ? (
+                        <Checkbox
+                          aria-label={i18nText(
+                            'settings',
+                            'auto.select_operation',
+                            { value1: operation.summary }
+                          )}
+                          checked={selectedConsoleOperationIds.includes(
+                            operation.operation_id
+                          )}
+                          disabled={
+                            !canManageRoles ||
+                            !selectedRole?.is_editable ||
+                            replaceConsolePolicyMutation.isPending
+                          }
+                          onChange={(event) =>
+                            setSelectedConsoleOperationIds((current) =>
+                              event.target.checked
+                                ? [...current, operation.operation_id]
+                                : current.filter(
+                                    (id) => id !== operation.operation_id
+                                  )
+                            )
+                          }
+                        />
+                      ) : null
+                  },
                   {
                     title: i18nText('settings', 'auto.operation'),
                     key: 'operation',

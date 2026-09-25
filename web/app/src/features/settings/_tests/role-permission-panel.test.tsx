@@ -780,6 +780,161 @@ describe('RolePermissionPanel', () => {
     });
   });
 
+  test('batch selection changes only selected simple operations after save', async () => {
+    permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
+      consolePolicyCatalog([
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.batch',
+          label: '批量操作',
+          description: null,
+          operations: [
+            {
+              operation_id: 'batch.read',
+              summary: 'Read records',
+              description: null,
+              order: 1,
+              route: { method: 'GET', path: '/api/console/test' },
+              full_profile: { kind: 'row', scope: 'scope_all' },
+              allowed_row_scopes: allRowScopeOptions,
+              authorization: {
+                kind: 'resource_action',
+                resource_code: 'record',
+                action_code: 'read'
+              }
+            },
+            {
+              operation_id: 'batch.create',
+              summary: 'Create record',
+              description: null,
+              order: 2,
+              route: { method: 'POST', path: '/api/console/test' },
+              full_profile: { kind: 'simple', enabled: true },
+              allowed_row_scopes: [],
+              authorization: { kind: 'simple' }
+            },
+            {
+              operation_id: 'batch.delete',
+              summary: 'Delete record',
+              description: null,
+              order: 3,
+              route: { method: 'DELETE', path: '/api/console/test' },
+              full_profile: { kind: 'simple', enabled: true },
+              allowed_row_scopes: [],
+              authorization: { kind: 'simple' }
+            }
+          ]
+        }
+      ])
+    );
+    rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
+      role_code: 'member',
+      groups: [
+        {
+          kind: 'settings_feature',
+          group_id: 'settings.batch',
+          enabled: true,
+          strategy: 'custom',
+          operations: [
+            { operation_id: 'batch.read', kind: 'row', scope: 'own' },
+            { operation_id: 'batch.create', kind: 'simple', enabled: false },
+            { operation_id: 'batch.delete', kind: 'simple', enabled: false }
+          ]
+        }
+      ]
+    });
+
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '详细配置 批量操作' })
+    );
+    const drawer = await screen.findByRole('dialog');
+    const enableSelected = within(drawer).getByRole('button', {
+      name: '启用所选'
+    });
+    const disableSelected = within(drawer).getByRole('button', {
+      name: '关闭所选'
+    });
+    expect(enableSelected).toBeDisabled();
+    expect(
+      within(drawer).queryByRole('checkbox', { name: '选择 Read records' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(drawer).getByRole('checkbox', { name: '选择 Create record' })
+    );
+    fireEvent.click(enableSelected);
+    expect(
+      within(drawer).getByRole('switch', { name: 'Create record' })
+    ).toBeChecked();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Delete record' })
+    ).not.toBeChecked();
+    expect(rolesApi.replaceSettingsRoleConsolePolicy).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(drawer).getByRole('checkbox', { name: '全选开关项' })
+    );
+    expect(
+      within(drawer).getByRole('checkbox', { name: '选择 Delete record' })
+    ).toBeChecked();
+    fireEvent.click(enableSelected);
+    expect(
+      within(drawer).getByRole('switch', { name: 'Delete record' })
+    ).toBeChecked();
+    fireEvent.click(disableSelected);
+    expect(
+      within(drawer).getByRole('switch', { name: 'Create record' })
+    ).not.toBeChecked();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Delete record' })
+    ).not.toBeChecked();
+
+    fireEvent.click(
+      within(drawer).getByRole('checkbox', { name: '全选开关项' })
+    );
+    expect(enableSelected).toBeDisabled();
+    expect(disableSelected).toBeDisabled();
+
+    fireEvent.click(
+      within(drawer).getByRole('button', { name: '保存权限配置' })
+    );
+    await waitFor(() => {
+      expect(rolesApi.replaceSettingsRoleConsolePolicy).toHaveBeenCalledWith(
+        'member',
+        {
+          groups: [
+            {
+              kind: 'settings_feature',
+              group_id: 'settings.batch',
+              enabled: true,
+              strategy: 'custom',
+              operations: [
+                { operation_id: 'batch.read', kind: 'row', scope: 'own' },
+                {
+                  operation_id: 'batch.create',
+                  kind: 'simple',
+                  enabled: false
+                },
+                { operation_id: 'batch.delete', kind: 'simple', enabled: false }
+              ]
+            }
+          ]
+        },
+        'csrf-123'
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '详细配置 批量操作' })
+    );
+    expect(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: '启用所选'
+      })
+    ).toBeDisabled();
+  });
+
   test('AC-004 renders a catalog group absent from stored policy as disabled and enables it as full', async () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
       consolePolicyCatalog([
