@@ -20,9 +20,9 @@ use axum::response::IntoResponse;
 use control_plane::{
     application_public_api::native::{AnswerProjectionSegment, NativeError, NativeRequiredAction},
     ports::{
-        OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventDurability,
-        RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream, RuntimeEventStreamPolicy,
-        UpdateFlowRunInput,
+        CreateNodeRunInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
+        RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource, RuntimeEventStream,
+        RuntimeEventStreamPolicy, UpdateFlowRunInput,
     },
 };
 use serde_json::json;
@@ -104,9 +104,293 @@ fn committed_delivery_envelope(
     )
 }
 
+#[tokio::test]
+async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open() {
+    let mut run = native_run();
+    let callback_task_id = Uuid::now_v7();
+    run.metadata["response_round_id"] = json!(callback_task_id);
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let stream = Arc::new(LocalRuntimeEventStream::new());
+    stream
+        .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut started = debug_stream_events::flow_started(run.id);
+    started.payload["response_round_id"] = json!(callback_task_id);
+    stream.append(run.id, started).await.unwrap();
+    let exact_output = json!({
+        "output_index": 0,
+        "item": {"type": "message", "content": [{"type": "output_text", "text": "exact reply"}]}
+    });
+    stream
+        .append(
+            run.id,
+            RuntimeEventPayload {
+                event_type: "provider_output_item_done".into(),
+                source: RuntimeEventSource::Provider,
+                durability: RuntimeEventDurability::DurableRequired,
+                persist_required: false,
+                trace_visible: true,
+                payload: exact_output.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let terminal_dependencies = NativeRunTerminalDependencies::new(
+        state.store.clone(),
+        state.runtime_engine.clone(),
+        state.provider_runtime.clone(),
+        state.provider_secret_master_key.clone(),
+        state.model_billing_require_provider_usage,
+        state.infrastructure.provider_transport_store(),
+        stream.clone(),
+    );
+    let mut attached = attach_compatible_typed_stream_with_replay(
+        terminal_dependencies,
+        stream.clone(),
+        run.clone(),
+        Some(0),
+        Vec::new(),
+    )
+    .await
+    .unwrap();
+    let first = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.envelope.event_type, "flow_started");
+    assert_eq!(second.envelope.event_type, "provider_output_item_done");
+    assert_eq!(second.envelope.payload, exact_output);
+    drop(attached);
+
+    let next = stream
+        .append(
+            run.id,
+            debug_stream_events::answer_text_delta(
+                "node-answer",
+                "still running".into(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .expect("subscriber disconnect must not close the shared round");
+    assert_eq!(next.sequence, 3);
+    let survivor = stream.subscribe(run.id, Some(2)).await.unwrap();
+    assert_eq!(survivor.replay.len(), 1);
+    assert_eq!(survivor.replay[0].payload["text"], "still running");
+}
+
+struct RejectAttachExecutor;
+
+impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
+    for RejectAttachExecutor
+{
+    fn for_actor<'a>(
+        &'a self,
+        _actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { panic!("an attached callback must not create an executor") })
+    }
+}
+
+#[tokio::test]
+async fn terminal_callback_attach_replays_ordered_durable_round_without_executor() {
+    assert_terminal_callback_attach(false).await;
+}
+
+#[tokio::test]
+async fn missing_local_round_follows_later_durable_terminal_without_executor() {
+    assert_terminal_callback_attach(true).await;
+}
+
+async fn assert_terminal_callback_attach(terminal_after_subscribe: bool) {
+    use control_plane::application_public_api::{
+        api_keys::ApplicationApiKeyActor,
+        callback_resume::{
+            PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+            ResumePublishedCallbackCommand,
+        },
+    };
+    let mut run = native_run();
+    let callback_task_id = Uuid::now_v7();
+    run.metadata["response_round_id"] = json!(callback_task_id);
+    run.metadata["active_callback_attach"] = json!(true);
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    append_compat_sse_runtime_event(
+        &state,
+        run.id,
+        "waiting_callback",
+        json!({"callback_task_id": callback_task_id}),
+    )
+    .await;
+    let first_item =
+        json!({"type": "message", "content": [{"type": "output_text", "text": "first"}]});
+    let second_item =
+        json!({"type": "message", "content": [{"type": "output_text", "text": "second"}]});
+    if !terminal_after_subscribe {
+        complete_attached_callback_round(&state, run.id, &first_item, &second_item).await;
+    }
+
+    let stream = Arc::new(LocalRuntimeEventStream::new());
+    let native = crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
+        store: state.store.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        published_plan_cache: state.infrastructure.published_plan_cache(),
+        published_publication_cache: state.infrastructure.published_publication_cache(),
+        runtime_engine: state.runtime_engine.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        network_egress: Arc::new(state.network_egress_http_clients()),
+        provider_secret_master_key: state.provider_secret_master_key.clone(),
+        model_billing_require_provider_usage: state.model_billing_require_provider_usage,
+        api_node_id: state.api_node_id.clone(),
+        provider_install_root: state.provider_install_root.clone(),
+        file_storage_registry: state.file_storage_registry.clone(),
+        task_queue: state.infrastructure.task_queue(),
+        provider_transport_store: state.infrastructure.provider_transport_store(),
+        runtime_event_stream: stream.clone(),
+        runtime_activity: state.runtime_activity.clone(),
+        runtime_invoker_factory: Arc::new(RejectAttachExecutor),
+    };
+    let dependencies = crate::routes::application_public_api::compatibility_interface::CompatibilityExecutionDependencies {
+        provider_transport_store: state.infrastructure.provider_transport_store(),
+        native,
+    };
+    let actor = ApplicationApiKeyActor {
+        api_key_id: run.api_key_id,
+        application_id: run.application_id,
+        creator_user_id: Uuid::nil(),
+        tenant_id: Uuid::nil(),
+        workspace_id: Uuid::nil(),
+        actor: domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
+    };
+    let command = ResumePublishedCallbackCommand {
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: json!({"tool_results": []}),
+        response_mode: Some("streaming".into()),
+        native_transport: None,
+        responses_continuation: None,
+        transport_connection_scope: None,
+        observation_context: None,
+        reserved_attempt_id: None,
+    };
+    let mut attached =
+        start_compatible_typed_resume_stream_for_actor(dependencies, run, command, actor)
+            .await
+            .unwrap();
+    if terminal_after_subscribe {
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), attached.events.recv())
+                .await
+                .is_err(),
+            "a missing local marker must wait for durable completion"
+        );
+        complete_attached_callback_round(
+            &state,
+            attached.initial_run.id,
+            &first_item,
+            &second_item,
+        )
+        .await;
+    }
+    let mut events = Vec::new();
+    while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
+        .await
+        .expect("terminal replay must finish")
+    {
+        events.push(input.envelope);
+    }
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "flow_started",
+            "provider_output_item_done",
+            "provider_output_item_done",
+            "flow_finished"
+        ]
+    );
+    assert_eq!(events[1].payload["item"], first_item);
+    assert_eq!(events[2].payload["item"], second_item);
+    let attempt_count: i64 = sqlx::query_scalar(
+        "select count(*) from flow_run_callback_resume_attempts where flow_run_id = $1",
+    )
+    .bind(attached.initial_run.id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(attempt_count, 0, "attach must not reserve another attempt");
+    assert!(
+        stream
+            .replay(attached.initial_run.id, None, 1)
+            .await
+            .is_err(),
+        "durable terminal replay must not create an empty local stream"
+    );
+}
+
+async fn complete_attached_callback_round(
+    state: &ApiState,
+    run_id: Uuid,
+    first_item: &serde_json::Value,
+    second_item: &serde_json::Value,
+) {
+    for (index, item) in [(1, second_item), (0, first_item)] {
+        append_compat_sse_runtime_event(
+            state,
+            run_id,
+            "provider_output_item_done",
+            json!({"output_index": index, "item": item}),
+        )
+        .await;
+    }
+    append_compat_sse_runtime_event(
+        state,
+        run_id,
+        "flow_finished",
+        json!({"type": "flow_finished", "run_id": run_id, "status": "succeeded"}),
+    )
+    .await;
+    state
+        .store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run_id,
+            status: domain::FlowRunStatus::Succeeded,
+            output_payload: json!({}),
+            error_payload: None,
+            finished_at: Some(time::OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+}
+
 fn spawn_typed_stream(
     state: &Arc<ApiState>,
     run: &NativeRunResult,
+    replay: Vec<RuntimeEventEnvelope>,
+    live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
+    sender: mpsc::Sender<CompatibleProjectionInput>,
+) -> tokio::task::JoinHandle<()> {
+    spawn_typed_stream_with_durable(state, run, Vec::new(), replay, live_events, sender)
+}
+
+fn spawn_typed_stream_with_durable(
+    state: &Arc<ApiState>,
+    run: &NativeRunResult,
+    durable_round_replay: Vec<RuntimeEventEnvelope>,
     replay: Vec<RuntimeEventEnvelope>,
     live_events: tokio::sync::mpsc::UnboundedReceiver<RuntimeEventEnvelope>,
     sender: mpsc::Sender<CompatibleProjectionInput>,
@@ -129,6 +413,7 @@ fn spawn_typed_stream(
             ),
             initial_run: run.clone(),
             from_sequence: None,
+            durable_round_replay,
             ignored_waiting_callback_task_id: None,
             subscription: RuntimeEventSubscription {
                 terminal_writer: Arc::new(UnusedTerminalWriter),
@@ -211,6 +496,164 @@ async fn typed_responses_stream_claims_orders_deduplicates_and_acks_projected_to
         claimable_delivery_count(&state, run.id).await,
         0,
         "acked deliveries must not replay"
+    );
+}
+
+#[tokio::test]
+async fn durable_round_replay_keeps_exact_native_item_and_does_not_replay_acked_tool() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let mut run = native_run();
+    run.metadata["response_round_id"] = json!(Uuid::now_v7());
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let reasoning = json!({
+        "id": "rs_provider_original",
+        "type": "reasoning",
+        "summary": [{"type":"summary_text","text":"exact summary"}],
+        "encrypted_content": "opaque-provider-bytes"
+    });
+    let mut tool = committed_delivery_payload("call-replay-once");
+    tool["output_index"] = json!(1);
+    let record = seed_pending_committed_delivery(&state, &run, tool.clone()).await;
+    let durable_replay = vec![
+        RuntimeEventEnvelope::new(run.id, 100, debug_stream_events::flow_started(run.id)),
+        RuntimeEventEnvelope::new(
+            run.id,
+            101,
+            debug_stream_events::provider_output_item_done(
+                "llm",
+                Uuid::now_v7(),
+                0,
+                reasoning.clone(),
+            ),
+        ),
+        committed_delivery_envelope(run.id, 102, tool),
+    ];
+    for expected_tool_count in [1, 0] {
+        let (live_sender, live_events) = tokio::sync::mpsc::unbounded_channel();
+        drop(live_sender);
+        let (sender, mut receiver) = mpsc::channel(8);
+        let forwarding = spawn_typed_stream_with_durable(
+            &state,
+            &run,
+            durable_replay.clone(),
+            Vec::new(),
+            live_events,
+            sender,
+        );
+        let mut mapper = OpenAiResponseStreamMapper::with_mode(
+            "fixture".into(),
+            None,
+            ResponsesProjectionMode::TransparentProviderResponses,
+        );
+        let mut projected = Vec::new();
+        let mut tool_count = 0;
+        while let Some(input) = receiver.recv().await {
+            let (snapshot, envelope, receipt) = input.into_parts();
+            if let Some(receipt) = receipt {
+                tool_count += 1;
+                receipt.projected();
+            }
+            projected.extend(mapper.runtime_event_to_sse(&snapshot, envelope));
+        }
+        forwarding.await.unwrap();
+        assert_eq!(tool_count, expected_tool_count);
+        let response = axum::response::sse::Sse::new(tokio_stream::iter(projected)).into_response();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("rs_provider_original"), "{body}");
+        assert!(body.contains("opaque-provider-bytes"), "{body}");
+        assert_eq!(body.contains("call-replay-once"), expected_tool_count == 1);
+    }
+    assert_eq!(delivery_statuses(&state, &[record.id]).await, vec!["acked"]);
+}
+
+#[tokio::test]
+async fn durable_callback_boundary_excludes_the_next_response_round() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let run = native_run();
+    seed_flow_run_for_compat_sse_test(&state, &run).await;
+    let node_run = state
+        .store
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "llm".into(),
+            node_type: "llm".into(),
+            node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: time::OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let first_callback = Uuid::now_v7();
+    let next_callback = Uuid::now_v7();
+    let waiting = |callback_task_id| RuntimeEventPayload {
+        event_type: "waiting_callback".into(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({"callback_task_id":callback_task_id}),
+    };
+    let original = json!({
+        "id":"rs_original",
+        "type":"reasoning",
+        "encrypted_content":"opaque-original"
+    });
+    let tool = json!({
+        "id":"call_original",
+        "type":"custom_tool_call",
+        "call_id":"call_original"
+    });
+    let later = json!({"id":"rs_later","type":"reasoning"});
+    for (sequence, payload) in [
+        waiting(first_callback),
+        debug_stream_events::flow_started(run.id),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 1, original.clone()),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 0, tool.clone()),
+        waiting(next_callback),
+        debug_stream_events::flow_started(run.id),
+        debug_stream_events::provider_output_item_done("llm", node_run.id, 0, later),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        control_plane::orchestration_runtime::persist_runtime_debug_stream_events(
+            &state.store,
+            vec![RuntimeEventEnvelope::new(
+                run.id,
+                sequence as i64 + 1,
+                payload,
+            )],
+        )
+        .await
+        .unwrap();
+    }
+    let boundary = state
+        .store
+        .get_runtime_event_sequence_for_callback_task(run.id, first_callback)
+        .await
+        .unwrap()
+        .unwrap();
+    let prefix = event_forwarding::durable_round_prefix(
+        state
+            .store
+            .list_runtime_events(run.id, boundary)
+            .await
+            .unwrap(),
+    );
+    let items = prefix
+        .iter()
+        .filter(|event| event.event_type == "provider_output_item_done")
+        .map(|event| event.payload["item"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(items, vec![tool, original]);
+    assert_eq!(
+        prefix.last().unwrap().payload["callback_task_id"],
+        json!(next_callback)
     );
 }
 

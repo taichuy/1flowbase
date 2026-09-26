@@ -733,6 +733,110 @@ async fn full_context_extension_configuration_refresh_keeps_pending_callback_own
 }
 
 #[tokio::test]
+async fn identical_processing_native_callback_attaches_without_second_consumer() {
+    use crate::application_public_api::callback_resume::{
+        ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
+    };
+    let (repository, actor, run) =
+        fixture_with_input(json!({"sys":{"requested_model_id":"fixture"}})).await;
+    let (callback, mut body) = seed_proven_full_round(&repository, run, true);
+    let full_body = body.clone();
+    body["previous_response_id"] = json!("resp_round");
+    body["input"] = request()["input"].clone();
+    let (_, results) = correlate_native_responses_callback(&repository, &actor, &body)
+        .await
+        .unwrap()
+        .unwrap();
+    let consumer = RecordingNativeCallbackConsumer {
+        repository: repository.clone(),
+        calls: Default::default(),
+    };
+    let service =
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+    let command = ResumePublishedCallbackCommand {
+        responses_continuation: None,
+        transport_connection_scope: None,
+        observation_context: None,
+        reserved_attempt_id: None,
+        native_transport: Some(ProviderTransportPayload::openai_responses(body.clone()).unwrap()),
+        bearer_token: String::new(),
+        target: PublishedCallbackResumeTarget::CallbackTask {
+            callback_task_id: callback.id,
+        },
+        source: PublishedCallbackResumeSource::OpenAiResponses,
+        response_payload: results,
+        response_mode: Some("streaming".into()),
+    };
+    let attempt_id = service
+        .reserve_native_callback_for_actor(actor.clone(), &command)
+        .await
+        .unwrap();
+    repository.complete_callback_task_for_test(callback.id);
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &command)
+            .await
+            .unwrap(),
+        PreparedPublishedCallbackResume::Attach { .. }
+    ));
+    let mut full_retry = command.clone();
+    full_retry.native_transport =
+        Some(ProviderTransportPayload::openai_responses(full_body.clone()).unwrap());
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &full_retry)
+            .await
+            .unwrap(),
+        PreparedPublishedCallbackResume::Attach { .. }
+    ));
+    assert!(consumer.calls.lock().unwrap().is_empty());
+    let attempts = repository.callback_resume_attempts();
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0].id, attempt_id);
+    assert_eq!(
+        attempts[0].status,
+        domain::FlowRunCallbackResumeAttemptStatus::Processing
+    );
+
+    let mut conflicting = command.clone();
+    conflicting.response_payload["tool_results"][0]["content"] = json!("changed");
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &conflicting)
+            .await
+            .unwrap_err()
+            .downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict(
+            "callback_resume_payload_conflict"
+        ))
+    ));
+    conflicting = command.clone();
+    conflicting.source = PublishedCallbackResumeSource::OpenAiChat;
+    assert!(matches!(
+        service
+            .prepare_callback_resume_for_actor(actor.clone(), &conflicting)
+            .await
+            .unwrap_err()
+            .downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict(
+            "callback_resume_source_conflict"
+        ))
+    ));
+    let mut changed_history = full_body;
+    changed_history["input"][0]["content"] = json!("different predecessor");
+    conflicting = command;
+    conflicting.native_transport =
+        Some(ProviderTransportPayload::openai_responses(changed_history).unwrap());
+    assert!(service
+        .prepare_callback_resume_for_actor(actor, &conflicting)
+        .await
+        .is_err());
+    assert!(consumer.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn full_context_successor_waits_for_processing_predecessor_without_replaying_tools() {
     use crate::application_public_api::callback_resume::{
         ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
