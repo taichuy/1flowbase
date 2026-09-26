@@ -21,8 +21,6 @@ use tokio::{
     task::{JoinHandle, LocalSet},
 };
 
-const COMPLETION_CHANNEL_CAPACITY: usize = 16;
-
 type PendingCallbacks =
     Rc<RefCell<HashMap<(String, String), oneshot::Sender<(Value, OwnedSemaphorePermit)>>>>;
 
@@ -66,6 +64,8 @@ pub enum MultiplexError {
     Correlation,
     #[error("worker output channel is full or closed")]
     Backpressure,
+    #[error("runtime extension handler panicked")]
+    HandlerPanicked,
 }
 
 #[derive(Clone)]
@@ -299,6 +299,7 @@ where
     let mut reader = BufReader::new(input);
     let byte_budget = Arc::new(Semaphore::new(MULTIPLEX_OUTPUT_BUDGET_BYTES));
     let (fatal_tx, mut fatal_rx) = watch::channel(false);
+    let (panic_tx, mut panic_rx) = watch::channel(false);
     let (output_tx, mut output_rx) = mpsc::unbounded_channel::<QueuedFrame>();
     let writer = tokio::task::spawn_local(async move {
         let mut output = output;
@@ -309,11 +310,16 @@ where
         }
         Ok::<_, io::Error>(())
     });
+    // Completed frames already hold the shared byte-budget permit. A count cap
+    // would reject a burst of small independent calls for no memory benefit.
     let (complete_tx, mut complete_rx) =
-        mpsc::channel::<(String, Result<QueuedFrame, MultiplexError>)>(COMPLETION_CHANNEL_CAPACITY);
+        mpsc::unbounded_channel::<(String, Result<QueuedFrame, MultiplexError>)>();
     let callbacks: PendingCallbacks = Rc::new(RefCell::new(HashMap::new()));
     let handler = Rc::new(handler);
-    let mut active: HashMap<String, (JoinHandle<()>, Rc<Cell<bool>>)> = HashMap::new();
+    // The watcher owns each handler JoinHandle, so construction, polling, and
+    // terminal encoding panics cannot leave an active call waiting forever.
+    let mut active: HashMap<String, (tokio::task::AbortHandle, JoinHandle<()>, Rc<Cell<bool>>)> =
+        HashMap::new();
     let mut max_seen_call_id = 0_u64;
     let mut input_closed = false;
     // Retain partial bytes when another select branch wins; a local read buffer
@@ -325,9 +331,11 @@ where
         }
         tokio::select! {
             _ = fatal_rx.changed() => { break Err(MultiplexError::Backpressure); }
+            _ = panic_rx.changed() => { break Err(MultiplexError::HandlerPanicked); }
             completed = complete_rx.recv(), if !active.is_empty() => {
                 let Some((call_id, response)) = completed else { break Err(MultiplexError::Protocol); };
-                if let Some((_, live)) = active.remove(&call_id) {
+                if let Some((_, watcher, live)) = active.remove(&call_id) {
+                    let _ = watcher.await;
                     live.set(false);
                     remove_callbacks(&callbacks, &call_id);
                     let frame = match response { Ok(frame) => frame, Err(error) => break Err(error) };
@@ -350,23 +358,33 @@ where
                         let complete_tx = complete_tx.clone();
                         let task_call_id = call_id.clone();
                         let task_budget = byte_budget.clone();
-                        let task_fatal = fatal_tx.clone();
                         let task = tokio::task::spawn_local(async move {
                             let response = handler(request, emitter).await;
-                            let frame = encode_wait(MultiplexWorkerMessage::Response { call_id: task_call_id.clone(), response }, &task_budget).await;
-                            if complete_tx.send((task_call_id, frame)).await.is_err() { task_fatal.send_replace(true); }
+                            encode_wait(MultiplexWorkerMessage::Response { call_id: task_call_id, response }, &task_budget).await
                         });
-                        active.insert(call_id, (task, live));
+                        let abort = task.abort_handle();
+                        let task_call_id = call_id.clone();
+                        let task_panic = panic_tx.clone();
+                        let watcher = tokio::task::spawn_local(async move {
+                            match task.await {
+                                Ok(frame) => {
+                                    let _ = complete_tx.send((task_call_id, frame));
+                                }
+                                Err(error) if error.is_panic() => { task_panic.send_replace(true); }
+                                Err(_) => {} // explicitly aborted call
+                            }
+                        });
+                        active.insert(call_id, (abort, watcher, live));
                     }
                     MultiplexHostMessage::Cancel { call_id } => {
-                        let Some((task, live)) = active.remove(&call_id) else {
+                        let Some((abort, watcher, live)) = active.remove(&call_id) else {
                             // Any previously dispatched call has already reached a terminal.
                             if parse_call_id(&call_id).is_some_and(|id| id <= max_seen_call_id) { continue; }
                             break Err(MultiplexError::Correlation);
                         };
                         live.set(false);
-                        task.abort();
-                        let _ = task.await; // cancellation acknowledgment follows task termination
+                        abort.abort();
+                        let _ = watcher.await; // acknowledgment follows observed task termination
                         remove_callbacks(&callbacks, &call_id);
                         let output = output_tx.clone();
                         let budget = byte_budget.clone();
@@ -391,14 +409,15 @@ where
             }
         }
     };
-    for (_, (task, live)) in active.drain() {
+    for (_, (abort, watcher, live)) in active.drain() {
         live.set(false);
-        task.abort();
-        let _ = task.await;
+        abort.abort();
+        let _ = watcher.await;
     }
     drop(output_tx);
     if result.is_err() {
         writer.abort();
+        let _ = writer.await;
         return result;
     }
     let writer_result = writer.await.map_err(|_| MultiplexError::Protocol)?;

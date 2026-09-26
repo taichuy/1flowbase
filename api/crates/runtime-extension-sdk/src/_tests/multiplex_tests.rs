@@ -393,3 +393,151 @@ async fn partial_frame_at_eof_is_protocol_error() {
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn panicking_handler_fails_worker_and_releases_pending_neighbor() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (host, worker) = tokio::io::duplex(4096);
+            let (worker_read, worker_write) = tokio::io::split(worker);
+            let (_, mut host_write) = tokio::io::split(host);
+            let retained = Rc::new(vec![0_u8; 1024 * 1024]);
+            let retained_weak = Rc::downgrade(&retained);
+            let released = Rc::new(RefCell::new(false));
+            let observed_release = released.clone();
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let started_tx = Rc::new(RefCell::new(Some(started_tx)));
+            let runner =
+                tokio::task::spawn_local(serve_io(worker_read, worker_write, move |request, _| {
+                    let retained = retained.clone();
+                    let released = released.clone();
+                    let started_tx = started_tx.clone();
+                    async move {
+                        if request == json!("panic") {
+                            panic!("handler fixture panic");
+                        }
+                        struct Held {
+                            released: Rc<RefCell<bool>>,
+                            _payload: Rc<Vec<u8>>,
+                        }
+                        impl Drop for Held {
+                            fn drop(&mut self) {
+                                *self.released.borrow_mut() = true;
+                            }
+                        }
+                        let _held = Held {
+                            released,
+                            _payload: retained,
+                        };
+                        started_tx.borrow_mut().take().unwrap().send(()).unwrap();
+                        pending::<Value>().await
+                    }
+                }));
+            host_write
+                .write_all(
+                    line(MultiplexHostMessage::Call {
+                        call_id: "1".into(),
+                        request: json!("neighbor"),
+                    })
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            started_rx.await.unwrap();
+            host_write
+                .write_all(
+                    line(MultiplexHostMessage::Call {
+                        call_id: "2".into(),
+                        request: json!("panic"),
+                    })
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let result = tokio::time::timeout(std::time::Duration::from_secs(2), runner)
+                .await
+                .expect("panic must terminate runner before Host deadline")
+                .unwrap();
+            assert!(matches!(result, Err(MultiplexError::HandlerPanicked)));
+            assert!(*observed_release.borrow());
+            assert!(retained_weak.upgrade().is_none());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn small_completion_burst_exceeds_old_count_capacity_without_backpressure() {
+    use std::{cell::Cell, collections::HashSet};
+
+    const CALLS: usize = 64;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (host, worker) = tokio::io::duplex(16 * 1024);
+            let (worker_read, worker_write) = tokio::io::split(worker);
+            let (host_read, mut host_write) = tokio::io::split(host);
+            let started = Rc::new(Cell::new(0));
+            let (all_started_tx, all_started_rx) = tokio::sync::oneshot::channel();
+            let all_started_tx = Rc::new(RefCell::new(Some(all_started_tx)));
+            let (release_tx, release_rx) = tokio::sync::watch::channel(false);
+            let runner =
+                tokio::task::spawn_local(serve_io(worker_read, worker_write, move |request, _| {
+                    let started = started.clone();
+                    let all_started_tx = all_started_tx.clone();
+                    let mut release_rx = release_rx.clone();
+                    async move {
+                        let count = started.get() + 1;
+                        started.set(count);
+                        if count == CALLS {
+                            all_started_tx
+                                .borrow_mut()
+                                .take()
+                                .unwrap()
+                                .send(())
+                                .unwrap();
+                        }
+                        release_rx.changed().await.unwrap();
+                        request
+                    }
+                }));
+            for id in 1..=CALLS {
+                host_write
+                    .write_all(
+                        line(MultiplexHostMessage::Call {
+                            call_id: id.to_string(),
+                            request: json!(id),
+                        })
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            tokio::time::timeout(std::time::Duration::from_secs(5), all_started_rx)
+                .await
+                .unwrap()
+                .unwrap();
+            release_tx.send_replace(true);
+            host_write.shutdown().await.unwrap();
+            let mut reader = BufReader::new(host_read);
+            let mut seen = HashSet::new();
+            for _ in 0..CALLS {
+                let mut response = String::new();
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    reader.read_line(&mut response),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                let frame: MultiplexEnvelope<MultiplexWorkerMessage> =
+                    serde_json::from_str(&response).unwrap();
+                let MultiplexWorkerMessage::Response { call_id, response } = frame.message else {
+                    panic!("expected terminal response");
+                };
+                assert_eq!(response, json!(call_id.parse::<usize>().unwrap()));
+                assert!(seen.insert(call_id));
+            }
+            assert_eq!(seen.len(), CALLS);
+            assert!(runner.await.unwrap().is_ok());
+        })
+        .await;
+}
